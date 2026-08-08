@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -e
+
+echo "========================================"
+echo " Running clang-format..."
+echo "========================================"
+
+if ! command -v clang-format >/dev/null 2>&1; then
+    echo
+    echo "Error:"
+    echo "    clang-format was not found."
+    echo
+    echo "Please install LLVM/Clang first."
+    exit 1
+fi
+
+echo "Using:"
+clang-format --version
+echo
+
+git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$' \
+    | while IFS= read -r file
+do
+    if [ -f "$file" ]; then
+
+        echo "Formatting: $file"
+
+        clang-format \
+            -style=file \
+            -i \
+            "$file"
+
+        git add "$file"
+    fi
+done
+
+
+echo
+echo "clang-format finished."
+echo
+
+exit 0
