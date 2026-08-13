@@ -21,6 +21,11 @@
 #include "obj_dll.h"   // IWYU pragma: keep
 
 SKL_ABIX_NAMESPACE_BEGIN
+enum class AbiLookupPolicy : uint8_t {
+    Linear = 0,
+    StaticHot = 1,
+    AdaptiveHot = 2,
+};
 
 template<cc::tag C, typename Sig, AbiLookupPolicy Policy = AbiLookupPolicy::Linear>
 class dll_func_cc;
@@ -121,17 +126,23 @@ public:
             last_error() = call_error::not_loaded;
             return default_ret();
         }
+        if (!_lib->try_enter_read()) {
+            return default_ret();
+        }
         const table *t = _lib->get_table();
         if (_index >= t->count) {
+            _lib->exit_read();
             last_error() = call_error::table_changed;
             return default_ret();
         }
         const entry &e = t->entries[_index];
         if (e.name_hash != _name_hash || e.sig != _sig || strcmp(e.name, _name) != 0) {
+            _lib->exit_read();
             last_error() = call_error::table_changed;
             return default_ret();
         }
         if (e.fnptr == 0) {
+            _lib->exit_read();
             last_error() = call_error::invalid;
             return default_ret();
         }
@@ -140,8 +151,11 @@ public:
         last_error() = call_error::none;
         if constexpr (std::is_void_v<R>) {
             fn(static_cast<Args>(args)...);
+            _lib->exit_read();
         } else {
-            return fn(static_cast<Args>(args)...);
+            R ret = fn(static_cast<Args>(args)...);
+            _lib->exit_read();
+            return ret;
         }
     }
 
