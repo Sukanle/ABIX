@@ -20,6 +20,7 @@ Key design goals:
 - **Compile-time signature hashing** — Every function signature is hashed at compile time via FNV-1a; a mismatch is detected at resolve time, never at call time.
 - **Version evolution** — Multiple versions of the same function name can coexist in a single table, enabling forward-compatible API evolution.
 - **Hot-reload** — Integer handle IDs remain stable across unload/reload cycles, enabling zero-downtime DLL upgrades.
+- **RCU Non-Blocking Unload** — `dll_object` uses RCU (Read-Copy-Update) epoch-based reclamation with compiler-builtin atomics, allowing safe concurrent DLL unload without blocking active callers.
 - **Lookup acceleration** — Three lookup policies (Linear, StaticHot, AdaptiveHot) adapt to different access patterns, with adaptive hot-cache learning from runtime call frequencies.
 
 ## Features
@@ -30,6 +31,10 @@ Key design goals:
 - **Cross-boundary Callbacks** — `function_dll<R(Args...)>` is an 8-byte closure that captures lambdas and invokes them across DLL boundaries
 - **Version Tokens** — `SKL_ABIX_VERSION("1.0")` enables multiple implementations of the same named function to coexist
 - **Calling Convention Awareness** — `dll_func_cc<C, Sig>` and `dll_func<Sig, C>` templates support `__cdecl`, `__stdcall`, `__fastcall`, and `__vectorcall`
+- **RCU Non-Blocking Unload** — Thread-safe DLL unloading via RCU read-side critical sections (`try_enter_read`/`exit_read`) and compiler-builtin atomics (`_Interlocked*`/`__atomic_*`), zero `std::atomic` ABI risk
+- **RCU Timeout Policies** — Three strategies for when the RCU grace period exceeds `ABIX_RCU_TIMEOUT_MS`: Safe (zombie + leak), ForceUnload (bypass RCU), and ForceLeak (detach + leak, opt-in via macro)
+- **Timeout Check Modes** — Three zero/low-CPU check modes: Lazy (check on entry), Tick (host-driven), and OS Timer (kernel-level wait)
+- **Pluggable Logging** — Compile-time removable logging with C-callback sink (`ABIX_LOG_*` macros), per-level disable, and ABI-safe `set_log_sink()` for production log platforms
 - **Dynamic Reflection Integration** — Built on the Reflection library, supporting runtime type queries and POD field access via `make_pod_type_info` / `make_offset_field`
 - **Lookup Policy** — Three strategies for function table lookup, with adaptive hot-cache that automatically promotes frequently-called entries
 
@@ -130,14 +135,19 @@ struct table {
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `load(path)` | `bool` | Load a DLL/SO and validate its export table |
-| `unload()` | `bool` | Unload if no live handles (ref-count = 0) |
-| `force_unload()` | `void` | Unload regardless of ref-count |
+| `unload()` | `bool` | Mark unloading → wait for readers → unload if no live handles (ref-count = 0) |
+| `force_unload()` | `void` | Unload regardless of ref-count (bypasses RCU, caller must ensure safety) |
 | `reload(path)` | `bool` | Unload and re-load a new DLL |
-| `is_loaded()` | `bool` | Whether the module is loaded |
+| `is_loaded()` | `bool` | Whether the module is loaded and not in the unloading state |
 | `get_table()` | `const table*` | Get the export table pointer |
 | `add_ref()` | `void` | Increment reference count |
 | `release_ref()` | `void` | Decrement reference count |
 | `ref_count()` | `uint32_t` | Current reference count |
+| `try_enter_read()` | `bool` | Enter RCU read-side critical section (double-checked); returns `false` if unloading or zombie |
+| `exit_read()` | `void` | Exit RCU read-side critical section |
+| `begin_rcu_unload()` | `bool` | Mark unloading → wait for readers → unload or apply timeout policy; returns `true` on success |
+| `set_timeout_policy(p)` | `void` | Set the RCU timeout policy (`Safe` / `ForceUnload` / `ForceLeak`) |
+| `timeout_policy()` | `RCUTimeoutPolicy` | Get the current RCU timeout policy |
 
 ### `call_error` — Error Codes
 
@@ -152,6 +162,7 @@ struct table {
 | `table_changed` | Table changed after resolve |
 | `invalid` | Invalid handle |
 | `load_failed` | DLL load failed |
+| `unloading` | DLL is currently unloading |
 
 ## Smart Pointers for DLL Resources
 
@@ -163,6 +174,84 @@ struct table {
 | `weak_dll_ptr<T>` | Weak reference | Non-owning observer for `shared_dll_ptr` |
 | `view_dll_ptr<T>` | View reference | Non-owning observer for `ref_dll_ptr` |
 | `fn_deleter<T>` | Custom deleter | Wraps a DLL destroy function for `std::unique_ptr` |
+
+## Logging
+
+ABIX provides a pluggable, compile-time removable logging system with zero ABI risk.
+
+### Log Levels
+
+| Level | Macro | Description |
+|-------|-------|-------------|
+| `Debug` | `ABIX_LOG_DEBUG(...)` | Verbose diagnostic information |
+| `Info` | `ABIX_LOG_INFO(...)` | General operational messages |
+| `Warning` | `ABIX_LOG_WARNING(...)` | Recoverable issues, degraded behavior |
+| `Error` | `ABIX_LOG_ERROR(...)` | Critical failures, unrecoverable errors |
+
+### Runtime Redirection
+
+```cpp
+void my_sink(skl::abix::LogLevel level, const char *message) {
+    // Forward to spdlog, fmt, ELK, Splunk, etc.
+    spdlog::log(static_cast<spdlog::level::level_enum>(level), message);
+}
+skl::abix::set_log_sink(my_sink);
+```
+
+### Compile-time Control
+
+```cpp
+#define ABIX_DISABLE_LOGGING               // Zero-overhead: all log code removed
+#define ABIX_DISABLE_LOG_LEVEL_DEBUG      // Disable Debug-level only
+#define ABIX_DISABLE_LOG_LEVEL_INFO       // Disable Info-level only
+```
+
+## RCU Timeout Policies
+
+When `ABIX_RCU_TIMEOUT_ENABLE` is on (default) and the RCU grace period exceeds `ABIX_RCU_TIMEOUT_MS` (default: 5000ms), one of three strategies is applied:
+
+| Strategy | Behavior | Availability | Default |
+|----------|----------|-------------|---------|
+| `Safe` | Mark zombie, abandon unload, DLL leaks but **never crashes** | Always | Default |
+| `ForceUnload` | Bypass RCU, force `FreeLibrary`/`dlclose` — active callers **will crash** | Always | — |
+| `ForceLeak` | Detach module, don't unload DLL, old objects safely leak | Requires `#define ABIX_ENABLE_FORCE_LEAK_POLICY` | — |
+
+**Zombie State:** Under Safe/ForceLeak, the `dll_object` becomes a zombie:
+- `is_loaded()` returns `false`
+- `try_enter_read()` returns `false` (sets `call_error::unloading`)
+- `load()` force-unloads the zombie and reloads fresh
+
+## Timeout Check: Dual-Fuel (Time + Frames)
+
+ABIX treats **wall-clock time** and **frame count** as two orthogonal fuel sources. Both are always available at runtime — no compile-time mode switch required.
+
+- **Time fuel**: `get_tick_ms()` always returns the system wall-clock (no host cooperation needed).
+- **Frame fuel**: `abix::tick(timestamp)` injects frame counts from the host loop (optional, zero overhead if unused).
+- **Deadline check**: `wait_for_readers()` checks both `_timeout_ms` AND `_timeout_frames` every ~1M spin iterations. Whichever deadline arrives first triggers the timeout.
+
+This design lets the host "refuel" both sources simultaneously without forcing a binary choice. The host's scheduling system is never replaced; ABIX only provides precise deadline judgment at the critical point.
+
+## Configuration Quick Reference
+
+```cpp
+// ==================== 1. Logging ====================
+// #define ABIX_DISABLE_LOGGING
+// #define ABIX_DISABLE_LOG_LEVEL_DEBUG
+
+// ==================== 2. Timeout Policy ====================
+#define ABIX_RCU_TIMEOUT_ENABLE     1
+#define ABIX_RCU_TIMEOUT_MS         5000   // Compile-time fallback default
+#define ABIX_RCU_TIMEOUT_FRAMES_DEFAULT 0  // Compile-time fallback default (0 = disabled)
+// #define ABIX_ENABLE_FORCE_LEAK_POLICY
+
+// ==================== 3. Lazy Starvation Guard ====================
+#define ABIX_LAZY_STARVATION_GUARD  ABIX_LAZY_STARVATION_GUARD_TICK  // 0=Off | 1=Tick (default) | 2=Idle
+// #define ABIX_ENABLE_IDLE_BACKGROUND_THREAD   // Required for Level 2
+
+// Runtime configuration:
+// dll_object lib(RCUTimeoutConfig{5000, 300});  // 5s or 300 frames, whichever first
+// lib.set_timeout_policy(RCUTimeoutPolicy::ForceUnload);
+```
 
 ## Lookup Policies
 
@@ -185,12 +274,15 @@ ABIX/
 │   ├── config.h               # Platform detection, macros, AbiLookupPolicy
 │   ├── type.h                 # Core types: entry, table, type aliases
 │   ├── register.h             # SKL_ABIX_DEFINE_TABLE, SKL_ABIX_ENTRY macros
-│   ├── obj_dll.h              # dll_object: DLL load/unload/ref-count
+│   ├── obj_dll.h              # dll_object: DLL load/unload/ref-count, RCU read/write sides, timeout policies
 │   ├── fn_dll.h               # dll_func / dll_func_cc: typed function handles
 │   ├── fn_sig.h               # fn_sig<T>: compile-time signature hashing
 │   ├── type_sig.h             # type_sig<T>: compile-time type hashing
 │   ├── search.h               # find_index, lookup_linear: table search
 │   ├── cache.h                # static_hot_cache, adaptive_hot_cache: lookup acceleration
+│   ├── log.h                  # Logging: pluggable C-callback sink, per-level compile-time disable
+│   ├── rcu_config.h           # RCUTimeoutConfig: runtime timeout settings (ms + frames)
+│   ├── rcu_timeout.h          # RCU timeout: tick source, OS timer, starvation guard, platform abstraction
 │   ├── function.h             # function_dll: 8-byte cross-boundary closure
 │   ├── dll.h                  # Aggregator: obj_dll + fn_dll
 │   ├── dll_ptr.h              # Aggregator: all smart pointer types
@@ -238,28 +330,63 @@ ABIX/
 
 ## Testing
 
-Tests use [Catch2](https://github.com/catchorg/Catch2), driven by `main.cpp` covering:
+Tests use [Catch2](https://github.com/catchorg/Catch2), driven by `main.cpp`. **All 31 test cases pass**, covering core functionality, edge cases, resource management, cross-compiler compatibility, closed-source contracts, timeout policies, and performance benchmarks.
 
-| Test | Tags | Coverage |
-|------|------|----------|
-| Basic math linear scan | `[basic]` | Load DLL, resolve functions via linear scan, call through integer handles |
-| Cross-compiler variant | `[cross]` | Same function name yields consistent results across g++/clang/MSVC builds |
-| Signature hash check | `[typesafe]` | Signature mismatch rejected at lookup, no silent type conversion |
-| Unique resource takeover | `[resource]` | `unique_dll_ptr`/`unique_ptr` invoke DLL release function on destruction |
-| ref_dll_ptr refcount | `[resource]` | Non-atomic ref-count shared resource, released on last destruction |
-| ABI function callback | `[callback]` | `function_dll` captures lambda and invokes across boundary |
-| Version evolution | `[version]` | v1.0/v2.0 version tokens for same log interface coexist |
-| Lookup policy benchmark | `[perf]` | Linear/StaticHot/AdaptiveHot strategies with real-world distributions |
-| Hot-reload | `[reload]` | Handle ID unchanged after unload A / load B, return value updates |
-| Edge handling | `[edge]` | Not found, call after unload, ref-count reject, calling convention mismatch |
+### Test Categories
+
+| Category | Tests | Tags | Coverage |
+|----------|-------|------|----------|
+| **Basic** | 1, 3, 6, 7, 9 | `[basic]`, `[typesafe]`, `[callback]`, `[version]`, `[reload]` | Linear scan, signature hash, `function_dll` callback, version token coexistence, hot-reload |
+| **Resource** | 4, 5, 11, 12 | `[resource]` | `unique_dll_ptr`/`ref_dll_ptr`/Socket/string cross-boundary lifecycle |
+| **Cross-Compiler/CRT** | 2, 13, 17 | `[cross]` | GCC/Clang/MSVC interop; MinGW host + MSVC DLL with no heap conflict |
+| **Closed-Source** | 15, 16, 18 | `[closed]` | Private field hiding, dual offset validation, breaking version change interception |
+| **Log & Config** | 19, 20, 21, 22, 23, 25, 27, 28 | `[log]`, `[config]`, `[tick]` | Log redirection, buffer truncation, `RCUTimeoutConfig`, policy switching, `tick()` injection |
+| **RCU Timeout & Zombie** | 24, 26, 29, 30, 31 | `[rcu]`, `[zombie]`, `[policy]`, `[timeout]`, `[tick]` | Safe/ForceUnload/ForceLeak timeout triggers, zombie recovery, frame-driven timeout |
+| **Reflection** | 14 | `[refl]` | Static/dynamic reflection (FP/Any/Registry/TypeInfo/StaticRefl) integration |
+| **Edge Cases** | 10 | `[edge]` | Not found, call after unload, ref-count reject, calling convention mismatch |
+| **Performance** | **8** | `[perf]` | **Linear/StaticHot/AdaptiveHot** with 100% hot, cold start, hot drift, 80/20 distributions |
+
+> **Performance notes**: Test 8 runs under Release optimization, uses `volatile` anti-optimization, and auto-validates speedup ratios. Example results (from logs):
+> - **100% hot**: Linear 245.1ms, Static 42.6ms, Adaptive 42.1ms → **5.8× speedup**
+> - **80/20 distribution**: Linear 229.8ms, Static 66.0ms, Adaptive 66.0ms → **3.5× speedup**
+> - **Hot drift**: Adaptive 68.7ms vs Static 100.4ms → Adaptive is 46% faster
+
+### Build & Run
 
 ```bash
-# Build and run tests
+# Build all tests (default GCC/Clang + Ninja or MinGW Makefiles)
 cd tools
-python build.py                    # GCC/Clang (Ninja or MinGW Makefiles)
-python build.py --with-msvc        # Also build MSVC cross-compiler variants
-python build.py --run-only         # Run tests only, skip build
+python build.py
+
+# Also build MSVC cross-compiler variants (for Test 2/13/17)
+python build.py --with-msvc
+
+# Run existing tests only (skip rebuild)
+python build.py --run-only
 ```
+
+### Expected Results & Log Interpretation
+
+Running `python build.py --run-only` produces a summary like:
+
+```
+All tests passed (31 assertions in 31 test cases)
+```
+
+Each test case outputs detailed steps prefixed with `[log]`, for example:
+
+- **Test 8**: Prints per-strategy timings and speedup ratios, auto-checks thresholds (hardware variance may emit `WARN` instead of failing).
+- **Test 15~18**: Prints closed-source contract hash and offset validation results; if a breaking change is intercepted, explicitly outputs `[PASS]` with hash mismatch details.
+- **Test 24/26/29/30**: Simulates RCU timeout, prints zombie creation and `load()` recovery, verifying all three Safe/ForceUnload/ForceLeak timeout trigger paths.
+- **Test 31**: Frame-driven timeout, pushing `tick()` from a separate thread and verifying the frame-count deadline triggers.
+
+All tests have no external network dependencies. DLL files reside in `plugins/` or `variants/` directories. If certain cross-compiler variants are missing, the corresponding tests skip automatically and emit `WARN` (without failing the overall run).
+
+### Debugging Tips
+
+- Performance data is larger under Debug builds; use Release builds for realistic performance numbers.
+- Cross-compiler tests require running `tools/build_msvc_variants.py` first to generate MSVC variant DLLs, otherwise those tests are skipped.
+- If a test fails, the log clearly identifies the failure location (`REQUIRE` expression and line number); check `build/test.log` for diagnosis.
 
 ## Future Plans
 

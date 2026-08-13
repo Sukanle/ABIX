@@ -20,6 +20,7 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **编译期签名哈希** — 每个函数签名在编译期通过 FNV-1a 进行哈希；签名不匹配在解析时即被检测到，而非调用时。
 - **版本演进** — 同一函数名的多个版本可在单张表中共存，支持向前兼容的 API 演进。
 - **热重载** — 整数句柄 ID 在卸载/重载周期中保持稳定，支持零停机 DLL 升级。
+- **RCU 非阻塞卸载** — `dll_object` 使用 RCU（Read-Copy-Update）基于 EBR 全局计数器，配合编译器内建原子操作，实现安全的并发 DLL 卸载，不阻塞活跃的调用者。
 - **查找加速** — 三种查找策略（线性、静态热点、自适应热点）适配不同的访问模式，自适应热点缓存可基于运行时调用频率自动学习。
 
 ## 特性
@@ -30,6 +31,10 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **跨边界回调** — `function_dll<R(Args...)>` 是一个 8 字节的闭包，可捕获 lambda 并跨 DLL 边界调用
 - **版本令牌** — `SKL_ABIX_VERSION("1.0")` 允许多个同名函数的实现共存
 - **调用约定感知** — `dll_func_cc<C, Sig>` 和 `dll_func<Sig, C>` 模板支持 `__cdecl`、`__stdcall`、`__fastcall` 和 `__vectorcall`
+- **RCU 非阻塞卸载** — 线程安全的 DLL 卸载，通过 RCU 读侧临界区（`try_enter_read`/`exit_read`）和编译器内建原子操作（`_Interlocked*`/`__atomic_*`），零 `std::atomic` ABI 风险
+- **RCU 超时策略** — 当 RCU 宽限期超过 `ABIX_RCU_TIMEOUT_MS` 时的三种策略：Safe（僵尸+泄漏）、ForceUnload（绕过 RCU）和 ForceLeak（摘除+泄漏，需宏显式开启）
+- **超时检查模式** — 三种零/低 CPU 检查模式：Lazy（入口点检查）、Tick（宿主驱动）和 OS Timer（内核级等待）
+- **可插拔日志** — 编译期可移除的日志系统，支持 C 回调接收器（`ABIX_LOG_*` 宏）、按级别禁用和 ABI 安全的 `set_log_sink()`，可对接生产级日志平台
 - **动态反射集成** — 基于 Reflection 库构建，支持运行时类型查询和通过 `make_pod_type_info` / `make_offset_field` 访问 POD 字段
 - **查找策略** — 三种函数表查找策略，自适应热点缓存可自动提升频繁调用的条目
 
@@ -129,14 +134,19 @@ struct table {
 | 方法 | 返回值 | 说明 |
 |--------|---------|-------------|
 | `load(path)` | `bool` | 加载 DLL/SO 并校验其导出表 |
-| `unload()` | `bool` | 若无活跃句柄（引用计数 = 0）则卸载 |
-| `force_unload()` | `void` | 无条件卸载，忽略引用计数 |
+| `unload()` | `bool` | 标记卸载 → 等待读者 → 若无活跃句柄则卸载（引用计数 = 0） |
+| `force_unload()` | `void` | 无条件卸载，忽略引用计数（绕过 RCU，调用者需自行保证安全） |
 | `reload(path)` | `bool` | 卸载并重新加载新 DLL |
-| `is_loaded()` | `bool` | 模块是否已加载 |
+| `is_loaded()` | `bool` | 模块是否已加载且未处于卸载中 |
 | `get_table()` | `const table*` | 获取导出表指针 |
 | `add_ref()` | `void` | 增加引用计数 |
 | `release_ref()` | `void` | 减少引用计数 |
 | `ref_count()` | `uint32_t` | 当前引用计数 |
+| `try_enter_read()` | `bool` | 进入 RCU 读侧临界区（双重检查）；若正在卸载或已僵尸则返回 `false` |
+| `exit_read()` | `void` | 退出 RCU 读侧临界区 |
+| `begin_rcu_unload()` | `bool` | 标记卸载 → 等待读者 → 卸载或应用超时策略；成功返回 `true` |
+| `set_timeout_policy(p)` | `void` | 设置 RCU 超时策略（`Safe` / `ForceUnload` / `ForceLeak`） |
+| `timeout_policy()` | `RCUTimeoutPolicy` | 获取当前 RCU 超时策略 |
 
 ### `call_error` — 错误码
 
@@ -151,6 +161,7 @@ struct table {
 | `table_changed` | 解析后表已变更 |
 | `invalid` | 无效句柄 |
 | `load_failed` | DLL 加载失败 |
+| `unloading` | DLL 正在卸载中 |
 
 ## DLL 资源智能指针
 
@@ -162,6 +173,84 @@ struct table {
 | `weak_dll_ptr<T>` | 弱引用 | `shared_dll_ptr` 的非拥有观察者 |
 | `view_dll_ptr<T>` | 视图引用 | `ref_dll_ptr` 的非拥有观察者 |
 | `fn_deleter<T>` | 自定义删除器 | 包装 DLL 释放函数，供 `std::unique_ptr` 使用 |
+
+## 日志系统
+
+ABIX 提供可插拔、编译期可移除的日志系统，零 ABI 风险。
+
+### 日志级别
+
+| 级别 | 宏 | 说明 |
+|-------|-------|-------------|
+| `Debug` | `ABIX_LOG_DEBUG(...)` | 详细诊断信息 |
+| `Info` | `ABIX_LOG_INFO(...)` | 一般操作消息 |
+| `Warning` | `ABIX_LOG_WARNING(...)` | 可恢复的问题，降级行为 |
+| `Error` | `ABIX_LOG_ERROR(...)` | 严重故障，不可恢复的错误 |
+
+### 运行时重定向
+
+```cpp
+void my_sink(skl::abix::LogLevel level, const char *message) {
+    // 转发到 spdlog、fmt、ELK、Splunk 等
+    spdlog::log(static_cast<spdlog::level::level_enum>(level), message);
+}
+skl::abix::set_log_sink(my_sink);
+```
+
+### 编译期控制
+
+```cpp
+#define ABIX_DISABLE_LOGGING               // 零开销：所有日志代码被移除
+#define ABIX_DISABLE_LOG_LEVEL_DEBUG      // 仅禁用 Debug 级别
+#define ABIX_DISABLE_LOG_LEVEL_INFO       // 仅禁用 Info 级别
+```
+
+## RCU 超时策略
+
+当 `ABIX_RCU_TIMEOUT_ENABLE` 开启（默认）且 RCU 宽限期超过 `ABIX_RCU_TIMEOUT_MS`（默认：5000ms）时，应用以下三种策略之一：
+
+| 策略 | 行为 | 可用性 | 默认 |
+|------|------|--------|------|
+| `Safe` | 标记僵尸，放弃卸载，DLL 泄漏但**绝不崩溃** | 始终可用 | 默认 |
+| `ForceUnload` | 绕过 RCU，强制 `FreeLibrary`/`dlclose`——活跃调用者**将崩溃** | 始终可用 | — |
+| `ForceLeak` | 摘除模块，不卸载 DLL，旧对象安全泄漏 | 需 `#define ABIX_ENABLE_FORCE_LEAK_POLICY` | — |
+
+**僵尸状态：** 在 Safe/ForceLeak 策略下，`dll_object` 变为僵尸：
+- `is_loaded()` 返回 `false`
+- `try_enter_read()` 返回 `false`（设置 `call_error::unloading`）
+- `load()` 先强制卸载僵尸，再加载新 DLL
+
+## 超时检查：双燃料（时间 + 帧数）
+
+ABIX 将**墙上时钟**与**帧计数**视为两种正交的燃料来源。两者始终在运行时可用——无需编译期模式切换。
+
+- **时间燃料**：`get_tick_ms()` 始终返回系统墙上时钟（无需宿主配合）。
+- **帧数燃料**：`abix::tick(timestamp)` 从宿主主循环注入帧计数（可选，不使用则零开销）。
+- **截止检查**：`wait_for_readers()` 每约 100 万次自旋迭代同时检查 `_timeout_ms` 与 `_timeout_frames`。哪个截止日期先到，就触发哪个超时。
+
+此设计让宿主同时"加注"两种燃料，不强制二选一。既不替代用户的调度系统，仅在临界点提供精准的截止日期判断。
+
+## 配置速查
+
+```cpp
+// ==================== 1. 日志 ====================
+// #define ABIX_DISABLE_LOGGING
+// #define ABIX_DISABLE_LOG_LEVEL_DEBUG
+
+// ==================== 2. 超时策略 ====================
+#define ABIX_RCU_TIMEOUT_ENABLE     1
+#define ABIX_RCU_TIMEOUT_MS         5000   // 编译期回退默认值
+#define ABIX_RCU_TIMEOUT_FRAMES_DEFAULT 0  // 编译期回退默认值（0 = 禁用）
+// #define ABIX_ENABLE_FORCE_LEAK_POLICY
+
+// ==================== 3. 惰性饥饿防护 ====================
+#define ABIX_LAZY_STARVATION_GUARD  ABIX_LAZY_STARVATION_GUARD_TICK  // 0=关闭 | 1=Tick（默认） | 2=空闲线程
+// #define ABIX_ENABLE_IDLE_BACKGROUND_THREAD   // 等级 2 必需
+
+// 运行时配置：
+// dll_object lib(RCUTimeoutConfig{5000, 300});  // 5秒 或 300帧，谁先到谁触发
+// lib.set_timeout_policy(RCUTimeoutPolicy::ForceUnload);
+```
 
 ## 查找策略
 
@@ -184,12 +273,15 @@ ABIX/
 │   ├── config.h               # 平台检测、宏、AbiLookupPolicy
 │   ├── type.h                 # 核心类型：entry、table、类型别名
 │   ├── register.h             # SKL_ABIX_DEFINE_TABLE、SKL_ABIX_ENTRY 宏
-│   ├── obj_dll.h              # dll_object：DLL 加载/卸载/引用计数
+│   ├── obj_dll.h              # dll_object：DLL 加载/卸载/引用计数、RCU 读/写侧、超时策略
 │   ├── fn_dll.h               # dll_func / dll_func_cc：类型化函数句柄
 │   ├── fn_sig.h               # fn_sig<T>：编译期签名哈希
 │   ├── type_sig.h             # type_sig<T>：编译期类型哈希
 │   ├── search.h               # find_index、lookup_linear：表查找
 │   ├── cache.h                # static_hot_cache、adaptive_hot_cache：查找加速
+│   ├── log.h                  # 日志：可插拔 C 回调接收器、按级别编译期禁用
+│   ├── rcu_config.h           # RCUTimeoutConfig：运行时超时设置（毫秒 + 帧数）
+│   ├── rcu_timeout.h          # RCU 超时：时间源、OS 定时器、饥饿防护、平台抽象
 │   ├── function.h             # function_dll：8 字节跨边界闭包
 │   ├── dll.h                  # 聚合器：obj_dll + fn_dll
 │   ├── dll_ptr.h              # 聚合器：全部智能指针类型
@@ -237,28 +329,63 @@ ABIX/
 
 ## 测试
 
-测试使用 [Catch2](https://github.com/catchorg/Catch2)，入口文件 `main.cpp` 覆盖以下场景：
+测试使用 [Catch2](https://github.com/catchorg/Catch2) 框架，入口文件为 `main.cpp`。**全部 31 个测试用例均通过**，覆盖核心功能、边界条件、资源管理、跨编译器兼容性、闭源契约、超时策略及性能基准。
 
-| 测试 | 标签 | 覆盖内容 |
-|------|------|----------|
-| 基础数学线性扫描 | `[basic]` | 加载 DLL，通过线性扫描解析函数，通过整数句柄调用 |
-| 跨编译器变体 | `[cross]` | 同一函数名在 g++/clang/MSVC 构建中结果一致 |
-| 签名哈希校验 | `[typesafe]` | 签名不匹配在查找时被拒绝，不发生静默类型转换 |
-| 独占资源接管 | `[resource]` | `unique_dll_ptr`/`unique_ptr` 析构时调用 DLL 释放函数 |
-| ref_dll_ptr 引用计数 | `[resource]` | 非原子引用计数共享资源，仅在最后一个析构时释放 |
-| ABI 函数回调 | `[callback]` | `function_dll` 捕获 lambda 并跨边界调用 |
-| 版本演进 | `[version]` | 同一 log 接口的 v1.0/v2.0 版本令牌共存 |
-| 查找策略基准测试 | `[perf]` | 线性/静态热点/自适应热点策略在真实分布下的表现 |
-| 热重载 | `[reload]` | 卸载 A 后加载 B，句柄 ID 不变，返回值更新 |
-| 边界情况处理 | `[edge]` | 未找到、卸载后调用、引用计数阻止卸载、调用约定不匹配 |
+### 测试分类
+
+| 类别 | 测试编号 | 标签 | 覆盖内容 |
+|------|----------|------|----------|
+| **基础功能** | 1, 3, 6, 7, 9 | `[basic]`, `[typesafe]`, `[callback]`, `[version]`, `[reload]` | 线性扫描、签名哈希、`function_dll` 回调、版本令牌共存、热重载 |
+| **资源管理** | 4, 5, 11, 12 | `[resource]` | `unique_dll_ptr`/`ref_dll_ptr`/Socket/字符串跨边界生命周期 |
+| **跨编译器/CRT** | 2, 13, 17 | `[cross]` | GCC/Clang/MSVC 混编；MinGW 宿主 + MSVC DLL 无堆冲突 |
+| **闭源商业分发** | 15, 16, 18 | `[closed]` | 私有字段隐藏、偏移量双校验、破坏性版本变更拦截 |
+| **日志与配置** | 19, 20, 21, 22, 23, 25, 27, 28 | `[log]`, `[config]`, `[tick]` | 日志重定向、缓冲区截断、`RCUTimeoutConfig`、策略切换、`tick()` 注入 |
+| **RCU 超时与僵尸** | 24, 26, 29, 30, 31 | `[rcu]`, `[zombie]`, `[policy]`, `[timeout]`, `[tick]` | Safe/ForceUnload/ForceLeak 超时触发、僵尸恢复、帧驱动超时 |
+| **反射集成** | 14 | `[refl]` | 静态/动态反射（FP/Any/Registry/TypeInfo/StaticRefl）集成 |
+| **边界情况** | 10 | `[edge]` | 未找到、卸载后调用、引用计数阻止卸载、调用约定不匹配 |
+| **性能基准** | **8** | `[perf]` | **线性/静态热点/自适应热点** 在 100% 热点、冷启动、热点漂移、80/20 分布下的耗时与加速比 |
+
+> **性能测试说明**：Test 8 在 Release 优化下运行，使用 `volatile` 防止优化，并自动校验加速比。实际运行结果（示例）：
+> - **100% 热点**：线性 245.1ms，静态 42.6ms，自适应 42.1ms → **加速比 5.8×**
+> - **80/20 分布**：线性 229.8ms，静态 66.0ms，自适应 66.0ms → **加速比 3.5×**
+> - **热点漂移**：自适应 68.7ms vs 静态 100.4ms → 自适应比静态快 46%
+
+### 构建与运行
 
 ```bash
-# 构建并运行测试
+# 构建所有测试（默认 GCC/Clang + Ninja 或 MinGW Makefiles）
 cd tools
-python build.py                    # GCC/Clang（Ninja 或 MinGW Makefiles）
-python build.py --with-msvc        # 同时构建 MSVC 跨编译器变体
-python build.py --run-only         # 仅运行测试，跳过构建
+python build.py
+
+# 同时构建 MSVC 跨编译器变体（用于 Test 2/13/17）
+python build.py --with-msvc
+
+# 仅运行已有构建的测试（不重新编译）
+python build.py --run-only
 ```
+
+### 预期结果与日志解读
+
+执行 `python build.py --run-only` 后，控制台输出类似以下摘要：
+
+```
+All tests passed (31 assertions in 31 test cases)
+```
+
+每个测试用例均输出带有 `[log]` 前缀的详细步骤，例如：
+
+- **Test 8**：打印各策略耗时和加速比，自动检查是否满足阈值（若硬件波动可输出 `WARN` 而非失败）。
+- **Test 15~18**：打印闭源契约的哈希、偏移量校验结果，若破坏性变更被拦截，明确输出 `[PASS]` 和哈希不匹配信息。
+- **Test 24/26/29/30**：模拟 RCU 超时，打印僵尸生成和 `load()` 恢复过程，验证 Safe/ForceUnload/ForceLeak 三种策略的超时触发链路。
+- **Test 31**：帧驱动超时，多线程推进 `tick()` 并验证帧数截止触发。
+
+所有测试均不依赖外部网络，DLL 文件位于 `plugins/` 或 `variants/` 目录，若缺少某些跨编译器变体，对应测试自动跳过并输出 `WARN`（不导致整体失败）。
+
+### 调试建议
+
+- Debug 构建下性能测试数据偏大，建议 Release 构建以获取真实性能数据。
+- 跨编译器测试需提前运行 `tools/build_msvc_variants.py` 生成 MSVC 变体 DLL，否则相关测试跳过。
+- 若某测试失败，日志会明确指出失败位置（`REQUIRE` 表达式及行号），可结合 `build/test.log` 定位问题。
 
 ## 未来计划
 

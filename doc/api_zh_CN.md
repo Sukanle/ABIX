@@ -175,6 +175,7 @@ inline const table *make_table(const entry (&arr)[N]) noexcept;
 | `table_changed` | 句柄解析后表内容已变更 |
 | `invalid` | 无效句柄或损坏的闭包 |
 | `load_failed` | DLL 加载失败（文件缺失、表损坏等） |
+| `unloading` | DLL 正在卸载中（RCU 宽限期） |
 
 ### `last_error()`
 
@@ -189,15 +190,20 @@ inline call_error &last_error() noexcept;
 | 方法 | 返回值 | 说明 |
 |--------|---------|-------------|
 | `load(path)` | `bool` | 加载 DLL/SO，解析 `abi_get_table()`，校验魔数/版本 |
-| `unload()` | `bool` | 若 `ref_count() == 0` 则卸载；若有活跃句柄则返回 `false` 并设置 `stale_handle` |
-| `force_unload()` | `void` | 无条件卸载，忽略引用计数 |
+| `unload()` | `bool` | 标记卸载 → 等待 RCU 读者 → 若 `ref_count() == 0` 则卸载；若有活跃句柄则返回 `false` 并设置 `stale_handle` |
+| `force_unload()` | `void` | 无条件卸载，忽略引用计数（绕过 RCU，调用者需保证无并发读者） |
 | `reload(path)` | `bool` | `force_unload()` + `load(path)` |
-| `is_loaded()` | `bool` | 模块当前是否已加载 |
+| `is_loaded()` | `bool` | 模块当前是否已加载且未处于卸载中 |
 | `get_table()` | `const table*` | 获取已校验的导出表指针 |
 | `module()` | `module_handle` | 原始操作系统模块句柄（Windows 上为 `HMODULE`，POSIX 上为 `void*`） |
 | `ref_count()` | `uint32_t` | 当前活跃句柄数量 |
 | `add_ref()` | `void` | 增加引用计数 |
 | `release_ref()` | `void` | 减少引用计数 |
+| `try_enter_read()` | `bool` | 进入 RCU 读侧临界区，使用双重检查锁；若模块正在卸载或已僵尸则返回 `false` 并设置 `call_error::unloading` |
+| `exit_read()` | `void` | 退出 RCU 读侧临界区（减少活跃读者计数） |
+| `begin_rcu_unload()` | `bool` | 启动 RCU 卸载：设置 `_unloading` 标志 → 自旋等待 `_active_readers == 0` 或超时 → 应用 `_timeout_policy`；成功返回 `true` |
+| `set_timeout_policy(p)` | `void` | 设置 RCU 超时策略（`RCUTimeoutPolicy::Safe` / `ForceUnload` / `ForceLeak`） |
+| `timeout_policy()` | `RCUTimeoutPolicy` | 获取当前 RCU 超时策略 |
 
 **使用示例：**
 ```cpp
@@ -205,9 +211,133 @@ dll_object lib;
 if (lib.load("my_plugin.dll")) {
     const table *t = lib.get_table();
     // 使用表...
-    lib.unload();  // 仅当无活跃句柄时成功
+    lib.unload();  // 仅当无活跃句柄且无活跃读者时成功
 }
 ```
+
+### RCU 非阻塞卸载
+
+ABIX 实现了基于 EBR（Epoch-Based Reclamation）全局计数器的 RCU（Read-Copy-Update）线程安全 DLL 卸载。设计采用编译器内建原子操作（Windows 下 `_Interlocked*`，POSIX 下 `__atomic_*`），避免 `<atomic>` 的 ABI 兼容性问题。
+
+**架构：**
+
+| 阶段 | 写侧（卸载者） | 读侧（调用者） |
+|------|----------------|----------------|
+| 标记 | `begin_rcu_unload()` 设置 `_unloading = true` | `try_enter_read()` 在自增前检查 `_unloading` |
+| 宽限期 | `wait_for_readers()` 自旋等待 `_active_readers == 0` | 活跃读者持有 `_active_readers > 0` |
+| 回收 | `unload_internal()` 调用 `FreeLibrary`/`dlclose` | `exit_read()` 减少 `_active_readers` |
+
+**设计要点：**
+
+- **双重检查锁**：`try_enter_read()` 在自增 `_active_readers` 前后均检查 `_unloading`，防止 TOCTOU 竞态——读者检测到 `_unloading == false`，但卸载者在读者自增前设置了标志位。
+- **自旋等待**：`wait_for_readers()` 忙等。DLL 函数调用预计很快返回，因此自旋等待是合适的。
+- **零 STL 依赖**：原子操作使用编译器内建函数直接操作 `bool` 和 `uint32_t`——无需 `<atomic>`，无跨 STL 实现的布局差异。
+- **`force_unload` / `reload` 绕过 RCU**：这些方法直接卸载而不经过 RCU 保护。调用者必须保证无并发读者。
+
+**使用示例：**
+```cpp
+// 线程 1：读者
+auto add = dll_func<int(int, int)>(lib, "add");
+int result = add(2, 3);  // operator() 自动调用 try_enter_read/exit_read
+
+// 线程 2：卸载者
+lib.unload();  // 标记卸载，等待读者，然后卸载
+```
+
+### RCU 超时策略
+
+当 `ABIX_RCU_TIMEOUT_ENABLE` 为 `1`（默认）时，`wait_for_readers()` 定期检查经过时间与 `ABIX_RCU_TIMEOUT_MS` 的对比。若宽限期超过阈值，应用以下三种策略之一：
+
+| 策略 | 枚举 | 行为 |
+|------|------|------|
+| **Safe** | `RCUTimeoutPolicy::Safe` | 设置 `_zombie = true`，清除 `_unloading`。DLL 保持加载但不可访问。**绝不崩溃。**（默认） |
+| **ForceUnload** | `RCUTimeoutPolicy::ForceUnload` | 立即调用 `unload_internal()`。活跃调用者将收到悬空指针——**将崩溃**。 |
+| **ForceLeak** | `RCUTimeoutPolicy::ForceLeak` | 摘除模块句柄，DLL 在操作系统中保持加载。需 `#define ABIX_ENABLE_FORCE_LEAK_POLICY`。 |
+
+**僵尸生命周期：**
+```
+begin_rcu_unload() → 超时 → _zombie = true
+    ↓
+is_loaded() → false      （新调用者被拒绝）
+try_enter_read() → false  （设置 call_error::unloading）
+load() → force_unload 僵尸 → 加载新 DLL
+~dll_object() → unload_internal()（强制清理）
+```
+
+### 超时检查：双燃料（时间 + 帧数）
+
+ABIX 将墙上时钟与帧计数视为两种正交的燃料来源。两者始终在运行时可用——无需编译期模式切换。
+
+- **时间燃料**：`get_tick_ms()` 始终返回系统墙上时钟，无需宿主配合。
+- **帧数燃料**：`abix::tick(timestamp)` 从宿主主循环注入帧计数，可选，不使用则零开销。
+- **截止检查**：`wait_for_readers()` 每约 100 万次自旋迭代同时检查 `timeout_ms` 与 `timeout_frames`。哪个截止日期先到，就触发哪个超时。
+
+### `RCUTimeoutConfig`（`rcu_config.h`）
+
+**命名空间：** `skl::abix`
+
+RCU 超时行为的运行时配置。用逐实例设置替代了旧的纯编译期 `ABIX_RCU_TIMEOUT_MS` 宏。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `timeout_ms` | `uint64_t` | `ABIX_RCU_TIMEOUT_MS` | 超时阈值（毫秒）。与 `get_tick_ms()` 对比。0 = 禁用。 |
+| `timeout_frames` | `uint64_t` | `ABIX_RCU_TIMEOUT_FRAMES_DEFAULT` (0) | 超时阈值（帧数）。与 `get_tick_frames()` 对比。0 = 禁用。 |
+
+**构造函数：**
+```cpp
+constexpr RCUTimeoutConfig(
+    uint64_t ms = ABIX_RCU_TIMEOUT_MS,
+    uint64_t frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT
+) noexcept;
+```
+
+**使用模式：**
+```cpp
+// 场景 1：纯默认（使用宏值）
+dll_object lib1;
+
+// 场景 2：显式超时，无帧数
+dll_object lib2(RCUTimeoutConfig{3000});
+
+// 场景 3：游戏引擎 —— 同时设置时间和帧数阈值
+dll_object lib3(RCUTimeoutConfig{5000, 300});  // 5秒 或 300帧，谁先到谁触发
+
+// 场景 4：从配置文件读取运行时值
+uint64_t cfg_timeout = app_config.get("plugin_timeout_ms", 5000);
+dll_object lib4(RCUTimeoutConfig{cfg_timeout});
+```
+
+### 惰性饥饿防护
+
+当无 RCU 卸载进行时，超时检查仅在 `wait_for_readers()` 内部触发。若无新读者到来，时间基线可能过时。饥饿防护通过三个可配置等级防止此问题：
+
+| 等级 | 宏值 | 行为 |
+|------|------|------|
+| **关闭** | `ABIX_LAZY_STARVATION_GUARD_OFF` (0) | 纯惰性，零开销。接受饥饿风险。 |
+| **Tick** | `ABIX_LAZY_STARVATION_GUARD_TICK` (1) | `try_enter_read()` 调用 `try_passive_check()`——每 30 秒更新 `g_last_check_time`。`abix::tick()` 也会更新它。**（默认）** |
+| **空闲线程** | `ABIX_LAZY_STARVATION_GUARD_IDLE` (2) | 与 Tick 相同，外加一个每 30 秒唤醒的后台线程。需 `#define ABIX_ENABLE_IDLE_BACKGROUND_THREAD`。 |
+
+**`abix::tick()` 始终可用。** 启用饥饿防护后，在主循环中调用 `tick()` 可保持时间基线最新，而无需在每次 `try_enter_read()` 时调用 `get_tick_ms()`（系统调用）。同时它也为帧数超时截止提供帧计数器。
+
+### 日志系统（`log.h`）
+
+**命名空间：** `skl::abix`
+
+| 类型 / 函数 | 说明 |
+|-------------|------|
+| `LogLevel` | 枚举：`Debug`、`Info`、`Warning`、`Error` |
+| `log_sink_t` | `void (*)(LogLevel level, const char *message)` — C 回调，ABI 安全 |
+| `set_log_sink(sink)` | 设置全局日志接收器。默认：无操作（无输出）。 |
+| `log(level, fmt, ...)` | 内部格式化器；通过 `vsnprintf` 格式化到 1KB 缓冲区，然后调用接收器。 |
+
+**宏：**
+
+| 宏 | 生效条件 |
+|-------|----------|
+| `ABIX_LOG_DEBUG(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
+| `ABIX_LOG_INFO(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO` |
+| `ABIX_LOG_WARNING(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
+| `ABIX_LOG_ERROR(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR` |
 
 ---
 
@@ -235,6 +365,9 @@ if (lib.load("my_plugin.dll")) {
 | `operator()(Args...)` | `R` | 以类型安全方式调用函数 |
 
 **`operator()` 的错误行为：**
+- 调用 DLL 函数前通过 `try_enter_read()` 进入 RCU 读侧临界区
+- 所有退出路径（包括错误路径）均调用 `exit_read()` 退出临界区
+- 若 `try_enter_read()` 失败（模块正在卸载）→ 设置 `call_error::unloading`，返回默认 `R{}`
 - 若库未加载 → 设置 `call_error::not_loaded`，返回默认 `R{}`
 - 若索引越界 → 设置 `call_error::table_changed`，返回默认 `R{}`
 - 若条目的签名/名称/哈希已变更 → 设置 `call_error::table_changed`，返回默认 `R{}`

@@ -175,6 +175,7 @@ Creates a static `table` from a compile-time entry array. Used internally by `SK
 | `table_changed` | Table content changed after handle was resolved |
 | `invalid` | Invalid handle or corrupted closure |
 | `load_failed` | DLL load failed (missing file, bad table, etc.) |
+| `unloading` | DLL is currently unloading (RCU grace period) |
 
 ### `last_error()`
 
@@ -189,15 +190,20 @@ Returns a reference to the thread-local last error code. Thread-safe (each threa
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `load(path)` | `bool` | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version |
-| `unload()` | `bool` | Unload if `ref_count() == 0`; returns `false` and sets `stale_handle` if handles are alive |
-| `force_unload()` | `void` | Unload regardless of ref-count |
+| `unload()` | `bool` | Mark unloading → wait for RCU readers → unload if `ref_count() == 0`; returns `false` and sets `stale_handle` if handles are alive |
+| `force_unload()` | `void` | Unload regardless of ref-count (bypasses RCU, caller must ensure no concurrent readers) |
 | `reload(path)` | `bool` | `force_unload()` + `load(path)` |
-| `is_loaded()` | `bool` | Whether the module is currently loaded |
+| `is_loaded()` | `bool` | Whether the module is currently loaded and not in the unloading state |
 | `get_table()` | `const table*` | Get the validated export table pointer |
 | `module()` | `module_handle` | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX) |
 | `ref_count()` | `uint32_t` | Current number of live handles |
 | `add_ref()` | `void` | Increment reference count |
 | `release_ref()` | `void` | Decrement reference count |
+| `try_enter_read()` | `bool` | Enter RCU read-side critical section with double-checked locking; returns `false` and sets `call_error::unloading` if the module is unloading or zombie |
+| `exit_read()` | `void` | Exit RCU read-side critical section (decrements active reader count) |
+| `begin_rcu_unload()` | `bool` | Initiate RCU unload: set `_unloading` flag → spin-wait until `_active_readers == 0` or timeout → apply `_timeout_policy`; returns `true` on success |
+| `set_timeout_policy(p)` | `void` | Set the RCU timeout policy (`RCUTimeoutPolicy::Safe` / `ForceUnload` / `ForceLeak`) |
+| `timeout_policy()` | `RCUTimeoutPolicy` | Get the current RCU timeout policy |
 
 **Usage Example:**
 ```cpp
@@ -205,9 +211,133 @@ dll_object lib;
 if (lib.load("my_plugin.dll")) {
     const table *t = lib.get_table();
     // Use the table...
-    lib.unload();  // Only succeeds if no live handles
+    lib.unload();  // Only succeeds if no live handles and no active readers
 }
 ```
+
+### RCU Non-Blocking Unload
+
+ABIX implements RCU (Read-Copy-Update) with epoch-based reclamation (EBR) for thread-safe DLL unloading. The design uses compiler-builtin atomic operations (`_Interlocked*` on Windows, `__atomic_*` on POSIX) to avoid `<atomic>` ABI compatibility issues.
+
+**Architecture:**
+
+| Phase | Write Side (unloader) | Read Side (caller) |
+|-------|----------------------|---------------------|
+| Mark | `begin_rcu_unload()` sets `_unloading = true` | `try_enter_read()` checks `_unloading` before inc |
+| Grace | `wait_for_readers()` spins until `_active_readers == 0` | Active readers hold `_active_readers > 0` |
+| Reclaim | `unload_internal()` calls `FreeLibrary`/`dlclose` | `exit_read()` decrements `_active_readers` |
+
+**Design:**
+
+- **_Double-checked locking**: `try_enter_read()` checks `_unloading` before and after incrementing `_active_readers`, preventing the TOCTOU race where a reader detects `_unloading == false` but the unloader sets the flag before the reader increments.
+- **_Spin-wait**: `wait_for_readers()` busy-waits. This is appropriate for DLL function calls that are expected to return quickly.
+- **_Zero STL dependency**: Atomics operate on plain `bool` and `uint32_t` via compiler builtins — no `<atomic>`, no layout variance across STL implementations.
+- **_`force_unload` / `reload` bypass RCU**: These methods directly unload without RCU protection. Callers must guarantee no concurrent readers.
+
+**Usage Example:**
+```cpp
+// Thread 1: Reader
+auto add = dll_func<int(int, int)>(lib, "add");
+int result = add(2, 3);  // operator() auto-calls try_enter_read/exit_read
+
+// Thread 2: Unloader
+lib.unload();  // Marks unloading, waits for reader, then unloads
+```
+
+### RCU Timeout Policies
+
+When `ABIX_RCU_TIMEOUT_ENABLE` is `1` (default), `wait_for_readers()` periodically checks elapsed time against `ABIX_RCU_TIMEOUT_MS`. If the grace period exceeds the threshold, one of three policies is applied:
+
+| Policy | Enum | Behavior |
+|--------|------|----------|
+| **Safe** | `RCUTimeoutPolicy::Safe` | Sets `_zombie = true`, clears `_unloading`. DLL stays loaded but inaccessible. **Never crashes.** (Default) |
+| **ForceUnload** | `RCUTimeoutPolicy::ForceUnload` | Calls `unload_internal()` immediately. Active callers receive dangling pointers — **will crash**. |
+| **ForceLeak** | `RCUTimeoutPolicy::ForceLeak` | Detaches module handle, DLL stays loaded in OS. Requires `#define ABIX_ENABLE_FORCE_LEAK_POLICY`. |
+
+**Zombie lifecycle:**
+```
+begin_rcu_unload() → timeout → _zombie = true
+    ↓
+is_loaded() → false      (new callers rejected)
+try_enter_read() → false  (sets call_error::unloading)
+load() → force_unload zombie → load fresh DLL
+~dll_object() → unload_internal() (force cleanup)
+```
+
+### Timeout Check: Dual-Fuel (Time + Frames)
+
+ABIX treats wall-clock time and frame count as two orthogonal fuel sources. Both are always available at runtime — no compile-time mode switch required.
+
+- **Time fuel**: `get_tick_ms()` always returns the system wall-clock. No host cooperation needed.
+- **Frame fuel**: `abix::tick(timestamp)` injects frame counts from the host loop. Optional, zero overhead if unused.
+- **Deadline check**: `wait_for_readers()` checks both `timeout_ms` AND `timeout_frames` every ~1M spin iterations. Whichever deadline arrives first triggers the timeout.
+
+### `RCUTimeoutConfig` (`rcu_config.h`)
+
+**Namespace:** `skl::abix`
+
+Runtime configuration for RCU timeout behavior. Replaces the old compile-time-only `ABIX_RCU_TIMEOUT_MS` macro with per-instance settings.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `timeout_ms` | `uint64_t` | `ABIX_RCU_TIMEOUT_MS` | Timeout threshold in milliseconds. Checked against `get_tick_ms()`. 0 = disabled. |
+| `timeout_frames` | `uint64_t` | `ABIX_RCU_TIMEOUT_FRAMES_DEFAULT` (0) | Timeout threshold in frames. Checked against `get_tick_frames()`. 0 = disabled. |
+
+**Constructor:**
+```cpp
+constexpr RCUTimeoutConfig(
+    uint64_t ms = ABIX_RCU_TIMEOUT_MS,
+    uint64_t frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT
+) noexcept;
+```
+
+**Usage patterns:**
+```cpp
+// Scenario 1: pure defaults (macro values used)
+dll_object lib1;
+
+// Scenario 2: explicit timeout, no frames
+dll_object lib2(RCUTimeoutConfig{3000});
+
+// Scenario 3: game engine — both time and frame thresholds
+dll_object lib3(RCUTimeoutConfig{5000, 300});  // 5s or 300 frames, whichever triggers first
+
+// Scenario 4: runtime config from file
+uint64_t cfg_timeout = app_config.get("plugin_timeout_ms", 5000);
+dll_object lib4(RCUTimeoutConfig{cfg_timeout});
+```
+
+### Lazy Starvation Guard
+
+When no RCU unload is in progress, the timeout check only fires inside `wait_for_readers()`. If no new readers arrive, the time baseline may go stale. The starvation guard prevents this with three configurable levels:
+
+| Level | Macro Value | Behavior |
+|-------|-------------|----------|
+| **Off** | `ABIX_LAZY_STARVATION_GUARD_OFF` (0) | Pure lazy, zero overhead. Accepts starvation risk. |
+| **Tick** | `ABIX_LAZY_STARVATION_GUARD_TICK` (1) | `try_enter_read()` calls `try_passive_check()` — updates `g_last_check_time` every 30s. `abix::tick()` also updates it. **(Default)** |
+| **Idle** | `ABIX_LAZY_STARVATION_GUARD_IDLE` (2) | Same as Tick, plus a background thread that wakes every 30s. Requires `#define ABIX_ENABLE_IDLE_BACKGROUND_THREAD`. |
+
+**`abix::tick()` is always available.** When the starvation guard is enabled, calling `tick()` from the main loop keeps the time baseline current without calling `get_tick_ms()` (a system call) on every `try_enter_read()`. It also feeds the frame counter for frame-based timeout deadlines.
+
+### Logging (`log.h`)
+
+**Namespace:** `skl::abix`
+
+| Type / Function | Description |
+|-----------------|-------------|
+| `LogLevel` | Enum: `Debug`, `Info`, `Warning`, `Error` |
+| `log_sink_t` | `void (*)(LogLevel level, const char *message)` — C-callback, ABI-safe |
+| `set_log_sink(sink)` | Set the global log sink. Default: no-op (no output). |
+| `log(level, fmt, ...)` | Internal formatter; formats via `vsnprintf` into a 1KB buffer, then calls the sink. |
+
+**Macros:**
+
+| Macro | When Active |
+|-------|------------|
+| `ABIX_LOG_DEBUG(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
+| `ABIX_LOG_INFO(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_INFO` |
+| `ABIX_LOG_WARNING(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
+| `ABIX_LOG_ERROR(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR` |
 
 ---
 
@@ -234,7 +364,10 @@ The primary template for typed function handles. Template parameters:
 | `raw()` | `fn_type` | Raw function pointer |
 | `operator()(Args...)` | `R` | Call the function with type safety |
 
-**Error behavior on `operator()`:**
+**`operator()` behavior:**
+- Acquires RCU read-side critical section via `try_enter_read()` before calling the DLL function
+- Releases the critical section via `exit_read()` on all exit paths (including error paths)
+- If `try_enter_read()` fails (module is unloading) → sets `call_error::unloading`, returns default `R{}`
 - If library is not loaded → sets `call_error::not_loaded`, returns default `R{}`
 - If index is out of bounds → sets `call_error::table_changed`, returns default `R{}`
 - If entry signature/name/hash changed → sets `call_error::table_changed`, returns default `R{}`
