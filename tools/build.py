@@ -59,9 +59,9 @@ def main() -> None:
         raise SystemExit(f"Variant build failed, exit code {result.returncode}")
 
     if args.with_msvc:
-        msvc_script = CURRENT_DIR / "build_msvc_variants.py"
+        msvc_script = CURRENT_DIR / "build_msvc_variants.ps1"
         print(f"\n== Running MSVC variant build: {msvc_script} ==")
-        msvc_cmd = [sys.executable, str(msvc_script)]
+        msvc_cmd = ["powershell", msvc_script]
         if args.vs_path:
             msvc_cmd.extend(["--vs-path", args.vs_path])
         result = subprocess.run(msvc_cmd)
