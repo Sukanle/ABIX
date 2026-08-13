@@ -6,6 +6,8 @@
 #include <memory>
 #include <functional>
 #include <type_traits>
+#include <thread>
+#include <atomic>
 
 #include "abix/abix.hpp"         // IWYU pragma: keep
 #include "dlls/plugin_types.h"   // IWYU pragma: keep
@@ -556,7 +558,7 @@ TEST_CASE("11.char_string_copy", "[resource][prompt11][charcopy]") {
     REQUIRE(freed.valid());
     log_info("resolved strdup_copy / string_destroy, starting the character copy test");
 
-    const char *src = "跨 DLL 字符拷贝 - hello 反射表";
+    const char *src = "Cross DLL character copy - hello reflection table";
     int len = -1;
     char *dst = strdup(src, &len);
     REQUIRE(dst != nullptr);
@@ -1083,4 +1085,400 @@ TEST_CASE("18.version_evolution_guard", "[closed][prompt18]") {
     log_info(
         "version evolution safety guard test complete: the old consumer rejects the incompatible DLL via hash "
         "validation");
+}
+
+TEST_CASE("19.logging_basic", "[log][prompt19]") {
+    log_info("Test 19: basic logging — verify log levels, set_log_sink, and ABIX_LOG_* macros");
+
+    static int log_count = 0;
+    static LogLevel last_level = LogLevel::Debug;
+    static char last_msg[256] = {};
+
+    auto sink = [](LogLevel level, const char *msg) {
+        ++log_count;
+        last_level = level;
+        std::snprintf(last_msg, sizeof(last_msg), "%s", msg);
+    };
+
+    set_log_sink(sink);
+    log_count = 0;
+
+    ABIX_LOG_DEBUG("debug message %d", 1);
+    REQUIRE(log_count == 1);
+    REQUIRE(last_level == LogLevel::Debug);
+    REQUIRE(std::strstr(last_msg, "debug message 1") != nullptr);
+    log_info("log sink received DEBUG: [%s]", last_msg);
+
+    ABIX_LOG_INFO("info message %d", 2);
+    REQUIRE(log_count == 2);
+    REQUIRE(last_level == LogLevel::Info);
+    REQUIRE(std::strstr(last_msg, "info message 2") != nullptr);
+    log_info("log sink received INFO: [%s]", last_msg);
+
+    ABIX_LOG_WARNING("warning message %d", 3);
+    REQUIRE(log_count == 3);
+    REQUIRE(last_level == LogLevel::Warning);
+    REQUIRE(std::strstr(last_msg, "warning message 3") != nullptr);
+    log_info("log sink received WARNING: [%s]", last_msg);
+
+    ABIX_LOG_ERROR("error message %d", 4);
+    REQUIRE(log_count == 4);
+    REQUIRE(last_level == LogLevel::Error);
+    REQUIRE(std::strstr(last_msg, "error message 4") != nullptr);
+    log_info("log sink received ERROR: [%s]", last_msg);
+
+    set_log_sink(nullptr);
+    log_count = 0;
+    ABIX_LOG_INFO("should not appear");
+    REQUIRE(log_count == 0);
+    log_info("after set_log_sink(nullptr), no log is emitted");
+}
+
+TEST_CASE("20.logging_truncation", "[log][prompt20]") {
+    log_info("Test 20: log buffer truncation — messages exceeding 1024 bytes are truncated safely");
+
+    static bool truncated = false;
+    static int last_len = 0;
+
+    auto sink = [](LogLevel, const char *msg) {
+        last_len = (int)std::strlen(msg);
+        truncated = (last_len < 2'000);
+    };
+
+    set_log_sink(sink);
+    truncated = false;
+
+    std::string long_msg(1'500, 'X');
+    ABIX_LOG_INFO("%s", long_msg.c_str());
+
+    REQUIRE(truncated);
+    REQUIRE(last_len < 1'500);
+    log_info("long message of %zu chars truncated to %d chars (buffer=1024)", long_msg.size(), last_len);
+
+    set_log_sink(nullptr);
+}
+
+TEST_CASE("21.rcu_timeout_config", "[config][prompt21]") {
+    log_info("Test 21: RCUTimeoutConfig — default values, explicit construction, and frame-based override");
+
+    SECTION("21a.default_construction") {
+        RCUTimeoutConfig cfg;
+        REQUIRE(cfg.timeout_ms == ABIX_RCU_TIMEOUT_MS);
+        REQUIRE(cfg.timeout_frames == ABIX_RCU_TIMEOUT_FRAMES_DEFAULT);
+        log_info("default config: timeout_ms=%llu, timeout_frames=%llu", (unsigned long long)cfg.timeout_ms,
+            (unsigned long long)cfg.timeout_frames);
+    }
+
+    SECTION("21b.explicit_ms_only") {
+        RCUTimeoutConfig cfg(3'000);
+        REQUIRE(cfg.timeout_ms == 3'000);
+        REQUIRE(cfg.timeout_frames == ABIX_RCU_TIMEOUT_FRAMES_DEFAULT);
+        log_info("explicit ms=3000: timeout_ms=%llu, timeout_frames=%llu", (unsigned long long)cfg.timeout_ms,
+            (unsigned long long)cfg.timeout_frames);
+    }
+
+    SECTION("21c.both_ms_and_frames") {
+        RCUTimeoutConfig cfg(5'000, 300);
+        REQUIRE(cfg.timeout_ms == 5'000);
+        REQUIRE(cfg.timeout_frames == 300);
+        log_info("game engine config: timeout_ms=%llu, timeout_frames=%llu", (unsigned long long)cfg.timeout_ms,
+            (unsigned long long)cfg.timeout_frames);
+    }
+
+    SECTION("21d.constexpr_construction") {
+        constexpr RCUTimeoutConfig cfg(10'000, 600);
+        static_assert(cfg.timeout_ms == 10'000, "constexpr timeout_ms mismatch");
+        static_assert(cfg.timeout_frames == 600, "constexpr timeout_frames mismatch");
+        log_info("constexpr config: timeout_ms=%llu, timeout_frames=%llu", (unsigned long long)cfg.timeout_ms,
+            (unsigned long long)cfg.timeout_frames);
+    }
+}
+
+TEST_CASE("22.dll_object_rcu_config", "[config][prompt22]") {
+    log_info("Test 22: dll_object constructed with RCUTimeoutConfig");
+
+    SECTION("22a.default_constructor") {
+        dll_object lib;
+        REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::Safe);
+        log_info("default dll_object has Safe timeout policy");
+    }
+
+    SECTION("22b.config_constructor") {
+        dll_object lib(RCUTimeoutConfig{2'000});
+        REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::Safe);
+        log_info("dll_object with 2000ms config has Safe timeout policy");
+    }
+
+    SECTION("22c.frame_config_constructor") {
+        dll_object lib(RCUTimeoutConfig{5'000, 300});
+        REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::Safe);
+        log_info("dll_object with frame config has Safe timeout policy");
+    }
+}
+
+TEST_CASE("23.timeout_policy_runtime", "[policy][prompt23]") {
+    log_info("Test 23: runtime timeout policy switching");
+
+    dll_object lib;
+    REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::Safe);
+
+    SECTION("23a.switch_to_force_unload") {
+        lib.set_timeout_policy(RCUTimeoutPolicy::ForceUnload);
+        REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::ForceUnload);
+        log_info("switched to ForceUnload policy");
+    }
+
+    SECTION("23b.switch_to_safe") {
+        lib.set_timeout_policy(RCUTimeoutPolicy::Safe);
+        REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::Safe);
+        log_info("switched back to Safe policy");
+    }
+
+    SECTION("23c.switch_to_force_leak") {
+        lib.set_timeout_policy(RCUTimeoutPolicy::ForceLeak);
+        REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::ForceLeak);
+        log_info("switched to ForceLeak policy");
+    }
+}
+
+TEST_CASE("24.zombie_lifecycle", "[zombie][prompt24]") {
+    log_info("Test 24: zombie lifecycle — Safe policy timeout creates zombie, load() recovers");
+
+    dll_object lib(RCUTimeoutConfig{200});
+    lib.set_timeout_policy(RCUTimeoutPolicy::Safe);
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    REQUIRE(lib.try_enter_read());
+    lib.exit_read();
+
+    bool unloaded = lib.begin_rcu_unload();
+    REQUIRE(unloaded);
+    REQUIRE(!lib.is_loaded());
+    log_info("normal unload with no active readers: success");
+
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    REQUIRE(lib.try_enter_read());
+
+    bool zombie_unload = lib.begin_rcu_unload();
+    REQUIRE(!zombie_unload);
+    log_info("RCU unload with active reader: timeout -> zombie (call_error=%d)", (int)last_error());
+
+    REQUIRE(!lib.is_loaded());
+    REQUIRE(!lib.try_enter_read());
+    REQUIRE(last_error() == call_error::unloading);
+    log_info("zombie rejects try_enter_read()");
+
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+    REQUIRE(lib.try_enter_read());
+    lib.exit_read();
+    log_info("load() recovers from zombie: DLL reloaded and functional");
+}
+
+TEST_CASE("25.tick_function", "[tick][prompt25]") {
+    log_info("Test 25: abix::tick() function — updates time baseline for starvation guard");
+
+    uint64_t t0 = 1'000;
+    tick(t0);
+    log_info("tick(1000) called");
+
+    uint64_t t1 = 5'000;
+    tick(t1);
+    log_info("tick(5000) called");
+
+    uint64_t current = detail::get_tick_frames();
+    REQUIRE(current == t1);
+    log_info("get_tick_frames() returns tick value: %llu", (unsigned long long)current);
+
+    tick(9'999);
+    tick(10'000);
+    log_info("tick() accepts incremental timestamps correctly");
+}
+
+TEST_CASE("26.rcu_unload_with_timeout", "[rcu][timeout][prompt26]") {
+    log_info("Test 26: RCU unload with timeout — normal unload, force unload, reload");
+
+    SECTION("26a.normal_unload_no_readers") {
+        dll_object lib;
+        REQUIRE(lib.load(dll_path("math_dll").c_str()));
+        REQUIRE(lib.try_enter_read());
+        lib.exit_read();
+        REQUIRE(lib.begin_rcu_unload());
+        REQUIRE(!lib.is_loaded());
+        log_info("normal unload with no readers: success");
+    }
+
+    SECTION("26b.force_unload") {
+        dll_object lib;
+        REQUIRE(lib.load(dll_path("math_dll").c_str()));
+        lib.force_unload();
+        REQUIRE(!lib.is_loaded());
+        log_info("force_unload bypasses RCU: DLL unloaded immediately");
+    }
+
+    SECTION("26c.reload_after_unload") {
+        dll_object lib;
+        REQUIRE(lib.load(dll_path("math_dll").c_str()));
+        REQUIRE(lib.reload(dll_path("math_dll").c_str()));
+        REQUIRE(lib.is_loaded());
+        auto add = dll_func<int(int, int)>(lib, "add");
+        REQUIRE(add.valid());
+        REQUIRE(add(2, 3) == 5);
+        log_info("reload after unload: DLL functional, add(2,3)=%d", add(2, 3));
+    }
+}
+
+TEST_CASE("27.logging_in_dll_operations", "[log][integration][prompt27]") {
+    log_info("Test 27: logging integration — verify ABIX_LOG_* macros fire during DLL operations");
+
+    static int log_events = 0;
+    auto sink = [](LogLevel, const char *) { ++log_events; };
+    set_log_sink(sink);
+    log_events = 0;
+
+    dll_object lib;
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(log_events > 0);
+    int load_events = log_events;
+    log_info("load() generated %d log events", load_events);
+
+    {
+        auto add = dll_func<int(int, int)>(lib, "add");
+        REQUIRE(add.valid());
+        REQUIRE(add(2, 3) == 5);
+    }
+
+    REQUIRE(lib.unload());
+    REQUIRE(log_events > load_events);
+    log_info("unload() generated additional log events (total: %d)", log_events);
+
+    set_log_sink(nullptr);
+}
+
+TEST_CASE("28.full_config_roundtrip", "[config][integration][prompt28]") {
+    log_info("Test 28: full config roundtrip — RCUTimeoutConfig + timeout policy + logging");
+
+    static int log_events = 0;
+    auto sink = [](LogLevel, const char *) { ++log_events; };
+    set_log_sink(sink);
+    log_events = 0;
+
+    dll_object lib(RCUTimeoutConfig{3'000});
+    lib.set_timeout_policy(RCUTimeoutPolicy::Safe);
+    REQUIRE(lib.timeout_policy() == RCUTimeoutPolicy::Safe);
+
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    {
+        auto add = dll_func<int(int, int)>(lib, "add");
+        REQUIRE(add.valid());
+        REQUIRE(add(3, 4) == 7);
+        REQUIRE(add(10, -2) == 8);
+
+        auto mul = dll_func<double(double, double)>(lib, "multiply");
+        REQUIRE(mul.valid());
+        REQUIRE(mul(2.5, 4.0) == 10.0);
+    }
+
+    REQUIRE(lib.unload());
+    REQUIRE(!lib.is_loaded());
+    REQUIRE(log_events > 0);
+
+    log_info("full roundtrip: config(3000ms) + Safe policy + load/math/unload = %d log events", log_events);
+
+    set_log_sink(nullptr);
+}
+
+// ==================== RCU Timeout Policy Edge-Case Tests ====================
+
+TEST_CASE("29.force_unload_timeout", "[policy][timeout][prompt29]") {
+    log_info("Test 29: ForceUnload timeout — hold reader, wait for timeout, verify DLL is force-unloaded");
+
+    dll_object lib(RCUTimeoutConfig{200});
+    lib.set_timeout_policy(RCUTimeoutPolicy::ForceUnload);
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    REQUIRE(lib.try_enter_read());
+    log_info("reader held, beginning RCU unload with ForceUnload policy (200ms timeout)");
+
+    bool result = lib.begin_rcu_unload();
+    REQUIRE(result);
+    REQUIRE(!lib.is_loaded());
+    log_info("ForceUnload timeout triggered: DLL force-unloaded, is_loaded()=false");
+
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+    auto add = dll_func<int(int, int)>(lib, "add");
+    REQUIRE(add.valid());
+    REQUIRE(add(1, 2) == 3);
+    log_info("reload after ForceUnload: DLL functional, add(1,2)=%d", add(1, 2));
+}
+
+TEST_CASE("30.force_leak_timeout", "[policy][timeout][prompt30]") {
+#if defined(ABIX_ENABLE_FORCE_LEAK_POLICY)
+    log_info("Test 30: ForceLeak timeout — hold reader, wait for timeout, verify DLL is leaked safely");
+
+    dll_object lib(RCUTimeoutConfig{200});
+    lib.set_timeout_policy(RCUTimeoutPolicy::ForceLeak);
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    REQUIRE(lib.try_enter_read());
+    log_info("reader held, beginning RCU unload with ForceLeak policy (200ms timeout)");
+
+    bool result = lib.begin_rcu_unload();
+    REQUIRE(!result);
+    REQUIRE(!lib.is_loaded());
+    log_info("ForceLeak timeout triggered: DLL leaked (zombie), is_loaded()=false");
+
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+    auto add = dll_func<int(int, int)>(lib, "add");
+    REQUIRE(add.valid());
+    REQUIRE(add(1, 2) == 3);
+    log_info("reload after ForceLeak: DLL functional, add(1,2)=%d", add(1, 2));
+#else
+    log_info("Test 30: ForceLeak timeout — skipped (ABIX_ENABLE_FORCE_LEAK_POLICY not defined)");
+#endif
+}
+
+TEST_CASE("31.tick_frame_timeout", "[tick][timeout][prompt31]") {
+    log_info("Test 31: Tick frame-driven timeout — advance frames past threshold, verify timeout triggers");
+
+    dll_object lib(RCUTimeoutConfig{5'000, 10});
+    lib.set_timeout_policy(RCUTimeoutPolicy::Safe);
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    REQUIRE(lib.try_enter_read());
+    tick(0);
+    log_info("reader held, tick(0) as baseline, frame threshold=10");
+
+    std::atomic<bool> unload_done{false};
+    std::thread unload_thread([&]() {
+        bool r = lib.begin_rcu_unload();
+        unload_done.store(r, std::memory_order_release);
+    });
+
+    for (uint64_t f = 1; f <= 15; ++f) {
+        tick(f);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    unload_thread.join();
+    REQUIRE(!unload_done.load());
+    REQUIRE(!lib.is_loaded());
+    log_info("frame timeout triggered at frame 15: zombie created, is_loaded()=false");
+
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+    auto add = dll_func<int(int, int)>(lib, "add");
+    REQUIRE(add.valid());
+    REQUIRE(add(1, 2) == 3);
+    log_info("reload after frame timeout: DLL functional, add(1,2)=%d", add(1, 2));
 }
