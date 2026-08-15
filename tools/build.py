@@ -72,23 +72,24 @@ def main() -> None:
 
     run_test = args.run_test
     run_bench = args.run_bench
+
     if args.run_only:
         run_test = True
         run_bench = True
 
     if run_test:
-    print("\n== Running tests ==")
-    test_exe = build_dir / "bin" / "test_all.exe"
-    if not test_exe.exists():
-        raise SystemExit(f"Test executable not found: {test_exe}")
-    run([str(test_exe)], cwd=build_dir / "bin")
+        print("\n== Running tests ==")
+        test_exe = build_dir / "bin" / "test_all.exe"
+        if not test_exe.exists():
+            raise SystemExit(f"Test executable not found: {test_exe}")
+        run([str(test_exe)], cwd=build_dir / "bin")
 
     if run_bench:
-    print("\n== Running benchmarks ==")
-    bench_exe = build_dir / "bin" / "bench_all.exe"
-    if not bench_exe.exists():
-        raise SystemExit(f"Benchmark executable not found: {bench_exe}")
-    run([str(bench_exe)], cwd=build_dir / "bin")
+        print("\n== Running benchmarks ==")
+        bench_exe = build_dir / "bin" / "bench_all.exe"
+        if not bench_exe.exists():
+            raise SystemExit(f"Benchmark executable not found: {bench_exe}")
+        run([str(bench_exe)], cwd=build_dir / "bin")
 
 if __name__ == "__main__":
     main()
