@@ -23,7 +23,9 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Configure, build and run cross-DLL reflection test suite")
     parser.add_argument("--clean", action="store_true", help="Clean build directory before building")
-    parser.add_argument("--run-only", action="store_true", help="Run tests only, skip build")
+    parser.add_argument("--run-test", action="store_true", help="Run tests only, skip build and benchmarks")
+    parser.add_argument("--run-bench", action="store_true", help="Run benchmarks only, skip build and tests")
+    parser.add_argument("--run-only", action="store_true", help="Run both tests and benchmarks, skip build")
     parser.add_argument("--generator", default="", help="CMake generator (auto-detect by default)")
     parser.add_argument("--with-msvc", action="store_true", help="Also build MSVC cross-compiler variants (for Test 13)")
     parser.add_argument("--vs-path", default="", help="Visual Studio installation path (use with --with-msvc)")
@@ -68,12 +70,25 @@ def main() -> None:
         if result.returncode != 0:
             print("  [Warning] MSVC variant build failed (can be ignored if VS is not installed), cross-CRT tests will be skipped")
 
+    run_test = args.run_test
+    run_bench = args.run_bench
+    if args.run_only:
+        run_test = True
+        run_bench = True
+
+    if run_test:
     print("\n== Running tests ==")
-    test_exe = build_dir / "plugins" / "abi_host_tests.exe"
+    test_exe = build_dir / "bin" / "test_all.exe"
     if not test_exe.exists():
         raise SystemExit(f"Test executable not found: {test_exe}")
-    run([str(test_exe)], cwd=build_dir / "plugins")
+    run([str(test_exe)], cwd=build_dir / "bin")
 
+    if run_bench:
+    print("\n== Running benchmarks ==")
+    bench_exe = build_dir / "bin" / "bench_all.exe"
+    if not bench_exe.exists():
+        raise SystemExit(f"Benchmark executable not found: {bench_exe}")
+    run([str(bench_exe)], cwd=build_dir / "bin")
 
 if __name__ == "__main__":
     main()

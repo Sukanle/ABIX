@@ -58,8 +58,8 @@ function(abi_add_dll name)
   if(WIN32)
     add_custom_command(TARGET ${name} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:${name}> ${CMAKE_BINARY_DIR}/plugins/$<TARGET_FILE_NAME:${name}>
-      COMMENT "Stage plugin ${name} to plugins root")
+        $<TARGET_FILE:${name}> ${CMAKE_BINARY_DIR}/bin/${name}
+      COMMENT "Stage plugin ${name} to bin root")
   endif()
 endfunction()
 
@@ -80,18 +80,13 @@ include_directories(${SKL_ABIX_INC_DIR})
 include_directories(${SKL_ABIX_INC_DIR}/Reflection)
 
 if(Catch2_FOUND)
-add_executable(abi_host_tests ${SKL_ABIX_SRC_DIR}/main.cpp)
-target_link_libraries(abi_host_tests PRIVATE Catch2::Catch2WithMain)
-set_target_properties(abi_host_tests PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins)
-foreach(plugin math_dll version_dll sigcheck_dll resource_dll callback_dll
-               reload_dll_a reload_dll_b edge_dll edge_stdcall_dll hotcache_dll
-               closed_dll closed_dll_v2)
-  add_custom_command(TARGET abi_host_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/plugins
-    COMMENT "Stage plugin ${plugin}")
-endforeach()
+  add_subdirectory(test)
+endif()
 
-catch_discover_tests(abi_host_tests)
+find_package(benchmark QUIET)
+if(benchmark_FOUND)
+  add_subdirectory(bench)
+  message(STATUS "Google Benchmark found, building benchmarks")
+else()
+  message(STATUS "Google Benchmark not found, skipping benchmarks")
 endif()
