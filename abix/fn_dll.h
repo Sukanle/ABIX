@@ -16,9 +16,10 @@
 #ifndef SKL_ABIX_FN_DLL_H
 #define SKL_ABIX_FN_DLL_H
 
-#include "search.h"    // IWYU pragma: keep
-#include "fn_sig.h"    // IWYU pragma: keep
-#include "obj_dll.h"   // IWYU pragma: keep
+#include "search.h"       // IWYU pragma: keep
+#include "fn_sig.h"       // IWYU pragma: keep
+#include "obj_dll.h"      // IWYU pragma: keep
+#include "rcu_domain.h"   // IWYU pragma: keep
 
 SKL_ABIX_NAMESPACE_BEGIN
 enum class AbiLookupPolicy : uint8_t {
@@ -79,17 +80,21 @@ public:
         _name_hash = Reflect::Utils::cstr64(name);
         _index = ~index_t{0};
         _valid = false;
-        if (!lib.is_loaded()) {
+
+        rcu_guard guard(rcu_domain::instance());
+        dll_image *image = lib.image_acquire();
+        if (!image) {
             last_error() = call_error::not_loaded;
             return;
         }
-        index_t idx = ~index_t{0};
-        lookup_result r = lookup_result::bad_table;
-        if constexpr (Policy == AbiLookupPolicy::Linear) {
-            r = find_index(*lib.get_table(), name, _sig, ver, idx);
-        } else {
-            r = find_index(*lib.get_table(), name, _sig, ver, idx);
+        const table *t = image->table;
+        if (!t) {
+            last_error() = call_error::not_loaded;
+            return;
         }
+
+        index_t idx = ~index_t{0};
+        lookup_result r = find_index(*t, name, _sig, ver, idx);
         switch (r) {
             case lookup_result::ok:
                 _index = idx;
@@ -115,7 +120,11 @@ public:
 
     fn_type raw() const noexcept {
         if (!valid()) return nullptr;
-        const entry &e = _lib->get_table()->entries[_index];
+        rcu_guard guard(rcu_domain::instance());
+        dll_image *image = _lib->image_acquire();
+        if (!image || !image->table) return nullptr;
+        if (_index >= image->table->count) return nullptr;
+        const entry &e = image->table->entries[_index];
         fn_type fn = nullptr;
         memcpy(&fn, &e.fnptr, sizeof(fn));
         return fn;
@@ -126,10 +135,8 @@ public:
             last_error() = call_error::not_loaded;
             return default_ret();
         }
-        if (!_lib->try_enter_read()) {
-            return default_ret();
-        }
-        const table *t = _lib->get_table();
+        const table *t = _lib->enter_read();
+        if (!t) return default_ret();
         if (_index >= t->count) {
             _lib->exit_read();
             last_error() = call_error::table_changed;
@@ -150,10 +157,10 @@ public:
         memcpy(&fn, &e.fnptr, sizeof(fn));
         last_error() = call_error::none;
         if constexpr (std::is_void_v<R>) {
-            fn(static_cast<Args>(args)...);
+            fn(args...);
             _lib->exit_read();
         } else {
-            R ret = fn(static_cast<Args>(args)...);
+            R ret = fn(args...);
             _lib->exit_read();
             return ret;
         }

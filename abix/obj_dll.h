@@ -18,8 +18,10 @@
 #include "type.h"
 #include "register.h"
 #include "rcu_config.h"
-#include "rcu_timeout.h"
+#include "rcu_domain.h"
+#include "atomic.h"
 #include "log.h"
+#include <new>
 #if SKL_ABIX_WINDOWS
 #  include <libloaderapi.h>
 #endif
@@ -52,6 +54,11 @@ inline call_error &last_error() noexcept {
 
 class dll_object;
 
+struct dll_image {
+    module_handle module;
+    const table *table;
+};
+
 namespace detail {
 inline module_handle load_module(const char *path) noexcept {
 #if SKL_ABIX_WINDOWS
@@ -78,26 +85,11 @@ inline void unload_module(module_handle m) noexcept {
     }
 }
 
-#if SKL_ABIX_WINDOWS
-inline uint32_t atomic_inc_u32(uint32_t *p) noexcept { return (uint32_t)_InterlockedIncrement((volatile long *)p); }
-inline uint32_t atomic_dec_u32(uint32_t *p) noexcept { return (uint32_t)_InterlockedDecrement((volatile long *)p); }
-inline uint32_t atomic_load_u32(const uint32_t *p) noexcept { return _InterlockedOr((volatile long *)p, 0); }
-inline void atomic_store_u32(uint32_t *p, uint32_t v) noexcept { _InterlockedExchange((volatile long *)p, (long)v); }
-inline bool atomic_load_bool(const bool *p) noexcept { return *(const volatile bool *)p; }
-inline void atomic_store_bool(bool *p, bool v) noexcept { *(volatile bool *)p = v; }
-#else
-inline uint32_t atomic_inc_u32(uint32_t *p) noexcept { return (uint32_t)__atomic_add_fetch(p, 1, __ATOMIC_ACQ_REL); }
-inline uint32_t atomic_dec_u32(uint32_t *p) noexcept { return (uint32_t)__atomic_sub_fetch(p, 1, __ATOMIC_ACQ_REL); }
-inline uint32_t atomic_load_u32(const uint32_t *p) noexcept { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
-inline void atomic_store_u32(uint32_t *p, uint32_t v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
-inline bool atomic_load_bool(const bool *p) noexcept { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
-inline void atomic_store_bool(bool *p, bool v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
-#endif
-
-enum class rcu_wait_result : uint8_t {
-    success = 0,
-    timeout = 1
-};
+inline void reclaim_image(void *p) noexcept {
+    dll_image *img = static_cast<dll_image *>(p);
+    unload_module(img->module);
+    delete img;
+}
 }   // namespace detail
 
 class dll_object {
@@ -106,27 +98,18 @@ public:
     explicit dll_object(const RCUTimeoutConfig &cfg) noexcept
         : _timeout_ms(cfg.timeout_ms)
         , _timeout_frames(cfg.timeout_frames) {}
-    ~dll_object() {
-        if (detail::atomic_load_bool(&_zombie)) {
-            unload_internal(false);
-        } else {
-            unload();
-        }
-    }
+    ~dll_object() { unload(); }
     dll_object(const dll_object &) = delete;
     dll_object &operator=(const dll_object &) = delete;
 
     bool load(const char *path) noexcept {
-        if (detail::atomic_load_bool(&_zombie)) {
-            ABIX_LOG_WARNING("dll_object::load: object is zombie, force-unloading before reload");
-            unload_internal(false);
-        } else {
-            unload();
-        }
+        lock_writer();
+        unload_internal_locked();
         module_handle m = detail::load_module(path);
         if (!m) {
             ABIX_LOG_ERROR("dll_object::load: failed to load module '%s'", path);
             last_error() = call_error::load_failed;
+            unlock_writer();
             return false;
         }
         auto getter = reinterpret_cast<const table *(*)(void)>(detail::resolve_symbol(m, SKL_ABIX_TABLE_GETTER));
@@ -134,6 +117,7 @@ public:
             ABIX_LOG_ERROR("dll_object::load: abi_get_table not found in '%s'", path);
             detail::unload_module(m);
             last_error() = call_error::load_failed;
+            unlock_writer();
             return false;
         }
         const table *t = getter();
@@ -141,16 +125,23 @@ public:
             ABIX_LOG_ERROR("dll_object::load: bad table magic/version in '%s'", path);
             detail::unload_module(m);
             last_error() = call_error::load_failed;
+            unlock_writer();
             return false;
         }
-        _module = m;
-        _table = t;
+        dll_image *img = new (std::nothrow) dll_image{m, t};
+        if (!img) {
+            ABIX_LOG_ERROR("dll_object::load: failed to allocate image");
+            detail::unload_module(m);
+            last_error() = call_error::load_failed;
+            unlock_writer();
+            return false;
+        }
+        atomic::store_release((void **)&_image, img);
+        atomic::store_release(&_state, (uint32_t)image_state::active);
         _refs = 0;
-        detail::atomic_store_bool(&_unloading, false);
-        detail::atomic_store_bool(&_zombie, false);
-        detail::atomic_store_u32(&_active_readers, 0);
         last_error() = call_error::none;
         ABIX_LOG_INFO("dll_object::load: loaded '%s' (%u entries)", path, t->count);
+        unlock_writer();
         return true;
     }
 
@@ -160,161 +151,139 @@ public:
             last_error() = call_error::stale_handle;
             return false;
         }
-        return begin_rcu_unload();
+        lock_writer();
+        bool ok = unload_internal_locked();
+        unlock_writer();
+        return ok;
     }
 
     void force_unload() noexcept {
         ABIX_LOG_WARNING("dll_object::force_unload: bypassing RCU, caller must ensure safety");
-        unload_internal(false);
+        lock_writer();
+        dll_image *img = static_cast<dll_image *>(atomic::exchange_acq_rel((void **)&_image, nullptr));
+        atomic::store_release(&_state, (uint32_t)image_state::zombie);
+        if (img) {
+            detail::unload_module(img->module);
+            delete img;
+            _refs = 0;
+        }
+        unlock_writer();
     }
 
     bool reload(const char *path) noexcept {
-        ABIX_LOG_INFO("dll_object::reload: force-unloading and reloading");
-        unload_internal(false);
-        return load(path);
-    }
+        ABIX_LOG_INFO("dll_object::reload: loading new module, then atomic swap and retire old");
 
-    bool is_loaded() const noexcept {
-        return _module != nullptr
-            && _table != nullptr
-            && !detail::atomic_load_bool(&_unloading)
-            && !detail::atomic_load_bool(&_zombie);
-    }
-    const table *get_table() const noexcept { return _table; }
-    module_handle module() const noexcept { return _module; }
-
-    uint32_t ref_count() const noexcept { return _refs; }
-    void add_ref() noexcept { ++_refs; }
-    void release_ref() noexcept {
-        if (_refs > 0) --_refs;
-    }
-
-    bool try_enter_read() noexcept {
-#if ABIX_LAZY_STARVATION_GUARD >= ABIX_LAZY_STARVATION_GUARD_TICK
-        detail::try_passive_check();
-#endif
-        if (detail::atomic_load_bool(&_unloading) || detail::atomic_load_bool(&_zombie)) {
-            last_error() = call_error::unloading;
+        module_handle new_m = detail::load_module(path);
+        if (!new_m) {
+            ABIX_LOG_ERROR("dll_object::reload: failed to load module '%s'", path);
+            last_error() = call_error::load_failed;
             return false;
         }
-        detail::atomic_inc_u32(&_active_readers);
-        if (detail::atomic_load_bool(&_unloading) || detail::atomic_load_bool(&_zombie)) {
-            detail::atomic_dec_u32(&_active_readers);
-            last_error() = call_error::unloading;
+        auto getter = reinterpret_cast<const table *(*)(void)>(detail::resolve_symbol(new_m, SKL_ABIX_TABLE_GETTER));
+        if (!getter) {
+            ABIX_LOG_ERROR("dll_object::reload: abi_get_table not found in '%s'", path);
+            detail::unload_module(new_m);
+            last_error() = call_error::load_failed;
             return false;
         }
+        const table *new_t = getter();
+        if (!new_t || new_t->magic != SKL_ABIX_TABLE_MAGIC || new_t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION) {
+            ABIX_LOG_ERROR("dll_object::reload: bad table magic/version in '%s'", path);
+            detail::unload_module(new_m);
+            last_error() = call_error::load_failed;
+            return false;
+        }
+
+        dll_image *new_img = new (std::nothrow) dll_image{new_m, new_t};
+        if (!new_img) {
+            ABIX_LOG_ERROR("dll_object::reload: failed to allocate image");
+            detail::unload_module(new_m);
+            last_error() = call_error::load_failed;
+            return false;
+        }
+
+        lock_writer();
+        dll_image *old_img = static_cast<dll_image *>(atomic::exchange_acq_rel((void **)&_image, new_img));
+        atomic::store_release(&_state, (uint32_t)image_state::active);
+        _refs = 0;
+        unlock_writer();
+
+        if (old_img) {
+            rcu_domain::instance().retire(old_img, detail::reclaim_image);
+            rcu_domain::instance().synchronize();
+        }
+
+        last_error() = call_error::none;
+        ABIX_LOG_INFO("dll_object::reload: reloaded '%s' (%u entries)", path, new_t->count);
         return true;
     }
 
-    void exit_read() noexcept { detail::atomic_dec_u32(&_active_readers); }
+    bool is_loaded() const noexcept {
+        return atomic::load_acquire(&_state) == (uint32_t)image_state::active
+            && atomic::load_acquire((void * const *)&_image) != nullptr;
+    }
+    const table *get_table() const noexcept {
+        dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
+        return img ? img->table : nullptr;
+    }
+    module_handle module() const noexcept {
+        dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
+        return img ? img->module : nullptr;
+    }
+
+    dll_image *image_acquire() const noexcept {
+        return static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
+    }
+
+    uint32_t ref_count() const noexcept { return _refs; }
+    void add_ref() noexcept { atomic::inc_relaxed(&_refs); }
+    void release_ref() noexcept {
+        if (_refs > 0) atomic::dec_relaxed(&_refs);
+    }
+
+    const table *enter_read() noexcept {
+        rcu_domain::instance().enter();
+        dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
+        if (!img) {
+            rcu_domain::instance().exit();
+            last_error() = call_error::unloading;
+            return nullptr;
+        }
+        return img->table;
+    }
+
+    void exit_read() noexcept { rcu_domain::instance().exit(); }
 
     void set_timeout_policy(RCUTimeoutPolicy policy) noexcept { _timeout_policy = policy; }
     RCUTimeoutPolicy timeout_policy() const noexcept { return _timeout_policy; }
 
-    bool begin_rcu_unload() noexcept {
-        ABIX_LOG_INFO("dll_object::begin_rcu_unload: marking unloading, waiting for readers");
-        detail::atomic_store_bool(&_unloading, true);
-        detail::rcu_wait_result result = wait_for_readers();
-        if (result == detail::rcu_wait_result::success) {
-            ABIX_LOG_INFO("dll_object::begin_rcu_unload: all readers exited, unloading");
-            return unload_internal(true);
-        }
-        return apply_timeout_policy();
-    }
-
 private:
-    detail::rcu_wait_result wait_for_readers() noexcept {
-#if ABIX_RCU_TIMEOUT_ENABLE
-        uint64_t start_ms = detail::get_tick_ms();
-        uint64_t start_frames = detail::get_tick_frames();
-        uint32_t spin_count = 0;
-        while (detail::atomic_load_u32(&_active_readers) > 0) {
-            ++spin_count;
-            if ((spin_count & 0xFFFFF) == 0) {
-                uint64_t now_ms = detail::get_tick_ms();
-                if (_timeout_ms > 0 && now_ms - start_ms >= _timeout_ms) {
-                    ABIX_LOG_ERROR("dll_object::wait_for_readers: ms timeout after %u ms, %u readers remain",
-                        (uint32_t)(now_ms - start_ms), detail::atomic_load_u32(&_active_readers));
-                    return detail::rcu_wait_result::timeout;
-                }
-                if (_timeout_frames > 0) {
-                    uint64_t now_frames = detail::get_tick_frames();
-                    if (now_frames - start_frames >= _timeout_frames) {
-                        ABIX_LOG_ERROR("dll_object::wait_for_readers: frame timeout after %u frames, %u readers remain",
-                            (uint32_t)(now_frames - start_frames), detail::atomic_load_u32(&_active_readers));
-                        return detail::rcu_wait_result::timeout;
-                    }
-                }
-            }
-        }
-        return detail::rcu_wait_result::success;
-#else
-        while (detail::atomic_load_u32(&_active_readers) > 0) {}
-        return detail::rcu_wait_result::success;
-#endif
+    void lock_writer() noexcept {
+        while (!atomic::cas_relaxed(&_writer_lock, 0, 1)) {}
     }
+    void unlock_writer() noexcept { atomic::store_relaxed(&_writer_lock, 0); }
 
-    bool apply_timeout_policy() noexcept {
-        switch (_timeout_policy) {
-            case RCUTimeoutPolicy::Safe: {
-                ABIX_LOG_ERROR("dll_object: RCU timeout -> Safe: marking zombie, DLL leaked for safety");
-                detail::atomic_store_bool(&_zombie, true);
-                detail::atomic_store_bool(&_unloading, false);
-                last_error() = call_error::unloading;
-                return false;
-            }
-            case RCUTimeoutPolicy::ForceUnload: {
-                ABIX_LOG_ERROR("dll_object: RCU timeout -> ForceUnload: forcing unload (may crash active callers)");
-                return unload_internal(false);
-            }
-#if defined(ABIX_ENABLE_FORCE_LEAK_POLICY)
-            case RCUTimeoutPolicy::ForceLeak: {
-                ABIX_LOG_ERROR("dll_object: RCU timeout -> ForceLeak: detaching DLL, leaking safely");
-                _module = nullptr;
-                _table = nullptr;
-                _refs = 0;
-                detail::atomic_store_bool(&_zombie, true);
-                detail::atomic_store_bool(&_unloading, false);
-                detail::atomic_store_u32(&_active_readers, 0);
-                last_error() = call_error::unloading;
-                return false;
-            }
-#endif
-            default: {
-                detail::atomic_store_bool(&_zombie, true);
-                detail::atomic_store_bool(&_unloading, false);
-                last_error() = call_error::unloading;
-                return false;
-            }
-        }
-    }
-
-    bool unload_internal(bool report) noexcept {
-        if (_module) {
-            ABIX_LOG_INFO("dll_object::unload_internal: calling unload_module");
-            detail::unload_module(_module);
-            _module = nullptr;
-            _table = nullptr;
+    bool unload_internal_locked() noexcept {
+        dll_image *img = static_cast<dll_image *>(atomic::exchange_acq_rel((void **)&_image, nullptr));
+        atomic::store_release(&_state, (uint32_t)image_state::zombie);
+        if (img) {
+            rcu_domain::instance().retire(img, detail::reclaim_image);
+            rcu_domain::instance().synchronize();
             _refs = 0;
-            detail::atomic_store_bool(&_unloading, false);
-            detail::atomic_store_bool(&_zombie, false);
-            detail::atomic_store_u32(&_active_readers, 0);
+            ABIX_LOG_INFO("dll_object::unload: unloaded");
         }
-        if (report) last_error() = call_error::none;
+        last_error() = call_error::none;
         return true;
     }
 
-    module_handle _module = nullptr;
-    const table *_table = nullptr;
+    dll_image *_image = nullptr;
     uint32_t _refs = 0;
-    bool _unloading = false;
-    bool _zombie = false;
-    uint32_t _active_readers = 0;
+    uint32_t _state = (uint32_t)image_state::zombie;
+    uint32_t _writer_lock = 0;
     uint64_t _timeout_ms = ABIX_RCU_TIMEOUT_MS;
     uint64_t _timeout_frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT;
     RCUTimeoutPolicy _timeout_policy = RCUTimeoutPolicy::Safe;
 };
 
 SKL_ABIX_NAMESPACE_END
-
 #endif

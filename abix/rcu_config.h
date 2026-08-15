@@ -20,6 +20,12 @@
 
 SKL_ABIX_NAMESPACE_BEGIN
 
+enum class image_state : uint32_t {
+    active = 0,
+    retiring = 1,
+    zombie = 2,
+};
+
 enum class RCUTimeoutPolicy : uint8_t {
     Safe = 0,
     ForceUnload = 1,
