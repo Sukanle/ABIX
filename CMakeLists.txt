@@ -6,8 +6,36 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT CMAKE_BUILD_TYPE)
+option(BUILD_TESTING "Build tests" ON)
+option(BUILD_BENCHMARKS "Build benchmarks" ON)
+option(SKL_ABIX_DEVELOPMENT "Enable development-only benchmarks (internal diagnostics)" OFF)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CMAKE_BUILD_TYPE Release)
+else()
+  set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+  if(NOT WIN32)
+      set(SANITIZER "none" CACHE STRING
+          "Choose sanitizer to enable (Debug build, not supported on Windows): asan, tsan or none")
+
+      set_property(CACHE SANITIZER PROPERTY STRINGS
+          "none" "asan" "tsan")
+
+      if(SANITIZER STREQUAL "asan")
+          add_compile_options(-fsanitize=address,undefined)
+          add_link_options( -fsanitize=address,undefined)
+      elseif(SANITIZER STREQUAL "tsan")
+          add_compile_options(-fsanitize=thread,undefined)
+          add_link_options( -fsanitize=thread,undefined)
+
+      elseif(SANITIZER STREQUAL "none")
+          add_compile_options(-fno-sanitize=address,thread)
+
+      else()
+          message(FATAL_ERROR "Unknown sanitizer: ${SANITIZER}")
+      endif()
+  endif()
 endif()
 
 option(SKL_ABIX_BUILD_DLL_VARIANTS "Build different DLL variants for different toolchains to simulate cross-compiler behavior" ON)
@@ -53,7 +81,13 @@ function(abi_add_dll name)
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
   if(NOT WIN32)
-    target_link_options(${name} PRIVATE -Wl,--no-undefined)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      target_link_options(${name} PRIVATE -Wl,--no-undefined)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      add_custom_command(TARGET ${name} POST_BUILD
+        COMMAND dsymutil $<TARGET_FILE:${name}> -o ${CMAKE_BINARY_DIR}/bin/${name}.dSYM
+        COMMENT "Generate dSYM file for ${name} on macOS")
+    endif()
   endif()
   if(WIN32)
     add_custom_command(TARGET ${name} POST_BUILD
@@ -90,3 +124,5 @@ if(benchmark_FOUND)
 else()
   message(STATUS "Google Benchmark not found, skipping benchmarks")
 endif()
+
+file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json SYMBOLIC)

@@ -4,8 +4,6 @@
 
 #include "bench_common.hpp"
 
-using namespace skl::abix;
-
 static int add_direct(int a, int b) { return a + b; }
 
 static int medium_workload(int a, int b) {
@@ -136,32 +134,32 @@ static void BM_MediumFunction_FnPtr_NoInline(benchmark::State &state) {
 }
 BENCHMARK(BM_MediumFunction_FnPtr_NoInline);
 
-static dll_object *g_math_lib = nullptr;
-static dll_object *g_hotcache_lib = nullptr;
-static dll_func<int(int, int)> g_add;
-static dll_func<int(int)> g_e_0000;
+static skl::abix::dll_object *g_math_lib = nullptr;
+static skl::abix::dll_object *g_hotcache_lib = nullptr;
+static skl::abix::dll_func<int(int, int)> g_add;
+static skl::abix::dll_func<int(int)> g_e_0000;
 
 static void setup_call_bench() {
     if (!g_math_lib) {
-        g_math_lib = new dll_object();
+        g_math_lib = new skl::abix::dll_object();
         g_math_lib->load(dll_path("math_dll").c_str());
-        g_add = dll_func<int(int, int)>(*g_math_lib, "add");
+        g_add = skl::abix::dll_func<int(int, int)>(*g_math_lib, "add");
     }
     if (!g_hotcache_lib) {
-        g_hotcache_lib = new dll_object();
+        g_hotcache_lib = new skl::abix::dll_object();
         g_hotcache_lib->load(dll_path("hotcache_dll").c_str());
-        g_e_0000 = dll_func<int(int)>(*g_hotcache_lib, "e_0000");
+        g_e_0000 = skl::abix::dll_func<int(int)>(*g_hotcache_lib, "e_0000");
     }
 }
 
 static void teardown_call_bench() {
     if (g_math_lib) {
-        g_add = dll_func<int(int, int)>();
+        g_add = skl::abix::dll_func<int(int, int)>();
         delete g_math_lib;
         g_math_lib = nullptr;
     }
     if (g_hotcache_lib) {
-        g_e_0000 = dll_func<int(int)>();
+        g_e_0000 = skl::abix::dll_func<int(int)>();
         delete g_hotcache_lib;
         g_hotcache_lib = nullptr;
     }

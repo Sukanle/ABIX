@@ -8,14 +8,14 @@ TEST_CASE("6.abi_function_callback", "[callback][prompt6]") {
         sizeof(skl::abix::function_dll<void(int)>) == 8, "skl::abix::function_dll must be 8 bytes (uint 64_t handle)");
     log_info("sizeof(skl::abix::function_dll<void(int)>) = %zu bytes (8-byte handle)",
         sizeof(skl::abix::function_dll<void(int)>));
-    dll_object lib;
+    skl::abix::dll_object lib;
     REQUIRE(lib.load(dll_path("callback_dll").c_str()));
 
-    auto reg = dll_func<void(skl::abix::function_dll<void(int)>)>(lib, "register_callback");
-    auto has = dll_func<int()>(lib, "has_callback");
-    auto inv = dll_func<int(int)>(lib, "invoke_callback");
-    auto last = dll_func<int()>(lib, "get_last_invoked");
-    auto clear = dll_func<void()>(lib, "clear_callback");
+    auto reg = skl::abix::dll_func<void(skl::abix::function_dll<void(int)>)>(lib, "register_callback");
+    auto has = skl::abix::dll_func<int()>(lib, "has_callback");
+    auto inv = skl::abix::dll_func<int(int)>(lib, "invoke_callback");
+    auto last = skl::abix::dll_func<int()>(lib, "get_last_invoked");
+    auto clear = skl::abix::dll_func<void()>(lib, "clear_callback");
     REQUIRE(reg.valid());
 
     int captured = 100;

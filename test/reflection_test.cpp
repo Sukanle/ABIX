@@ -4,32 +4,31 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
     log_info("Test 14: verify ABIX integrates the static/dynamic reflection facilities of the Reflection library");
 
     SECTION("5.static_fp_table_validation") {
-        using namespace skl::abix::refl;
 
-        using table_type = SRefl::type_list<fn_entry_tag<fn_sig_v<int(int, int)>, URefl::cstr32("add")>,
-            fn_entry_tag<fn_sig_v<double(double, double)>, URefl::cstr32("multiply")>,
-            fn_entry_tag<fn_sig_v<int()>, URefl::cstr32("calc_state_alive")>>;
+        using table_type = SRefl::type_list<skl::abix::refl::fn_entry_tag<skl::abix::fn_sig_v<int(int, int)>, URefl::cstr32("add")>,
+            skl::abix::refl::fn_entry_tag<skl::abix::fn_sig_v<double(double, double)>, URefl::cstr32("multiply")>,
+            skl::abix::refl::fn_entry_tag<skl::abix::fn_sig_v<int()>, URefl::cstr32("calc_state_alive")>>;
 
-        static_assert(has_unique_sigs<table_type>::value, "Table entries must have unique signatures");
+        static_assert(skl::abix::refl::has_unique_sigs<table_type>::value, "Table entries must have unique signatures");
 
-        static_assert(find_by_sig<table_type, fn_sig_v<int(int, int)>>::index == 0, "add should be at index 0");
+        static_assert(skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<int(int, int)>>::index == 0, "add should be at index 0");
         static_assert(
-            find_by_sig<table_type, fn_sig_v<double(double, double)>>::index == 1, "multiply should be at index 1");
-        static_assert(find_by_sig<table_type, fn_sig_v<int()>>::index == 2, "calc_state_alive should be at index 2");
+            skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<double(double, double)>>::index == 1, "multiply should be at index 1");
+        static_assert(skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<int()>>::index == 2, "calc_state_alive should be at index 2");
         static_assert(
-            find_by_sig<table_type, fn_sig_v<float(float)>>::index == -1, "Unknown signature should return -1");
+            skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<float(float)>>::index == -1, "Unknown signature should return -1");
 
         log_info(" [FP] compile-time function table validation passed: 3 unique signatures, index lookup correct");
     }
 
     SECTION("6.any_cross_dll_parameter") {
-        dll_object lib;
+        skl::abix::dll_object lib;
         REQUIRE(lib.load(dll_path("math_dll").c_str()));
 
-        auto add = dll_func<int(int, int)>(lib, "add");
+        auto add = skl::abix::dll_func<int(int, int)>(lib, "add");
         REQUIRE(add.valid());
-        DynamicAny result = dll_func_call_any(add, 3, 7);
-        int val = any_cast_val<int>(result);
+        skl::abix::DynamicAny result = dll_func_call_any(add, 3, 7);
+        int val = skl::abix::any_cast_val<int>(result);
         REQUIRE(val == 10);
 
         log_info(" [Any] dll_func_call_any(3,7) -> Any -> any_cast_val<int> = %d", val);
@@ -49,14 +48,14 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
     }
 
     SECTION("8.typeinfo_struct_field_access") {
-        DynamicTypeInfo ti = make_pod_type_info<TestVec3>("TestVec3");
+        skl::abix::DynamicTypeInfo ti = skl::abix::make_pod_type_info<TestVec3>("TestVec3");
         REQUIRE(ti.name == std::string("TestVec3"));
         REQUIRE(ti.kind == DRefl::Kind::Struct);
         REQUIRE(ti.size == sizeof(TestVec3));
 
         log_info(" [TypeInfo] TestVec3: name=%s, size=%zu, kind=Struct", ti.name, ti.size);
 
-        DynamicFieldAccessor field_x = make_offset_field<TestVec3, float, offsetof(TestVec3, x)>("x");
+        skl::abix::DynamicFieldAccessor field_x = skl::abix::make_offset_field<TestVec3, float, offsetof(TestVec3, x)>("x");
         REQUIRE(field_x.info.name == std::string("x"));
         REQUIRE(field_x.info.offset == offsetof(TestVec3, x));
 

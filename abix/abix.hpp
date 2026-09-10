@@ -19,7 +19,6 @@
 #include "atomic.h"        // IWYU pragma: keep
 #include "rcu_domain.h"    // IWYU pragma: keep
 #include "dll.h"           // IWYU pragma: keep
-#include "cache.h"         // IWYU pragma: keep
 #include "search.h"        // IWYU pragma: keep
 #include "config.h"        // IWYU pragma: keep
 #include "fn_sig.h"        // IWYU pragma: keep

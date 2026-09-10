@@ -21,20 +21,26 @@
 #include "config.h"
 #include "atomic.h"
 
+#ifndef SKL_ABIX_RCU_EPOCH_BATCH
+#  define SKL_ABIX_RCU_EPOCH_BATCH 8
+#endif
+#ifndef SKL_ABIX_CACHE_LINE_SIZE
+#  define SKL_ABIX_CACHE_LINE_SIZE 64
+#endif
+#ifndef SKL_ABIX_RCU_BATCH_PUBLISH
+#  define SKL_ABIX_RCU_BATCH_PUBLISH 64
+#endif
+
 SKL_ABIX_NAMESPACE_BEGIN
 
-enum class rcu_thread_state : uint32_t {
-    quiescent = 0,
-    active = 1,
-};
+using rcu_reclaim_fn = void (*)(void *object) noexcept;
+
+namespace detail {
 
 struct rcu_thread {
-    uint64_t epoch;
-    uint32_t state;
-    rcu_thread *next;
+    uint64_t epoch = 0;
+    rcu_thread *next = nullptr;
 };
-
-using rcu_reclaim_fn = void (*)(void *object) noexcept;
 
 struct retired_obj {
     void *object;
@@ -42,6 +48,14 @@ struct retired_obj {
     rcu_reclaim_fn reclaim;
     retired_obj *next;
 };
+
+struct rcu_retired_batch {
+    retired_obj *head = nullptr;
+    retired_obj *tail = nullptr;
+    uint32_t count = 0;
+};
+
+}   // namespace detail
 
 class rcu_domain {
 public:
@@ -51,113 +65,151 @@ public:
     }
 
     void enter() noexcept {
-        rcu_thread *t = get_thread();
-        if (atomic::load_relaxed(&t->state) != (uint32_t)rcu_thread_state::active) {
-            atomic::store_release(&t->state, (uint32_t)rcu_thread_state::active);
-        }
-        uint64_t epoch = atomic::load_acquire(&_global_epoch);
+        auto *t = get_thread();
+        const uint64_t epoch = atomic::load_acquire(&_epoch.global);
         atomic::store_release(&t->epoch, epoch);
     }
 
-    void exit() noexcept {
-        rcu_thread *t = get_thread();
-        atomic::store_release(&t->state, (uint32_t)rcu_thread_state::quiescent);
-    }
+    void exit() noexcept { atomic::store_release(&get_thread()->epoch, 0ULL); }
 
     void retire(void *object, rcu_reclaim_fn reclaim) noexcept {
-        lock_writer();
-        uint64_t current_epoch = atomic::load_relaxed(&_global_epoch);
-        retired_obj *r = new (std::nothrow) retired_obj{object, current_epoch, reclaim, nullptr};
-        if (r) {
-            r->next = _retired;
-            _retired = r;
-        }
-        unlock_writer();
+        uint64_t current_epoch = atomic::load_relaxed(&_epoch.global);
+        auto *r = new (std::nothrow) detail::retired_obj{object, current_epoch, reclaim, nullptr};
+        if (!r) return;
+
+        auto &batch = local_batch();
+        if (batch.tail)
+            batch.tail->next = r;
+        else
+            batch.head = r;
+        batch.tail = r;
+        batch.count++;
+
+        if (batch.count >= SKL_ABIX_RCU_BATCH_PUBLISH) publish_local_batch();
     }
 
-    void synchronize() noexcept {
-        lock_writer();
-
-        uint64_t old_epoch = atomic::inc_acq_rel(&_global_epoch) - 1;
-        uint64_t new_epoch = old_epoch + 1;
-
-        for (rcu_thread *t = (rcu_thread *)atomic::load_acquire((void **)&_threads); t; t = t->next) {
-            while (atomic::load_acquire(&t->state) == (uint32_t)rcu_thread_state::active) {
-                if (atomic::load_acquire(&t->epoch) == new_epoch) {
-                    break;
-                }
-            }
-        }
-
-        collect(old_epoch);
-
-        unlock_writer();
-    }
+    void synchronize() noexcept;
 
     void try_collect() noexcept {
         if (!try_lock_writer()) return;
 
-        uint64_t current_epoch = atomic::load_relaxed(&_global_epoch);
-        uint64_t min_epoch = current_epoch;
+        publish_local_batch_locked();
 
-        for (rcu_thread *t = (rcu_thread *)atomic::load_acquire((void **)&_threads); t; t = t->next) {
-            if (atomic::load_acquire(&t->state) == (uint32_t)rcu_thread_state::active) {
-                uint64_t e = atomic::load_acquire(&t->epoch);
-                if (e < min_epoch) {
-                    min_epoch = e;
-                }
-            }
+        uint64_t current_epoch = atomic::load_relaxed(&_epoch.global);
+        unlock_writer();
+
+        uint64_t min_epoch = current_epoch;
+        for (detail::rcu_thread *t = load_threads(); t; t = t->next) {
+            const uint64_t e = atomic::load_acquire(&t->epoch);
+            if (e != 0 && e < min_epoch) min_epoch = e;
         }
 
-        collect(min_epoch);
-
-        unlock_writer();
+        if (min_epoch > 1) {
+            lock_writer();
+            collect(min_epoch - 1);
+            unlock_writer();
+        }
     }
+
+    uint64_t global_epoch() const noexcept { return atomic::load_relaxed(&_epoch.global); }
 
 private:
-    static rcu_thread *&tls_thread_ref() noexcept {
-        thread_local rcu_thread *t = nullptr;
-        return t;
+    detail::rcu_thread *get_thread() noexcept {
+        struct wrapper {
+            detail::rcu_thread *t = nullptr;
+            ~wrapper() {
+                if (t) atomic::store_release(&t->epoch, 0ULL);
+            }
+        };
+
+        thread_local wrapper w;
+        if (w.t) return w.t;
+
+        w.t = new (std::nothrow) detail::rcu_thread{};
+        if (!w.t) std::abort();
+
+        register_thread(w.t);
+        return w.t;
     }
 
-    rcu_thread *get_thread() noexcept {
-        rcu_thread *&tls = tls_thread_ref();
-        if (tls) return tls;
-
-        rcu_thread *t = new (std::nothrow) rcu_thread{0, (uint32_t)rcu_thread_state::quiescent, nullptr};
-        if (!t) {
-            static rcu_thread fallback{0, (uint32_t)rcu_thread_state::quiescent, nullptr};
-            return &fallback;
-        }
-
+    void register_thread(detail::rcu_thread *t) noexcept {
         lock_writer();
-        t->next = _threads;
-        _threads = t;
+        t->next = load_threads();
+        atomic::store_release(&_reader.threads, t);
         unlock_writer();
-
-        tls = t;
-        return t;
     }
+
+    void unregister_thread(detail::rcu_thread *t) noexcept {
+        lock_writer();
+        detail::rcu_thread **prev = &_reader.threads;
+        detail::rcu_thread *curr = _reader.threads;
+        while (curr) {
+            if (curr == t) {
+                *prev = curr->next;
+                break;
+            }
+            prev = &curr->next;
+            curr = curr->next;
+        }
+        unlock_writer();
+    }
+
+    static detail::rcu_retired_batch &local_batch() noexcept {
+        thread_local detail::rcu_retired_batch batch{};
+        return batch;
+    }
+
+    void publish_local_batch_locked() noexcept {
+        auto &batch = local_batch();
+        if (!batch.head) return;
+
+        batch.tail->next = _reader.retired;
+        _reader.retired = batch.head;
+        batch.head = nullptr;
+        batch.tail = nullptr;
+        batch.count = 0;
+    }
+
+    void publish_local_batch() noexcept {
+        lock_writer();
+        publish_local_batch_locked();
+        unlock_writer();
+    }
+
+    bool readers_passed(uint64_t target) noexcept {
+        for (auto *t = load_threads(); t; t = t->next) {
+            const uint64_t epoch = atomic::load_acquire(&t->epoch);
+            if (epoch != 0 && epoch <= target) return false;
+        }
+        return true;
+    }
+
+    // Atomic acquire load of the _threads list head.
+    detail::rcu_thread *load_threads() noexcept { return atomic::load_acquire(&_reader.threads); }
 
     void lock_writer() noexcept {
-        while (!atomic::cas_relaxed(&_writer_lock, 0, 1)) {}
+        while (atomic::exchange_acq_rel(&_writer.lock, 1U) != 0U)
+            while (atomic::load_relaxed(&_writer.lock) != 0U) {}
     }
 
-    void unlock_writer() noexcept { atomic::store_relaxed(&_writer_lock, 0); }
+    void unlock_writer() noexcept { atomic::store_release(&_writer.lock, 0U); }
 
-    bool try_lock_writer() noexcept { return atomic::cas_relaxed(&_writer_lock, 0, 1); }
+    bool try_lock_writer() noexcept { return atomic::exchange_acq_rel(&_writer.lock, 1U) == 0U; }
+
+    // ── Collector ────────────────────────────────────────────
 
     void collect(uint64_t safe_epoch) noexcept {
-        retired_obj **prev = &_retired;
-        retired_obj *curr = _retired;
+        if (safe_epoch <= _epoch.completed) return;
+        _epoch.completed = safe_epoch;
+
+        detail::retired_obj **prev = &_reader.retired;
+        detail::retired_obj *curr = _reader.retired;
 
         while (curr) {
-            if (curr->epoch < safe_epoch) {
+            if (curr->epoch <= safe_epoch) {
                 *prev = curr->next;
-                retired_obj *next = curr->next;
-                if (curr->reclaim && curr->object) {
-                    curr->reclaim(curr->object);
-                }
+                detail::retired_obj *next = curr->next;
+                if (curr->reclaim && curr->object) curr->reclaim(curr->object);
                 delete curr;
                 curr = next;
             } else {
@@ -167,10 +219,26 @@ private:
         }
     }
 
-    uint64_t _global_epoch = 0;
-    rcu_thread *_threads = nullptr;
-    retired_obj *_retired = nullptr;
-    uint32_t _writer_lock = 0;
+    struct alignas(SKL_ABIX_CACHE_LINE_SIZE) epoch {
+        uint64_t global = 1;
+        uint64_t completed = 0;
+        uint64_t sync = 0;
+    };
+
+    struct reader {
+        detail::rcu_thread *threads = nullptr;
+        detail::retired_obj *retired = nullptr;
+    };
+
+    struct writer {
+        uint64_t lock = 0;
+    };
+
+    epoch _epoch;   // Independent cache line (64 bytes)
+
+    reader _reader;
+    writer _writer;
+    uint32_t _sync_count = 0;
 };
 
 class rcu_guard {
@@ -186,6 +254,36 @@ public:
 private:
     rcu_domain &_domain;
 };
+
+inline void rcu_domain::synchronize() noexcept {
+    lock_writer();
+    publish_local_batch_locked();
+
+    if (atomic::load_relaxed(&_epoch.sync) != 0) {
+        unlock_writer();
+        while (atomic::load_acquire(&_epoch.sync) != 0) {}
+        return;
+    }
+
+    ++_sync_count;
+    if (_sync_count < SKL_ABIX_RCU_EPOCH_BATCH) {
+        unlock_writer();
+        return;
+    }
+
+    _sync_count = 0;
+    uint64_t old_epoch = atomic::load_relaxed(&_epoch.global);
+    atomic::inc_acq_rel(&_epoch.global);
+    atomic::store_release(&_epoch.sync, old_epoch + 1);
+    unlock_writer();
+
+    while (!readers_passed(old_epoch)) {}
+
+    lock_writer();
+    collect(old_epoch);
+    atomic::store_release(&_epoch.sync, 0);
+    unlock_writer();
+}
 
 SKL_ABIX_NAMESPACE_END
 

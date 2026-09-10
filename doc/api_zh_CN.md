@@ -36,7 +36,7 @@ flowchart TB
 
     C --- C3["abi_get_table()<br/>符号解析"]
 
-    D --- D1["dll_func&lt;Sig,CC,Policy&gt;"]
+    D --- D1["dll_func&lt;Sig,CC&gt;"]
 
     D --- D2["function_dll&lt;R(Args...)&gt;"]
 
@@ -60,14 +60,6 @@ flowchart TB
 | `SKL_ABIX_NAMESPACE_BEGIN` | — | 打开 `namespace skl { namespace abix {` |
 | `SKL_ABIX_NAMESPACE_END` | — | 关闭 `} }` |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | 控制块的魔数 |
-
-### `AbiLookupPolicy` 枚举
-
-| 值 | 说明 |
-|-------|-------------|
-| `Linear` | 全表线性扫描（默认） |
-| `StaticHot` | 预注册的热点缓存查找 |
-| `AdaptiveHot` | 自适应提升的自学习热点缓存 |
 
 ---
 
@@ -199,9 +191,8 @@ inline call_error &last_error() noexcept;
 | `ref_count()` | `uint32_t` | 当前活跃句柄数量 |
 | `add_ref()` | `void` | 增加引用计数 |
 | `release_ref()` | `void` | 减少引用计数 |
-| `try_enter_read()` | `bool` | 进入 RCU 读侧临界区，使用双重检查锁；若模块正在卸载或已僵尸则返回 `false` 并设置 `call_error::unloading` |
-| `exit_read()` | `void` | 退出 RCU 读侧临界区（减少活跃读者计数） |
-| `begin_rcu_unload()` | `bool` | 启动 RCU 卸载：设置 `_unloading` 标志 → 自旋等待 `_active_readers == 0` 或超时 → 应用 `_timeout_policy`；成功返回 `true` |
+| `enter_read()` | `const table*` | 进入 RCU 读侧临界区（委托至全局 `rcu_domain`），返回已验证的导出表指针；若模块未加载或已僵尸则返回 `nullptr` 并设置 `call_error::unloading` |
+| `exit_read()` | `void` | 退出 RCU 读侧临界区（委托至全局 `rcu_domain`） |
 | `set_timeout_policy(p)` | `void` | 设置 RCU 超时策略（`RCUTimeoutPolicy::Safe` / `ForceUnload` / `ForceLeak`） |
 | `timeout_policy()` | `RCUTimeoutPolicy` | 获取当前 RCU 超时策略 |
 
@@ -217,107 +208,113 @@ if (lib.load("my_plugin.dll")) {
 
 ### RCU 非阻塞卸载
 
-ABIX 实现了基于 EBR（Epoch-Based Reclamation）全局计数器的 RCU（Read-Copy-Update）线程安全 DLL 卸载。设计采用编译器内建原子操作（Windows 下 `_Interlocked*`，POSIX 下 `__atomic_*`），避免 `<atomic>` 的 ABI 兼容性问题。
+ABIX 使用全局 **`rcu_domain`**（基于 Epoch-Based Reclamation）实现线程安全 DLL 卸载。`dll_object` 通过 `rcu_domain::instance()` 委托所有读写操作，自身不再维护独立的读者计数器。
 
 **架构：**
 
-| 阶段 | 写侧（卸载者） | 读侧（调用者） |
-|------|----------------|----------------|
-| 标记 | `begin_rcu_unload()` 设置 `_unloading = true` | `try_enter_read()` 在自增前检查 `_unloading` |
-| 宽限期 | `wait_for_readers()` 自旋等待 `_active_readers == 0` | 活跃读者持有 `_active_readers > 0` |
-| 回收 | `unload_internal()` 调用 `FreeLibrary`/`dlclose` | `exit_read()` 减少 `_active_readers` |
+| 角色 | 操作 | 说明 |
+|------|------|------|
+| 读者 | `enter_read()` → `rcu_domain::enter()` | 记录当前全局 epoch，无锁、无竞争 |
+| 读者 | `exit_read()` → `rcu_domain::exit()` | 标记本线程为静止态（epoch=0） |
+| 写者 | `unload()` → `retire()` + `synchronize()` | 将旧 image 推入 retired 列表 → 等待所有读者通过 → 回收 |
+| 写者 | `reload()` → `retire()` + `synchronize()` | 原子交换新旧 image，旧 image 异步回收 |
 
 **设计要点：**
 
-- **双重检查锁**：`try_enter_read()` 在自增 `_active_readers` 前后均检查 `_unloading`，防止 TOCTOU 竞态——读者检测到 `_unloading == false`，但卸载者在读者自增前设置了标志位。
-- **自旋等待**：`wait_for_readers()` 忙等。DLL 函数调用预计很快返回，因此自旋等待是合适的。
-- **零 STL 依赖**：原子操作使用编译器内建函数直接操作 `bool` 和 `uint32_t`——无需 `<atomic>`，无跨 STL 实现的布局差异。
-- **`force_unload` / `reload` 绕过 RCU**：这些方法直接卸载而不经过 RCU 保护。调用者必须保证无并发读者。
+- **全局 EBR 域**：所有 `dll_object` 实例共享同一个 `rcu_domain` 单例，epoch 推进对所有模块生效。
+- **线程局部状态**：每个线程首次调用 `enter()` 时自动注册，`exit()` 仅写本地 cache-line，无竞争。
+- **Retire 批量化**：`retire()` 在本地累积 64 个对象后才发布到全局列表，减少锁竞争。
+- **零 `<atomic>` 依赖**：原子操作使用编译器内建函数，避免跨 STL 实现的 ABI 兼容性问题。
+- **`force_unload` / `reload` 绕过 EBR**：这些方法直接调用 `synchronize()` 而非依赖超时策略，但调用者仍需保证无并发读者。
 
 **使用示例：**
 ```cpp
 // 线程 1：读者
 auto add = dll_func<int(int, int)>(lib, "add");
-int result = add(2, 3);  // operator() 自动调用 try_enter_read/exit_read
+int result = add(2, 3);  // operator() 自动调用 enter_read/exit_read
 
 // 线程 2：卸载者
-lib.unload();  // 标记卸载，等待读者，然后卸载
+lib.unload();  // retire 旧 image → synchronize → 回收
 ```
 
 ### RCU 超时策略
 
-当 `ABIX_RCU_TIMEOUT_ENABLE` 为 `1`（默认）时，`wait_for_readers()` 定期检查经过时间与 `ABIX_RCU_TIMEOUT_MS` 的对比。若宽限期超过阈值，应用以下三种策略之一：
+当 `ABIX_RCU_TIMEOUT_ENABLE` 为 `1`（默认）且 `synchronize()` 中的宽限期超过 `ABIX_RCU_TIMEOUT_MS` 时，应用以下三种策略之一：
 
 | 策略 | 枚举 | 行为 |
 |------|------|------|
-| **Safe** | `RCUTimeoutPolicy::Safe` | 设置 `_zombie = true`，清除 `_unloading`。DLL 保持加载但不可访问。**绝不崩溃。**（默认） |
-| **ForceUnload** | `RCUTimeoutPolicy::ForceUnload` | 立即调用 `unload_internal()`。活跃调用者将收到悬空指针——**将崩溃**。 |
+| **Safe** | `RCUTimeoutPolicy::Safe` | 设置模块为僵尸态（`image_state::zombie`）。DLL 保持加载但不可访问。**绝不崩溃。**（默认） |
+| **ForceUnload** | `RCUTimeoutPolicy::ForceUnload` | 绕过 EBR 直接调用 `unload_internal()`。活跃调用者将收到悬空指针——**将崩溃**。 |
 | **ForceLeak** | `RCUTimeoutPolicy::ForceLeak` | 摘除模块句柄，DLL 在操作系统中保持加载。需 `#define ABIX_ENABLE_FORCE_LEAK_POLICY`。 |
-
-**僵尸生命周期：**
-```
-begin_rcu_unload() → 超时 → _zombie = true
-    ↓
-is_loaded() → false      （新调用者被拒绝）
-try_enter_read() → false  （设置 call_error::unloading）
-load() → force_unload 僵尸 → 加载新 DLL
-~dll_object() → unload_internal()（强制清理）
-```
-
-### 超时检查：双燃料（时间 + 帧数）
-
-ABIX 将墙上时钟与帧计数视为两种正交的燃料来源。两者始终在运行时可用——无需编译期模式切换。
-
-- **时间燃料**：`get_tick_ms()` 始终返回系统墙上时钟，无需宿主配合。
-- **帧数燃料**：`abix::tick(timestamp)` 从宿主主循环注入帧计数，可选，不使用则零开销。
-- **截止检查**：`wait_for_readers()` 每约 100 万次自旋迭代同时检查 `timeout_ms` 与 `timeout_frames`。哪个截止日期先到，就触发哪个超时。
 
 ### `RCUTimeoutConfig`（`rcu_config.h`）
 
 **命名空间：** `skl::abix`
 
-RCU 超时行为的运行时配置。用逐实例设置替代了旧的纯编译期 `ABIX_RCU_TIMEOUT_MS` 宏。
+RCU 超时行为的运行时配置，逐实例设置。
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `timeout_ms` | `uint64_t` | `ABIX_RCU_TIMEOUT_MS` | 超时阈值（毫秒）。与 `get_tick_ms()` 对比。0 = 禁用。 |
-| `timeout_frames` | `uint64_t` | `ABIX_RCU_TIMEOUT_FRAMES_DEFAULT` (0) | 超时阈值（帧数）。与 `get_tick_frames()` 对比。0 = 禁用。 |
-
-**构造函数：**
-```cpp
-constexpr RCUTimeoutConfig(
-    uint64_t ms = ABIX_RCU_TIMEOUT_MS,
-    uint64_t frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT
-) noexcept;
-```
+| `timeout_ms` | `uint64_t` | `ABIX_RCU_TIMEOUT_MS` | 超时阈值（毫秒）。0 = 禁用。 |
+| `timeout_frames` | `uint64_t` | `ABIX_RCU_TIMEOUT_FRAMES_DEFAULT` (0) | 超时阈值（帧数）。0 = 禁用。 |
 
 **使用模式：**
 ```cpp
-// 场景 1：纯默认（使用宏值）
-dll_object lib1;
-
-// 场景 2：显式超时，无帧数
-dll_object lib2(RCUTimeoutConfig{3000});
-
-// 场景 3：游戏引擎 —— 同时设置时间和帧数阈值
-dll_object lib3(RCUTimeoutConfig{5000, 300});  // 5秒 或 300帧，谁先到谁触发
-
-// 场景 4：从配置文件读取运行时值
-uint64_t cfg_timeout = app_config.get("plugin_timeout_ms", 5000);
-dll_object lib4(RCUTimeoutConfig{cfg_timeout});
+dll_object lib1;                                          // 默认超时
+dll_object lib2(RCUTimeoutConfig{3000});                  // 3 秒超时
+dll_object lib3(RCUTimeoutConfig{5000, 300});             // 5 秒或 300 帧
 ```
 
 ### 惰性饥饿防护
 
-当无 RCU 卸载进行时，超时检查仅在 `wait_for_readers()` 内部触发。若无新读者到来，时间基线可能过时。饥饿防护通过三个可配置等级防止此问题：
+当无 RCU 卸载进行时，超时检查仅在 `synchronize()` 内部触发。若无新读者到来，时间基线可能过时。饥饿防护通过三个可配置等级防止此问题：
 
 | 等级 | 宏值 | 行为 |
 |------|------|------|
 | **关闭** | `ABIX_LAZY_STARVATION_GUARD_OFF` (0) | 纯惰性，零开销。接受饥饿风险。 |
-| **Tick** | `ABIX_LAZY_STARVATION_GUARD_TICK` (1) | `try_enter_read()` 调用 `try_passive_check()`——每 30 秒更新 `g_last_check_time`。`abix::tick()` 也会更新它。**（默认）** |
+| **Tick** | `ABIX_LAZY_STARVATION_GUARD_TICK` (1) | `enter_read()` 调用 `try_passive_check()`——每 30 秒更新 `g_last_check_time`。`abix::tick()` 也会更新它。**（默认）** |
 | **空闲线程** | `ABIX_LAZY_STARVATION_GUARD_IDLE` (2) | 与 Tick 相同，外加一个每 30 秒唤醒的后台线程。需 `#define ABIX_ENABLE_IDLE_BACKGROUND_THREAD`。 |
 
-**`abix::tick()` 始终可用。** 启用饥饿防护后，在主循环中调用 `tick()` 可保持时间基线最新，而无需在每次 `try_enter_read()` 时调用 `get_tick_ms()`（系统调用）。同时它也为帧数超时截止提供帧计数器。
+**`abix::tick()` 始终可用。** 启用饥饿防护后，在主循环中调用 `tick()` 可保持时间基线最新，同时为帧数超时截止提供帧计数器。
+
+---
+
+### `rcu_domain`（`rcu_domain.h`）
+
+**命名空间：** `skl::abix`
+
+全局 EBR（Epoch-Based Reclamation）域，为所有 `dll_object` 实例提供线程安全的内存回收。
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `instance()` | `rcu_domain&` | 全局单例 |
+| `enter()` | `void` | 进入读侧临界区：记录当前全局 epoch，无锁、无竞争 |
+| `exit()` | `void` | 退出读侧临界区：标记本线程为静止态（epoch=0） |
+| `retire(obj, reclaim)` | `void` | 将对象加入本地 retired 批次；累积 64 个后自动发布到全局列表 |
+| `synchronize()` | `void` | 推进全局 epoch，等待所有线程通过，回收安全对象 |
+| `try_collect()` | `void` | 尝试回收：若获取写锁成功，扫描并回收已通过的 retired 对象 |
+| `global_epoch()` | `uint64_t` | 诊断用：返回当前全局 epoch 值 |
+
+**设计要点：**
+
+- **线程局部状态**：每个线程首次调用 `enter()` 时在 TLS 中注册 `rcu_thread`，`exit()` 仅写本地 cache-line，零竞争。
+- **Retire 批量化**：`BATCH_PUBLISH_SIZE = 64`，本地累积以减少全局锁竞争。
+- **Cache-line 隔离**：`_epoch` 结构体与 `_writer_lock` 位于不同 cache line，避免 false sharing。
+- **零 `<atomic>` 依赖**：全部使用编译器内建原子操作（`atomic.h`）。
+
+**使用示例：**
+```cpp
+rcu_domain &domain = rcu_domain::instance();
+
+// 读者
+domain.enter();
+// ... 安全访问共享数据 ...
+domain.exit();
+
+// 写者
+domain.retire(old_object, [](void *p) { delete static_cast<MyType *>(p); });
+domain.synchronize();
+```
 
 ### 日志系统（`log.h`）
 
@@ -345,13 +342,12 @@ dll_object lib4(RCUTimeoutConfig{cfg_timeout});
 
 **命名空间：** `skl::abix`
 
-### `dll_func_cc<C, Sig, Policy>`
+### `dll_func_cc<C, Sig>`
 
 类型化函数句柄的主模板。模板参数：
 
 - `C` — 调用约定标签（`cc::tag::Cdecl` 或 `cc::tag::Stdcall`）
 - `Sig` — 函数签名（例如 `int(int, double)`）
-- `Policy` — 查找策略（默认为 `AbiLookupPolicy::Linear`）
 
 | 方法 | 返回值 | 说明 |
 |--------|---------|-------------|
@@ -373,13 +369,13 @@ dll_object lib4(RCUTimeoutConfig{cfg_timeout});
 - 若条目的签名/名称/哈希已变更 → 设置 `call_error::table_changed`，返回默认 `R{}`
 - 若函数指针为空 → 设置 `call_error::invalid`，返回默认 `R{}`
 
-### `dll_func<Sig, C, Policy>`
+### `dll_func<Sig, C>`
 
 `dll_func_cc` 的便捷别名，默认调用约定为 `Cdecl`：
 
 ```cpp
-template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl), AbiLookupPolicy Policy = AbiLookupPolicy::Linear>
-class dll_func : public dll_func_cc<C, Sig, Policy> { ... };
+template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
+class dll_func : public dll_func_cc<C, Sig> { ... };
 ```
 
 **使用示例：**
@@ -494,16 +490,34 @@ constexpr sig_t int_sig = type_sig<int>();
 ### `find_index()`
 
 ```cpp
-inline lookup_result find_index(const table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+inline lookup_result find_index(const table &t, const hash_index &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
 ```
 
-在表中搜索匹配 `name`、`sig` 和可选的 `ver` 的条目。返回结果码并将 `out` 设为条目索引。
+根据 `idx` 是否有效自动选择最优查找策略：
+- 若 `idx.valid()` → 使用 HashIndex 查找（`find_hash`）
+- 否则 → 使用线性扫描（`find_linear`）
+
+### `find_linear()`
+
+```cpp
+inline lookup_result find_linear(const table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+```
+
+全表线性扫描。用于小表（< 64 条目）。
 
 **搜索逻辑：**
 1. 校验表魔数
-2. 计算 32 位名称哈希
+2. 计算 32 位名称哈希（FNV-1a）
 3. 线性扫描：匹配名称哈希 → strcmp → 版本检查 → 签名检查
 4. 返回 `ok`、`sig_mismatch`、`version_mismatch` 或 `not_found`
+
+### `find_hash()`
+
+```cpp
+inline lookup_result find_hash(const table &t, const hash_index &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+```
+
+开放寻址哈希索引查找。用于大表（≥ 64 条目）。平均 O(1) 时间。
 
 ### `lookup_linear()`
 
@@ -511,70 +525,71 @@ inline lookup_result find_index(const table &t, const char *name, sig_t sig, ver
 inline const entry *lookup_linear(const table &t, const char *name, name_hash_t nh, sig_t sig) noexcept;
 ```
 
-直接线性查找，返回条目指针（或 `nullptr`）。供 `Linear` 查找策略使用。
+直接线性查找，返回条目指针（或 `nullptr`）。
 
----
+### `lookup_hash()`
 
-## 9. `cache.h` — 查找加速
+```cpp
+inline const entry *lookup_hash(const table &t, const hash_index &idx, const char *name, name_hash_t nh, sig_t sig) noexcept;
+```
 
-**命名空间：** `skl::abix`
+直接哈希索引查找，返回条目指针（或 `nullptr`）。
+
+### `hash_slot`
+
+```cpp
+struct hash_slot {
+    name_hash_t hash;
+    index_t index;
+};
+```
+
+哈希索引中的单个槽位。仅存储名称哈希和条目索引——从不复制 `entry` 数据。
+
+### `hash_index`
+
+```cpp
+struct hash_index {
+    hash_slot *slots;
+    uint32_t capacity;
+    uint32_t mask;
+
+    bool valid() const noexcept;
+    void build(const table &t) noexcept;
+    void destroy() noexcept;
+};
+```
+
+大表的运行时哈希索引。在 DLL 加载时一次性构建。
+
+| 成员 | 类型 | 说明 |
+|--------|------|-------------|
+| `slots` | `hash_slot*` | 开放寻址槽位数组（容量为 2 的幂次方） |
+| `capacity` | `uint32_t` | 槽位总数（始终为 `next_pow2(count * 2)`） |
+| `mask` | `uint32_t` | `capacity - 1`，用于快速取模 |
+
+| 方法 | 说明 |
+|--------|-------------|
+| `valid()` | 哈希索引是否已构建（slots != nullptr） |
+| `build(t)` | 从表构建哈希索引。使用线性探测插入所有条目 |
+| `destroy()` | 释放槽位数组 |
+
+**设计要点：**
+- **负载率 ~50%**：`capacity = next_pow2(count * 2)`
+- **开放寻址**：冲突时线性探测 `pos = (pos + 1) & mask`
+- **零 ABI 影响**：`hash_index` 为纯运行时元数据；`table` 和 `entry` 结构体保持不变
+- **加载时构建**：无运行时初始化竞争，无惰性初始化复杂性
 
 ### 常量
 
-| 常量 | 默认值 | 说明 |
-|----------|---------|-------------|
-| `SKL_ABIX_HOT_SLOTS` | `32` | 最大热点缓存槽位数 |
-| `SKL_ABIX_ADAPTIVE_PERIOD` | `64` | 自适应缓存采样周期 |
-| `SKL_ABIX_ADAPTIVE_THRESHOLD` | `4` | 提升阈值：命中次数超过此值则提升 |
-
-### `static_hot_cache`
-
-手动注册条目的固定热点缓存。
-
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `add(idx)` | `bool` | 将索引添加到热点缓存 |
-| `contains(idx)` | `bool` | 检查索引是否已缓存 |
-| `reset()` | `void` | 清除所有缓存条目 |
-
-### `adaptive_hot_cache`
-
-自动提升频繁调用条目的自学习热点缓存。
-
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `init(n)` | `void` | 以表大小 `n` 初始化 |
-| `destroy()` | `void` | 释放内部命中计数器 |
-| `contains(idx)` | `bool` | 检查索引是否已缓存 |
-| `promote(idx)` | `void` | 手动提升条目至热点缓存 |
-
-**可配置成员：**
-| 成员 | 类型 | 说明 |
-|--------|------|-------------|
-| `threshold` | `uint32_t` | 自动提升的命中次数阈值 |
-| `period` | `uint32_t` | 采样周期（每次自适应后重置） |
-
-### `lookup_static_hot()`
-
-```cpp
-inline const entry *lookup_static_hot(
-    const table &t, const static_hot_cache &c, const char *name, name_hash_t nh, sig_t sig) noexcept;
-```
-
-先检查静态热点缓存，未命中则回退到线性扫描。
-
-### `lookup_adaptive()`
-
-```cpp
-inline const entry *lookup_adaptive(
-    const table &t, adaptive_hot_cache &c, const char *name, name_hash_t nh, sig_t sig) noexcept;
-```
-
-先检查自适应热点缓存，未命中则回退到线性扫描。每次线性扫描时递增命中计数器，并将超过阈值的条目提升至热点缓存。
+| 常量 | 值 | 说明 |
+|----------|-------|-------------|
+| `HASH_THRESHOLD` | `64` | 少于 64 条目的表使用线性扫描；≥ 64 条目的表使用 HashIndex |
+| `HASH_SLOT_EMPTY` | `~index_t{0}` | 空哈希槽位的哨兵值 |
 
 ---
 
-## 10. `function.h` — 跨边界闭包
+## 9. `function.h` — 跨边界闭包
 
 **命名空间：** `skl::abix`
 
@@ -617,7 +632,7 @@ reg(std::move(cb));
 
 ---
 
-## 11. 智能指针（`dll_ptr/`）
+## 10. 智能指针（`dll_ptr/`）
 
 **命名空间：** `skl::abix`
 
@@ -715,7 +730,7 @@ struct fn_deleter {
 
 ---
 
-## 12. `refl.h` — 动态反射集成
+## 11. `refl.h` — 动态反射集成
 
 **命名空间：** `skl::abix::refl`（反射辅助工具），`skl::abix`（便捷类型）
 
@@ -783,7 +798,7 @@ inline void register_dll_table(const table *t, const char *dll_name);
 
 ---
 
-## 13. 完整使用示例
+## 12. 完整使用示例
 
 ```cpp
 #include "abix/abix.hpp"

@@ -16,6 +16,10 @@
 #ifndef SKL_ABIX_REGISTER_H
 #define SKL_ABIX_REGISTER_H
 
+#include <stddef.h>   // IWYU pragma: keep
+
+#include <new>   // IWYU pragma: keep
+
 #include "abix/config.h"   // IWYU pragma: keep
 
 #ifdef SKL_ABIX_WINDOWS
@@ -45,7 +49,7 @@ SKL_ABIX_NAMESPACE_BEGIN
 #define SKL_ABIX_TABLE_GETTER "abi_get_table"
 
 inline void *abi_alloc(size_t n) noexcept {
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
     return HeapAlloc(GetProcessHeap(), 0, n);
 #else
     return malloc(n);
@@ -53,7 +57,7 @@ inline void *abi_alloc(size_t n) noexcept {
 }
 inline void abi_free(void *p) noexcept {
     if (!p) return;
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
     HeapFree(GetProcessHeap(), 0, p);
 #else
     free(p);

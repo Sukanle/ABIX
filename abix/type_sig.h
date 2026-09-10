@@ -29,15 +29,15 @@ SKL_ABIX_NAMESPACE_BEGIN
 #define SKL_ABIX_TYPE_TAG(T, tag) STATIC_TYPE_TAG(T, tag)
 
 template<typename T>
-struct unique_dll_ptr;
+class unique_dll_ptr;
 template<typename T>
-struct ref_dll_ptr;
+class ref_dll_ptr;
 template<typename T>
-struct view_dll_ptr;
+class view_dll_ptr;
 template<typename T>
-struct shared_dll_ptr;
+class shared_dll_ptr;
 template<typename T>
-struct weak_dll_ptr;
+class weak_dll_ptr;
 template<typename Sig>
 class function_dll;
 

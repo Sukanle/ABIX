@@ -4,3 +4,4 @@ hotcache_dll.cpp
 CMakePresets.json
 .cache/
 variants/
+tmp/
