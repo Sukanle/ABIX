@@ -68,8 +68,10 @@ public:
 
     size_t size() const noexcept { return _count; }
 
-    // The registry can bootstrap the metadata needed to describe its own
-    // entry format. This is initialization-time only and remains single-threaded.
+    // This is the intentionally hand-written Bootstrap Kernel: only its two
+    // wire records live here. Runtime type metadata is supplied by generated
+    // ModuleDescriptor objects registered through RuntimeRegistry instead.
+    // It is initialization-time only and remains single-threaded.
     bootstrap::Status bootstrap_self() noexcept {
         static const model::TypeDesc entry_desc{{0x524547454e545259ULL, 0x1}, 0, 0, 0};
         static const model::TypeLayout entry_layout{

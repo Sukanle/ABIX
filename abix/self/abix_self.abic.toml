@@ -1,6 +1,3 @@
-# This compatibility entry point is retained for existing invocations.  New
-# builds should use self/abix_self.abic.toml, whose artifact names form the
-# public bootstrap contract.
 [package]
 name = "abix_runtime"
 version = "1"
@@ -12,7 +9,7 @@ flags = [
   "-isystem", "/usr/lib/clang/22/include",
   "-isystem", "/usr/lib/gcc/x86_64-pc-linux-gnu/16/include"
 ]
-files = ["self_types.cpp"]
+files = ["../self_types.cpp"]
 symbols = [
   "skl::abix::model::Hash128",
   "skl::abix::model::TypeLayout",
@@ -47,4 +44,4 @@ symbols = [
 ]
 
 [[export]]
-output = "build/abix_runtime.abix"
+output = "build/abix_self.abix"

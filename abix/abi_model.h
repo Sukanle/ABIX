@@ -48,6 +48,13 @@ struct TypeDesc {
     uint32_t layout_index;
 };
 
+// Historical spelling retained for source compatibility.  A type's stable
+// identity is its TypeDesc; the independently-versioned physical layout is
+// represented by TypeLayout.  Keeping this as an alias also makes generated
+// TypeTraits<TypeDesc> usable by callers that still spell the model as
+// TypeInfo.
+using TypeInfo = TypeDesc;
+
 struct Field {
     uint32_t name_offset;
     TypeId type_id;

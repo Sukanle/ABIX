@@ -208,9 +208,9 @@ fi
 echo ""
 echo "[step 10] ABIX self-description bootstrap artifact"
 SELF_BUILD="$BUILD_DIR/self-build"
-SELF_ABIX="$SELF_BUILD/build/abix_runtime.abix"
-SELF_HPP="$BUILD_DIR/abix_runtime.hpp"
-if "$AMC_BIN/amc" build -c "$SOURCE_ROOT/abix/self.abic.toml" -B "$SELF_BUILD" 2>&1 \
+SELF_ABIX="$SELF_BUILD/build/abix_self.abix"
+SELF_HPP="$BUILD_DIR/abix_self_metadata.hpp"
+if "$AMC_BIN/amc" build -c "$SOURCE_ROOT/abix/self/abix_self.abic.toml" -B "$SELF_BUILD" 2>&1 \
     && "$AMC_BIN/amc" generate "$SELF_ABIX" -l cpp -o "$SELF_HPP" 2>&1 \
     && "$AMC_BIN/amc" validate "$SELF_ABIX" 2>&1; then
     pass "ABIX self-description artifact generated and validated"
@@ -225,9 +225,9 @@ if "$AMC_BIN/amc" build -c "$SOURCE_ROOT/abix/self.abic.toml" -B "$SELF_BUILD" 2
         && clang++ -std=c++17 -I"$SOURCE_ROOT" -I"$BUILD_DIR" \
             "$SOURCE_ROOT/amc/tests/self_type_of_consumer.cpp" -o "$BUILD_DIR/self_type_of_consumer" \
         && "$BUILD_DIR/self_type_of_consumer"; then
-        pass "native type_of and registered EBR metadata self-hosting succeeded"
+        pass "native type_of, Registry lookup, and registered EBR metadata self-hosting succeeded"
     else
-        fail "native type_of or registered EBR metadata self-hosting failed"
+        fail "native type_of, Registry lookup, or registered EBR metadata self-hosting failed"
     fi
 else
     fail "ABIX self-description generation failed"
