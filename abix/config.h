@@ -26,6 +26,7 @@
 #  define SKL_ABIX_PATHSEPARATOR '/'
 #else
 #  define SKL_ABIX_DLL_SUFFIX ".so"
+#  define SKL_ABIX_PATHSEPARATOR '/'
 #endif
 
 #if defined(SKL_ABIX_WINDOWS)

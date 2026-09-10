@@ -32,29 +32,41 @@ def main() -> None:
     parser.add_argument("--build-bench", action="store_true", help="Build benchmarks only, skip run and tests")
     parser.add_argument("--build-only", action="store_true", help="Build both tests and benchmarks, skip run")
     parser.add_argument("--generator", default="", help="CMake generator (auto-detect by default)")
-    parser.add_argument("--with-msvc", action="store_true", help="Also build MSVC cross-compiler variants (for Test 13)")
-    parser.add_argument("--vs-path", default="", help="Visual Studio installation path (use with --with-msvc)")
+    parser.add_argument("--with-dev", action="store_true", help="Build with development features")
+    if sys.platform == "win32":
+        parser.add_argument("--with-msvc", action="store_true", help="Also build MSVC cross-compiler variants (for Test 13)")
+        parser.add_argument("--vs-path", default="", help="Visual Studio installation path (use with --with-msvc)")
     args = parser.parse_args()
 
-    build_dir = PROJECT_ROOT / "build"
+    build_dir = PROJECT_ROOT / "build" / args.build_type
 
     if args.clean and build_dir.exists():
         print("== Cleaning build directory ==")
         shutil.rmtree(build_dir)
     
-    if not any([args.run_test, args.run_bench, args.run_only]):
-        should_build = should_test = should_bench = True
-    else:
-        should_build = not args.run_only
+    build_flags = any([args.build_test, args.build_bench, args.build_only])
+    run_flags = any([args.run_test, args.run_bench, args.run_only])
+
+    if build_flags and run_flags:
+        parser.error("Cannot mix --build-* and --run-* flags")
+
+    if run_flags:
+        should_build = False
         should_test = args.run_test or args.run_only
         should_bench = args.run_bench or args.run_only
+    elif build_flags:
+        should_build = True
+        should_test = args.build_test
+        should_bench = args.build_bench
+    else:
+        should_build = should_test = should_bench = True
 
     if should_build:
         generator = args.generator
         if not generator:
             if shutil.which("ninja"):
                 generator = "Ninja"
-            elif sys.platform == "win32":  # 修正：win32 不是 WindowsNT
+            elif sys.platform == "win32":
                 generator = "MinGW Makefiles"
             else:
                 generator = "Unix Makefiles"
@@ -62,10 +74,11 @@ def main() -> None:
         print(f"== Using generator: {generator} ==")
 
         run([
-            "cmake", "-S", str(PROJECT_ROOT), "-B", str(build_dir)/str(args.build_type),
+            "cmake", "-S", str(PROJECT_ROOT), "-B", str(build_dir),
             "-G", generator, f"-DCMAKE_BUILD_TYPE={args.build_type}",
+            f"-DSKL_ABIX_DEVELOPMENT={'ON' if args.with_dev else 'OFF'}",
         ])
-        run(["cmake", "--build", str(build_dir)/str(args.build_type), "--parallel"])
+        run(["cmake", "--build", str(build_dir), "--parallel"])
 
         print("== Build complete ==")
 
@@ -77,7 +90,7 @@ def main() -> None:
     if result.returncode != 0:
         raise SystemExit(f"Variant build failed, exit code {result.returncode}")
 
-    if args.with_msvc:
+    if sys.platform == "win32" and args.with_msvc:
         msvc_script = CURRENT_DIR / "build_msvc_variants.ps1"
         if not msvc_script.exists():
             print(f"  [Warning] MSVC variant script not found: {msvc_script}")
@@ -95,14 +108,14 @@ def main() -> None:
         test_exe = build_dir / "bin" / get_executable_name("test_all")
         if not test_exe.exists():
             raise SystemExit(f"Test executable not found: {test_exe}")
-        run([str(test_exe)], cwd=build_dir / "bin")
+        run([str(test_exe)], cwd = build_dir / "bin")
 
     if should_bench:
         print("\n== Running benchmarks ==")
         bench_exe = build_dir / "bin" / get_executable_name("bench_all")
         if not bench_exe.exists():
             raise SystemExit(f"Benchmark executable not found: {bench_exe}")
-        run([str(bench_exe)], cwd=build_dir / "bin")
+        run([str(bench_exe)], cwd = build_dir / "bin")
 
 if __name__ == "__main__":
     main()

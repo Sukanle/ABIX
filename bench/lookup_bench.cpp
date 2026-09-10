@@ -16,14 +16,6 @@ static void setup_lookup_bench() {
     g_image = g_lib->image_acquire();
 }
 
-static void teardown_lookup_bench() {
-    if (g_lib) {
-        delete g_lib;
-        g_lib = nullptr;
-        g_table = nullptr;
-    }
-}
-
 // --- BM_FindIndex_Only (baseline) ---
 static void BM_FindIndex_Only(benchmark::State &state) {
     setup_lookup_bench();
@@ -58,9 +50,9 @@ static void BM_Resolve_WithEBR(benchmark::State &state) {
         dom.enter();
         skl::abix::dll_image *img = g_lib->image_acquire();
         const char *nm = hot_name(state.iterations() % 20);
-        skl::abix::index_t idx;
-        if (img && img->table) {
-            find_index(*img->table, img->index, nm, sg, 0, idx);
+        skl::abix::index_t idx = 0;
+        if (img && img->export_table) {
+            find_index(*img->export_table, img->index, nm, sg, 0, idx);
         }
         benchmark::DoNotOptimize(idx);
         dom.exit();

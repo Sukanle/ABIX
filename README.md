@@ -23,6 +23,9 @@ Key design goals:
 - **RCU Non-Blocking Unload** — Global `rcu_domain` (Epoch-Based Reclamation), `dll_object` delegates to a global domain via `enter_read()`/`exit_read()` with compiler-builtin atomics, allowing safe concurrent DLL unload without blocking active callers.
 - **Lookup acceleration** — Automatic lookup strategy: linear scan for small tables (< 64 entries), HashIndex for large tables (≥ 64 entries), with zero ABI format changes.
 
+> [!IMPORTANT]
+> ABIX's Hash Container, Micro-RCU, RCU batching, and other performance optimizations are **specialized for ABIX's own read-mostly workloads**. They are not general-purpose concurrent containers or a general-purpose RCU implementation.
+
 ## Features
 
 - **Stable Function Table** — `SKL_ABIX_DEFINE_TABLE(...)` macro generates a POD export table with `abi_get_table()` entry point
@@ -393,238 +396,21 @@ All tests have no external network dependencies. DLL files reside in `plugins/` 
 - Cross-compiler tests require running `tools/build_msvc_variants.py` first to generate MSVC variant DLLs, otherwise those tests are skipped.
 - If a test fails, the log clearly identifies the failure location (`REQUIRE` expression and line number); check `build/test.log` for diagnosis.
 
-## Performance Benchmarks (Google Benchmark)
+## Performance
 
-* Test environment:
-  - `CPU`: Intel Core i7-14700K@3.4 GHz
-  - `Memory`: 32GBx2 DDR5 6000MHz
-  - `OS`: Windows 11 25H2
-  - `HT`: Disabled
-* Full output: `bench_all.exe`.
+ABIX is optimized for read-mostly workloads with many concurrent readers and relatively few writers. The embedded Micro-RCU uses cache-line-aware state placement and batched epoch advancement to reduce shared cache-line contention.
 
-### 1. Atomic Baseline
+### Role-Based Workload (B8 vs B16 Epoch Batch)
 
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_Raw_Load_U32` | 0.095 ns | Plain load (baseline) |
-| `BM_StdAtomic_Load_U32` | 0.190 ns | `std::atomic` load (acquire) |
-| `BM_ABIX_Atomic_Load_U32` | 0.190 ns | ABIX wrapper load (acquire) |
-| `BM_Raw_Store_U32` | 0.096 ns | Plain store (baseline) |
-| `BM_StdAtomic_Store_U32` | 0.192 ns | `std::atomic` store (release) |
-| `BM_ABIX_Atomic_Store_U32` | 0.192 ns | ABIX wrapper store (release) |
-| `BM_Raw_Inc_U32` | 1.40 ns | Plain inc (baseline) |
-| `BM_StdAtomic_Inc_U32` | 3.44 ns | `std::atomic` fetch_add |
-| `BM_ABIX_Atomic_Inc_U32` | 3.42 ns | ABIX wrapper inc |
+Role-Based is the most important performance metric for ABIX — it models real-world usage with N reader threads and 1 writer thread. The table below compares `SKL_ABIX_RCU_EPOCH_BATCH = 8` (default) vs `16` on Intel Core i7-14700K (20 P-cores, SMT disabled):
 
-#### Memory Ordering Comparison (U32)
+| Workload    | Threads |            B8 |           B16 |
+| ----------- | ------: | ------------: | ------------: |
+| read-heavy  |     20T |      9.44 G/s | **11.67 G/s** |
+| balanced    |     20T |     11.66 G/s | **11.90 G/s** |
+| write-heavy |     20T | **13.94 G/s** |     13.53 G/s |
 
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_Atomic_Load_U32_Acquire` | 0.192 ns | acquire semantics |
-| `BM_Atomic_Load_U32_Relaxed` | 0.190 ns | relaxed semantics |
-| `BM_Atomic_Store_U32_Release` | 0.191 ns | release semantics |
-| `BM_Atomic_Store_U32_Relaxed` | 0.188 ns | relaxed semantics |
-
-#### RMW Operations (U32)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_Atomic_Inc_U32` | 3.41 ns | fetch_add |
-| `BM_Atomic_Dec_U32` | 3.41 ns | fetch_sub |
-| `BM_Atomic_CAS_U32` | 5.20 ns | compare_exchange |
-
-#### 64-bit & Pointers
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_Atomic_Load_U64_Acquire` | 0.189 ns | 64-bit load acquire |
-| `BM_Atomic_Store_U64_Release` | 0.192 ns | 64-bit store release |
-| `BM_Atomic_Inc_AcqRel_U64` | 3.41 ns | 64-bit fetch_add |
-| `BM_Atomic_Load_Pointer_Acquire` | 0.189 ns | pointer load acquire |
-| `BM_Atomic_Store_Pointer_Release` | 0.190 ns | pointer store release |
-
-> **Conclusion**: ABIX atomic load/store is fully aligned with `std::atomic` (0.190 ns), zero wrapper overhead. RMW (inc/dec/CAS) uses `Interlocked*` intrinsics, matching `std::atomic` performance. acquire/relaxed/release memory orders show negligible performance differences. CAS is ~50% slower than inc (5.20 vs 3.41 ns). 64-bit and pointer operations perform identically to 32-bit.
-
-### 2. Atomic Multi-Threaded Contention
-
-| Benchmark | Threads | ns/op |
-|-----------|---------|-------|
-| `BM_Atomic_Inc_Contention` | 1 | 3.41 ns |
-| `BM_Atomic_Inc_Contention` | 2 | 12.2 ns |
-| `BM_Atomic_Inc_Contention` | 4 | 24.8 ns |
-| `BM_Atomic_Inc_Contention` | 8 | 56.8 ns |
-| `BM_Atomic_Inc_Contention` | 16 | 118 ns |
-| `BM_Atomic_Load_Contention` | 1 | 0.192 ns |
-| `BM_Atomic_Load_Contention` | 2 | 0.191 ns |
-| `BM_Atomic_Load_Contention` | 4 | 0.190 ns |
-| `BM_Atomic_Load_Contention` | 8 | 0.207 ns |
-| `BM_Atomic_Load_Contention` | 16 | 0.277 ns |
-
-> **Conclusion**: RMW contention degrades linearly with thread count (~+7 ns per additional thread), limited by cache-line bouncing. Pure load is virtually unaffected by contention (0.19 → 0.28 ns @ 16 threads), as loads do not trigger cache invalidations.
-
-### 3. EBR Reader Fast Path (Single-Threaded)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_Atomic_LoadPointer_Raw` | 0.188 ns | Baseline raw pointer load |
-| `BM_EBR_EnterExit` | 0.575 ns | `enter()` + `exit()` (global `rcu_domain`) |
-| `BM_EBR_ProtectedLoad` | 0.553 ns | enter + load + exit |
-
-> **Conclusion**: EBR reader fast path is ~0.55 ns (roughly 3 atomic loads). `enter()` records the global epoch, `exit()` writes only the thread-local cache-line.
-
-### 4. Lookup Strategy (hotcache_dll: 20,000 entries)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_FindIndex_Only` | 220 ns | Index lookup only (baseline) |
-| `BM_Resolve_Linear` | 220 ns | Linear scan |
-| `BM_Resolve_HashIndex` | **14.0 ns** | HashIndex lookup |
-| `BM_Resolve_WithEBR` | 221 ns | Linear scan with EBR protection |
-| `BM_Resolve_Linear_Random` | 22.8 ns | Random access + linear |
-
-> **Conclusion**: HashIndex achieves ~**16×** speedup (220 ns → 14.0 ns) for large tables. Linear scan is kept for small tables (< 64 entries) where the overhead of HashIndex is not justified.
-
-### 5. Call Overhead
-
-#### Layer A: Optimized Real-World Cost (inline allowed)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_DirectCall` | 0.095 ns | Direct C++ call |
-| `BM_FunctionPointerCall` | 0.094 ns | Function pointer call |
-| `BM_StdFunctionCall` | 0.753 ns | `std::function` call (inlineable target) |
-| `BM_MediumFunction_Direct` | 0.095 ns | Medium function direct call |
-| `BM_MediumFunction_FnPtr` | 0.095 ns | Medium function pointer call |
-
-#### Layer B: Forced Dispatch Overhead (NOINLINE)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_DirectCall_NoInline` | 0.096 ns | Direct call to NOINLINE target |
-| `BM_FunctionPointerCall_NoInline` | 0.095 ns | Function pointer + NOINLINE target |
-| `BM_StdFunctionCall_NoInline` | 0.993 ns | `std::function` (global target, prevents devirtualization) |
-| `BM_MediumFunction_Direct_NoInline` | 0.095 ns | Medium function NOINLINE direct call |
-| `BM_MediumFunction_FnPtr_NoInline` | 0.096 ns | Medium function NOINLINE fn ptr |
-
-#### ABIX Calls (inherently cross-DLL boundary, NOINLINE)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_ABIX_Call` | 6.66 ns | Full ABIX call (RCU + lookup) |
-| `BM_ABIX_TinyFunction` | 6.62 ns | Tiny function (1 instruction) |
-| `BM_ABIX_SmallFunction` | 7.77 ns | Small function (10 instructions) |
-| `BM_ABIX_Call_Raw` | 1.14 ns | Lock-free raw call (no RCU) |
-
-> **Conclusion**: Full ABIX call is ~6.66 ns, raw call is only 1.14 ns — the ~5.5 ns gap comes from RCU enter/exit + handle resolution. `std::function` with devirtualization prevented is 0.99 ns, nearly identical to a function pointer (0.095 ns), indicating `std::function`'s type-erased wrapper overhead is ~0.9 ns.
->
-> **ABIX's call overhead primarily comes from handle resolution and EBR lifetime protection required for hot-reload safety, not from the DLL function call itself. This overhead is largely independent of the specific function instance and depends mainly on whether the call goes through ABIX's hot-reloadable handle.**
-
-### 6. EBR Writer (Synchronize & Reclaim)
-
-| Benchmark | Time | Description |
-|-----------|------|-------------|
-| `BM_EBR_SyncPhase` | 8.74 ns | `synchronize()` epoch advance (no readers) |
-| `BM_EBR_TryCollect_Empty` | 5.33 ns | Empty `try_collect()` attempt |
-| `BM_EBR_GracePhase` | 5.2 μs | retire + synchronize (small objects) |
-
-### 7. EBR Reader Scalability (Multi-Threaded `enter()`/`exit()`)
-
-| Threads | ns/op | Scalability |
-|---------|-------|-------------|
-| 1 | 0.478 ns | Baseline |
-| 2 | 0.475 ns | Perfect |
-| 4 | 0.497 ns | Perfect |
-| 8 | 0.510 ns | Perfect |
-| 16 | 0.919 ns | Slight degradation |
-| 20 | 0.858 ns | Core saturation |
-| 32 | 1.22 ns | Oversubscription |
-
-> **Conclusion**: 1→8 threads scale almost perfectly. `enter()`/`exit()` only write thread-local cache-lines, zero contention. 16+ threads begin to see `_global_epoch` cache-line contention.
-
-### 8. EBR Writer Scalability (`synchronize()` latency vs readers)
-
-| R/W | 0 Readers | 1 Reader | 4 Readers | 8 Readers | 16 Readers |
-|-----|-----------|----------|-----------|-----------|------------|
-| 1 Writer | 695 ns | 863 ns | 1.1 μs | 1.8 μs | 3.5 μs |
-| 2 Writers | 880 ns | — | 1.3 μs | 2.2 μs | 5.7 μs |
-| 4 Writers | 1.2 μs | — | 1.5 μs | 2.3 μs | 3.8 μs |
-
-> **Conclusion**: `synchronize()` latency grows linearly with reader count (waiting for all readers to exit the previous epoch). Multi-writer `_writer_lock` contention begins to appear at 4W.
-
-### 9. EBR Read/Write Ratio (Latency Distribution)
-
-| R/W | reader_avg | reader_p50 | reader_p99 | writer_avg | writer_p99 |
-|-----|-----------|-----------|-----------|-----------|------------|
-| 1/1 | 28 ns | 1 ns | 64 ns | 2.0 μs | 4.1 μs |
-| 4/1 | 28 ns | 1 ns | 64 ns | 2.4 μs | 4.1 μs |
-| 8/1 | 31 ns | 1 ns | 64 ns | 3.5 μs | 4.1 μs |
-| 16/1 | 39 ns | 1 ns | 128 ns | 8.9 μs | 8.2 μs |
-| 32/1 | 70 ns | 1 ns | 64 ns | 30.0 μs | 8.2 μs |
-| 4/2 | 101 ns | 64 ns | 256 ns | 8.6 μs | 16.4 μs |
-| 8/2 | 113 ns | 64 ns | 256 ns | 12.6 μs | 32.8 μs |
-| 16/2 | 127 ns | 64 ns | 256 ns | 26.7 μs | 65.5 μs |
-| 4/4 | 191 ns | 128 ns | 256 ns | 25.9 μs | 65.5 μs |
-| 8/4 | 208 ns | 128 ns | 512 ns | 33.8 μs | 131.1 μs |
-| 16/4 | 218 ns | 128 ns | 512 ns | 264.5 μs | 8.4 ms |
-
-> **Conclusion**: Reader p50-p99 remain extremely low (1-128 ns), even at 32R/1W. Writer p99 reaches 8.4 ms at 16R/4W, exposing writer starvation—multi-writer contention + multi-reader blocking significantly degrades tail latency.
-
-### 10. EBR Read/Write Ops (Throughput)
-
-| R/W | reader_ops | writer_ops |
-|-----|-----------|------------|
-| 1/1 | 109.2M | 87.3k |
-| 4/1 | 30.2M | 88.3k |
-| 8/1 | 21.0M | 58.3k |
-| 16/1 | 33.1M | 57.3k |
-| 32/1 | 61.2M | 90.2k |
-| 4/2 | 17.5M | 92.7k |
-| 8/2 | 18.7M | 78.1k |
-| 16/2 | 21.2M | 38.8k |
-| 4/4 | 13.0M | 68.5k |
-| 8/4 | 10.0M | 42.6k |
-| 16/4 | 37.2M | 82.0k |
-
-> **Conclusion**: Reader throughput ranges from 10M-109M ops/s, limited by thread scheduling. Writer throughput is stable at 38k-92k ops/s regardless of R/W ratio—synchronize overhead dominates.
-
-### 11. EBR Grace Period (Long Reader Test)
-
-| Reader Duration | `synchronize()` Latency | Notes |
-|----------------|-----------------|------|
-| 10 ns | 5.2 μs | Fixed overhead |
-| 100 ns | 5.2 μs | Fixed overhead |
-| 1 μs | 6.0 μs | Starts tracking |
-| 10 μs | **10.3 μs** | Tracks exactly |
-| 100 μs | **100.4 μs** | Tracks exactly |
-| 1 ms | **1000.4 μs** | Tracks exactly |
-
-> **Conclusion**: Above 10 μs, `synchronize()` latency = reader duration. Confirms the grace period is correctly gated by the slowest reader. Short readers (< 1 μs) are dominated by fixed overhead.
-
-### 12. EBR Retire Batch
-
-| Batch | Total | ns/object |
-|-------|-------|-----------|
-| 1 | 5.1 μs | 5100 |
-| 10 | 5.5 μs | 510 |
-| 100 | 8.3 μs | 63 |
-| 1000 | 35.1 μs | 16.3 |
-| 10000 | 298.8 μs | **10.9** |
-
-> **Conclusion**: Batch reclaim dramatically reduces per-object cost (5100 → 10.9 ns/object). The `BATCH_PUBLISH_SIZE = 64` local accumulation strategy operates in the optimal range.
-
-### 13. EBR Mixed Workload (Protected Load + Intermittent `synchronize()`)
-
-| R/W | reader_avg | reader_p99 | writer_avg | writer_p99 |
-|-----|-----------|-----------|-----------|------------|
-| 1/100 | 25 ns | 64 ns | 5.1 μs | 4.1 μs |
-| 4/100 | 25 ns | 64 ns | 5.6 μs | 8.2 μs |
-| 8/100 | 26 ns | 64 ns | 7.2 μs | 8.2 μs |
-| 16/100 | 35 ns | 64 ns | 12.0 μs | 8.2 μs |
-| 4/10 | 24 ns | 64 ns | 5.9 μs | 4.1 μs |
-| 8/10 | 26 ns | 64 ns | 7.4 μs | 8.2 μs |
-| 16/10 | 36 ns | 64 ns | 12.3 μs | 16.4 μs |
-
-> **Conclusion**: Simulates real-world ABIX scenarios (heavy readers + intermittent writers). Reader p99 remains stable at 64 ns; occasional writer synchronize does not affect reader tail latency. `writer_interval=100` represents a 99.9% reader / 0.1% writer ratio.
+Batching reduces high-concurrency overhead in ABIX's target read-mostly workloads. See [Benchmark & Performance](docs/benchmark.md) for complete methodology, hardware configurations, optimization analysis, and full results.
 
 ## Industry Comparison
 

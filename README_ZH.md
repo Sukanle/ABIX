@@ -23,6 +23,9 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **RCU 非阻塞卸载** — 全局 `rcu_domain`（基于 Epoch-Based Reclamation），`dll_object` 通过 `enter_read()`/`exit_read()` 委托至全局域，配合编译器内建原子操作，实现安全的并发 DLL 卸载，不阻塞活跃的调用者。
 - **查找加速** — 自动查找策略：小表（< 64 条目）线性扫描，大表（≥ 64 条目）HashIndex，零 ABI 格式变更。
 
+> [!IMPORTANT]
+> ABIX 的 Hash Container、Micro-RCU、RCU batching 等性能优化均**针对 ABIX 自身的 read-mostly 场景特化**，并非通用并发容器或通用 RCU 实现。
+
 ## 特性
 
 - **稳定函数表** — `SKL_ABIX_DEFINE_TABLE(...)` 宏生成一个 POD 导出表，入口点为 `abi_get_table()`
@@ -400,238 +403,21 @@ All tests passed (31 assertions in 31 test cases)
 - 跨编译器测试需提前运行 `tools/build_msvc_variants.py` 生成 MSVC 变体 DLL，否则相关测试跳过。
 - 若某测试失败，日志会明确指出失败位置（`REQUIRE` 表达式及行号），可结合 `build/test.log` 定位问题。
 
-## 性能基准 (Google Benchmark)
+## 性能
 
-* 测试环境：
-  - `CPU`: Intel Core i7-14700K@3.4 GHz<br>
-  - `内存`: 32GBx2 DDR5 6000MHz<br>
-  - `操作系统`: Windows 11 25H2<br>
-  - `超线程`: 关闭<br>
-* 完整输出见 `bench_all.exe`。
+ABIX 针对多读少写（read-mostly）场景优化，支持大量并发读者和相对较少的写者。内嵌的 Micro-RCU 通过 cache-line 感知的状态布局和批量 epoch 推进来降低共享 cache-line 竞争。
 
-### 1. Atomic 操作基线
+### Role-Based 工作负载（B8 vs B16 Epoch Batch）
 
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_Raw_Load_U32` | 0.095 ns | 普通 load（基线） |
-| `BM_StdAtomic_Load_U32` | 0.190 ns | `std::atomic` load (acquire) |
-| `BM_ABIX_Atomic_Load_U32` | 0.190 ns | ABIX wrapper load (acquire) |
-| `BM_Raw_Store_U32` | 0.096 ns | 普通 store（基线） |
-| `BM_StdAtomic_Store_U32` | 0.192 ns | `std::atomic` store (release) |
-| `BM_ABIX_Atomic_Store_U32` | 0.192 ns | ABIX wrapper store (release) |
-| `BM_Raw_Inc_U32` | 1.40 ns | 普通 inc（基线） |
-| `BM_StdAtomic_Inc_U32` | 3.44 ns | `std::atomic` fetch_add |
-| `BM_ABIX_Atomic_Inc_U32` | 3.42 ns | ABIX wrapper inc |
+Role-Based 是 ABIX 最重要的性能指标——它模拟真实场景：N 个 reader 线程 + 1 个 writer 线程。下表对比了 `SKL_ABIX_RCU_EPOCH_BATCH = 8`（默认）与 `16` 在 Intel Core i7-14700K（20 P-cores，SMT 关闭）上的表现：
 
-#### 内存序对比（U32）
+| Workload    | Threads |            B8 |           B16 |
+| ----------- | ------: | ------------: | ------------: |
+| read-heavy  |     20T |      9.44 G/s | **11.67 G/s** |
+| balanced    |     20T |     11.66 G/s | **11.90 G/s** |
+| write-heavy |     20T | **13.94 G/s** |     13.53 G/s |
 
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_Atomic_Load_U32_Acquire` | 0.192 ns | acquire 语义 |
-| `BM_Atomic_Load_U32_Relaxed` | 0.190 ns | relaxed 语义 |
-| `BM_Atomic_Store_U32_Release` | 0.191 ns | release 语义 |
-| `BM_Atomic_Store_U32_Relaxed` | 0.188 ns | relaxed 语义 |
-
-#### RMW 操作（U32）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_Atomic_Inc_U32` | 3.41 ns | fetch_add |
-| `BM_Atomic_Dec_U32` | 3.41 ns | fetch_sub |
-| `BM_Atomic_CAS_U32` | 5.20 ns | compare_exchange |
-
-#### 64 位与指针
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_Atomic_Load_U64_Acquire` | 0.189 ns | 64-bit load acquire |
-| `BM_Atomic_Store_U64_Release` | 0.192 ns | 64-bit store release |
-| `BM_Atomic_Inc_AcqRel_U64` | 3.41 ns | 64-bit fetch_add |
-| `BM_Atomic_Load_Pointer_Acquire` | 0.189 ns | 指针 load acquire |
-| `BM_Atomic_Store_Pointer_Release` | 0.190 ns | 指针 store release |
-
-> **结论**：ABIX atomic load/store 与 `std::atomic` 完全对齐（0.190 ns），wrapper 零开销。RMW (inc/dec/CAS) 使用 `Interlocked*` 内建函数，与 `std::atomic` 性能一致。acquire/relaxed/release 内存序之间几乎无性能差异。CAS 比 inc 慢约 50%（5.20 vs 3.41 ns），64 位与 32 位性能一致。
-
-### 2. Atomic 多线程竞争
-
-| Benchmark | 线程数 | ns/op |
-|-----------|--------|-------|
-| `BM_Atomic_Inc_Contention` | 1 | 3.41 ns |
-| `BM_Atomic_Inc_Contention` | 2 | 12.2 ns |
-| `BM_Atomic_Inc_Contention` | 4 | 24.8 ns |
-| `BM_Atomic_Inc_Contention` | 8 | 56.8 ns |
-| `BM_Atomic_Inc_Contention` | 16 | 118 ns |
-| `BM_Atomic_Load_Contention` | 1 | 0.192 ns |
-| `BM_Atomic_Load_Contention` | 2 | 0.191 ns |
-| `BM_Atomic_Load_Contention` | 4 | 0.190 ns |
-| `BM_Atomic_Load_Contention` | 8 | 0.207 ns |
-| `BM_Atomic_Load_Contention` | 16 | 0.277 ns |
-
-> **结论**：RMW 竞争随线程数线性恶化（每增加一个线程约 +7 ns），受限于 cache-line bouncing。纯 load 几乎不受竞争影响（0.19 → 0.28 ns @ 16 线程），因为 load 不触发 cache 失效。
-
-### 3. EBR Reader Fast Path（单线程）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_Atomic_LoadPointer_Raw` | 0.188 ns | 裸指针 load（基线） |
-| `BM_EBR_EnterExit` | 0.575 ns | `enter()` + `exit()`（全局 `rcu_domain`） |
-| `BM_EBR_ProtectedLoad` | 0.553 ns | `enter()` + load + `exit()` |
-
-> **结论**：EBR reader fast path 约 0.55 ns（约 3 个原子 load 的开销）。`enter()` 记录全局 epoch，`exit()` 仅写线程本地 cache-line。
-
-### 4. 查找策略（hotcache_dll：20000 条目）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_FindIndex_Only` | 220 ns | 纯索引查找（基线） |
-| `BM_Resolve_Linear` | 220 ns | 线性扫描 |
-| `BM_Resolve_HashIndex` | **14.0 ns** | HashIndex 查找 |
-| `BM_Resolve_WithEBR` | 221 ns | 带 EBR 保护的线性扫描 |
-| `BM_Resolve_Linear_Random` | 22.8 ns | 随机访问 + 线性 |
-
-> **结论**：HashIndex 对大表实现约 **16×** 加速（220 ns → 14.0 ns）。小表（< 64 条目）保留线性扫描，HashIndex 的开销不值得。
-
-### 5. 调用开销
-
-#### Layer A：优化后的实际业务成本（允许 inline）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_DirectCall` | 0.095 ns | 直接 C++ 调用 |
-| `BM_FunctionPointerCall` | 0.094 ns | 函数指针调用 |
-| `BM_StdFunctionCall` | 0.753 ns | `std::function` 调用（可 inline target） |
-| `BM_MediumFunction_Direct` | 0.095 ns | 中等函数直接调用 |
-| `BM_MediumFunction_FnPtr` | 0.095 ns | 中等函数指针调用 |
-
-#### Layer B：强制调用边界 dispatch overhead（NOINLINE）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_DirectCall_NoInline` | 0.096 ns | 直接调用 NOINLINE target |
-| `BM_FunctionPointerCall_NoInline` | 0.095 ns | 函数指针 + NOINLINE target |
-| `BM_StdFunctionCall_NoInline` | 0.993 ns | `std::function`（全局 target，阻止去虚化） |
-| `BM_MediumFunction_Direct_NoInline` | 0.095 ns | 中等函数 NOINLINE 直接调用 |
-| `BM_MediumFunction_FnPtr_NoInline` | 0.096 ns | 中等函数 NOINLINE 函数指针 |
-
-#### ABIX 调用（天然跨 DLL 边界，NOINLINE）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_ABIX_Call` | 6.66 ns | ABIX 完整调用（含 RCU + 查找） |
-| `BM_ABIX_TinyFunction` | 6.62 ns | 极小函数（1 条指令） |
-| `BM_ABIX_SmallFunction` | 7.77 ns | 小函数（10 条指令） |
-| `BM_ABIX_Call_Raw` | 1.14 ns | 无锁 raw call（无 RCU 保护） |
-
-> **结论**：ABIX 完整调用约 6.66 ns，raw call 仅 1.14 ns，差值约 5.5 ns 来自 RCU enter/exit + 句柄解析。`std::function` 在阻止去虚化后为 0.99 ns，与函数指针几乎一致（0.095 ns），说明 `std::function` 的 type-erased wrapper 开销约 0.9 ns。
->
-> **ABIX 的调用额外开销主要来自热更新安全所需的句柄解析与 EBR 生命周期保护，而非 DLL 函数调用本身。该开销与具体函数实例基本无关，而主要取决于调用是否经过 ABIX 的可热更新句柄。**
-
-### 6. EBR Writer（同步与回收）
-
-| Benchmark | Time | 说明 |
-|-----------|------|------|
-| `BM_EBR_SyncPhase` | 8.74 ns | `synchronize()` epoch 推进（无读者） |
-| `BM_EBR_TryCollect_Empty` | 5.33 ns | 空 `try_collect()` 尝试 |
-| `BM_EBR_GracePhase` | 5.2 μs | retire + synchronize（小型对象） |
-
-### 7. EBR Reader Scalability（多线程 `enter()`/`exit()`）
-
-| 线程数 | ns/op | 扩展效率 |
-|--------|-------|----------|
-| 1 | 0.478 ns | 基线 |
-| 2 | 0.475 ns | 完美 |
-| 4 | 0.497 ns | 完美 |
-| 8 | 0.510 ns | 完美 |
-| 16 | 0.919 ns | 轻微退化 |
-| 20 | 0.858 ns | 核心饱和 |
-| 32 | 1.22 ns | 超订阅 |
-
-> **结论**：1→8 线程几乎完美扩展。`enter()`/`exit()` 仅写线程本地 cache-line，零竞争。16 线程以上开始出现 `_global_epoch` 的 cache-line 竞争。
-
-### 8. EBR Writer Scalability（`synchronize()` 延迟 vs 读者数）
-
-| R/W | 0 Readers | 1 Reader | 4 Readers | 8 Readers | 16 Readers |
-|-----|-----------|----------|-----------|-----------|------------|
-| 1 Writer | 695 ns | 863 ns | 1.1 μs | 1.8 μs | 3.5 μs |
-| 2 Writers | 880 ns | — | 1.3 μs | 2.2 μs | 5.7 μs |
-| 4 Writers | 1.2 μs | — | 1.5 μs | 2.3 μs | 3.8 μs |
-
-> **结论**：`synchronize()` 延迟随读者数线性增长（等待所有读者退出上一 epoch）。多 writer 的 `_writer_lock` 竞争在 4W 时开始显现。
-
-### 9. EBR Read/Write Ratio（延迟分布）
-
-| R/W | reader_avg | reader_p50 | reader_p99 | writer_avg | writer_p99 |
-|-----|-----------|-----------|-----------|-----------|------------|
-| 1/1 | 28 ns | 1 ns | 64 ns | 2.0 μs | 4.1 μs |
-| 4/1 | 28 ns | 1 ns | 64 ns | 2.4 μs | 4.1 μs |
-| 8/1 | 31 ns | 1 ns | 64 ns | 3.5 μs | 4.1 μs |
-| 16/1 | 39 ns | 1 ns | 128 ns | 8.9 μs | 8.2 μs |
-| 32/1 | 70 ns | 1 ns | 64 ns | 30.0 μs | 8.2 μs |
-| 4/2 | 101 ns | 64 ns | 256 ns | 8.6 μs | 16.4 μs |
-| 8/2 | 113 ns | 64 ns | 256 ns | 12.6 μs | 32.8 μs |
-| 16/2 | 127 ns | 64 ns | 256 ns | 26.7 μs | 65.5 μs |
-| 4/4 | 191 ns | 128 ns | 256 ns | 25.9 μs | 65.5 μs |
-| 8/4 | 208 ns | 128 ns | 512 ns | 33.8 μs | 131.1 μs |
-| 16/4 | 218 ns | 128 ns | 512 ns | 264.5 μs | 8.4 ms |
-
-> **结论**：读者 p50-p99 保持极低（1-128 ns），即使在 32R/1W 下。写者 p99 在 16R/4W 时达 8.4 ms，暴露 writer starvation——多 writer 竞争 + 多 reader 阻塞时尾延迟显著恶化。
-
-### 10. EBR Read/Write Ops（吞吐量）
-
-| R/W | reader_ops | writer_ops |
-|-----|-----------|------------|
-| 1/1 | 109.2M | 87.3k |
-| 4/1 | 30.2M | 88.3k |
-| 8/1 | 21.0M | 58.3k |
-| 16/1 | 33.1M | 57.3k |
-| 32/1 | 61.2M | 90.2k |
-| 4/2 | 17.5M | 92.7k |
-| 8/2 | 18.7M | 78.1k |
-| 16/2 | 21.2M | 38.8k |
-| 4/4 | 13.0M | 68.5k |
-| 8/4 | 10.0M | 42.6k |
-| 16/4 | 37.2M | 82.0k |
-
-> **结论**：读者吞吐量在 10M-109M ops/s 之间，受限于线程调度。写者吞吐量则稳定在 38k-92k ops/s，与 R/W 比无关——synchronize 本身开销主导。
-
-### 11. EBR Grace Period（长读者测试）
-
-| Reader Duration | `synchronize()` 延迟 | 说明 |
-|----------------|-----------------|------|
-| 10 ns | 5.2 μs | 固定开销 |
-| 100 ns | 5.2 μs | 固定开销 |
-| 1 μs | 6.0 μs | 略微跟踪 |
-| 10 μs | **10.3 μs** | 精确跟踪 |
-| 100 μs | **100.4 μs** | 精确跟踪 |
-| 1 ms | **1000.4 μs** | 精确跟踪 |
-
-> **结论**：10 μs 以上，`synchronize()` 延迟 = reader 持续时间。验证 grace period 正确地由最慢读者决定。短读者（< 1 μs）受固定开销主导。
-
-### 12. EBR Retire Batch（批量回收）
-
-| Batch | Total | ns/object |
-|-------|-------|-----------|
-| 1 | 5.1 μs | 5100 |
-| 10 | 5.5 μs | 510 |
-| 100 | 8.3 μs | 63 |
-| 1000 | 35.1 μs | 16.3 |
-| 10000 | 298.8 μs | **10.9** |
-
-> **结论**：批量回收显著降低单对象成本（5100 → 10.9 ns/object）。`BATCH_PUBLISH_SIZE = 64` 的本地累积策略在最佳区间内。
-
-### 13. EBR Mixed Workload（`enter()`/`exit()` + 间歇 `synchronize()`）
-
-| R/W | reader_avg | reader_p99 | writer_avg | writer_p99 |
-|-----|-----------|-----------|-----------|------------|
-| 1/100 | 25 ns | 64 ns | 5.1 μs | 4.1 μs |
-| 4/100 | 25 ns | 64 ns | 5.6 μs | 8.2 μs |
-| 8/100 | 26 ns | 64 ns | 7.2 μs | 8.2 μs |
-| 16/100 | 35 ns | 64 ns | 12.0 μs | 8.2 μs |
-| 4/10 | 24 ns | 64 ns | 5.9 μs | 4.1 μs |
-| 8/10 | 26 ns | 64 ns | 7.4 μs | 8.2 μs |
-| 16/10 | 36 ns | 64 ns | 12.3 μs | 16.4 μs |
-
-> **结论**：模拟真实 ABIX 场景（大量 reader + 间歇 writer）。reader p99 始终稳定在 64 ns，写者偶尔 synchronize 不影响读者尾延迟。writer_interval=100 表示 99.9% reader / 0.1% writer 比例。
+Batching 在 ABIX 的目标 read-mostly 工作负载下能够显著降低高并发开销。完整的方法论、硬件配置、优化分析和全部结果请参见 [Benchmark & Performance](docs/benchmark_ZH.md)。
 
 ## 行业方案对比
 

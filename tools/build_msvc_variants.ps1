@@ -1,6 +1,6 @@
 ﻿param(
-    [string]$VsInstanceId   = "8c4dc5e9",
-    [string]$VsPath         = "E:\Microsoft Visual Studio\2022\Community"
+    [string]$VsInstanceId   = "fdfdfdfd",
+    [string]$VsPath         = "C:\Microsoft Visual Studio\2022\Community"
 )
 $ErrorActionPreference = "Stop"
 

@@ -9,6 +9,39 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_TESTING "Build tests" ON)
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
 option(SKL_ABIX_DEVELOPMENT "Enable development-only benchmarks (internal diagnostics)" OFF)
+option(SKL_ABIX_BUILD_DLL_VARIANTS "Build different DLL variants for different toolchains to simulate cross-compiler behavior" ON)
+
+if(DEFINED SKL_ABIX_RCU_EPOCH_BATCH)
+    # 变量被定义，将其值传递给宏定义
+    add_definitions(-DSKL_ABIX_RCU_EPOCH_BATCH=${SKL_ABIX_RCU_EPOCH_BATCH})
+    message(STATUS "Use user defined RCU epoch batch size: ${SKL_ABIX_RCU_EPOCH_BATCH}")
+else()
+    remove_definitions(-DSKL_ABIX_RCU_EPOCH_BATCH)
+    message(STATUS "Use default RCU epoch batch size")
+endif()
+
+if(DEFINED SKL_ABIX_RCU_BATCH_PUBLISH)
+    # 变量被定义，将其值传递给宏定义
+    add_definitions(-DSKL_ABIX_RCU_BATCH_PUBLISH=${SKL_ABIX_RCU_BATCH_PUBLISH})
+    message(STATUS "Use user defined RCU batch publish size: ${SKL_ABIX_RCU_BATCH_PUBLISH}")
+else()
+    remove_definitions(-DSKL_ABIX_RCU_BATCH_PUBLISH)
+    message(STATUS "Use default RCU batch publish size")
+endif()
+
+if(DEFINED SKL_ABIX_RCU_CACHE_LINE_SIZE)
+    # 变量被定义，将其值传递给宏定义
+    add_definitions(-DSKL_ABIX_RCU_CACHE_LINE_SIZE=${SKL_ABIX_RCU_CACHE_LINE_SIZE})
+    message(STATUS "Use user defined RCU cache line size: ${SKL_ABIX_RCU_CACHE_LINE_SIZE}")
+else()
+    remove_definitions(-DSKL_ABIX_RCU_CACHE_LINE_SIZE)
+    message(STATUS "Use default RCU cache line size")
+endif()
+
+
+if(SKL_ABIX_DEVELOPMENT)
+  add_definitions(-DSKL_ABIX_DEVELOPMENT)
+endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CMAKE_BUILD_TYPE Release)
@@ -18,27 +51,20 @@ else()
   if(NOT WIN32)
       set(SANITIZER "none" CACHE STRING
           "Choose sanitizer to enable (Debug build, not supported on Windows): asan, tsan or none")
-
-      set_property(CACHE SANITIZER PROPERTY STRINGS
-          "none" "asan" "tsan")
-
+      set_property(CACHE SANITIZER PROPERTY STRINGS "none" "asan" "tsan")
       if(SANITIZER STREQUAL "asan")
           add_compile_options(-fsanitize=address,undefined)
           add_link_options( -fsanitize=address,undefined)
       elseif(SANITIZER STREQUAL "tsan")
           add_compile_options(-fsanitize=thread,undefined)
           add_link_options( -fsanitize=thread,undefined)
-
       elseif(SANITIZER STREQUAL "none")
           add_compile_options(-fno-sanitize=address,thread)
-
       else()
           message(FATAL_ERROR "Unknown sanitizer: ${SANITIZER}")
       endif()
   endif()
 endif()
-
-option(SKL_ABIX_BUILD_DLL_VARIANTS "Build different DLL variants for different toolchains to simulate cross-compiler behavior" ON)
 
 set(SKL_ABIX_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(SKL_ABIX_INC_DIR ${SKL_ABIX_SRC_DIR})
@@ -46,11 +72,11 @@ set(SKL_ABIX_INC_DIR ${SKL_ABIX_SRC_DIR})
 if(MSVC)
   add_compile_options(/utf-8)
   add_compile_options(/permissive-)
-  add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+  add_definitions(-DCRT_SECURE_NO_WARNINGS -DCRT_NONSTDC_NO_WARNINGS)
   add_compile_options(/W4)
 else()
   add_compile_options(-Wall -Wextra)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  if(WIN32)
     add_compile_options(-fno-keep-inline-dllexport)
   endif()
 endif()
@@ -83,13 +109,13 @@ function(abi_add_dll name)
   if(NOT WIN32)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       target_link_options(${name} PRIVATE -Wl,--no-undefined)
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND 
+    (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
       add_custom_command(TARGET ${name} POST_BUILD
         COMMAND dsymutil $<TARGET_FILE:${name}> -o ${CMAKE_BINARY_DIR}/bin/${name}.dSYM
         COMMENT "Generate dSYM file for ${name} on macOS")
     endif()
-  endif()
-  if(WIN32)
+  else()
     add_custom_command(TARGET ${name} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:${name}> ${CMAKE_BINARY_DIR}/bin/${name}
@@ -101,6 +127,9 @@ abi_add_dll(math_dll)
 abi_add_dll(version_dll)
 abi_add_dll(sigcheck_dll)
 abi_add_dll(resource_dll)
+if(WIN32)
+  target_link_libraries(resource_dll PRIVATE ws2_32)
+endif()
 abi_add_dll(callback_dll)
 abi_add_dll(reload_dll_a)
 abi_add_dll(reload_dll_b)

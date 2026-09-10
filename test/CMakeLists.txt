@@ -7,7 +7,8 @@ function(abi_add_test name)
   target_link_libraries(${name} PRIVATE Catch2::Catch2WithMain)
   set_target_properties(${name} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND 
+    (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
     add_custom_command(TARGET ${name} POST_BUILD
       COMMAND dsymutil $<TARGET_FILE:${name}> -o ${CMAKE_BINARY_DIR}/bin/${name}.dSYM
       COMMENT "Generate dSYM file for ${name} on macOS")

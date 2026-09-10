@@ -1,26 +1,10 @@
-// ============================================================
-// Workload profile framework implementation
-// ============================================================
-
 #include "workload.hpp"
 
 #include <benchmark/benchmark.h>
 
-#include <algorithm>
-#include <cassert>
-#include <cstring>
+#include <assert.h>
 #include <vector>
 
-namespace skl::bench {
-
-// ============================================================
-// generate_schedule — deterministic operation sequence
-//
-// Distributes operations as evenly as possible:
-//   stride = 100 / percent
-// places one operation of the given type at each stride position.
-// This avoids clustering (e.g., all 90 reads then 10 retires).
-// ============================================================
 WorkloadSchedule WorkloadProfile::generate_schedule() const {
     // Round up to the nearest multiple of 10 to avoid truncation
     uint32_t total = reader_percent + retire_percent + sync_percent;
@@ -28,7 +12,8 @@ WorkloadSchedule WorkloadProfile::generate_schedule() const {
     assert(total == 100 && "percentages must sum to 100");
 
     uint32_t n = operations_per_iteration;
-    auto *ops = new Operation[n]();
+    // auto *ops = new Operation[n]();
+    std::vector<Operation> ops(n);
 
     // Place Sync operations first (rarest)
     if (sync_percent > 0) {
@@ -54,9 +39,7 @@ WorkloadSchedule WorkloadProfile::generate_schedule() const {
     // For the owned view, we need the data to live long enough.
     // We store the schedule in a static vector to avoid lifetime issues.
     // This is safe because schedules are generated once at startup.
-    static std::vector<Operation> storage;
-    storage.assign(ops, ops + n);
-    delete[] ops;
+    static std::vector<Operation> storage = std::move(ops);
 
     return WorkloadSchedule{
         .name = name,
@@ -64,5 +47,3 @@ WorkloadSchedule WorkloadProfile::generate_schedule() const {
         .size = storage.size(),
     };
 }
-
-} // namespace skl::bench

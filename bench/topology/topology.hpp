@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-namespace skl::bench {
-
 struct CpuTopology {
     uint32_t logical_cpus = 1;       // threads / HWCs
     uint32_t physical_cpus = 1;      // physical cores
@@ -20,5 +18,3 @@ struct CpuTopology {
 CpuTopology detect_cpu_topology();
 
 std::vector<uint32_t> default_thread_counts(const CpuTopology &topo);
-
-} // namespace skl::bench

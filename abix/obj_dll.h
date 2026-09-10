@@ -57,7 +57,7 @@ class dll_object;
 
 struct dll_image {
     module_handle module;
-    const table *table;
+    const table *export_table;
     hash_index index;
 };
 
@@ -235,7 +235,7 @@ public:
     }
     const table *get_table() const noexcept {
         dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
-        return img ? img->table : nullptr;
+        return img ? img->export_table : nullptr;
     }
     module_handle module() const noexcept {
         dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
@@ -260,7 +260,7 @@ public:
             last_error() = call_error::unloading;
             return nullptr;
         }
-        return img->table;
+        return img->export_table;
     }
 
     void exit_read() noexcept { rcu_domain::instance().exit(); }

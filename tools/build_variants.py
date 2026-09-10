@@ -66,8 +66,8 @@ def build_one(compiler: str, tag: str, build_type: str) -> None:
     if result.returncode != 0:
         raise SystemExit(f"[{tag}] Compilation failed")
     print(f"    Generated: {out}")
-    
-    if sys.platform == "darwin":
+
+    if sys.platform == "darwin" and (build_type == "Debug" or build_type == "RelWithDebInfo"):
         subprocess.run(["dsymutil", str(out), "-o", str(dSYM)])
         print(f"    Generated .dSYM: {dSYM}")
 

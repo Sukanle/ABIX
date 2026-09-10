@@ -1,18 +1,3 @@
-// ============================================================
-// Workload runner — EBR benchmark registration
-//
-// Registers all EBR benchmark groups using the topology-aware
-// thread count scaling and workload profiles.
-//
-// Benchmark categories:
-//
-//   [Micro]       Reader fast path       (ns-level)
-//   [Mechanism]   Retire / Sync / Grace  (component cost)
-//   [Contention]  RetireAndSync          (concurrent update)
-//   [Workload]    ReadHeavy/Balanced/WriteHeavy (throughput)
-//
-// ============================================================
-
 #include "workload_runner.hpp"
 #include "workload.hpp"
 
@@ -20,13 +5,6 @@
 #include <benchmark/benchmark.h>
 #include <string>
 #include <vector>
-
-namespace skl::bench {
-namespace {
-
-// -----------------------------------------------------------------
-// Helpers: register benchmarks with thread counts
-// -----------------------------------------------------------------
 
 static void register_simple(
     const std::string &name, const std::vector<uint32_t> &thread_counts, void (*bench_fn)(benchmark::State &)) {
@@ -37,6 +15,7 @@ static void register_simple(
     }
 }
 
+#ifdef SKL_ABIX_DEVELOPMENT
 static void register_range(const std::string &name, const std::vector<int64_t> &args,
     const std::vector<uint32_t> &thread_counts, void (*bench_fn)(benchmark::State &)) {
     for (auto tc : thread_counts) {
@@ -74,10 +53,7 @@ static void register_range_select(const std::string &name, const std::vector<int
         }
     }
 }
-
-// ============================================================
-// [Micro] — Reader fast path (ns-level)
-// ============================================================
+#endif
 
 static void BM_EBR_EnterExit(benchmark::State &state) {
     auto &domain = skl::abix::rcu_domain::instance();
@@ -99,6 +75,7 @@ static void BM_EBR_ProtectedLoad(benchmark::State &state) {
     }
 }
 
+#ifdef SKL_ABIX_DEVELOPMENT
 static void BM_EBR_ReaderPhase(benchmark::State &state) {
     auto &domain = skl::abix::rcu_domain::instance();
     for (auto _ : state) {
@@ -107,11 +84,6 @@ static void BM_EBR_ReaderPhase(benchmark::State &state) {
     }
 }
 
-// ============================================================
-// [Mechanism] — Component-level benchmarks
-// ============================================================
-
-// Retire — pure retire cost, no synchronize
 static void BM_EBR_Retire(benchmark::State &state) {
     auto &domain = skl::abix::rcu_domain::instance();
     int batch = state.range(0);
@@ -124,8 +96,8 @@ static void BM_EBR_Retire(benchmark::State &state) {
     }
     domain.synchronize();
 }
+#endif
 
-// SyncPhase — pure synchronize scalability
 static void BM_EBR_SyncPhase(benchmark::State &state) {
     auto &domain = skl::abix::rcu_domain::instance();
     domain.synchronize();
@@ -135,7 +107,7 @@ static void BM_EBR_SyncPhase(benchmark::State &state) {
     domain.synchronize();
 }
 
-// GracePhase — retire N objects + synchronize (large object counts)
+#ifdef SKL_ABIX_DEVELOPMENT
 static void BM_EBR_GracePhase(benchmark::State &state) {
     auto &domain = skl::abix::rcu_domain::instance();
     int retire_count = state.range(0);
@@ -150,20 +122,7 @@ static void BM_EBR_GracePhase(benchmark::State &state) {
     }
     domain.synchronize();
 }
-
-// ============================================================
-// [Workload] — Profile-based schedule execution
-//
-// Design:
-//   - Total operations is FIXED across all thread counts
-//   - Each thread does total_ops / num_threads operations
-//   - Only thread 0 (writer) executes Retire and Sync operations
-//   - All threads execute Read operations
-//   - Throughput = total_ops / elapsed_time (via SetItemsProcessed)
-//
-// This ensures that throughput scaling directly measures the benefit
-// of adding threads, not the increase in total work.
-// ============================================================
+#endif
 
 static uint64_t execute_schedule(const WorkloadSchedule &schedule, skl::abix::rcu_domain &domain, bool is_writer) {
     uint64_t ops = 0;
@@ -242,23 +201,8 @@ static void register_workload_profile(const std::string &group_name, const Workl
     }
 }
 
-// ============================================================
-// [MicroBench] — 6 isolated synchronize-phase benchmarks
-// ============================================================
-
-// ── (Writer component benchmarks removed — they tested internal APIs.
-//      Benchmarks must only use the public API: enter/exit/retire/synchronize.)
-
-}   // anonymous namespace
-
-// ============================================================
-// Public API — in namespace skl::bench (not anonymous)
-// ============================================================
-
-// -----------------------------------------------------------------
-// [Micro] — Reader fast path
-// -----------------------------------------------------------------
 void register_ebr_fast_path(const CpuTopology &topo) {
+    (void)topo;
     // Single-threaded only (ns-level precision, no multi-thread noise)
     benchmark::RegisterBenchmark("BM_EBR_EnterExit", BM_EBR_EnterExit);
     benchmark::RegisterBenchmark("BM_EBR_ProtectedLoad", BM_EBR_ProtectedLoad);
@@ -270,11 +214,6 @@ void register_ebr_fast_path(const CpuTopology &topo) {
 #endif
 }
 
-// -----------------------------------------------------------------
-// [Mechanism] — Component cost
-// -----------------------------------------------------------------
-
-// SyncPhase — pure synchronize scalability (production)
 void register_ebr_sync(const CpuTopology &topo) {
     auto threads = default_thread_counts(topo);
     register_simple("BM_EBR_SyncPhase", threads, BM_EBR_SyncPhase);
@@ -297,27 +236,10 @@ void register_ebr_grace(const CpuTopology &topo) {
     // 1M — only on 1T and N (heavy, avoid over-testing)
     register_range_select("BM_EBR_GracePhase", {1'000'000}, threads, {1, N}, BM_EBR_GracePhase);
 }
-#endif // SKL_ABIX_DEVELOPMENT
+#endif   // SKL_ABIX_DEVELOPMENT
 
 #ifdef SKL_ABIX_DEVELOPMENT
-// ============================================================
-// [Threshold Sweep] — Retire batching threshold exploration
-//
-// Instead of calling synchronize() at fixed points in the schedule
-// (Sync operations), we accumulate retired objects and call
-// synchronize() only when the count reaches the threshold.
-//
-// This directly measures the impact of reducing global sync
-// frequency on throughput under synthetic_mixed (all-writer) mode.
-//
-// The threshold is the number of retire() calls between syncs.
-//   threshold=1  → sync after every retire (current behavior)
-//   threshold=4  → sync after every 4 retires
-//   threshold=16 → sync after every 16 retires
-//   etc.
-//
-// Sync operations in the schedule are treated as no-ops.
-// ============================================================
+
 static void register_threshold_sweep(const std::string &group_name, const WorkloadProfile &profile,
     const std::vector<uint32_t> &thread_counts, const std::vector<uint32_t> &thresholds) {
     auto schedule = profile.generate_schedule();
@@ -357,9 +279,7 @@ static void register_threshold_sweep(const std::string &group_name, const Worklo
                                             retired_since_sync = 0;
                                         }
                                     } break;
-                                    case Operation::Sync:
-                                        // No-op under threshold-based sync
-                                        break;
+                                    case Operation::Sync: break;
                                 }
                             }
                         }
@@ -374,11 +294,8 @@ static void register_threshold_sweep(const std::string &group_name, const Worklo
         }
     }
 }
-#endif // SKL_ABIX_DEVELOPMENT
+#endif   // SKL_ABIX_DEVELOPMENT
 
-// -----------------------------------------------------------------
-// [Workload] — Profile-based throughput benchmarks
-// -----------------------------------------------------------------
 void register_ebr_workload(const CpuTopology &topo) {
     auto threads = default_thread_counts(topo);
 
@@ -416,16 +333,6 @@ void register_ebr_workload(const CpuTopology &topo) {
 #endif
 }
 
-// ============================================================
-// [Verification] — Print actual operation counts per thread count
-//
-// Before interpreting throughput scaling, verify that the
-// total number of Read, Retire, and Sync operations is
-// identical across all thread counts.
-//
-// If the counts differ, the throughput comparison is invalid
-// because the workload composition changes with thread count.
-// ============================================================
 void verify_workload_profiles(const CpuTopology &topo) {
     auto threads = default_thread_counts(topo);
     constexpr uint64_t kTotalOps = 10'000'000;
@@ -436,10 +343,6 @@ void verify_workload_profiles(const CpuTopology &topo) {
         WriteHeavy,
     };
 
-    // ============================================================
-    // 1. Synthetic Mixed — all threads execute the full schedule
-    //    Total counts should be identical across all thread counts.
-    // ============================================================
     std::fprintf(stderr,
         "\n==========================================================\n"
         " Synthetic Mixed — All Threads Execute Full Schedule\n"
@@ -491,10 +394,6 @@ void verify_workload_profiles(const CpuTopology &topo) {
     std::fprintf(stderr, synthetic_ok ? "\n ✓ All counts match — synthetic mixed is truly fixed-work.\n"
                                       : "\n ⚠  MISMATCH detected — synthetic mixed is NOT fixed-work.\n");
 
-    // ============================================================
-    // 2. Role-Based — only thread 0 does Retire/Sync
-    //    Total counts will differ because readers skip Retire/Sync.
-    // ============================================================
     std::fprintf(stderr,
         "\n==========================================================\n"
         " Role-Based — Only Thread 0 (Writer) Does Retire/Sync\n"
@@ -551,10 +450,8 @@ void verify_workload_profiles(const CpuTopology &topo) {
             std::fprintf(stderr, "\n");
         }
     }
-    std::fprintf(stderr,
+    fprintf(stderr,
         "\n ⚠  Role-based: Retire/Sync counts decrease as T increases.\n"
         "    This is EXPECTED behavior — it's a different workload.\n"
         "    Synthetic mixed is the correct choice for fixed-work scaling.\n\n");
 }
-
-}   // namespace skl::bench

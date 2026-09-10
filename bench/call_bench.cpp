@@ -152,19 +152,6 @@ static void setup_call_bench() {
     }
 }
 
-static void teardown_call_bench() {
-    if (g_math_lib) {
-        g_add = skl::abix::dll_func<int(int, int)>();
-        delete g_math_lib;
-        g_math_lib = nullptr;
-    }
-    if (g_hotcache_lib) {
-        g_e_0000 = skl::abix::dll_func<int(int)>();
-        delete g_hotcache_lib;
-        g_hotcache_lib = nullptr;
-    }
-}
-
 static void BM_ABIX_Call(benchmark::State &state) {
     setup_call_bench();
     int a = 1, b = 2;

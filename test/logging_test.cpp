@@ -55,6 +55,7 @@ TEST_CASE("20.logging_truncation", "[log][prompt20]") {
     static int last_len = 0;
 
     auto sink = [](skl::abix::LogLevel level, const char *msg) {
+        (void)level;
         last_len = (int)std::strlen(msg);
         truncated = (last_len < 2'000);
     };

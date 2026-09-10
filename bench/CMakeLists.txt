@@ -16,7 +16,8 @@ function(abi_add_bench)
   target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark benchmark::benchmark_main)
   set_target_properties(${BENCH_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND 
+    (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
     add_custom_command(TARGET ${BENCH_NAME} POST_BUILD
       COMMAND dsymutil $<TARGET_FILE:${BENCH_NAME}> -o ${CMAKE_BINARY_DIR}/bin/${BENCH_NAME}.dSYM
       COMMENT "Generate dSYM file for ${BENCH_NAME} on macOS")

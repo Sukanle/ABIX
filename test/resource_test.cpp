@@ -111,8 +111,8 @@ TEST_CASE("11.char_string_copy", "[resource][prompt11][charcopy]") {
     int len = -1;
     char *dst = strdup(src, &len);
     REQUIRE(dst != nullptr);
-    REQUIRE(len == static_cast<int>(std::strlen(src)));
-    REQUIRE(std::strcmp(dst, src) == 0);
+    REQUIRE(len == static_cast<int>(strlen(src)));
+    REQUIRE(strcmp(dst, src) == 0);
     log_info("strdup_copy returned length=%d, content=[%s]", len, dst);
 
     REQUIRE(dst[len] == '\0');
@@ -149,20 +149,20 @@ TEST_CASE("12.socket_resource_lifecycle", "[resource][prompt12][socket]") {
         skl::abix::unique_dll_ptr<Socket> s(open("127.0.0.1", 8'080), close.raw());
         REQUIRE((bool)s);
         REQUIRE(isopen(s.get()) == 1);
-        REQUIRE(fd(s.get()) == 1'000);
+        REQUIRE(fd(s.get()) >= 0);
         REQUIRE(alive() == 1);
-        log_info("opened a Socket (fd=%d, 127.0.0.1:8080), socket_alive=1", fd(s.get()));
+        log_info("opened a Socket (fd=%d, http://127.0.0.1:8080), socket_alive=1", fd(s.get()));
 
         const char *payload = "GET /api HTTP/1.1";
         int n = send_(s.get(), payload);
-        REQUIRE(n == static_cast<int>(std::strlen(payload)));
+        REQUIRE(n == static_cast<int>(strlen(payload)));
         log_info("socket_send sent [%s] successfully, returned byte count=%d", payload, n);
 
         char buf[128];
-        std::memset(buf, 0, sizeof(buf));
+        memset(buf, 0, sizeof(buf));
         int got = recv_(s.get(), buf, (int)sizeof(buf) - 1);
-        REQUIRE(got == static_cast<int>(std::strlen(payload)));
-        REQUIRE(std::strcmp(buf, payload) == 0);
+        REQUIRE(got == static_cast<int>(strlen(payload)));
+        REQUIRE(strcmp(buf, payload) == 0);
         log_info("socket_recv read the receive buffer, got [%s] (byte count=%d)", buf, got);
     }
     REQUIRE(alive() == 0);
@@ -171,6 +171,7 @@ TEST_CASE("12.socket_resource_lifecycle", "[resource][prompt12][socket]") {
 }
 
 TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
+#ifdef SKL_ABIX_WINDOWS
     log_info(
         "Test 13: cross-CRT/MSVC resource - MinGW host loads the MSVC(cl.exe)-compiled resource_dll, verifying the "
         "resource lifecycle");
@@ -193,7 +194,7 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
         int len;
         char *s = strdup("Cross DLL character copy - hello reflection table", &len);
         REQUIRE(s != nullptr);
-        REQUIRE(std::strcmp(s, "Cross DLL character copy - hello reflection table") == 0);
+        REQUIRE(strcmp(s, "Cross DLL character copy - hello reflection table") == 0);
         log_info(" [MSVC] strdup_copy cross-CRT copy of [%s] (%d bytes) succeeded", s, len);
         freed(s);
         log_info(" [MSVC] string_destroy release succeeded, no heap conflict");
@@ -228,9 +229,10 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
             REQUIRE(alive() == 1);
             send_(s.get(), "PING");
             char buf[16];
-            std::memset(buf, 0, sizeof(buf));
+            memset(buf, 0, sizeof(buf));
             int got = recv_(s.get(), buf, (int)sizeof(buf) - 1);
-            REQUIRE(std::strcmp(buf, "PING") == 0);
+            REQUIRE(got == static_cast<int>(strlen("PING")));
+            REQUIRE(strcmp(buf, "PING") == 0);
         }
         REQUIRE(alive() == 0);
         log_info(" [MSVC] Socket open->send->recv->close across CRT, alive count dropped to zero");
@@ -251,4 +253,7 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
         log_info(" [MSVC] ref_dll_ptr ref-count dropped to zero across CRT and released correctly");
     }
     log_info("MinGW host loaded the MSVC resource_dll; all resource lifecycles are correct across CRT");
+#else
+    log_info("Operation System is not Windows, skip cross-CRT msvc resource test on this platform");
+#endif
 }

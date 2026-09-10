@@ -18,13 +18,13 @@ inline std::string dll_path(const char *name) { return std::string(name) + SKL_A
 
 inline const char *hot_name(int i) {
     static char buf[16];
-    std::snprintf(buf, sizeof(buf), "h_%02d", i);
+    snprintf(buf, sizeof(buf), "h_%02d", i);
     return buf;
 }
 
 inline const char *cold_name(int i) {
     static char buf[16];
-    std::snprintf(buf, sizeof(buf), "e_%04d", i);
+    snprintf(buf, sizeof(buf), "e_%04d", i);
     return buf;
 }
 

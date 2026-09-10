@@ -18,6 +18,8 @@
 
 #include <new>
 
+#include <stdlib.h>
+
 #include "config.h"
 #include "atomic.h"
 
@@ -126,7 +128,7 @@ private:
         if (w.t) return w.t;
 
         w.t = new (std::nothrow) detail::rcu_thread{};
-        if (!w.t) std::abort();
+        if (!w.t) abort();
 
         register_thread(w.t);
         return w.t;

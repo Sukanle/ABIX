@@ -93,7 +93,6 @@ BENCHMARK(BM_EBR_ReaderScalability)
 
 static void BM_EBR_WriterScalability(benchmark::State &state) {
     const int readers = (int)state.range(0);
-    const int writers = (int)state.range(1);
     skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
     std::atomic<bool> running{true};
     std::vector<std::thread> workers;

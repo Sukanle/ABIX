@@ -81,7 +81,7 @@ public:
             last_error() = call_error::not_loaded;
             return;
         }
-        const table *t = image->table;
+        const table *t = image->export_table;
         if (!t) {
             last_error() = call_error::not_loaded;
             return;
@@ -116,9 +116,9 @@ public:
         if (!valid()) return nullptr;
         rcu_guard guard(rcu_domain::instance());
         dll_image *image = _lib->image_acquire();
-        if (!image || !image->table) return nullptr;
-        if (_index >= image->table->count) return nullptr;
-        const entry &e = image->table->entries[_index];
+        if (!image || !image->export_table) return nullptr;
+        if (_index >= image->export_table->count) return nullptr;
+        const entry &e = image->export_table->entries[_index];
         fn_type fn = nullptr;
         memcpy(&fn, &e.fnptr, sizeof(fn));
         return fn;
