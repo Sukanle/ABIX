@@ -1,0 +1,47 @@
+[package]
+name = "abix_runtime"
+version = "1"
+
+[[import]]
+language = "cpp"
+flags = [
+  "-std=c++17",
+  "-isystem", "/usr/lib/clang/22/include",
+  "-isystem", "/usr/lib/gcc/x86_64-pc-linux-gnu/16/include"
+]
+files = ["self_types.cpp"]
+symbols = [
+  "skl::abix::model::Hash128",
+  "skl::abix::model::TypeLayout",
+  "skl::abix::model::TypeDesc",
+  "skl::abix::model::Field",
+  "skl::abix::model::Function",
+  "skl::abix::model::Symbol",
+  "skl::abix::model::MapInfo",
+  "skl::abix::model::Compatibility",
+  "skl::abix::model::ABIIdentity",
+  "skl::abix::model::Target",
+  "skl::abix::bootstrap::BootstrapRecord",
+  "skl::abix::bootstrap::BootstrapWireRecord",
+  "skl::abix::bootstrap::BootstrapImage",
+  "skl::abix::runtime::BootstrapMetadata",
+  "skl::abix::runtime::RegistryEntry",
+  "skl::abix::runtime::LayoutInfo",
+  "skl::abix::runtime::FieldDescriptor",
+  "skl::abix::runtime::TypeDescriptor",
+  "skl::abix::runtime::ParameterDescriptor",
+  "skl::abix::runtime::FunctionDescriptor",
+  "skl::abix::runtime::SymbolDescriptor",
+  "skl::abix::runtime::ModuleDescriptor",
+  "skl::abix::runtime::RuntimeRegistryEntry",
+  "skl::abix::runtime_map::Operation",
+  "skl::abix::compatibility::Result",
+  "skl::abix::rcu_domain",
+  "skl::abix::runtime::ebr::ThreadState",
+  "skl::abix::runtime::ebr::RetiredNode",
+  "skl::abix::runtime::ebr::RetiredBatch",
+  "skl::abix::runtime::ebr::Epoch"
+]
+
+[[export]]
+output = "build/abix_runtime.abix"

@@ -21,6 +21,11 @@ struct Hash128 {
     uint64_t hi;
 };
 
+constexpr bool operator==(Hash128 lhs, Hash128 rhs) noexcept {
+    return lhs.lo == rhs.lo && lhs.hi == rhs.hi;
+}
+constexpr bool operator!=(Hash128 lhs, Hash128 rhs) noexcept { return !(lhs == rhs); }
+
 using Hash64 = uint64_t;
 using SignatureHash = Hash128;
 using ABIHash = Hash128;

@@ -37,25 +37,42 @@ SKL_ABIX_NAMESPACE_BEGIN
 
 using rcu_reclaim_fn = void (*)(void *object) noexcept;
 
-namespace detail {
+// These are the stable, data-only EBR state records.  They intentionally live
+// outside rcu_domain so AMC can describe them before the concurrent domain is
+// initialized.  rcu_domain only gives these records their concurrency meaning.
+namespace runtime::ebr {
 
-struct rcu_thread {
+struct ThreadState {
     uint64_t epoch = 0;
-    rcu_thread *next = nullptr;
+    ThreadState *next = nullptr;
 };
 
-struct retired_obj {
+struct RetiredNode {
     void *object;
     uint64_t epoch;
     rcu_reclaim_fn reclaim;
-    retired_obj *next;
+    RetiredNode *next;
 };
 
-struct rcu_retired_batch {
-    retired_obj *head = nullptr;
-    retired_obj *tail = nullptr;
+struct RetiredBatch {
+    RetiredNode *head = nullptr;
+    RetiredNode *tail = nullptr;
     uint32_t count = 0;
 };
+
+struct alignas(SKL_ABIX_CACHE_LINE_SIZE) Epoch {
+    uint64_t global = 1;
+    uint64_t completed = 0;
+    uint64_t sync = 0;
+};
+
+}  // namespace runtime::ebr
+
+namespace detail {
+
+using rcu_thread = runtime::ebr::ThreadState;
+using retired_obj = runtime::ebr::RetiredNode;
+using rcu_retired_batch = runtime::ebr::RetiredBatch;
 
 }   // namespace detail
 
@@ -221,12 +238,6 @@ private:
         }
     }
 
-    struct alignas(SKL_ABIX_CACHE_LINE_SIZE) epoch {
-        uint64_t global = 1;
-        uint64_t completed = 0;
-        uint64_t sync = 0;
-    };
-
     struct reader {
         detail::rcu_thread *threads = nullptr;
         detail::retired_obj *retired = nullptr;
@@ -236,7 +247,7 @@ private:
         uint64_t lock = 0;
     };
 
-    epoch _epoch;   // Independent cache line (64 bytes)
+    runtime::ebr::Epoch _epoch;   // Independent cache line (64 bytes)
 
     reader _reader;
     writer _writer;

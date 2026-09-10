@@ -33,6 +33,8 @@
 #include "abi_model.h"     // IWYU pragma: keep
 #include "bootstrap.h"     // IWYU pragma: keep
 #include "metadata_registry.h" // IWYU pragma: keep
+#include "runtime_descriptor.h" // IWYU pragma: keep
+#include "runtime_registry.h" // IWYU pragma: keep
 #include "hash.h"           // IWYU pragma: keep
 #include "compatibility.h"  // IWYU pragma: keep
 #include "map.h"            // IWYU pragma: keep

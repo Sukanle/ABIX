@@ -46,8 +46,13 @@ TEST_CASE("14.mics_integration", "[refl][prompt5-9]") {
         REQUIRE(calc_config_id != shared_counter_id);
         REQUIRE(calc_state_id != shared_counter_id);
 
-        log_info(" [Registry] CalcState id=%zu, CalcConfig id=%zu, SharedCounter id=%zu", (size_t)calc_state_id,
-            (size_t)calc_config_id, (size_t)shared_counter_id);
+        log_info(" [Registry] CalcState id=(%llu,%llu), CalcConfig id=(%llu,%llu), SharedCounter id=(%llu,%llu)",
+            static_cast<unsigned long long>(calc_state_id.lo),
+            static_cast<unsigned long long>(calc_state_id.hi),
+            static_cast<unsigned long long>(calc_config_id.lo),
+            static_cast<unsigned long long>(calc_config_id.hi),
+            static_cast<unsigned long long>(shared_counter_id.lo),
+            static_cast<unsigned long long>(shared_counter_id.hi));
     }
 
     SECTION("8.typeinfo_struct_field_access") {
@@ -103,4 +108,16 @@ TEST_CASE("14.mics_integration", "[refl][prompt5-9]") {
     }
 
     log_info("ABIX successfully integrated the FP/Any/Registry/TypeInfo/StaticRefl facilities of mics");
+}
+
+TEST_CASE("runtime TypeId uses the full 128-bit identity") {
+    using namespace mics::rt;
+    static_assert(sizeof(TypeId) == 16, "runtime TypeId must remain Hash128");
+    const auto state = DRefl::type_id_of<CalcState>();
+    const auto config = DRefl::type_id_of<CalcConfig>();
+    REQUIRE(state != INVALID_TYPE_ID);
+    REQUIRE(config != INVALID_TYPE_ID);
+    REQUIRE(state != config);
+    REQUIRE(state.lo != 0);
+    REQUIRE(state.hi != 0);
 }
