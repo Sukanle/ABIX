@@ -30,5 +30,11 @@
 #include "log.h"           // IWYU pragma: keep
 #include "rcu_config.h"    // IWYU pragma: keep
 #include "rcu_timeout.h"   // IWYU pragma: keep
+#include "abi_model.h"     // IWYU pragma: keep
+#include "bootstrap.h"     // IWYU pragma: keep
+#include "metadata_registry.h" // IWYU pragma: keep
+#include "hash.h"           // IWYU pragma: keep
+#include "compatibility.h"  // IWYU pragma: keep
+#include "map.h"            // IWYU pragma: keep
 
 #endif   // SKL_ABIX_HPP
