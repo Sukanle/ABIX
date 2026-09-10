@@ -17,6 +17,7 @@
 #define SKL_ABIX_REGISTER_H
 
 #include <stddef.h>   // IWYU pragma: keep
+#include <stdlib.h>
 
 #include <new>   // IWYU pragma: keep
 
@@ -35,10 +36,10 @@ SKL_ABIX_NAMESPACE_BEGIN
 
 #define SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)                             \
     {name, ::skl::abix::fn_sig<decltype(&func), SKL_ABIX_CCPICK(cctype)>::value, ver, \
-        reinterpret_cast<uintptr_t>(&func), Reflect::Utils::cstr32(name), flg}
+        reinterpret_cast<uintptr_t>(&func), mics::utils::cstr32(name), flg}
 #define SKL_ABIX_ENTRY_CC(name, func, cctype) SKL_ABIX_ENTRY_FULL(name, func, cctype, 0, 0)
 #define SKL_ABIX_ENTRY(name, func) SKL_ABIX_ENTRY_CC(name, func, Cdecl)
-#define SKL_ABIX_VERSION(v) Reflect::Utils::version(v)
+#define SKL_ABIX_VERSION(v) mics::utils::version(v)
 
 #define SKL_ABIX_DEFINE_TABLE(...)                                                 \
     static const ::skl::abix::entry _abi_entries[] = {__VA_ARGS__};                \

@@ -20,7 +20,7 @@ TEST_CASE("8.lookup_policy_benchmark", "[perf][prompt8]") {
         skl::abix::sig_t sg = skl::abix::fn_sig<int(int)>::value;
         for (int i = 0; i < CALLS; ++i) {
             const char *nm = name_for(i);
-            auto e = look(nm, Reflect::Utils::cstr32(nm), sg);
+            auto e = look(nm, mics::utils::cstr32(nm), sg);
             if (e) sink ^= reinterpret_cast<uintptr_t>(e->fnptr);
         }
         (void)sink;

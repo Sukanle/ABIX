@@ -86,7 +86,7 @@ struct LookupFixture {
                 skl::abix::fn_sig_v<int(int)>,
                 0,
                 uintptr_t(0xDEADBEEF),
-                Reflect::Utils::cstr32(names.back().c_str()),
+                mics::utils::cstr32(names.back().c_str()),
                 0});
         }
 
@@ -131,7 +131,7 @@ static void run_uniform_bench(benchmark::State &state, Strategy strategy, uint32
 
     for (auto _ : state) {
         const char *name = fix.names[queries[qi]].c_str();
-        skl::abix::name_hash_t nh = Reflect::Utils::cstr32(name);
+        skl::abix::name_hash_t nh = mics::utils::cstr32(name);
         qi = (qi + 1) % static_cast<uint32_t>(queries.size());
 
         const skl::abix::entry *found = nullptr;
@@ -166,7 +166,7 @@ static void run_zipf_bench(benchmark::State &state, Strategy strategy, uint32_t 
 
     for (auto _ : state) {
         const char *name = fix.names[queries[qi]].c_str();
-        skl::abix::name_hash_t nh = Reflect::Utils::cstr32(name);
+        skl::abix::name_hash_t nh = mics::utils::cstr32(name);
         qi = (qi + 1) % static_cast<uint32_t>(queries.size());
 
         const skl::abix::entry *found = nullptr;

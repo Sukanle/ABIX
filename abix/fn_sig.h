@@ -18,7 +18,7 @@
 
 #include "register.h"
 #include "type_sig.h"
-#include "Reflection/utils/fn_hash.h"
+#include "mics/utils/fn_hash.h"
 
 SKL_ABIX_NAMESPACE_BEGIN
 template<typename T>
@@ -28,7 +28,7 @@ constexpr sig_t type_sig() {
 }
 
 namespace cc {
-using tag = Reflect::Utils::cc::tag;
+using tag = mics::utils::cc::tag;
 }
 
 template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
@@ -40,7 +40,7 @@ namespace detail {
 template<cc::tag C, typename Ret, typename... Args>
 struct fn_sig_impl {
     static constexpr sig_t value = [] {
-        sig_t h = Reflect::Utils::compute_fn_hash<type_sig<Ret>(), type_sig<Args>()...>();
+        sig_t h = mics::utils::compute_fn_hash<type_sig<Ret>(), type_sig<Args>()...>();
         h = mix(h, static_cast<sig_t>(static_cast<uint8_t>(C)) * 0x10001ULL);
         return h;
     }();

@@ -71,7 +71,7 @@ public:
         release_lib();
         _lib = &lib;
         _name = name;
-        _name_hash = Reflect::Utils::cstr64(name);
+        _name_hash = mics::utils::cstr64(name);
         _index = ~index_t{0};
         _valid = false;
 

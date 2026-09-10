@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INCLUDE_DIR = {PROJECT_ROOT, PROJECT_ROOT / "Reflection"}
+INCLUDE_DIR = {PROJECT_ROOT, PROJECT_ROOT / "mics"}
 
 GCC_FALLBACKS = [
     r"g++.exe",

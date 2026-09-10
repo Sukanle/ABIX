@@ -1,7 +1,7 @@
 #include "test_common.hpp"
 
-TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
-    log_info("Test 14: verify ABIX integrates the static/dynamic reflection facilities of the Reflection library");
+TEST_CASE("14.mics_integration", "[refl][prompt5-9]") {
+    log_info("Test 14: verify ABIX integrates the static/dynamic mics facilities of the mics library");
 
     SECTION("5.static_fp_table_validation") {
 
@@ -74,11 +74,11 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
             field_x.info.name, field_x.info.offset);
     }
 
-    SECTION("9.static_reflection_field_info") {
+    SECTION("9.static_mics_field_info") {
         using Vec3Info = SRefl::TypeInfo<TestVec3>;
 
         static_assert(
-            Vec3Info::_name == URefl::string_view("TestVec3 [class]"), "Static reflection class name mismatch");
+            Vec3Info::_name == URefl::string_view("TestVec3 [class]"), "Static mics class name mismatch");
 
         constexpr auto &x_field = Vec3Info::Registry::_x;
         constexpr auto &y_field = Vec3Info::Registry::_y;
@@ -102,5 +102,5 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
         log_info(" [StaticRefl] TestVec3: x(Float), y(Float), z(Float) - compile-time field info validated");
     }
 
-    log_info("ABIX successfully integrated the FP/Any/Registry/TypeInfo/StaticRefl facilities of Reflection");
+    log_info("ABIX successfully integrated the FP/Any/Registry/TypeInfo/StaticRefl facilities of mics");
 }

@@ -107,7 +107,7 @@ TEST_CASE("11.char_string_copy", "[resource][prompt11][charcopy]") {
     REQUIRE(freed.valid());
     log_info("resolved strdup_copy / string_destroy, starting the character copy test");
 
-    const char *src = "Cross DLL character copy - hello reflection table";
+    const char *src = "Cross DLL character copy - hello mics table";
     int len = -1;
     char *dst = strdup(src, &len);
     REQUIRE(dst != nullptr);
@@ -192,9 +192,9 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
         REQUIRE(strdup.valid());
         REQUIRE(freed.valid());
         int len;
-        char *s = strdup("Cross DLL character copy - hello reflection table", &len);
+        char *s = strdup("Cross DLL character copy - hello mics table", &len);
         REQUIRE(s != nullptr);
-        REQUIRE(strcmp(s, "Cross DLL character copy - hello reflection table") == 0);
+        REQUIRE(strcmp(s, "Cross DLL character copy - hello mics table") == 0);
         log_info(" [MSVC] strdup_copy cross-CRT copy of [%s] (%d bytes) succeeded", s, len);
         freed(s);
         log_info(" [MSVC] string_destroy release succeeded, no heap conflict");

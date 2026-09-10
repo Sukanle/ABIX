@@ -35,7 +35,7 @@ static void BM_Resolve_Linear(benchmark::State &state) {
     skl::abix::sig_t sg = skl::abix::fn_sig<int(int)>::value;
     for (auto _ : state) {
         const char *nm = hot_name(state.iterations() % 20);
-        const skl::abix::entry *e = lookup_linear(*g_table, nm, Reflect::Utils::cstr32(nm), sg);
+        const skl::abix::entry *e = lookup_linear(*g_table, nm, mics::utils::cstr32(nm), sg);
         benchmark::DoNotOptimize(e);
     }
 }
@@ -67,7 +67,7 @@ static void BM_Resolve_Linear_80_20(benchmark::State &state) {
     for (auto _ : state) {
         int i = (int)state.iterations();
         const char *nm = (i % 100 < 80) ? hot_name(i % 20) : cold_name(i % 1'000);
-        const skl::abix::entry *e = lookup_linear(*g_table, nm, Reflect::Utils::cstr32(nm), sg);
+        const skl::abix::entry *e = lookup_linear(*g_table, nm, mics::utils::cstr32(nm), sg);
         benchmark::DoNotOptimize(e);
     }
 }
@@ -79,7 +79,7 @@ static void BM_Resolve_Linear_Random(benchmark::State &state) {
     skl::abix::sig_t sg = skl::abix::fn_sig<int(int)>::value;
     for (auto _ : state) {
         const char *nm = cold_name((int)state.iterations() % 1'000);
-        const skl::abix::entry *e = lookup_linear(*g_table, nm, Reflect::Utils::cstr32(nm), sg);
+        const skl::abix::entry *e = lookup_linear(*g_table, nm, mics::utils::cstr32(nm), sg);
         benchmark::DoNotOptimize(e);
     }
 }

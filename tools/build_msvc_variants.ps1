@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 
 $Root    = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$Include = @($Root, (Join-Path $Root "Reflection"))
+$Include = @($Root, (Join-Path $Root "mics"))
 $DllSrc  = Join-Path $Root "dlls"
 $Variant = Join-Path $Root "variants"
 $Tag     = "msvc_x64"

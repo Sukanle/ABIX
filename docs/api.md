@@ -725,9 +725,9 @@ Non-owning observer for `shared_dll_ptr<T>`. Does not prevent resource destructi
 
 ---
 
-## 11. `refl.h` — Dynamic Reflection Integration
+## 11. `refl.h` — Dynamic mics Integration
 
-**Namespace:** `skl::abix::refl` (reflection helpers), `skl::abix` (convenience types)
+**Namespace:** `skl::abix::refl` (mics helpers), `skl::abix` (convenience types)
 
 ### Type Aliases
 
@@ -781,9 +781,9 @@ Casts a `DynamicAny` to `T` by value. Returns `T{}` if the cast fails.
 inline void register_dll_table(const table *t, const char *dll_name);
 ```
 
-Registers all entries from an ABIX export table into the dynamic reflection registry.
+Registers all entries from an ABIX export table into the dynamic mics registry.
 
-### Compile-time Reflection Helpers (`refl` namespace)
+### Compile-time mics Helpers (`refl` namespace)
 
 | Symbol | Description |
 |--------|-------------|

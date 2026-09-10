@@ -41,7 +41,7 @@ struct ResolveFixture {
                 skl::abix::fn_sig_v<int(int)>,
                 0,
                 uintptr_t(0xDEADBEEF),
-                Reflect::Utils::cstr32(name),
+                mics::utils::cstr32(name),
                 0});
         }
         table = skl::abix::table{count, skl::abix::SKL_ABIX_TABLE_MAGIC,

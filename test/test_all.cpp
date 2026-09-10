@@ -6,7 +6,7 @@
 #include "lookup_test.cpp"
 #include "reload_test.cpp"
 #include "edge_test.cpp"
-#include "reflection_test.cpp"
+#include "mics_test.cpp"
 #include "closed_test.cpp"
 #include "logging_test.cpp"
 #include "rcu_config_test.cpp"

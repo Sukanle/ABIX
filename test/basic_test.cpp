@@ -2,7 +2,7 @@
 
 TEST_CASE("1.basic_math_linear_scan", "[basic][prompt1]") {
     log_info(
-        "Test 1: load math_dll, resolve add/multiply via linear scan of the reflection table and call them through "
+        "Test 1: load math_dll, resolve add/multiply via linear scan of the mics table and call them through "
         "integer handles");
     skl::abix::dll_object lib;
     REQUIRE(lib.load(dll_path("math_dll").c_str()));
@@ -29,7 +29,7 @@ TEST_CASE("1.basic_math_linear_scan", "[basic][prompt1]") {
     skl::abix::index_t idx;
     skl::abix::hash_index empty_idx;
     REQUIRE(find_index(*t, empty_idx, "add", skl::abix::fn_sig<int(int, int)>::value, 0, idx) == skl::abix::lookup_result::ok);
-    log_info("reflection table is plain POD, linear scan find_index(add) hit at index %u", (unsigned)idx);
+    log_info("mics table is plain POD, linear scan find_index(add) hit at index %u", (unsigned)idx);
 }
 
 TEST_CASE("2.cross_compiler_variant", "[cross][prompt2]") {

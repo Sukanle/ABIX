@@ -38,7 +38,7 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **RCU 超时策略** — 当 EBR 宽限期超过 `ABIX_RCU_TIMEOUT_MS` 时的三种策略：Safe（僵尸+泄漏）、ForceUnload（绕过 EBR）和 ForceLeak（摘除+泄漏，需宏显式开启）
 - **超时检查模式** — 三种零/低 CPU 检查模式：Lazy（入口点检查）、Tick（宿主驱动）和 OS Timer（内核级等待）
 - **可插拔日志** — 编译期可移除的日志系统，支持 C 回调接收器（`ABIX_LOG_*` 宏）、按级别禁用和 ABI 安全的 `set_log_sink()`，可对接生产级日志平台
-- **动态反射集成** — 基于 Reflection 库构建，支持运行时类型查询和通过 `make_pod_type_info` / `make_offset_field` 访问 POD 字段
+- **动态反射集成** — 基于 mics 库构建，支持运行时类型查询和通过 `make_pod_type_info` / `make_offset_field` 访问 POD 字段
 - **查找策略** — 自动：小表线性扫描，大表 HashIndex。加载时构建，零 ABI 格式变更。
 
 ## 快速开始
@@ -78,7 +78,7 @@ if (mul.valid()) {
 }
 ```
 > [!NOTE]
-> - [API.md](doc/api_zh_CN.md)
+> - [API.md](docs/api_zh.md)
 
 ## 注册宏
 
@@ -338,7 +338,7 @@ ABIX/
 | Linux    | GCC      | 13.0+ | ✓ |
 | Linux    | Clang    | 17.0+ | ✓ |
 
-**要求：** C++17 或更高版本（推荐 C++20 以获得 `consteval` 支持）。Reflection 库作为 git 子模块包含在内。
+**要求：** C++17 或更高版本（推荐 C++20 以获得 `consteval` 支持）。mics 库作为 git 子模块包含在内。
 
 ## 测试
 

@@ -16,7 +16,7 @@
 #ifndef SKL_ABIX_REFL_H
 #define SKL_ABIX_REFL_H
 
-#include "Reflection/reflect.h"   // IWYU pragma: keep
+#include "mics/mics.h"   // IWYU pragma: keep
 
 #include "abix/config.h"   // IWYU pragma: keep
 #include "abix/type.h"     // IWYU pragma: keep
@@ -44,7 +44,7 @@ struct has_unique_sigs<SRefl::type_list<T, U, Rest...>> {
     struct same_sig {
         static constexpr bool value = (V::sig == T::sig);
     };
-    static constexpr bool value = (SRefl::Fp::count<SRefl::type_list<U, Rest...>, same_sig> == 0)
+    static constexpr bool value = (SRefl::fp::count<SRefl::type_list<U, Rest...>, same_sig> == 0)
                                && has_unique_sigs<SRefl::type_list<U, Rest...>>::value;
 };
 

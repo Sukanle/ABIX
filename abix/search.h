@@ -20,7 +20,7 @@
 
 #include <new>
 
-#include "Reflection/utils/hash.h"
+#include "mics/utils/hash.h"
 
 #include "type.h"
 
@@ -106,7 +106,7 @@ inline lookup_result find_linear(const table &t, const char *name, sig_t sig, ve
         out = ~index_t{0};
         return lookup_result::bad_table;
     }
-    const name_hash_t nh = Reflect::Utils::cstr32(name);
+    const name_hash_t nh = mics::utils::cstr32(name);
     for (index_t i = 0; i < t.count; ++i) {
         const entry &e = t.entries[i];
         if (e.name_hash != nh) continue;
@@ -144,7 +144,7 @@ inline lookup_result find_hash(const table &t, const hash_index &idx, const char
         out = ~index_t{0};
         return lookup_result::bad_table;
     }
-    const name_hash_t nh = Reflect::Utils::cstr32(name);
+    const name_hash_t nh = mics::utils::cstr32(name);
     uint32_t pos = nh & idx.mask;
     while (idx.slots[pos].index != HASH_SLOT_EMPTY) {
         if (idx.slots[pos].hash == nh) {

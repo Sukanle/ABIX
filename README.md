@@ -38,7 +38,7 @@ Key design goals:
 - **RCU Timeout Policies** — Three strategies for when the EBR grace period exceeds `ABIX_RCU_TIMEOUT_MS`: Safe (zombie + leak), ForceUnload (bypass EBR), and ForceLeak (detach + leak, opt-in via macro)
 - **Timeout Check Modes** — Three zero/low-CPU check modes: Lazy (check on entry), Tick (host-driven), and OS Timer (kernel-level wait)
 - **Pluggable Logging** — Compile-time removable logging with C-callback sink (`ABIX_LOG_*` macros), per-level disable, and ABI-safe `set_log_sink()` for production log platforms
-- **Dynamic Reflection Integration** — Built on the Reflection library, supporting runtime type queries and POD field access via `make_pod_type_info` / `make_offset_field`
+- **Dynamic mics Integration** — Built on the mics library, supporting runtime type queries and POD field access via `make_pod_type_info` / `make_offset_field`
 - **Lookup Strategy** — Automatic: linear scan for small tables, HashIndex for large tables. Built at load time, zero ABI format changes.
 
 ## Quick Start
@@ -79,7 +79,7 @@ if (mul.valid()) {
 ```
 
 > [!NOTE]
-> - [API.md](doc/api.md)
+> - [API.md](docs/api.md)
 
 ## Registration Macros
 
@@ -294,7 +294,7 @@ ABIX/
 │   ├── function.h             # function_dll: 8-byte cross-boundary closure
 │   ├── dll.h                  # Aggregator: obj_dll + fn_dll
 │   ├── dll_ptr.h              # Aggregator: all smart pointer types
-│   ├── refl.h                 # Dynamic reflection integration helpers
+│   ├── refl.h                 # Dynamic mics integration helpers
 │   └── dll_ptr/               # Smart pointer implementations
 │       ├── unique_ptr.h       # unique_dll_ptr<T>, fn_deleter<T>
 │       ├── ref_ptr.h          # ref_dll_ptr<T>, view_dll_ptr<T>
@@ -339,7 +339,7 @@ ABIX/
 | Linux    | GCC      | 13.0+ | ✓ |
 | Linux    | Clang    | 17.0+ | ✓ |
 
-**Requirements:** C++17 or later (C++20 recommended for `consteval` support). The Reflection library is included as a git submodule.
+**Requirements:** C++17 or later (C++20 recommended for `consteval` support). The mics library is included as a git submodule.
 
 ## Testing
 
@@ -355,7 +355,7 @@ Tests use [Catch2](https://github.com/catchorg/Catch2), driven by `main.cpp`. **
 | **Closed-Source** | 15, 16, 18 | `[closed]` | Private field hiding, dual offset validation, breaking version change interception |
 | **Log & Config** | 19, 20, 21, 22, 23, 25, 27, 28 | `[log]`, `[config]`, `[tick]` | Log redirection, buffer truncation, `RCUTimeoutConfig`, policy switching, `tick()` injection |
 | **RCU Timeout & Zombie** | 24, 26, 29, 30, 31 | `[rcu]`, `[zombie]`, `[policy]`, `[timeout]`, `[tick]` | Safe/ForceUnload/ForceLeak timeout triggers, zombie recovery, frame-driven timeout |
-| **Reflection** | 14 | `[refl]` | Static/dynamic reflection (FP/Any/Registry/TypeInfo/StaticRefl) integration |
+| **mics** | 14 | `[refl]` | Static/dynamic mics (FP/Any/Registry/TypeInfo/StaticRefl) integration |
 | **Edge Cases** | 10 | `[edge]` | Not found, call after unload, ref-count reject, calling convention mismatch |
 | **Performance** | **8, bench/** | `[perf]`, `[bench]` | **Atomic / EBR / Lookup (Linear + HashIndex) / Call / Concurrency / Scalability** full-matrix performance benchmarks (Google Benchmark) |
 
@@ -433,7 +433,7 @@ Batching reduces high-concurrency overhead in ABIX's target read-mostly workload
 | **COM QueryInterface** | Runtime interface query + ref counting | Significantly higher than vfunc | Called on every interface switch |
 | **Qt signal-slot (same thread)** | Meta-object lookup + slot invocation | ~42.7 ns | Qt 6.5.1 benchmark |
 | **Qt signal-slot (cross-thread)** | Event queue + arg serialization | ~128 ns | Significant cross-thread overhead |
-| **Unreal Engine (Blueprint Tick)** | Script context + reflection call | ~100 - 200 ns | Empty Blueprint Tick |
+| **Unreal Engine (Blueprint Tick)** | Script context + mics call | ~100 - 200 ns | Empty Blueprint Tick |
 | **Unity (managed→native callback)** | Managed/native domain switch | Significantly higher than native | Known bottleneck at scale |
 
 ### Deep Dive

@@ -19,12 +19,12 @@
 #include <stdint.h>
 
 #include "config.h"
-#include "Reflection/utils/hash.h"
+#include "mics/utils/hash.h"
 
 SKL_ABIX_NAMESPACE_BEGIN
 
-using sig_t = Reflect::Utils::hash64_t;
-using name_hash_t = Reflect::Utils::hash32_t;
+using sig_t = mics::utils::hash64_t;
+using name_hash_t = mics::utils::hash32_t;
 using version_t = uint64_t;
 using index_t = uint32_t;
 

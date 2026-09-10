@@ -22,7 +22,7 @@ def get_executable_name(base: str) -> str:
     return f"{base}.exe" if sys.platform == "win32" else base
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Configure, build and run cross-DLL reflection test suite")
+    parser = argparse.ArgumentParser(description="Configure, build and run cross-DLL mics test suite")
     parser.add_argument("--clean", action="store_true", help="Clean build directory before building")
     parser.add_argument("--run-test", action="store_true", help="Run tests only, skip build and benchmarks")
     parser.add_argument("--run-bench", action="store_true", help="Run benchmarks only, skip build and tests")
