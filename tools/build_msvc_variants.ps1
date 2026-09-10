@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$VsInstanceId   = "fdfdfdfd",
     [string]$VsPath         = "C:\Microsoft Visual Studio\2022\Community"
 )

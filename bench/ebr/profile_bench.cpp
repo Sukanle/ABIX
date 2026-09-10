@@ -7,6 +7,8 @@
 #include "workloads/workload_runner.hpp"
 
 int main(int argc, char **argv) {
+    benchmark::MaybeReenterWithoutASLR(argc, argv);
+
     // Detect hardware topology
     auto topo = detect_cpu_topology();
     fprintf(stderr, "[ebr_profile] Topology: %s\n", topo.to_string().c_str());

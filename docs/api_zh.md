@@ -45,6 +45,72 @@ flowchart TB
 
 ---
 
+## ABI 元数据运行时与 AMC
+
+下文的 POD DLL 导出表仍是 ABIX 的公共调用 ABI。AMC 元数据与该表分离：它将选定的
+原生 C++ ABI 接口描述为 `.abix` v4 artifact，并可将 record 投影为 C++17 `constexpr`
+descriptor。artifact 包含 type/layout、field、function、symbol、hash、compatibility
+和 map 数据；wire format 见 [`.abix` 格式说明](abix.md)。
+
+### 构建、检查与比较 artifact
+
+```sh
+amc build -c package.abic.toml -B build
+amc validate build/build/package.abix
+amc inspect build/build/package.abix
+amc generate build/build/package.abix -l cpp -o package_metadata.hpp
+amc diff old.abix new.abix -o compatibility.abix
+amc compatibility old.abix new.abix
+amc-dump diff old.abix new.abix
+amc-dump diff old.abix new.abix --json compatibility.json
+```
+
+`amc diff` 为 type 记录 identical、layout-compatible、map-compatible 或
+incompatible。生成的 `MapPrivate<A, B>` 计划执行 copy/default 操作；整数和浮点
+转换必须提供显式 native converter，绝不会静默重解释数值。
+
+`amc-dump diff` 是面向人工/JSON 检查的对应命令：它复用 core 的 compatibility
+计算而不写出 artifact，并同时打印两端 artifact identity、compatibility record 与
+Map operation。普通 `amc-dump` 现已反映全部已定义的 `.abix` v4 section，包括可选的
+compatibility、map 和 map-operation section。
+
+### `runtime::RuntimeRegistry`
+
+头文件：`abix/runtime_descriptor.h`、`abix/runtime_registry.h`。
+
+`ModuleDescriptor` 是一个 metadata module 的生成静态视图。
+`RuntimeRegistry<Capacity>::register_module()` 会先校验完整 module（包括 type 引用
+和重复 ID），随后从调用者视角原子地完成注册。Registry 同时保留 canonical 的
+`model::TypeDesc`/`TypeLayout` 视图和生成 descriptor。
+
+| API | 结果 |
+|---|---|
+| `register_module(const ModuleDescriptor&)` | `RuntimeRegisterStatus`；拒绝格式错误、重复、超容量或未解析引用的 module |
+| `find_by_id(TypeId)` / `find_by_name(const char*)` | 生成的 `RuntimeRegistryEntry`，或 `nullptr` |
+| `type_of<T>()` | 由生成的 `TypeTraits<T>::type_id` 选中的 entry |
+| `canonical()` | 底层有界 `MetadataRegistry` 视图 |
+
+`type_of<T>()` 只对生成头文件定义了 `TypeTraits<T>` 的类型可用，这是刻意设计。
+显式启用这些特化：
+
+```cpp
+#include "my_native_types.hpp"
+#define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
+#include "package_metadata.hpp"
+
+skl::abix::runtime::RuntimeRegistry<128> registry;
+if (registry.register_module(amc_generated::amc_module) ==
+    skl::abix::runtime::RuntimeRegisterStatus::ok) {
+    const auto *metadata = registry.type_of<my::NativeType>();
+    // 注册成功后 metadata 非空。
+}
+```
+
+ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。这是 metadata
+自举，而非 C++ 编译器源码自举：AMC 的 C++ provider 仍依赖 Clang/LLVM 的语义分析。
+
+---
+
 ## 1. `config.h` — 平台检测与核心枚举
 
 **命名空间：** `skl::abix`

@@ -45,6 +45,78 @@ flowchart TB
 
 ---
 
+## ABI Metadata Runtime and AMC
+
+The POD DLL export table documented below remains ABIX's public call ABI.
+AMC metadata is separate from that table: it describes selected native C++ ABI
+surfaces in a `.abix` v4 artifact and can project those records as C++17
+`constexpr` descriptors. The artifact contains type/layout, field, function,
+symbol, hash, compatibility, and map data. Its wire format is documented in
+[`.abix` format notes](abix.md).
+
+### Build, inspect, and compare artifacts
+
+```sh
+amc build -c package.abic.toml -B build
+amc validate build/build/package.abix
+amc inspect build/build/package.abix
+amc generate build/build/package.abix -l cpp -o package_metadata.hpp
+amc diff old.abix new.abix -o compatibility.abix
+amc compatibility old.abix new.abix
+amc-dump diff old.abix new.abix
+amc-dump diff old.abix new.abix --json compatibility.json
+```
+
+`amc diff` records identical, layout-compatible, map-compatible, or
+incompatible types. The generated `MapPrivate<A, B>` plan performs copy/default
+operations; integer and floating conversions require an explicit native
+converter and therefore do not silently reinterpret values.
+
+`amc-dump diff` is the human/JSON inspection counterpart: it computes the
+same core compatibility report without writing an artifact, and prints both
+artifact identities plus compatibility records and Map operations. Plain
+`amc-dump` reflects every currently defined `.abix` v4 section, including the
+optional compatibility, map, and map-operation sections.
+
+### `runtime::RuntimeRegistry`
+
+Headers: `abix/runtime_descriptor.h`, `abix/runtime_registry.h`.
+
+`ModuleDescriptor` is the generated, static view of one metadata module.
+`RuntimeRegistry<Capacity>::register_module()` first validates the entire
+module, including type references and duplicate IDs, then registers it
+atomically from the caller's perspective. The registry retains canonical
+`model::TypeDesc`/`TypeLayout` views alongside generated descriptors.
+
+| API | Result |
+|---|---|
+| `register_module(const ModuleDescriptor&)` | `RuntimeRegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules |
+| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `RuntimeRegistryEntry`, or `nullptr` |
+| `type_of<T>()` | Entry selected by generated `TypeTraits<T>::type_id` |
+| `canonical()` | Underlying bounded `MetadataRegistry` view |
+
+`type_of<T>()` is intentionally available only for types whose generated header
+defines `TypeTraits<T>`. Enable those specializations explicitly:
+
+```cpp
+#include "my_native_types.hpp"
+#define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
+#include "package_metadata.hpp"
+
+skl::abix::runtime::RuntimeRegistry<128> registry;
+if (registry.register_module(amc_generated::amc_module) ==
+    skl::abix::runtime::RuntimeRegisterStatus::ok) {
+    const auto *metadata = registry.type_of<my::NativeType>();
+    // metadata is non-null after successful registration.
+}
+```
+
+ABIX Runtime and AMC core metadata are covered by reproducible self-description
+tests. This is metadata self-hosting, not C++ compiler-source self-hosting:
+AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
+
+---
+
 ## 1. `config.h` — Platform Detection & Core Enums
 
 **Namespace:** `skl::abix`

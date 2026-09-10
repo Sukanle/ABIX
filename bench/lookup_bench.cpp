@@ -87,9 +87,9 @@ BENCHMARK(BM_Resolve_Linear_Random);
 
 #ifndef ALL_BENCHMARKS
 int main(int argc, char **argv) {
+    benchmark::MaybeReenterWithoutASLR(argc, argv);
     skl::abix::rcu_domain::instance().reset();
 
-    benchmark::MaybeReenterWithoutASLR(argc, argv);
     char arg0_default[] = "benchmark";
     char *args_default = reinterpret_cast<char *>(arg0_default);
     if (!argv) {

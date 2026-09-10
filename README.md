@@ -22,6 +22,8 @@ Key design goals:
 - **Hot-reload** — Integer handle IDs remain stable across unload/reload cycles, enabling zero-downtime DLL upgrades.
 - **RCU Non-Blocking Unload** — Global `rcu_domain` (Epoch-Based Reclamation), `dll_object` delegates to a global domain via `enter_read()`/`exit_read()` with compiler-builtin atomics, allowing safe concurrent DLL unload without blocking active callers.
 - **Lookup acceleration** — Automatic lookup strategy: linear scan for small tables (< 64 entries), HashIndex for large tables (≥ 64 entries), with zero ABI format changes.
+- **ABI metadata runtime** — Versioned `.abix` v4 artifacts, generated static descriptors, and a bounded `RuntimeRegistry` provide native type metadata without changing the DLL function-table ABI.
+- **AMC pipeline** — `amc` extracts selected C++ ABI layouts, validates/inspects artifacts, generates C++ projections, and produces compatibility/Map IR reports.
 
 > [!IMPORTANT]
 > ABIX's Hash Container, Micro-RCU, RCU batching, and other performance optimizations are **specialized for ABIX's own read-mostly workloads**. They are not general-purpose concurrent containers or a general-purpose RCU implementation.
@@ -40,6 +42,29 @@ Key design goals:
 - **Pluggable Logging** — Compile-time removable logging with C-callback sink (`ABIX_LOG_*` macros), per-level disable, and ABI-safe `set_log_sink()` for production log platforms
 - **Dynamic mics Integration** — Built on the mics library, supporting runtime type queries and POD field access via `make_pod_type_info` / `make_offset_field`
 - **Lookup Strategy** — Automatic: linear scan for small tables, HashIndex for large tables. Built at load time, zero ABI format changes.
+- **Generated Runtime Metadata** — `RuntimeRegistry::register_module()` validates a generated `ModuleDescriptor`; opt-in generated `TypeTraits<T>` enables `type_of<T>()`.
+- **ABI Metadata Compiler (AMC)** — C++ frontend, C++17 projection backend, compatibility analysis, `MapPrivate<A, B>` generation, and JSON-lines provider IPC.
+
+## ABI Metadata and AMC
+
+The stable DLL function table remains the public call ABI.  Metadata is an
+additional, explicit layer: AMC reads a selected C++ surface and writes an
+`.abix` v4 artifact containing type/layout, field, function, symbol, hash,
+compatibility, and map records.  It can then generate a C++17 descriptor
+projection for registration in the runtime registry.
+
+```sh
+amc build -c package.abic.toml -B build
+amc validate build/build/package.abix
+amc generate build/build/package.abix -l cpp -o package_metadata.hpp
+amc diff v1.abix v2.abix -o compatibility.abix
+```
+
+Generated native traits are deliberately opt-in: define
+`AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS` before including the generated
+header, then register its `amc_generated::amc_module` descriptor before
+calling `RuntimeRegistry::type_of<T>()`.  See [the API reference](docs/api.md)
+and [the `.abix` format notes](docs/abix.md).
 
 ## Quick Start
 
@@ -468,13 +493,25 @@ COM's `QueryInterface` requires a runtime query on every interface switch, with 
 
 ## Future Plans
 
-- **AMC Integration** — Combine with the planned Meta Object Compiler to auto-generate `SKL_ABIX_DEFINE_TABLE` entries from C++ attributes
+- **AMC wrapper expansion** — Generate native wrapper classes, explicit conversion adapters, and hot-reload projections; metadata does not auto-generate exported DLL function-table entries today.
 - **Serialization Support** — Extend `type_sig` and type tags to support serialization of complex types across DLL boundaries
 - **Network Transport** — Enable remote function calls through the same stable table format
 
-### ABIX Runtime Bootstrap (Long-term)
+### ABIX Runtime Bootstrap Status
 
-The current RCU/EBR implementation is header-only with inline reader fast paths, keeping `enter()`/`exit()` at ~2–3 ns. This serves as the **reference/golden implementation**. The long-term plan is to bootstrap ABIX's own runtime:
+ABIX Runtime metadata is self-described today: a clean build can use
+`abix/self.abic.toml` to regenerate metadata for the model, registry, map, and
+RCU/EBR types, register it, and query native types with `type_of<T>()`.
+The hand-written Bootstrap Kernel remains the trusted bootstrap component.
+
+AMC also describes its own core IR through `amc/self.abic.toml`; its generated
+metadata projection is compiled and consumed by `RuntimeRegistry`. This is a
+metadata self-hosting check, not compiler-source self-hosting: `amc-cpp` still
+uses Clang/LLVM for C++ semantic extraction and is not built from its generated
+descriptor.
+
+The remaining runtime evolution goal is to make the runtime implementation
+replaceable behind the same semantics:
 
 ```
 Header-only RCU (reference implementation)
@@ -508,7 +545,7 @@ The end state separates concerns cleanly:
                     Same semantic ABI
 ```
 
-This allows the Runtime to freely evolve through layout strategies (padded, dense, NUMA, hierarchical) while `rcu_domain`, `rcu_guard`, and the ABI contract remain stable. The header-only implementation acts as the golden reference, and ABIX's own ABI system will eventually generate the Runtime glue — the library bootstraps itself.
+This allows the Runtime to freely evolve through layout strategies (padded, dense, NUMA, hierarchical) while `rcu_domain`, `rcu_guard`, and the ABI contract remain stable.
 
 ## License
 

@@ -22,6 +22,8 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **热重载** — 整数句柄 ID 在卸载/重载周期中保持稳定，支持零停机 DLL 升级。
 - **RCU 非阻塞卸载** — 全局 `rcu_domain`（基于 Epoch-Based Reclamation），`dll_object` 通过 `enter_read()`/`exit_read()` 委托至全局域，配合编译器内建原子操作，实现安全的并发 DLL 卸载，不阻塞活跃的调用者。
 - **查找加速** — 自动查找策略：小表（< 64 条目）线性扫描，大表（≥ 64 条目）HashIndex，零 ABI 格式变更。
+- **ABI 元数据运行时** — 版本化 `.abix` v4 artifact、生成的静态 descriptor 与有界 `RuntimeRegistry` 提供原生类型元数据，不改变 DLL 函数表 ABI。
+- **AMC 管线** — `amc` 提取选定的 C++ ABI 布局、校验/检查 artifact、生成 C++ 投影，并产出 Compatibility / Map IR 报告。
 
 > [!IMPORTANT]
 > ABIX 的 Hash Container、Micro-RCU、RCU batching 等性能优化均**针对 ABIX 自身的 read-mostly 场景特化**，并非通用并发容器或通用 RCU 实现。
@@ -40,6 +42,28 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **可插拔日志** — 编译期可移除的日志系统，支持 C 回调接收器（`ABIX_LOG_*` 宏）、按级别禁用和 ABI 安全的 `set_log_sink()`，可对接生产级日志平台
 - **动态反射集成** — 基于 mics 库构建，支持运行时类型查询和通过 `make_pod_type_info` / `make_offset_field` 访问 POD 字段
 - **查找策略** — 自动：小表线性扫描，大表 HashIndex。加载时构建，零 ABI 格式变更。
+- **生成的运行时元数据** — `RuntimeRegistry::register_module()` 校验生成的 `ModuleDescriptor`；可选生成的 `TypeTraits<T>` 支持 `type_of<T>()`。
+- **ABI 元数据编译器（AMC）** — C++ frontend、C++17 投影 backend、兼容性分析、`MapPrivate<A, B>` 生成和 JSON-lines provider IPC。
+
+## ABI 元数据与 AMC
+
+稳定 DLL 函数表仍是公共调用 ABI。元数据是额外且显式的一层：AMC 读取选定的
+C++ 接口，写出包含 type/layout、field、function、symbol、hash、compatibility 和
+map record 的 `.abix` v4 artifact，随后可生成供运行时 Registry 注册的 C++17
+descriptor 投影。
+
+```sh
+amc build -c package.abic.toml -B build
+amc validate build/build/package.abix
+amc generate build/build/package.abix -l cpp -o package_metadata.hpp
+amc diff v1.abix v2.abix -o compatibility.abix
+```
+
+生成的 native traits 是显式启用的：在包含生成头文件前定义
+`AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS`，先注册其
+`amc_generated::amc_module` descriptor，再调用
+`RuntimeRegistry::type_of<T>()`。参见 [API 参考](docs/api_zh.md) 和
+[`.abix` 格式说明](docs/abix.md)。
 
 ## 快速开始
 
@@ -475,13 +499,22 @@ COM 的 `QueryInterface` 每次接口切换都需要运行时查询，开销显�
 
 ## 未来计划
 
-- **AMC 集成** — 结合计划中的元对象编译器，从 C++ 属性自动生成 `SKL_ABIX_DEFINE_TABLE` 条目
+- **AMC wrapper 扩展** — 生成原生 wrapper class、显式转换 adapter 与热重载 projection；当前 metadata 不会自动生成 DLL 函数表导出条目。
 - **序列化支持** — 扩展 `type_sig` 和类型标签，支持跨 DLL 边界的复杂类型序列化
 - **网络传输** — 通过相同的稳定表格式实现远程函数调用
 
-### ABIX Runtime 自举（长期计划）
+### ABIX Runtime 自举状态
 
-当前 RCU/EBR 实现为 header-only，reader 快速路径直接 inline，保持 `enter()`/`exit()` 约 2~3 ns。这是 **reference/golden implementation**。长期计划是让 ABIX 自举自己的 Runtime：
+ABIX Runtime 元数据现已完成自描述：干净构建可以使用
+`abix/self.abic.toml` 重新生成 model、registry、map 和 RCU/EBR 类型的 metadata，
+将其注册后用 `type_of<T>()` 查询原生类型。手写 Bootstrap Kernel 仍是受信任的
+启动组件。
+
+AMC 也通过 `amc/self.abic.toml` 描述自身 core IR；其生成的 metadata projection 已
+被编译并由 `RuntimeRegistry` 消费。这是 metadata 自举验证，不是编译器源码自举：
+`amc-cpp` 的 C++ 语义提取仍依赖 Clang/LLVM，且不会由生成的 descriptor 反向构建。
+
+运行时的后续演进目标是以同一语义替换实现：
 
 ```
 Header-only RCU（参考实现）
@@ -515,7 +548,7 @@ ABIX 构建自己的 Runtime
                     相同语义 ABI
 ```
 
-这样 Runtime 可以自由通过布局策略（padded、dense、NUMA、hierarchical）演进，而 `rcu_domain`、`rcu_guard` 和 ABI 契约保持稳定。Header-only 实现作为 golden reference，ABIX 自己的 ABI 系统最终将生成 Runtime 胶水代码——库实现自我自举。
+这样 Runtime 可以自由通过布局策略（padded、dense、NUMA、hierarchical）演进，而 `rcu_domain`、`rcu_guard` 和 ABI 契约保持稳定。
 
 ## 许可证
 

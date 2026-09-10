@@ -1,437 +1,183 @@
-# Benchmark & Performance
+# ABIX Benchmark & Performance Analysis
 
-This document covers the full performance engineering process for ABIX's Micro-RCU:
-from bottleneck identification through optimization to final validation and limitations.
+> Documentation Notes
+> Data Source: This report is generated based on the results of Google Benchmark tests located in the bench/ directory.
+>> Authoring Method: Test data is aggregated via scripts; text analysis and formatting are assisted by AI to reduce human error in manual compilation.
+>> Maintenance Policy: Absolute performance numbers may vary due to differences in hardware environments and compiler versions. This report is intended to demonstrate performance trends and comparative analysis (e.g., HashIndex vs. Linear Scan), and does not constitute an absolute performance guarantee. To reproduce or verify the results, please run the CMake Benchmark targets directly from the project root (source code is fully provided).
+>
+> It records the benchmark scope, method, and conclusions that can be checked against the current source tree. Throughput values are platform-specific observations, not cross-machine guarantees.
 
----
+## 1. Executive Summary
 
-## 1. Benchmark Scope
+- ABIX targets **read-mostly** workloads: many readers execute short read-side critical sections while a small number of writers perform `retire()` and `synchronize()`.
+- `bench_all` covers atomics, calls, lookup, plugin reload, EBR fast paths, grace periods, false sharing, and EBR workloads.
+- `BM_EBR_SyncPhase` isolates synchronization cost. `BM_EBR_Workload/role_based` is the more representative N-readers/one-writer model.
+- AMC extraction, `.abix` serialization, compatibility analysis, and generated metadata registration are build/control-plane operations. They are not included in these DLL-call or EBR hot-path measurements, and this document makes no latency claim for them.
+- `synthetic_mixed` keeps total work fixed across thread counts and is suitable for scalability comparisons. `role_based` changes the writer operation count as readers are added; it models role separation, but is not a fixed-work scaling curve.
+- The current Linux run successfully built and executed `bench_all`, and the fixed-work validation passed. CPU frequency scaling was enabled and short-run variance was high, so the current B8/B16 run does not justify a performance winner or a fixed percentage claim.
 
-### What We Measure
+## 2. What Is Measured
 
-```
-Micro-RCU
-├── Reader Fast Path        — enter() / exit() / protected load
-├── synchronize()           — epoch advancement + grace period
-├── WriterLock              — multi-writer contention
-├── EpochAdvance            — global_epoch atomic RMW
-└── Reader Scan             — thread list traversal
+| Layer | Benchmarks | Purpose |
+|---|---|---|
+| Fast path | `BM_EBR_EnterExit`, `BM_EBR_ProtectedLoad` | Basic reader entry/exit and protected-load cost |
+| Synchronization | `BM_EBR_SyncPhase` | Contention and scaling of `synchronize()` |
+| Reclamation | `BM_EBR_GracePhase`, `BM_EBR_ReclaimBatch` | Grace-period and reclamation costs |
+| Role workload | `BM_EBR_Workload/synthetic_mixed` | Same complete schedule on every thread; fixed total work |
+| Role workload | `BM_EBR_Workload/role_based` | N readers plus one writer; target usage model |
+| Microarchitecture | False-sharing and atomic-contention tests | Evidence for shared writes, atomic RMW, and cache-line isolation |
 
-完整 workload
-├── Synthetic Mixed         — all threads execute full schedule
-└── Role-Based              — N readers + 1 writer (real-world model)
+`bench_all` also contains call overhead, linear-vs-HashIndex lookup crossover, ABI resolve, reload, and DLL benchmarks. Their metrics are different and should not be merged into one overall ranking.
 
-参数分析
-├── Epoch Batch             — SKL_ABIX_RCU_EPOCH_BATCH
-├── Publish Batch           — SKL_ABIX_RCU_BATCH_PUBLISH
-└── Workload Threshold      — retire batching threshold
-```
+## 3. Workload Semantics
 
-### Priority
+`workload_runner` defines `read_heavy`, `balanced`, and `write_heavy` schedules. The current validation confirms that `synthetic_mixed` uses 10,000,000 total operations for every tested thread count. The schedule includes 9,000,000 reads, 900,000 retires, and 100,000 synchronizations.
 
-**Role-Based is the most important performance metric for ABIX.**
+In `role_based`, only thread 0 performs retire/sync work and the other threads perform reads. A decreasing retire/sync count as the thread count increases is therefore expected behavior, not a benchmark failure. Use `synthetic_mixed` for fixed-work scaling and `role_based` for the real role split.
 
-```
-Role-Based
-    >
-Synthetic Mixed
-    >
-SyncPhase
-    >
-Microbench
-```
+## 4. Current Measurement Record
 
-Role-Based directly models real-world ABIX usage: many concurrent readers performing `enter()`/`exit()` and one writer thread performing `retire()` + `synchronize()`. All other benchmarks provide supporting evidence for design decisions.
-
----
-
-## 2. Test Environment
-
-### Intel Mainstream High-Performance Platform
-
-```
-Intel Core i7-14700K
-64 GB DDR5-6000
-Windows 11
-SMT disabled
-P/E heterogeneous cores (20 P-cores used)
+```text
+Date:        2026-09-08
+System:      Linux 7.2.2-1-cachyos
+CPU:         Intel Core i7-14700K, 20 logical / 20 physical CPUs
+NUMA:        1 node
+Compiler:    GNU 16.2.1
+Build:       Release
+Benchmark:   Google Benchmark found and linked
+Default:     SKL_ABIX_RCU_EPOCH_BATCH=8
 ```
 
-### Apple Silicon Platform
+This environment exposes 20 CPUs and does not provide the Windows P-core/E-core setup described by older notes. Google Benchmark also reports that CPU scaling is enabled, so frequency changes add noise to real-time measurements.
 
-```
-Apple M4
-macOS
-```
+### Reproduction Command
 
-M4 is used primarily to simulate low-power/edge device behavior; 14700K is used to simulate mainstream high-performance devices.
+```bash
+cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release --target bench_all --parallel 4
 
-> [!IMPORTANT]
-> Do not directly compare absolute throughput numbers across different CPU architectures for simple ranking purposes. Different platforms have different core counts, frequency characteristics, and memory subsystems.
-
----
-
-## 3. Baseline: Identifying the Bottleneck
-
-### 3.1 ThreadState — Shared vs Per-Thread Write
-
-Per-thread write to a thread-local cache line is fast:
-
-```
-per-thread write ≈ 1.7–3.6 ns
+build/Release/bin/bench_all \
+  --benchmark_filter='BM_EBR_Workload/role_based/(read_heavy|balanced|write_heavy)/20T' \
+  --benchmark_min_time=1s \
+  --benchmark_repetitions=10 \
+  --benchmark_report_aggregates_only=true
 ```
 
-But shared cache-line writes degrade rapidly with thread count. At 10 threads:
+The current check did build and execute the same `bench_all` target. Its validation printed `All counts match — synthetic mixed is truly fixed-work`. The short run confirms that the path works; it is not a release-grade numerical baseline.
 
-```
-shared write ≈ 308 ns
-```
+### Governor Follow-up
 
-This establishes the fundamental problem:
+During the follow-up run, the governor query reported `performance`. The current execution environment could not interactively provide the `sudo` password, so this session cannot establish that the switch command itself changed the state; the value is recorded only as an observed runtime condition.
 
-> **Shared cache-line writes are the bottleneck, not ordinary reads.**
+Using the updated `ebr_profile_bench` entry point, the 20-thread `BM_EBR_SyncPhase` short run produced a median of approximately `2.50 us` and a CV of approximately `4.95%` across three repetitions. This confirms that the new `MaybeReenterWithoutASLR` entry-point change runs correctly, but it is not enough for a release-grade baseline.
 
-### 3.2 WriterLock
+### B8/B16 Status
 
-The WriterLock contention curve closely matches the shared ThreadState write curve. This confirms:
+An additional build with `SKL_ABIX_RCU_EPOCH_BATCH=16` was compiled and run against the 20-thread role-based workloads. The two short runs had coefficients of variation of roughly 29% to 44%, with CPU scaling enabled. The defensible conclusion is therefore:
 
-> **WriterLock contention is primarily caused by cache-line bouncing.**
+> B8 and B16 both build and run; this run is insufficient to decide which is faster or to claim a fixed percentage improvement.
 
-### 3.3 EpochAdvance
+Older statements such as "B16 improves throughput by 24%" or exact `thr16`/`thr32` results should be treated as historical notes unless their raw output, source revision, compiler, command line, and repeated-run statistics are available.
 
-Further measurement reveals:
+## 5. Analysis Method
 
-```
-EpochAdvance > WriterLock
-```
+1. Confirm a Release build, correct operation counts, and the intended benchmark filter.
+2. Use `SyncPhase` to identify synchronization degradation with thread count.
+3. Use `synthetic_mixed` for fixed-work scalability.
+4. Use `role_based` for target read-mostly throughput.
+5. Sweep neighboring values around B8/B16 and threshold values instead of testing only round numbers.
+6. Repeat at least 10 times and record median, p90, standard deviation, and CV. When CV is high, report the result as inconclusive.
 
-The additional cost comes primarily from:
+The potential contention chain is:
 
-```cpp
-_global_epoch.fetch_add(...);
-```
-
-This is a shared atomic RMW operation — every `synchronize()` call must increment the global epoch counter, and every increment triggers a cache-line ownership transfer.
-
-### 3.4 The Performance Chain
-
-The complete bottleneck chain is:
-
-```
-synchronize()
-    ↓
-WriterLock            (cache-line bouncing)
-    ↓
-publish               (retire list manipulation)
-    ↓
-global_epoch RMW      (shared atomic fetch_add)
-    ↓
-shared cache-line bouncing
-```
-
-This is the most important performance analysis chain in the entire benchmark document. Every subsequent optimization targets one or more links in this chain.
-
----
-
-## 4. Cache-Line Layout Optimization
-
-Three configurations were tested:
-
-| Configuration | Description |
-|---------------|-------------|
-| `no_alignas` | No explicit cache-line alignment |
-| `epoch_alignas` | Only `_epoch` is `alignas(64)` |
-| `all_alignas` | All members are `alignas(64)` |
-
-### 4.1 `alignas(64) _global_epoch` — Worth Keeping
-
-20T SyncPhase improvement:
-
-```
-≈ -43%
-```
-
-Role-Based workloads also show measurable benefit. The `_epoch` struct is the most contended cache line in the entire system — every reader's `enter()` loads from it, every `synchronize()` writes to it.
-
-### 4.2 Full `alignas` — Not Worth It
-
-Applying `alignas(64)` to every member:
-
-```
-sizeof: 56 B → 256 B
-```
-
-And low-thread-count performance decreases noticeably. The larger memory footprint and reduced cache utilization outweigh the isolation benefits for fields that are not under heavy contention.
-
-### 4.3 Final Strategy
-
-> **Only isolate fields that have been proven to experience shared-write contention. Do not apply global cache-line padding.**
-
----
-
-## 5. Epoch Advancement Batching
-
-### Principle
-
-Without batching (B1):
-
-```
-synchronize → advance epoch
-synchronize → advance epoch
-synchronize → advance epoch
-```
-
-With batching (e.g., B16):
-
-```
+```text
+reader enter/exit
+    -> shared epoch load
 synchronize
-synchronize
-...
-synchronize (16 calls)
-    ↓
-advance epoch (only once)
+    -> writer contention
+    -> epoch atomic RMW
+    -> reader scan / grace period
+    -> retire publication and reclamation
 ```
 
-The goal is to reduce the frequency of `_global_epoch` shared atomic RMW operations. Each `fetch_add` on `_global_epoch` triggers a cache-line ownership transfer across all cores. By batching, only 1/N of `synchronize()` calls actually perform the expensive RMW.
+`alignas`, epoch batching, and publish batching should be retained only when measurements support the corresponding change. Global padding can reduce cache utilization, while batching can increase reclamation delay; neither is a universal optimization.
 
-### Configurations Tested
+## 6. Configuration Guidance
 
-```
-B1  — no batching (advance every synchronize)
-B8  — batch 8 synchronize calls per epoch advance
-B16 — batch 16 synchronize calls per epoch advance
-```
+| Parameter | Purpose |
+|---|---|
+| `SKL_ABIX_RCU_CACHE_LINE_SIZE` | Cache-line isolation size for contended fields |
+| `SKL_ABIX_RCU_EPOCH_BATCH` | Synchronization calls per epoch advancement |
+| `SKL_ABIX_RCU_BATCH_PUBLISH` | Retired objects accumulated before global publication |
 
----
+The current default epoch batch is 8. Treat it as a conservative default, not as an optimum for every CPU and workload. Before changing it, rerun a Release benchmark on the target platform with stable CPU affinity, frequency, and enough repetitions.
 
-## 6. B8 vs B16 — Detailed Comparison
+## 7. Limitations
 
-### 6.1 SyncPhase
+- These results describe the current implementation under the stated workloads; they are not general claims about RCU or concurrent containers.
+- Absolute throughput across Linux, Windows, macOS, and different CPU topologies is not directly comparable.
+- Frequency scaling, migration, Turbo, temperature, NUMA, ASLR, and background activity affect short benchmarks.
+- Historical numbers without raw output and complete environment metadata cannot be independently reproduced.
+- Performance tests do not replace correctness tests. Run the full test suite after changing reclamation or synchronization code.
 
-B8 and B16 are essentially at the same level — there is no significant scalability regression. Both provide substantial improvement over B1.
+## 8. Full Benchmark Run
 
-### 6.2 Synthetic Mixed
+### Execution
 
-B8 and B16 trade blows — neither is a consistent absolute winner across all thread counts and workload profiles.
+With the governor observed as `performance`, the Release build ran each benchmark executable in `build/Release/bin`:
 
-### 6.3 Role-Based
-
-This is the primary basis for decision-making.
-
-**20T — the most important thread count for 14700K (all P-cores):**
-
-| Workload    | Threads |            B8 |           B16 | Delta |
-| ----------- | ------: | ------------: | ------------: | ----: |
-| read-heavy  |     20T |      9.44 G/s | **11.67 G/s** |  +24% |
-| balanced    |     20T |     11.66 G/s | **11.90 G/s** |   +2% |
-| write-heavy |     20T | **13.94 G/s** |     13.53 G/s |   −3% |
-
-> **Larger epoch batch sizes can further reduce shared epoch update overhead in high-concurrency read-mostly workloads.**
-
-The write-heavy case shows a slight regression with B16, which is expected: when writes are frequent, delaying epoch advancement can cause retire lists to accumulate, increasing the per-collect cost.
-
----
-
-## 7. WorkloadThreshold and Anomalous Noise
-
-### Initial Observation
-
-During initial testing, B16 showed a significant throughput drop at `threshold=16` and `threshold=32`. This raised concerns about periodic coupling between batch size and retire threshold.
-
-### Fine-Grained Sweep
-
-To investigate, a fine-grained sweep was performed:
-
-```
-14, 15, 16, 17, 18
-30, 31, 32, 33
+```bash
+for bench in atomic_bench call_bench reload_bench falseSharing_bench \
+  lookup_bench abix_resolve_bench abix_lookup_cross_bench \
+  stress_bench ebr_bench ebr_profile_bench; do
+  (cd build/Release/bin && LD_LIBRARY_PATH=. ./$bench \
+    --benchmark_min_time=0.1s \
+    --benchmark_repetitions=3 \
+    --benchmark_report_aggregates_only=true)
+done
 ```
 
-### Corrected Results
+The benchmarks must be launched from `build/Release/bin` with `LD_LIBRARY_PATH=.`. `dll_path()` produces a bare filename, and Linux `dlopen("hotcache_dll.so")` does not automatically search the current directory.
 
-```
-thr16: +12%
-thr32: +10%
-```
+`bench_all` was also run. Its current unity build uses the `ebr_profile_bench` `main`, so it registers only part of the source suites by default. It must not be treated as the only complete benchmark entry point.
 
-The original `thr16/32` collapse could not be reproduced. It was not a structural performance problem with B16.
+### Representative Results
 
-> **This is an important experimental methodology lesson: a single anomalous data point at a round number (16, 32) should trigger a fine-grained neighborhood sweep before concluding it is a systematic effect.**
+The following are median values from 2026-09-08 on this machine. Each benchmark used three repetitions; these values record the current implementation and are not release baselines.
 
----
+| Category | Benchmark | Result |
+|---|---|---:|
+| EBR fast path | `BM_EBR_EnterExit` | 0.491 ns |
+| EBR fast path | `BM_EBR_ProtectedLoad` | 0.530 ns |
+| EBR synchronization | `BM_EBR_SyncPhase/20T` | 3.23 us wall / 1.46 us CPU |
+| EBR role-based | read-heavy / 20T | 12.34 G/s |
+| EBR role-based | balanced / 20T | 11.70 G/s |
+| EBR role-based | write-heavy / 20T | 11.92 G/s |
+| Reload | logical | 3.00 us |
+| Reload | real DLL | 2.96 us |
+| Calls | `BM_ABIX_Call` | 3.91 ns |
+| Lookup crossover | uniform, linear, 16K | 1.59 us |
+| Lookup crossover | uniform, hash index, 16K | 13.2 ns |
+| False sharing | packed, 16T | 128 ns |
+| False sharing | padded, 16T | 3.87 ns |
 
-## 8. Benchmark Noise
+The limited conclusions are that shared-write contention grows with thread count in the packed false-sharing test while the padded variant stays around 3.4-4.0 ns; HashIndex is substantially faster than linear scanning for the 16K uniform lookup; and 20-thread role-based EBR throughput is around 12 G/s. These are platform-specific observations, and the write-heavy role-based CV was about 14.7%.
 
-Two distinct techniques are used to handle noise:
+### Incorrect Invocation Reproduction
 
-### Fine-Grained Sweep
+When first run directly from the project root, the default `lookup_bench` run and these four individual filters exited with code 139 (segmentation fault):
 
-Used to **discover/exclude structural patterns**. For example:
-
-```
-15 → normal
-16 → crash?
-17 → normal
-```
-
-If the pattern is genuine (e.g., batch/threshold periodic coupling), it will appear at predictable intervals. A single-point anomaly is almost certainly noise.
-
-### Repeated Runs
-
-Used to **reduce the impact of single-run system noise on conclusions**. For formal benchmarks, record:
-
-```
-median
-p90 / p95
-variance / CV
+```text
+BM_FindIndex_Only
+BM_Resolve_Linear
+BM_Resolve_Linear_80_20
+BM_Resolve_Linear_Random
 ```
 
-Not just a single run result.
+ASAN located the crash at `g_image->index` in `bench/lookup_bench.cpp:26`: `dll_object::load()` failed, leaving `g_image` null. With `LD_LIBRARY_PATH=.` all of these tests complete: `BM_FindIndex_Only` is about 33.6 ns, `BM_Resolve_Linear` about 232 ns, and `BM_Resolve_WithEBR` about 34.3 ns. The issue is the launch environment combined with an unchecked load result, not a lookup algorithm crash.
 
-### Known Noise Sources (Windows / 14700K)
+## 9. References
 
-- P/E core scheduling
-- Thread migration
-- Turbo Boost state transitions
-- Thermal state
-- CPU frequency scaling
-- Cache state (cold vs warm)
-
-These are not defects in the benchmark — they are real-world platform characteristics. The goal is to distinguish them from genuine performance patterns.
-
----
-
-## 9. Cross-Platform Parameter Interpretation
-
-`SKL_ABIX_RCU_EPOCH_BATCH` is **not** a CPU architecture constant.
-
-Do **not** use simple mappings like:
-
-```cpp
-// WRONG
-#if defined(__x86_64__)
-#  define SKL_ABIX_RCU_EPOCH_BATCH 16
-#elif defined(__aarch64__)
-#  define SKL_ABIX_RCU_EPOCH_BATCH 8
-#endif
-```
-
-Batch size is affected by:
-
-```
-CPU microarchitecture
-+
-Cache coherence protocol
-+
-Core topology
-+
-Workload characteristics
-```
-
-The same batch size may perform differently on different platforms even with the same ISA. Always benchmark on the target platform.
-
----
-
-## 10. Compile-Time Configuration
-
-The final configuration interface in [rcu_domain.h](../abix/rcu_domain.h):
-
-```cpp
-#ifndef SKL_ABIX_RCU_EPOCH_BATCH
-#  define SKL_ABIX_RCU_EPOCH_BATCH 8
-#endif
-
-#ifndef SKL_ABIX_CACHE_LINE_SIZE
-#  define SKL_ABIX_CACHE_LINE_SIZE 64
-#endif
-
-#ifndef SKL_ABIX_RCU_BATCH_PUBLISH
-#  define SKL_ABIX_RCU_BATCH_PUBLISH 64
-#endif
-```
-
-| Macro | Purpose |
-|-------|---------|
-| `SKL_ABIX_CACHE_LINE_SIZE` | Cache-line isolation for contended fields |
-| `SKL_ABIX_RCU_EPOCH_BATCH` | Epoch advancement batching — how many `synchronize()` calls before advancing `_global_epoch` |
-| `SKL_ABIX_RCU_BATCH_PUBLISH` | Retire batch size — how many retired objects to accumulate before publishing to the global retire list |
-
----
-
-## 11. Recommended Configuration
-
-### Default
-
-```cpp
-SKL_ABIX_CACHE_LINE_SIZE   = 64
-SKL_ABIX_RCU_EPOCH_BATCH   = 8
-SKL_ABIX_RCU_BATCH_PUBLISH = 64
-```
-
-**Rationale:** B8 is the more conservative default. It provides most of the batching benefit without excessively delaying epoch progression. B16 can be tested as an optional tuning parameter.
-
-### Optional Tuning
-
-For workloads with:
-
-```
-high concurrency
-+
-read-mostly
-+
-frequent synchronize
-```
-
-Consider testing:
-
-```
-B8
-B16
-```
-
-On the current 14700K platform, Role-Based results show B16 is competitive, especially for read-heavy workloads at high thread counts.
-
-**Always benchmark on the target platform before changing the default.**
-
----
-
-## 12. Scope & Limitations
-
-Benchmark results only demonstrate ABIX's behavior under its target workload. Do not generalize these conclusions.
-
-### Hash Container
-
-```
-Read-only / rarely modified
-→ Not a general-purpose concurrent hash map
-```
-
-### Micro-RCU
-
-```
-Many readers
-+
-Few writers
-+
-Short read-side critical sections
-→ Not a general-purpose RCU implementation
-```
-
-### Epoch Batching
-
-```
-High-frequency synchronize
-+
-Shared epoch write contention
-→ ABIX-specific optimization
-```
-
-All of the above are **ABIX-specific optimizations** for ABIX's own read-mostly workload pattern. They are not claims about how RCU or concurrent containers should be designed in general.
-
----
-
-## References
-
-- [Intel Core i7-14700K Specification](https://www.intel.com/content/www/us/en/products/sku/236778/intel-core-i7-processor-14700k-33m-cache-up-to-5-60-ghz/specifications.html)
-- [M. Desnoyers et al., "User-Level Implementations of Read-Copy Update"](https://doi.org/10.1109/TPDS.2011.159)
-- [Paul E. McKenney, "Is Parallel Programming Hard, And, If So, What Can You Do About It?"](https://kernel.org/pub/linux/kernel/people/paulmck/perfbook/perfbook.html)
+- [ABIX README](../README.md)
+- [Google Benchmark User Guide](https://github.com/google/benchmark)
+- [User-Level Implementations of Read-Copy Update](https://doi.org/10.1109/TPDS.2011.159)

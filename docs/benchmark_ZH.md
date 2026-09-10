@@ -1,437 +1,196 @@
-# 性能基准与优化
+# ABIX 基准测试与性能分析
 
-本文档涵盖 ABIX Micro-RCU 的完整性能工程过程：
-从瓶颈定位到优化，再到最终验证与局限性分析。
+> 文档说明
+>> 数据来源：本报告基于 bench/ 目录下的 Google Benchmark 测试程序运行结果生成。
+>> 编写方式：测试数据由脚本汇总，文本分析及排版借助 AI 辅助完成，以降低手动整理的人为误差。
+>> 维护策略：由于硬件环境及编译器版本差异，绝对数值可能发生变化。本报告旨在展示性能趋势与横向对比（如 HashIndex vs 线性扫描），不作为绝对的性能承诺。 如需复现或验证，请直接运行项目根目录下的 CMake Benchmark 目标（源码已全部提供）
+>
+> 本文记录基准测试的范围、方法和可以由当前代码复核的结论。文中的吞吐量不是跨机器的承诺，也不应脱离测试平台、编译器和负载模型单独引用。
 
----
+## 1. 结论摘要
 
-## 1. 基准测试范围
+- ABIX 的主要目标是 **read-mostly** 场景：多个 reader 执行短读临界区，少数 writer 执行 `retire()` 和 `synchronize()`。
+- `bench_all` 当前包含原子操作、函数调用、查找、插件 reload、EBR fast path、grace period、false sharing 以及 EBR workload 等多组测试。
+- 对 EBR 扩展性，`BM_EBR_SyncPhase` 和 `BM_EBR_Workload/role_based` 比单一 microbench 更有参考价值；前者隔离同步成本，后者模拟真实 reader/writer 角色。
+- AMC 提取、`.abix` 序列化、兼容性分析和生成 metadata 的注册属于构建/控制平面操作，不包含在本文件的 DLL 调用或 EBR 热路径测量中；本文不对这些操作作延迟承诺。
+- `synthetic_mixed` 是固定工作量测试，适合比较线程数的扩展性；`role_based` 的 writer 操作量会随线程数变化，适合模拟实际角色分工，但不适合直接当作固定工作量 scaling 曲线。
+- 本次 Linux 实测成功编译并运行了 `bench_all`，固定工作量校验通过；但 CPU scaling 开启，短跑结果噪声很大，因此没有把 B8/B16 的本次差异写成性能结论。
 
-### 测试内容
+## 2. 测试对象
 
-```
-Micro-RCU
-├── Reader Fast Path        — enter() / exit() / protected load
-├── synchronize()           — epoch 推进 + grace period
-├── WriterLock              — 多 writer 竞争
-├── EpochAdvance            — global_epoch 原子 RMW
-└── Reader Scan             — 线程列表遍历
+### EBR / Micro-RCU
 
-完整 workload
-├── Synthetic Mixed         — 所有线程执行完整调度
-└── Role-Based              — N 个 reader + 1 个 writer（真实场景建模）
+| 层次 | 测试 | 用途 |
+|---|---|---|
+| fast path | `BM_EBR_EnterExit`、`BM_EBR_ProtectedLoad` | reader 进入/退出和受保护读取的基本开销 |
+| 同步 | `BM_EBR_SyncPhase` | 多线程 `synchronize()` 的竞争与扩展性 |
+| 回收 | `BM_EBR_GracePhase`、`BM_EBR_ReclaimBatch` | grace period 和批量回收成本 |
+| 角色负载 | `BM_EBR_Workload/synthetic_mixed` | 所有线程执行同一完整 schedule，固定总工作量 |
+| 角色负载 | `BM_EBR_Workload/role_based` | N 个 reader + 1 个 writer，接近目标使用方式 |
+| 微架构 | false sharing / atomic contention | 判断共享写、原子 RMW 和 cache-line 隔离是否可能成为瓶颈 |
 
-参数分析
-├── Epoch Batch             — SKL_ABIX_RCU_EPOCH_BATCH
-├── Publish Batch           — SKL_ABIX_RCU_BATCH_PUBLISH
-└── Workload Threshold      — retire 批量回收阈值
-```
+### ABIX 其他路径
 
-### 优先级
+`bench_all` 还覆盖调用方式、线性查找与 HashIndex 交叉点、ABI resolve、reload 和 DLL 场景。这些测试的指标不同，不能与 EBR 吞吐量混成一张"总排名"表。
 
-**Role-Based 是 ABIX 最重要的性能指标。**
+## 3. 工作负载语义
 
-```
-Role-Based
-    >
-Synthetic Mixed
-    >
-SyncPhase
-    >
-Microbench
-```
+`workload_runner` 定义了 `read_heavy`、`balanced` 和 `write_heavy` 三类 schedule。当前实现的校验输出确认：
 
-Role-Based 直接建模了 ABIX 的真实使用场景：大量并发 reader 执行 `enter()`/`exit()`，一个 writer 线程执行 `retire()` + `synchronize()`。其他所有基准测试为设计决策提供辅助证据。
-
----
-
-## 2. 测试环境
-
-### Intel 主流高性能平台
-
-```
-Intel Core i7-14700K
-64 GB DDR5-6000
-Windows 11
-SMT 关闭
-P/E 异构核心（使用 20 个 P-core）
+```text
+synthetic_mixed: 每个线程数均为 10,000,000 total ops
+read_heavy:      9,000,000 reads + 900,000 retires + 100,000 syncs
 ```
 
-### Apple Silicon 平台
+`role_based` 中只有 thread 0 执行 retire/sync，其他线程只执行 read。因此线程数增加时，retire 和 sync 数量下降是设计行为，不是 benchmark 失败。需要比较固定工作量时使用 `synthetic_mixed`；需要模拟真实读写角色时使用 `role_based`。
 
-```
-Apple M4
-macOS
-```
+## 4. 当前实测记录
 
-M4 主要用于模拟低功耗/边缘设备行为；14700K 主要用于模拟主流高性能设备。
+### 环境
 
-> [!IMPORTANT]
-> 不要直接比较不同 CPU 架构的绝对吞吐量来进行简单排名。不同平台有不同的核心数量、频率特性和内存子系统。
-
----
-
-## 3. 基线：定位瓶颈
-
-### 3.1 ThreadState — 共享写 vs 线程本地写
-
-线程本地 cache-line 的写入非常快：
-
-```
-per-thread write ≈ 1.7–3.6 ns
+```text
+日期:       2026-09-08
+系统:       Linux 7.2.2-1-cachyos
+CPU:        Intel Core i7-14700K，20 logical CPUs / 20 physical cores
+NUMA:       1 node
+编译器:     GNU 16.2.1
+构建类型:   Release
+Google Benchmark: 已发现并链接
+默认配置:   SKL_ABIX_RCU_EPOCH_BATCH=8
 ```
 
-但共享 cache-line 写入随线程数急剧恶化。在 10 个线程时：
+`lscpu` 显示本环境只暴露 20 个 CPU，不能据此复述 Windows/P-core/E-core 测试环境。Google Benchmark 还报告 CPU scaling 已开启，所以频率变化会增加实时测量噪声。
 
-```
-shared write ≈ 308 ns
-```
+### 执行命令
 
-这确立了根本问题：
+```bash
+cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release --target bench_all --parallel 4
 
-> **共享 cache-line 写入是瓶颈，而非普通读取。**
-
-### 3.2 WriterLock
-
-WriterLock 的竞争曲线与共享 ThreadState 写入曲线高度一致。这证实了：
-
-> **WriterLock 竞争主要源于 cache-line bouncing。**
-
-### 3.3 EpochAdvance
-
-进一步测量发现：
-
-```
-EpochAdvance > WriterLock
+build/Release/bin/bench_all \
+  --benchmark_filter='BM_EBR_Workload/role_based/(read_heavy|balanced|write_heavy)/20T' \
+  --benchmark_min_time=1s \
+  --benchmark_repetitions=10 \
+  --benchmark_report_aggregates_only=true
 ```
 
-额外成本主要来自：
+本次检查实际使用了相同的 `bench_all` 可执行文件完成编译和短跑；固定工作量检查输出为 `All counts match — synthetic mixed is truly fixed-work`。短跑只用于确认路径可运行，不作为发布级数值基线。
 
-```cpp
-_global_epoch.fetch_add(...);
-```
+### 调频策略复测
 
-这是一个共享原子 RMW 操作——每次 `synchronize()` 调用都必须递增全局 epoch 计数器，而每次递增都触发一次 cache-line 所有权转移。
+后续复测时，系统 governor 查询结果为 `performance`。由于当前执行环境不能交互输入 `sudo` 密码，无法在本次会话中确认切换命令是由本会话完成的；该状态只作为运行时观测记录。
 
-### 3.4 性能链
+使用新入口运行 `ebr_profile_bench` 后，20T `BM_EBR_SyncPhase` 的 3 次短跑结果为：中位数约 `2.50 us`，CV 约 `4.95%`。这说明加入 `MaybeReenterWithoutASLR` 后程序可以正常运行，但样本数和运行时长仍不足以形成发布级基线。
 
-完整的瓶颈链为：
+### B8/B16 对照状态
 
-```
-synchronize()
-    ↓
-WriterLock            (cache-line bouncing)
-    ↓
-publish                (retire 列表操作)
-    ↓
-global_epoch RMW       (共享原子 fetch_add)
-    ↓
-共享 cache-line bouncing
-```
+额外配置了 `SKL_ABIX_RCU_EPOCH_BATCH=16` 并运行了 20T role-based 对照。两组短跑的变异系数约为 29%～44%，且受到 CPU scaling 影响，结果不稳定。因此当前证据只能支持：
 
-这是整个 benchmark 文档中最重要的性能分析链。后续的每一项优化都针对这条链中的一个或多个环节。
+> B8 和 B16 都能正常构建和运行；本次运行不足以判定谁更快，也不足以支持固定的百分比收益。
 
----
+原文中诸如"B16 提升 24%"和 `thr16/thr32` 的具体数字，如果没有附带原始输出、提交版本、编译器、运行参数和重复统计，应视为历史记录而不是当前可复核结论。
 
-## 4. Cache-Line 布局优化
+## 5. 性能分析方法
 
-测试了三组配置：
+建议按以下顺序分析，而不是先从单个异常数字推导原因：
 
-| 配置 | 说明 |
-|------|------|
-| `no_alignas` | 无显式 cache-line 对齐 |
-| `epoch_alignas` | 仅 `_epoch` 为 `alignas(64)` |
-| `all_alignas` | 所有成员均为 `alignas(64)` |
+1. 先确认 Release 构建、工作量计数和 benchmark filter 正确。
+2. 使用 `SyncPhase` 判断同步路径是否随线程数退化。
+3. 使用 `synthetic_mixed` 比较固定总工作量的扩展性。
+4. 使用 `role_based` 判断目标 read-mostly 场景下的实际吞吐量。
+5. 对 B8、B16 和 threshold 做邻域扫描，而不是只测 8、16、32 这些整齐数字。
+6. 至少重复 10 次，记录 median、p90、标准差和 CV；CV 较高时只报告"结果不确定"。
 
-### 4.1 `alignas(64) _global_epoch` — 值得保留
+需要重点关注的潜在瓶颈包括：
 
-20T SyncPhase 改进：
-
-```
-≈ -43%
-```
-
-Role-Based 工作负载也有明显收益。`_epoch` 结构体是整个系统中竞争最激烈的 cache-line——每个 reader 的 `enter()` 从中读取，每次 `synchronize()` 向其写入。
-
-### 4.2 全部 `alignas` — 不值得
-
-对所有成员应用 `alignas(64)`：
-
-```
-sizeof: 56 B → 256 B
-```
-
-低线程数性能明显下降。更大的内存占用和降低的 cache 利用率超过了为非竞争字段隔离带来的收益。
-
-### 4.3 最终策略
-
-> **只隔离已证明存在共享写竞争的字段，不进行全局 cache-line padding。**
-
----
-
-## 5. Epoch 推进批处理
-
-### 原理
-
-无批处理（B1）：
-
-```
-synchronize → advance epoch
-synchronize → advance epoch
-synchronize → advance epoch
-```
-
-有批处理（例如 B16）：
-
-```
+```text
+reader enter/exit
+    -> 共享 epoch 读取
 synchronize
-synchronize
-...
-synchronize（16 次调用）
-    ↓
-advance epoch（仅一次）
+    -> writer 竞争
+    -> epoch 原子 RMW
+    -> reader scan / grace period
+    -> retire 发布与回收
 ```
 
-目标是降低 `_global_epoch` 共享原子 RMW 操作的频率。每次对 `_global_epoch` 的 `fetch_add` 都会触发跨所有核心的 cache-line 所有权转移。通过批处理，只有 1/N 的 `synchronize()` 调用实际执行昂贵的 RMW。
+`alignas`、epoch batching 和 publish batching 只能在对应路径的测量结果支持时保留。全局 padding 可能降低 cache 利用率，批处理则可能增加回收延迟；它们都不是无条件优化。
 
-### 测试的配置
+## 6. 配置与建议
 
-```
-B1  — 无批处理（每次 synchronize 都推进 epoch）
-B8  — 每 8 次 synchronize 调用推进一次 epoch
-B16 — 每 16 次 synchronize 调用推进一次 epoch
-```
+| 参数 | 作用 |
+|---|---|
+| `SKL_ABIX_RCU_CACHE_LINE_SIZE` | 竞争字段的 cache-line 隔离大小 |
+| `SKL_ABIX_RCU_EPOCH_BATCH` | 多少次同步调用后推进一次 epoch |
+| `SKL_ABIX_RCU_BATCH_PUBLISH` | retire 对象发布到全局列表前的批量大小 |
 
----
+当前默认值为 epoch batch 8。它应被视为保守默认值，而不是对所有 CPU 和负载都最优。修改默认值前，应在目标平台上以 Release 构建、固定 CPU 亲和性、稳定频率和足够重复次数重新测量。
 
-## 6. B8 vs B16 — 详细对比
+## 7. 局限性
 
-### 6.1 SyncPhase
+- 当前结果只说明 ABIX 在给定实现和给定负载下的行为，不能推广为通用 RCU 或通用并发容器结论。
+- Linux、Windows、macOS，以及不同 CPU 拓扑的绝对吞吐量不可直接排名。
+- CPU scaling、线程迁移、Turbo、温度、NUMA、ASLR 和后台任务都会影响短 benchmark。
+- 没有原始输出和完整环境信息的历史数字无法独立复核。
+- 性能测试不能替代正确性测试；修改回收和同步逻辑后应先运行完整测试套件。
 
-B8 和 B16 基本处于同一水平——没有明显的可扩展性退化。两者均比 B1 有显著改进。
+## 8. 完整基准执行记录
 
-### 6.2 Synthetic Mixed
+### 执行方式
 
-B8 和 B16 互有胜负——在所有线程数和工作负载配置下，没有一致的绝对赢家。
+本次在 governor 为 `performance` 的条件下，以 Release 构建逐个运行了 `build/Release/bin` 中的 benchmark 程序：
 
-### 6.3 Role-Based
-
-这是决策的主要依据。
-
-**20T — 14700K 最重要的线程数（全部 P-core）：**
-
-| Workload    | Threads |            B8 |           B16 | Delta |
-| ----------- | ------: | ------------: | ------------: | ----: |
-| read-heavy  |     20T |      9.44 G/s | **11.67 G/s** |  +24% |
-| balanced    |     20T |     11.66 G/s | **11.90 G/s** |   +2% |
-| write-heavy |     20T | **13.94 G/s** |     13.53 G/s |   −3% |
-
-> **更大的 epoch batch 在高并发 read-mostly 工作负载下可以进一步降低共享 epoch 更新开销。**
-
-write-heavy 场景下 B16 有轻微回归，这在意料之中：当写入频繁时，延迟 epoch 推进可能导致 retire 列表累积，增加每次回收的成本。
-
----
-
-## 7. WorkloadThreshold 与异常噪声
-
-### 初始观察
-
-在初始测试中，B16 在 `threshold=16` 和 `threshold=32` 时出现了显著的吞吐量下降。这引发了对 batch size 与 retire threshold 之间周期性耦合的担忧。
-
-### 细粒度扫描
-
-为调查此问题，进行了细粒度扫描：
-
-```
-14, 15, 16, 17, 18
-30, 31, 32, 33
+```bash
+for bench in atomic_bench call_bench reload_bench falseSharing_bench \
+  lookup_bench abix_resolve_bench abix_lookup_cross_bench \
+  stress_bench ebr_bench ebr_profile_bench; do
+  (cd build/Release/bin && LD_LIBRARY_PATH=. ./$bench \
+    --benchmark_min_time=0.1s \
+    --benchmark_repetitions=3 \
+    --benchmark_report_aggregates_only=true)
+done
 ```
 
-### 修正后的结果
+必须从 `build/Release/bin` 启动并设置 `LD_LIBRARY_PATH=.`。benchmark 使用 `dll_path()` 生成裸文件名，Linux 的 `dlopen("hotcache_dll.so")` 不会自动搜索当前目录。
 
-```
-thr16: +12%
-thr32: +10%
-```
+`bench_all` 也已运行，但当前 unity build 使用 `ebr_profile_bench` 的 `main`，默认只注册 atomic、false-sharing 和 EBR fast-path 等部分测试；不能把它单独视为完整 benchmark 入口。
 
-原先的 `thr16/32` 暴跌无法复现。这不是 B16 的结构性性能问题。
+### 代表性结果
 
-> **这是一个重要的实验方法论教训：在整数倍数字（16, 32）出现单个异常数据点时，应在断定其为系统性效应之前进行细粒度邻域扫描。**
+以下为 2026-09-08 本机结果，取 Google Benchmark 的 median；重复次数为 3，仅用于记录当前实现状态：
 
----
+| 类别 | 测试 | 结果 |
+|---|---|---:|
+| EBR fast path | `BM_EBR_EnterExit` | 0.491 ns |
+| EBR fast path | `BM_EBR_ProtectedLoad` | 0.530 ns |
+| EBR 同步 | `BM_EBR_SyncPhase/20T` | 3.23 us wall / 1.46 us CPU |
+| EBR role-based | read-heavy / 20T | 12.34 G/s |
+| EBR role-based | balanced / 20T | 11.70 G/s |
+| EBR role-based | write-heavy / 20T | 11.92 G/s |
+| reload | logical | 3.00 us |
+| reload | real DLL | 2.96 us |
+| call | `BM_ABIX_Call` | 3.91 ns |
+| lookup crossover | uniform, linear, 16K | 1.59 us |
+| lookup crossover | uniform, hash index, 16K | 13.2 ns |
+| false sharing | packed, 16T | 128 ns |
+| false sharing | padded, 16T | 3.87 ns |
 
-## 8. Benchmark 噪声
+结果支持以下有限结论：共享写竞争在 packed false-sharing 测试中随线程数增加，而 padding 测试保持在约 3.4～4.0 ns；HashIndex 在 16K uniform lookup 中明显低于线性扫描；EBR role-based 20T 吞吐量约为 12 G/s 量级。以上不是跨平台承诺，且 role-based write-heavy 的 CV 约 14.7%，应谨慎引用。
 
-使用两种不同的技术来处理噪声：
+### 启动方式错误的复现
 
-### 细粒度扫描
+第一次从项目根目录直接运行时，`lookup_bench` 默认执行以及以下四个过滤项均以退出码 139（段错误）结束：
 
-用于**发现/排除结构性模式**。例如：
-
-```
-15 → 正常
-16 → 崩溃？
-17 → 正常
-```
-
-如果模式是真实的（例如 batch/threshold 周期性耦合），它会在可预测的间隔出现。单点异常几乎可以确定是噪声。
-
-### 重复运行
-
-用于**降低单次系统噪声对结论的影响**。对于正式 benchmark，记录：
-
-```
-中位数
-p90 / p95
-方差 / CV
+```text
+BM_FindIndex_Only
+BM_Resolve_Linear
+BM_Resolve_Linear_80_20
+BM_Resolve_Linear_Random
 ```
 
-而不仅仅是单次运行结果。
+ASAN 报告崩溃在 `bench/lookup_bench.cpp:26` 的 `g_image->index`，因为 `dll_object::load()` 失败后 `g_image` 为空。设置 `LD_LIBRARY_PATH=.` 后上述测试全部通过：`BM_FindIndex_Only` 约 33.6 ns，`BM_Resolve_Linear` 约 232 ns，`BM_Resolve_WithEBR` 约 34.3 ns。问题是启动环境和 benchmark 未检查 load 返回值，不是 lookup 算法本身的段错误。
 
-### 已知噪声来源（Windows / 14700K）
+## 9. 参考
 
-- P/E 核心调度
-- 线程迁移
-- Turbo Boost 状态切换
-- 热状态
-- CPU 频率缩放
-- Cache 状态（冷 vs 热）
-
-这些不是 benchmark 的缺陷——它们是真实的平台特性。目标是将其与真正的性能模式区分开来。
-
----
-
-## 9. 跨平台参数解释
-
-`SKL_ABIX_RCU_EPOCH_BATCH` **不是** CPU 架构常量。
-
-**不要**使用简单的映射，例如：
-
-```cpp
-// 错误做法
-#if defined(__x86_64__)
-#  define SKL_ABIX_RCU_EPOCH_BATCH 16
-#elif defined(__aarch64__)
-#  define SKL_ABIX_RCU_EPOCH_BATCH 8
-#endif
-```
-
-Batch size 受以下因素影响：
-
-```
-CPU 微架构
-+
-Cache 一致性协议
-+
-核心拓扑
-+
-工作负载特征
-```
-
-相同的 batch size 在不同平台上可能表现不同，即使 ISA 相同。务必在目标平台上进行 benchmark。
-
----
-
-## 10. 编译期配置
-
-[rcu_domain.h](../abix/rcu_domain.h) 中的最终配置接口：
-
-```cpp
-#ifndef SKL_ABIX_RCU_EPOCH_BATCH
-#  define SKL_ABIX_RCU_EPOCH_BATCH 8
-#endif
-
-#ifndef SKL_ABIX_CACHE_LINE_SIZE
-#  define SKL_ABIX_CACHE_LINE_SIZE 64
-#endif
-
-#ifndef SKL_ABIX_RCU_BATCH_PUBLISH
-#  define SKL_ABIX_RCU_BATCH_PUBLISH 64
-#endif
-```
-
-| 宏 | 作用 |
-|----|------|
-| `SKL_ABIX_CACHE_LINE_SIZE` | 竞争字段的 cache-line 隔离 |
-| `SKL_ABIX_RCU_EPOCH_BATCH` | Epoch 推进批处理——多少次 `synchronize()` 调用后才推进 `_global_epoch` |
-| `SKL_ABIX_RCU_BATCH_PUBLISH` | Retire 批量大小——在发布到全局 retire 列表之前累积多少个 retire 对象 |
-
----
-
-## 11. 推荐配置
-
-### 默认配置
-
-```cpp
-SKL_ABIX_CACHE_LINE_SIZE   = 64
-SKL_ABIX_RCU_EPOCH_BATCH   = 8
-SKL_ABIX_RCU_BATCH_PUBLISH = 64
-```
-
-**理由：** B8 是更保守的默认配置。它提供了大部分批处理收益，同时不会过度延迟 epoch 推进。B16 可作为可选调优参数进行测试。
-
-### 可选调优
-
-对于满足以下条件的工作负载：
-
-```
-高并发
-+
-read-mostly
-+
-频繁 synchronize
-```
-
-可以考虑测试：
-
-```
-B8
-B16
-```
-
-在当前 14700K 平台上，Role-Based 结果显示 B16 具有竞争力，尤其是在高线程数的 read-heavy 工作负载下。
-
-**在更改默认值之前，务必在目标平台上进行 benchmark。**
-
----
-
-## 12. 范围与局限性
-
-Benchmark 结果仅展示 ABIX 在其目标工作负载下的行为。不要将这些结论推广。
-
-### Hash Container
-
-```
-只读 / 极少修改
-→ 不是通用并发 hash map
-```
-
-### Micro-RCU
-
-```
-大量 reader
-+
-少量 writer
-+
-短读临界区
-→ 不是通用 RCU 实现
-```
-
-### Epoch Batching
-
-```
-高频 synchronize
-+
-共享 epoch 写竞争
-→ ABIX 特化优化
-```
-
-以上所有均为针对 ABIX 自身 read-mostly 工作负载模式的 **ABIX 特化优化**。它们并非关于 RCU 或并发容器应如何设计的通用主张。
-
----
-
-## 参考文献
-
-- [Intel Core i7-14700K 规格](https://www.intel.com/content/www/us/en/products/sku/236778/intel-core-i7-processor-14700k-33m-cache-up-to-5-60-ghz/specifications.html)
-- [M. Desnoyers et al., "User-Level Implementations of Read-Copy Update"](https://doi.org/10.1109/TPDS.2011.159)
-- [Paul E. McKenney, "Is Parallel Programming Hard, And, If So, What Can You Do About It?"](https://kernel.org/pub/linux/kernel/people/paulmck/perfbook/perfbook.html)
+- [ABIX README](../README_ZH.md)
+- [Google Benchmark User Guide](https://github.com/google/benchmark)
+- [User-Level Implementations of Read-Copy Update](https://doi.org/10.1109/TPDS.2011.159)

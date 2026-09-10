@@ -38,6 +38,26 @@ void cleanup(const std::string &path) {
     std::remove(path.c_str());
 }
 
+std::vector<uint8_t> read_bytes(const std::string &path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), {}};
+}
+
+void write_bytes(const std::string &path, const std::vector<uint8_t> &bytes) {
+    std::ofstream output(path, std::ios::binary);
+    output.write(reinterpret_cast<const char *>(bytes.data()),
+                 static_cast<std::streamsize>(bytes.size()));
+}
+
+uint32_t read_le_u32(const std::vector<uint8_t> &bytes, size_t offset) {
+    return uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
+           (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
+}
+
+void write_le_u32(std::vector<uint8_t> &bytes, size_t offset, uint32_t value) {
+    for (int i = 0; i < 4; ++i) bytes[offset + i] = uint8_t(value >> (i * 8));
+}
+
 amc::Hash128 make_type_id(const char *name) {
     return amc::hash_text(name, 0x54595045);
 }
@@ -106,6 +126,26 @@ void test_hash_stability(TestResult &r) {
     auto h4 = amc::hash_text("Foo", 0x54595045);
     auto h5 = amc::hash_text("Foo", 0x4c41594f5554ULL);
     AMC_TEST(r, h4.lo != h5.lo || h4.hi != h5.hi, "different domains produce different hashes");
+}
+
+void test_abi_hash_and_hash_table(TestResult &r) {
+    std::cerr << "[abi_hash_and_hash_table]\n";
+    amc::AbiModule module;
+    module.package_name = "hash_test";
+    module.package_version = "1.0";
+    const auto i32 = make_primitive("int", 4, 4);
+    module.types.push_back(i32);
+    const auto first_hash = amc::abi_hash(module);
+    const auto records = amc::hash_table(module);
+    AMC_CHECK(r, records.size(), size_t(3), "artifact/type/layout hash records");
+    if (!records.empty()) {
+        AMC_CHECK(r, uint32_t(records[0].kind), uint32_t(amc::HashKind::artifact), "artifact hash record kind");
+        AMC_CHECK(r, records[0].value.lo, first_hash.lo, "artifact hash record value");
+    }
+    module.package_version = "2.0";
+    AMC_CHECK(r, amc::abi_hash(module).lo, first_hash.lo, "package version does not affect ABIHash");
+    module.types[0].size = 8;
+    AMC_TEST(r, !(amc::abi_hash(module) == first_hash), "layout change affects ABIHash");
 }
 
 void test_layout_hash_stability(TestResult &r) {
@@ -528,6 +568,143 @@ void test_abix_nonexistent(TestResult &r) {
     std::string e;
     AMC_TEST(r, !amc::read_abix("/tmp/amc_e2e_nonexistent_42.abix", m, e),
              "nonexistent file rejected");
+}
+
+void test_abix_v4_section_directory(TestResult &r) {
+    std::cerr << "[abix_v4_section_directory]\n";
+    const auto path = tmp_path("v4_sections.abix");
+    cleanup(path);
+
+    amc::AbiModule module;
+    module.package_name = "v4";
+    module.package_version = "1";
+    module.types.push_back(make_primitive("int", 4, 4));
+    std::string error;
+    AMC_TEST(r, amc::write_abix(module, path, error), "write v4 artifact");
+
+    const auto bytes = read_bytes(path);
+    AMC_TEST(r, bytes.size() >= 20 + 13 * 24, "v4 artifact has header and directory");
+    if (bytes.size() >= 20 + 13 * 24) {
+        AMC_CHECK(r, uint32_t(bytes[4]) | (uint32_t(bytes[5]) << 8), uint32_t(4), "format version is v4");
+        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(13), "section count");
+        AMC_CHECK(r, read_le_u32(bytes, 16), uint32_t(20), "directory follows header");
+        const uint32_t expected_ids[] = {1, 2, 13, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+        const uint32_t expected_sizes[] = {0, 52, 12, 68, 48, 72, 28, 16, 16, 32, 44, 60, 40};
+        for (size_t i = 0; i < 13; ++i) {
+            const size_t entry = 20 + i * 24;
+            AMC_CHECK(r, read_le_u32(bytes, entry), expected_ids[i], "section id");
+            if (expected_sizes[i] != 0)
+                AMC_CHECK(r, read_le_u32(bytes, entry + 8), read_le_u32(bytes, entry + 12) * expected_sizes[i], "section byte length");
+            else
+                AMC_TEST(r, read_le_u32(bytes, entry + 8) >= 8, "variable section byte length");
+            AMC_CHECK(r, read_le_u32(bytes, entry + 16), expected_sizes[i], "section entry size");
+            AMC_CHECK(r, read_le_u32(bytes, entry + 20), i < 10 ? uint32_t(1) : uint32_t(0), "section required flag");
+        }
+    }
+
+    amc::AbiModule loaded;
+    AMC_TEST(r, amc::read_abix(path, loaded, error), "read v4 artifact");
+    AMC_CHECK(r, loaded.symbols.size(), size_t(1), "symbols auto-generated");
+    if (!loaded.symbols.empty()) {
+        AMC_CHECK(r, loaded.symbols[0].name, std::string("int"), "generated symbol name");
+        AMC_CHECK(r, uint32_t(loaded.symbols[0].kind), uint32_t(amc::SymbolKind::type), "generated symbol kind");
+    }
+    auto extended = bytes;
+    write_le_u32(extended, 20 + 10 * 24, 99);
+    const auto extended_path = tmp_path("v4_unknown_optional.abix");
+    write_bytes(extended_path, extended);
+    AMC_TEST(r, amc::read_abix(extended_path, loaded, error), "unknown optional section is skipped");
+    cleanup(extended_path);
+    cleanup(path);
+}
+
+void test_compatibility_and_map_ir(TestResult &r) {
+    std::cerr << "[compatibility_and_map_ir]\n";
+    amc::AbiModule source, target, report;
+    source.package_name = target.package_name = "compat";
+    const auto source_i32 = make_primitive("source_i32", 4, 4);
+    const auto target_i64 = make_primitive("target_i64", 8, 8);
+    source.types.push_back(source_i32);
+    source.fields.push_back(make_field("value", source_i32.id, 0));
+    source.types.push_back(make_record("Thing", 4, 4, 0, 1));
+    target.types.push_back(target_i64);
+    target.fields.push_back(make_field("value", target_i64.id, 0));
+    target.fields.push_back(make_field("added", target_i64.id, 8));
+    target.types.push_back(make_record("Thing", 16, 8, 0, 2));
+    std::string error;
+    AMC_TEST(r, amc::build_compatibility(source, target, report, error), "build compatibility report");
+    AMC_CHECK(r, report.compatibility.size(), size_t(1), "one matching type");
+    AMC_CHECK(r, report.maps.size(), size_t(1), "one map plan");
+    if (!report.compatibility.empty()) {
+        AMC_CHECK(r, uint32_t(report.compatibility[0].kind), uint32_t(amc::CompatibilityKind::map_compatible),
+                  "record is map compatible");
+    }
+    if (!report.maps.empty()) {
+        AMC_CHECK(r, report.maps[0].operations.size(), size_t(2), "convert and default operations");
+        AMC_CHECK(r, uint32_t(report.maps[0].operations[0].opcode), uint32_t(amc::MapOpcode::convert_int),
+                  "integer conversion operation");
+        AMC_CHECK(r, uint32_t(report.maps[0].operations[1].opcode), uint32_t(amc::MapOpcode::add_default),
+                  "default operation");
+    }
+    const auto path = tmp_path("compatibility.abix");
+    AMC_TEST(r, amc::write_abix(report, path, error), "write compatibility report");
+    amc::AbiModule loaded;
+    AMC_TEST(r, amc::read_abix(path, loaded, error), "read compatibility report");
+    AMC_CHECK(r, loaded.compatibility.size(), size_t(1), "compatibility round-trip");
+    AMC_CHECK(r, loaded.maps.size(), size_t(1), "map round-trip");
+    cleanup(path);
+}
+
+void test_abix_v4_rejects_invalid_references(TestResult &r) {
+    std::cerr << "[abix_v4_rejects_invalid_references]\n";
+    const auto source_path = tmp_path("v4_source.abix");
+    const auto bad_path = tmp_path("v4_bad.abix");
+    cleanup(source_path);
+    cleanup(bad_path);
+
+    amc::AbiModule module;
+    module.package_name = "v4";
+    module.types.push_back(make_primitive("int", 4, 4));
+    std::string error;
+    AMC_TEST(r, amc::write_abix(module, source_path, error), "write source artifact");
+    const auto source = read_bytes(source_path);
+    AMC_TEST(r, source.size() >= 20 + 13 * 24, "source artifact has directory");
+    if (source.size() >= 20 + 13 * 24) {
+        auto corrupted = source;
+        write_le_u32(corrupted, 16, uint32_t(corrupted.size()));
+        write_bytes(bad_path, corrupted);
+        amc::AbiModule loaded;
+        AMC_TEST(r, !amc::read_abix(bad_path, loaded, error), "out-of-range directory rejected");
+
+        corrupted = source;
+        write_le_u32(corrupted, 20 + 24 + 16, 44);
+        write_bytes(bad_path, corrupted);
+        AMC_TEST(r, !amc::read_abix(bad_path, loaded, error), "wrong identity entry size rejected");
+
+        corrupted = source;
+        const uint32_t identity_offset = read_le_u32(corrupted, 20 + 24 + 4);
+        write_le_u32(corrupted, identity_offset + 36, 0xffffffffU);
+        write_bytes(bad_path, corrupted);
+        AMC_TEST(r, !amc::read_abix(bad_path, loaded, error), "out-of-range package string rejected");
+    }
+    cleanup(source_path);
+    cleanup(bad_path);
+}
+
+void test_validate_v2_model_invariants(TestResult &r) {
+    std::cerr << "[validate_v2_model_invariants]\n";
+    amc::AbiModule module;
+    module.package_name = "invalid";
+    const auto i32 = make_primitive("int", 4, 4);
+    auto duplicate = make_primitive("same_id", 4, 4);
+    duplicate.id = i32.id;
+    module.types = {i32, duplicate};
+    std::string error;
+    AMC_TEST(r, !amc::validate(module, error), "duplicate TypeId rejected");
+
+    module.types = {i32, make_record("Bad", 4, 4, 0, 1)};
+    module.fields = {make_field("too_far", i32.id, 2)};
+    AMC_TEST(r, !amc::validate(module, error), "field exceeding record layout rejected");
 }
 
 void test_type_kind_name(TestResult &r) {
@@ -993,6 +1170,45 @@ void test_symbol_projection(TestResult &r) {
              "unselected type omitted");
 }
 
+void test_member_symbol_projection(TestResult &r) {
+    std::cerr << "[member_symbol_projection]\n";
+    amc::AbiModule source;
+    source.package_name = "member_projection";
+    const auto i32 = make_primitive("int", 4, 4);
+    const auto foo = make_record("demo::Foo", 8, 4, 0, 2);
+    source.types = {i32, foo};
+    auto first = make_field("first", i32.id, 0);
+    first.owner_type = foo.id;
+    auto second = make_field("second", i32.id, 4);
+    second.owner_type = foo.id;
+    source.fields = {first, second};
+    auto reset = make_func("demo::Foo::reset", i32.id, {});
+    reset.owner_type = foo.id;
+    auto clear = make_func("demo::Foo::clear", i32.id, {});
+    clear.owner_type = foo.id;
+    source.functions = {reset, clear};
+
+    amc::AbiModule projected;
+    std::string error;
+    AMC_TEST(r, amc::project_symbols(source, {"demo::Foo::reset", "demo::Foo::first"}, projected, error),
+             "project selected class members");
+    AMC_CHECK(r, projected.types.size(), size_t(2), "member projection retains owner and dependency type");
+    AMC_CHECK(r, projected.fields.size(), size_t(1), "member projection retains only selected field");
+    AMC_CHECK(r, projected.functions.size(), size_t(1), "member projection retains only selected method");
+    if (!projected.fields.empty()) {
+        AMC_CHECK(r, projected.fields[0].name, std::string("first"), "selected field name");
+        AMC_CHECK(r, projected.fields[0].owner_type.lo, foo.id.lo, "selected field owner");
+    }
+    if (!projected.functions.empty()) {
+        AMC_CHECK(r, projected.functions[0].name, std::string("demo::Foo::reset"), "selected method name");
+        AMC_CHECK(r, projected.functions[0].owner_type.lo, foo.id.lo, "selected method owner");
+    }
+    AMC_TEST(r, amc::project_symbols(source, {"demo::Foo"}, projected, error),
+             "project complete class");
+    AMC_CHECK(r, projected.fields.size(), size_t(2), "complete class retains all fields");
+    AMC_CHECK(r, projected.functions.size(), size_t(2), "complete class retains all methods");
+}
+
 }
 
 int main() {
@@ -1002,6 +1218,7 @@ int main() {
 
     test_hash128_equality(r);
     test_hash_stability(r);
+    test_abi_hash_and_hash_table(r);
     test_layout_hash_stability(r);
     test_signature_hash_stability(r);
     test_type_kind_name(r);
@@ -1024,10 +1241,15 @@ int main() {
     test_abix_truncated(r);
     test_abix_nonexistent(r);
     test_abix_write_cannot_open(r);
+    test_abix_v4_section_directory(r);
+    test_compatibility_and_map_ir(r);
+    test_abix_v4_rejects_invalid_references(r);
+    test_validate_v2_model_invariants(r);
 
     test_pointer_and_array_types(r);
     test_multiple_functions(r);
     test_symbol_projection(r);
+    test_member_symbol_projection(r);
 
     test_layout_matches_cpp(r);
     test_backend_projection_generation(r);

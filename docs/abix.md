@@ -76,7 +76,7 @@
 | 移除/变更 | 原因 |
 |-----------|------|
 | `Target` 节 | 合并入 `ABI Identity`，职责统一为"此 artifact 的编译环境" |
-| `Hash Table` | 改为**可选 cache section**，由 Runtime 按需构建，非 canonical 数据 |
+| `Hash Table` | 当前 AMC v4 required section，保存 HashDescriptor 与 canonical hash records |
 | `Compatibility Table` 中的 `source/target_layout_hash` | 由 source/target TypeId 查 Type Table → Layout Table 推导 |
 | Type Table 中的 `field_begin` / `field_count` | 通过 `layout_index` 从 Layout Table 获取 |
 | Symbol Table 中的 `target_hash` | 改为 `(target_kind, target_index)` typed index |
@@ -92,8 +92,9 @@
 ```
 Offset  Size  Field
 0x00    u32   magic              = 0x58494241  ("ABIX")
-0x04    u16   format_version     = 0
-0x06    u16   hash_algorithm     = 0 (fnv1a64) | 1 (xxh3) | 2 (blake3)
+0x04    u16   format_version     = 3
+0x06    u16   hash_algorithm     = 0 (AMC Core development Hash128)
+                                      | 1 (xxh3) | 2 (blake3)
 0x08    u32   flags
 0x0C    u32   section_count      ← Section Directory 条目数
 0x10    u32   section_dir_offset ← Section Directory 偏移
@@ -103,16 +104,43 @@ Offset  Size  Field
 
 新增 Section Directory 替代固定的 `*_offset` 字段，避免新增 section 时修改 Header 布局。
 
+### 当前 AMC v4 实现 Profile
+
+当前开发版本的 `amc-core` 已实现并且只读取 `format_version = 4`。早期 v1/v2/v3 artifact
+在 devel 阶段被主动废弃，不提供兼容读取。v4 使用本节 Header 与
+Section Directory，当前 required sections 的 ID 为：`1 Strings`、`2 Identity`、`13 Target`、`3 Types`、
+`4 Fields`、`5 Functions`、`6 Parameters`、`7 Symbols`、`8 HashDescriptor`、`9 HashTable`。
+
+已实现的 string 引用一律为 `(offset, length)`；Identity record 还携带 package name 和
+package version 的该引用。读者会拒绝错误目录范围、错误 required entry size、越界字符串
+引用、非法 TypeKind/SymbolKind，以及不满足 Core layout/type 引用不变量的 artifact。
+Hash Table 已作为当前 required profile 实现；Compatibility、Map IR、Dependency 和
+目录项为 `{section_id, offset, byte_length, count, entry_size, flags}`。`flags.required`
+要求 reader 认识该 section；未知 optional section 会被安全跳过。Compatibility、Map 和
+MapOperation 当前是 optional section。Hash Cache sections 仍为后续扩展。
+
+运行时集成使用 `abix/runtime_descriptor.h` 的固定布局 descriptor。MICS Runtime 的
+`TypeId` 与 ABIX `model::TypeId` 均为完整 Hash128；跨命名空间转换必须通过显式的
+`abix/mics_bridge.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
+
+`abix/runtime_registry.h` 提供 `RuntimeRegistry<Capacity>` bridge。它接收生成的
+`ModuleDescriptor`，在写入前完成 module 级完整性检查、重复 TypeId 检查和字段/函数类型
+引用检查；失败时不会留下部分注册结果。成功后同时保留 runtime descriptor 指针和
+canonical `MetadataRegistry` entry，可按 Hash128 或名称查询。
+
 ### Section Directory
 
 ```
 Offset  Size  Field             (per entry)
-0x00    u32   section_id        = 0 (string_table) | 1 (type_table) | 2 (layout_table)
-                            | 3 (field_table) | 4 (function_table) | 5 (parameter_table)
-                            | 6 (symbol_table) | 7 (map_table) | 8 (map_op_table)
-                            | 9 (dependency_table) | 10 (hash_cache) | ...
+0x00    u32   section_id        = 1 (string_table) | 2 (abi_identity) | 3 (type_table)
+                            | 4 (field_table) | 5 (function_table) | 6 (parameter_table)
+                            | 7 (symbol_table) | 8 (map_table) | 9 (map_op_table)
+                            | 10 (dependency_table) | 11 (hash_cache) | ...
 0x04    u32   offset            ← 该 section 在文件中的偏移
-0x08    u32   count             ← 该 section 的记录数
+0x08    u32   byte_length       ← section 的完整字节长度
+0x0C    u32   count             ← 该 section 的记录数
+0x10    u32   entry_size        ← 固定记录大小；0 表示变长 section
+0x14    u32   flags             ← bit 0: required
 0x0C    u32   entry_size        ← 每条记录的字节数（0 = 变长）
 ```
 
@@ -127,11 +155,16 @@ Offset  Size  Field
 0x08    u32   compiler           = 0 (gcc) | 1 (clang) | 2 (msvc) | ...
 0x0C    u32   calling_convention = 0 (sysv_abi) | 1 (ms_abi) | 2 (aapcs) | ...
 0x10    u32   abi_flags
-0x14    u64   abi_hash_lo        ← ABIHash 的低 64 位
-0x1C    u64   abi_hash_hi        ← ABIHash 的高 64 位
+0x14    u64   artifact_identity_hash_lo  ← 当前为 package identity hash，Canonical ABIHash 后续实现
+0x1C    u64   artifact_identity_hash_hi
+0x24    u32   package_name_offset
+0x28    u32   package_name_length
+0x2C    u32   package_version_offset
+0x30    u32   package_version_length
 ```
 
-`abi_hash = hash(全部 ABI Identity 字段 + 所有 Type/Layout/Function/Symbol)`，使用 Hash128。
+后续 Canonical ABIHash 将定义为 `hash(全部 ABI Identity 字段 + 所有 Type/Layout/Function/Symbol)`，
+使用 Hash128。当前 v2 profile 的该字段保存完整 canonical ABIHash。
 
 ### String Table
 
@@ -150,17 +183,25 @@ Offset  Size  Field
 Offset  Size  Field             (per record)
 0x00    u64   type_hash_lo      ← TypeId 低 64 位
 0x08    u64   type_hash_hi      ← TypeId 高 64 位
-0x10    u32   name_offset       ← String Table 偏移
-0x14    u32   name_length
-0x18    u32   flags             ← POD / trivially_copyable / polymorphic / enum / ...
-0x1C    u32   layout_index      ← 指向 Layout Table 的索引
-0x20    u32   function_begin    ← Function Table 起始索引
-0x24    u32   function_count
-0x28    u32   base_begin        ← Base Table 起始索引（支持多继承）
-0x2C    u32   base_count        ← 基类数量（0 = 无基类）
+0x10    u64   layout_hash_lo    ← LayoutHash 低 64 位
+0x18    u64   layout_hash_hi    ← LayoutHash 高 64 位
+0x20    u32   name_offset       ← String Table 偏移
+0x24    u32   name_length
+0x28    u32   kind
+0x2C    u32   flags
+0x30    u32   size
+0x34    u32   align
+0x38    u32   field_begin
+0x3C    u32   field_count
+0x40    u32   array_count
 ```
 
-**精简**：移除 `field_begin` / `field_count`，通过 `layout_index` 从 Layout Table 获取字段范围。
+当前 AMC v2 profile 的 Type record 为 68 字节，并直接携带 LayoutHash、布局尺寸和字段范围。
+独立 Layout Table 及多继承 Base Table 保留为后续 schema 扩展。
+
+当前 AMC devel profile 为支持成员级 projection，在 Field record 前增加 Hash128
+`owner_type`，Field record 为 48 字节；在 Function record 前增加 Hash128 `owner_type`，
+Function record 为 72 字节。free function 使用零值 owner。
 
 **多继承支持**：`base_type_index` 改为 `base_begin` + `base_count`，指向 Base Table（或内联在 Type Table 末尾的基类索引数组）。
 
@@ -200,6 +241,8 @@ Offset  Size  Field             (per record)
 
 **精简**：移除 `size` 字段。常规字段大小由 TypeId → Layout Table 推导。仅 `opaque` / `array` 等特殊情况通过 `explicit_size` 保存。
 
+AMC 的 `owner_type` 使 `Foo::field` 选择不依赖成员名称猜测。
+
 ### Function Table
 
 ```
@@ -216,6 +259,15 @@ Offset  Size  Field             (per record)
 0x34    u32   flags             ← static / virtual / const / noexcept / ...
 0x38    u32   vtable_index      ← vtable 索引（UINT32_MAX = 非 virtual）
 ```
+
+AMC 当前 profile 在上述字段前增加 Hash128 `owner_type`。零值表示 namespace/free
+function；选择 `Foo` 保留全部成员，选择 `Foo::method` 只保留指定方法。
+
+AMC-M8 frontend 目前将 namespace 和 typedef/alias 作为独立 Type record（kind
+`namespace` / `alias`）。Field flags 使用 `field_bitfield`、`field_base`、visibility
+位域以及 bit offset/width 位域记录 bitfield、继承和访问级别；具体模板特化按其实例化
+类型记录，依赖模板主体不作为可布局 ABI 输出。Function flags 记录访问级别，
+`calling_convention` 使用稳定的 AMC 编号（C、stdcall、fastcall、thiscall、aarch64 SVE）。
 
 ### Parameter Table
 
@@ -238,7 +290,7 @@ Offset  Size  Field             (per record)
 0x04    u32   name_length
 0x08    u32   mangled_offset    ← mangled 名
 0x0C    u32   mangled_length
-0x10    u32   target_kind       = 0 (type) | 1 (function) | 2 (variable)
+0x10    u32   target_kind       = 0 (type) | 1 (field) | 2 (function)
 0x14    u32   target_index      ← 对应表中的索引
 0x18    u32   visibility        = 0 (public) | 1 (protected) | 2 (private)
 0x1C    u32   binding           = 0 (local) | 1 (global) | 2 (weak)
@@ -270,10 +322,18 @@ Offset  Size  Field             (per record)
 0x08    u64   source_type_hash_hi
 0x10    u64   target_type_hash_lo
 0x18    u64   target_type_hash_hi
-0x20    u32   operation_begin   ← Map Operation Table 起始索引
-0x24    u32   operation_count
-0x28    u32   flags             ← bidirectional / lossy / ...
+0x20    u32   source_name_offset
+0x24    u32   source_name_length
+0x28    u32   target_name_offset
+0x2C    u32   target_name_length
+0x30    u32   operation_begin   ← Map Operation Table 起始索引
+0x34    u32   operation_count
+0x38    u32   flags             ← bidirectional / lossy / ...
 ```
+
+当前 AMC v2 Map record 为 60 字节。兼容性报告可跨两个 artifact 保存，因此
+Map record 同时保存 source/target 的稳定名称，避免 source TypeId 必须存在于
+target artifact 的 Type Table。
 
 ### Map Operation Table (ABI IR)
 
@@ -396,6 +456,31 @@ Header 中的 `hash_algorithm` 字段标识。
 应继续验证 canonical name、layout 或 signature，避免碰撞导致静默错误。
 
 ### HashDescriptor 与 Hash Domain
+
+AMC 当前 v2 使用固定的 HashDescriptor section（ID `8`，16 字节）：
+
+```text
+u16 algorithm              = 0 (AMC Hash128)
+u16 algorithm_version      = 1
+u32 canonical_version      = 1
+u32 flags
+u32 reserved
+```
+
+Hash Table section（ID `9`）使用 32 字节记录：
+
+```text
+u32 hash_kind               = 0 artifact | 1 type_id | 2 layout | 3 signature
+u32 target_kind             = 0 module | 1 type | 2 function
+u32 target_index
+u32 flags
+u64 hash_lo
+u64 hash_hi
+```
+
+Identity 中的 artifact hash 是 `ABIHash`。它来自独立的 canonical encoding，不包含
+section offset、directory offset、padding 或 String Table 的物理排列。canonical version
+和 hash algorithm 变化都会使 ABIHash 变化；package name/version 不参与 ABIHash。
 
 每个 canonical hash value 都必须携带以下描述信息：
 
