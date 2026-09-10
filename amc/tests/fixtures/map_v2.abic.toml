@@ -1,0 +1,12 @@
+[package]
+name = "amc_map_v2"
+version = "2"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["map_v2_types.hpp"]
+symbols = ["amc_map::MapRecord"]
+
+[[export]]
+output = "build/map_v2.abix"

@@ -17,8 +17,8 @@
 #define SKL_ABIX_RCU_TIMEOUT_H
 
 #include "config.h"
-#if SKL_ABIX_WINDOWS
-#  include <windows.h>
+#ifdef SKL_ABIX_WINDOWS
+#  include <sysinfoapi.h>
 #else
 #  include <time.h>
 #endif
@@ -34,10 +34,10 @@ namespace detail {
 
 // --- wall-clock time (always available) ---
 inline uint64_t get_tick_ms() noexcept {
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
     return GetTickCount64();
 #else
-    struct timespec ts;
+    timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1'000 + (uint64_t)ts.tv_nsec / 1'000'000;
 #endif

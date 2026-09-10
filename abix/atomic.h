@@ -16,8 +16,10 @@
 #ifndef SKL_ABIX_ATOMIC_H
 #define SKL_ABIX_ATOMIC_H
 
+#include <type_traits>
+
 #include "config.h"
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
 #  include <intrin.h>
 #endif
 
@@ -25,96 +27,50 @@ SKL_ABIX_NAMESPACE_BEGIN
 
 namespace atomic {
 
-#if SKL_ABIX_WINDOWS
+template<typename T>
+struct is_atomic : std::integral_constant<bool, std::is_arithmetic<T>::value || std::is_pointer<T>::value> {};
+template<typename T>
+using is_atomic_cas = std::is_arithmetic<T>;
 
-// --- u32 load/store (volatile access, not RMW) ---
-// x86/x64 TSO already provides acquire/release hardware ordering;
-// volatile + compiler barrier suffices for both /volatile:ms and /volatile:iso.
-inline uint32_t load_acquire(const uint32_t *p) noexcept {
-    uint32_t v = *(volatile const uint32_t *)p;
-    _ReadWriteBarrier();
-    return v;
+template<typename T, typename = typename std::enable_if<is_atomic<T>::value>::type>
+inline T load_acquire(const T *p) noexcept {
+    return __atomic_load_n(p, __ATOMIC_ACQUIRE);
 }
-inline uint32_t load_relaxed(const uint32_t *p) noexcept { return *(volatile const uint32_t *)p; }
-inline void store_release(uint32_t *p, uint32_t v) noexcept {
-    _ReadWriteBarrier();
-    *(volatile uint32_t *)p = v;
+template<typename T, typename = typename std::enable_if<is_atomic<T>::value>::type>
+inline T load_relaxed(const T *p) noexcept {
+    return __atomic_load_n(p, __ATOMIC_RELAXED);
 }
-inline void store_relaxed(uint32_t *p, uint32_t v) noexcept { *(volatile uint32_t *)p = v; }
-
-// --- u32 RMW (keep Interlocked) ---
-inline uint32_t inc_relaxed(uint32_t *p) noexcept { return (uint32_t)_InterlockedIncrement((volatile long *)p); }
-inline uint32_t dec_relaxed(uint32_t *p) noexcept { return (uint32_t)_InterlockedDecrement((volatile long *)p); }
-inline uint32_t exchange_acq_rel(uint32_t *p, uint32_t v) noexcept {
-    return (uint32_t)_InterlockedExchange((volatile long *)p, (long)v);
+template<typename T, typename V, typename = typename std::enable_if<is_atomic<T>::value>::type,
+    typename = typename std::enable_if<std::is_convertible<V, T>::value>::type>
+inline void store_release(T *p, V v) noexcept {
+    __atomic_store_n(p, static_cast<T>(v), __ATOMIC_RELEASE);
 }
-inline bool cas_relaxed(uint32_t *p, uint32_t expected, uint32_t desired) noexcept {
-    return (uint32_t)_InterlockedCompareExchange((volatile long *)p, (long)desired, (long)expected) == expected;
+template<typename T, typename V, typename = typename std::enable_if<is_atomic<T>::value>::type,
+    typename = typename std::enable_if<std::is_convertible<V, T>::value>::type>
+inline void store_relaxed(T *p, V v) noexcept {
+    __atomic_store_n(p, static_cast<T>(v), __ATOMIC_RELAXED);
 }
-
-// --- u64 load/store ---
-inline uint64_t load_acquire(const uint64_t *p) noexcept {
-    uint64_t v = *(volatile const uint64_t *)p;
-    _ReadWriteBarrier();
-    return v;
+template<typename T, typename = typename std::enable_if<is_atomic<T>::value>::type>
+inline T inc_relaxed(T *p) noexcept {
+    return __atomic_add_fetch(p, 1, __ATOMIC_RELAXED);
 }
-inline uint64_t load_relaxed(const uint64_t *p) noexcept { return *(volatile const uint64_t *)p; }
-inline void store_release(uint64_t *p, uint64_t v) noexcept {
-    _ReadWriteBarrier();
-    *(volatile uint64_t *)p = v;
+template<typename T, typename = typename std::enable_if<is_atomic<T>::value>::type>
+inline T dec_relaxed(T *p) noexcept {
+    return __atomic_sub_fetch(p, 1, __ATOMIC_RELAXED);
 }
-inline void store_relaxed(uint64_t *p, uint64_t v) noexcept { *(volatile uint64_t *)p = v; }
-
-// --- u64 RMW ---
-inline uint64_t inc_acq_rel(uint64_t *p) noexcept { return (uint64_t)_InterlockedIncrement64((volatile long long *)p); }
-inline uint64_t exchange_acq_rel(uint64_t *p, uint64_t v) noexcept {
-    return (uint64_t)_InterlockedExchange64((volatile long long *)p, (long long)v);
+template<typename T, typename = typename std::enable_if<is_atomic<T>::value>::type>
+inline T inc_acq_rel(T *p) noexcept {
+    return __atomic_add_fetch(p, 1, __ATOMIC_ACQ_REL);
 }
-
-// --- pointer load/store ---
-inline void *load_acquire(void * const *p) noexcept {
-    void *v = *(void * const volatile *)p;
-    _ReadWriteBarrier();
-    return v;
+template<typename T, typename V, typename = typename std::enable_if<is_atomic<T>::value>::type,
+    typename = typename std::enable_if<std::is_convertible<V, T>::value>::type>
+inline T exchange_acq_rel(T *p, V v) noexcept {
+    return __atomic_exchange_n(p, static_cast<T>(v), __ATOMIC_ACQ_REL);
 }
-inline void store_release(void **p, void *v) noexcept {
-    _ReadWriteBarrier();
-    *(void * volatile *)p = v;
-}
-inline void *exchange_acq_rel(void **p, void *v) noexcept { return _InterlockedExchangePointer(p, v); }
-
-#else   // GCC / Clang
-
-// --- u32 ---
-inline uint32_t load_acquire(const uint32_t *p) noexcept { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
-inline uint32_t load_relaxed(const uint32_t *p) noexcept { return __atomic_load_n(p, __ATOMIC_RELAXED); }
-inline void store_release(uint32_t *p, uint32_t v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
-inline void store_relaxed(uint32_t *p, uint32_t v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELAXED); }
-inline uint32_t inc_relaxed(uint32_t *p) noexcept { return __atomic_add_fetch(p, 1, __ATOMIC_RELAXED); }
-inline uint32_t dec_relaxed(uint32_t *p) noexcept { return __atomic_sub_fetch(p, 1, __ATOMIC_RELAXED); }
-inline uint32_t exchange_acq_rel(uint32_t *p, uint32_t v) noexcept {
-    return __atomic_exchange_n(p, v, __ATOMIC_ACQ_REL);
-}
-inline bool cas_relaxed(uint32_t *p, uint32_t expected, uint32_t desired) noexcept {
+template<typename T, typename = typename std::enable_if<is_atomic<T>::value>::type>
+inline bool cas_relaxed(T *p, T expected, T desired) noexcept {
     return __atomic_compare_exchange_n(p, &expected, desired, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 }
-
-// --- u64 ---
-inline uint64_t load_acquire(const uint64_t *p) noexcept { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
-inline uint64_t load_relaxed(const uint64_t *p) noexcept { return __atomic_load_n(p, __ATOMIC_RELAXED); }
-inline void store_release(uint64_t *p, uint64_t v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
-inline void store_relaxed(uint64_t *p, uint64_t v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELAXED); }
-inline uint64_t inc_acq_rel(uint64_t *p) noexcept { return __atomic_add_fetch(p, 1, __ATOMIC_ACQ_REL); }
-inline uint64_t exchange_acq_rel(uint64_t *p, uint64_t v) noexcept {
-    return __atomic_exchange_n(p, v, __ATOMIC_ACQ_REL);
-}
-
-// --- pointer ---
-inline void *load_acquire(void * const *p) noexcept { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
-inline void store_release(void **p, void *v) noexcept { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
-inline void *exchange_acq_rel(void **p, void *v) noexcept { return __atomic_exchange_n(p, v, __ATOMIC_ACQ_REL); }
-
-#endif   // SKL_ABIX_WINDOWS
 
 }   // namespace atomic
 

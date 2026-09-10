@@ -36,12 +36,84 @@ flowchart TB
 
     C --- C3["abi_get_table()<br/>ABI Table Export & Symbol Resolution"]
 
-    D --- D1["dll_func&lt;Sig, CC, Policy&gt;<br/>Typed Function Handle"]
+    D --- D1["dll_func&lt;Sig, CC&gt;<br/>Typed Function Handle"]
 
     D --- D2["function_dll&lt;R(Args...)&gt;<br/>8-byte Closure"]
 
     D --- D3["*_dll_ptr<br/>Smart Pointer System"]
 ```
+
+---
+
+## ABI Metadata Runtime and AMC
+
+The POD DLL export table documented below remains ABIX's public call ABI.
+AMC metadata is separate from that table: it describes selected native C++ ABI
+surfaces in a `.abix` v4 artifact and can project those records as C++17
+`constexpr` descriptors. The artifact contains type/layout, field, function,
+symbol, hash, compatibility, and map data. Its wire format is documented in
+[`.abix` format notes](abix.md).
+
+### Build, inspect, and compare artifacts
+
+```sh
+amc build -c package.abic.toml -B build
+amc validate build/build/package.abix
+amc inspect build/build/package.abix
+amc generate build/build/package.abix -l cpp -o package_metadata.hpp
+amc diff old.abix new.abix -o compatibility.abix
+amc compatibility old.abix new.abix
+amc-dump diff old.abix new.abix
+amc-dump diff old.abix new.abix --json compatibility.json
+```
+
+`amc diff` records identical, layout-compatible, map-compatible, or
+incompatible types. The generated `MapPrivate<A, B>` plan performs copy/default
+operations; integer and floating conversions require an explicit native
+converter and therefore do not silently reinterpret values.
+
+`amc-dump diff` is the human/JSON inspection counterpart: it computes the
+same core compatibility report without writing an artifact, and prints both
+artifact identities plus compatibility records and Map operations. Plain
+`amc-dump` reflects every currently defined `.abix` v4 section, including the
+optional compatibility, map, and map-operation sections.
+
+### `runtime::RuntimeRegistry`
+
+Headers: `abix/runtime_descriptor.h`, `abix/runtime_registry.h`.
+
+`ModuleDescriptor` is the generated, static view of one metadata module.
+`RuntimeRegistry<Capacity>::register_module()` first validates the entire
+module, including type references and duplicate IDs, then registers it
+atomically from the caller's perspective. The registry retains canonical
+`model::TypeDesc`/`TypeLayout` views alongside generated descriptors.
+
+| API | Result |
+|---|---|
+| `register_module(const ModuleDescriptor&)` | `RuntimeRegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules |
+| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `RuntimeRegistryEntry`, or `nullptr` |
+| `type_of<T>()` | Entry selected by generated `TypeTraits<T>::type_id` |
+| `canonical()` | Underlying bounded `MetadataRegistry` view |
+
+`type_of<T>()` is intentionally available only for types whose generated header
+defines `TypeTraits<T>`. Enable those specializations explicitly:
+
+```cpp
+#include "my_native_types.hpp"
+#define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
+#include "package_metadata.hpp"
+
+skl::abix::runtime::RuntimeRegistry<128> registry;
+if (registry.register_module(amc_generated::amc_module) ==
+    skl::abix::runtime::RuntimeRegisterStatus::ok) {
+    const auto *metadata = registry.type_of<my::NativeType>();
+    // metadata is non-null after successful registration.
+}
+```
+
+ABIX Runtime and AMC core metadata are covered by reproducible self-description
+tests. This is metadata self-hosting, not C++ compiler-source self-hosting:
+AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 
 ---
 
@@ -60,14 +132,6 @@ flowchart TB
 | `SKL_ABIX_NAMESPACE_BEGIN` | — | Opens `namespace skl { namespace abix {` |
 | `SKL_ABIX_NAMESPACE_END` | — | Closes `} }` |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | Magic number for control blocks |
-
-### `AbiLookupPolicy` Enum
-
-| Value | Description |
-|-------|-------------|
-| `Linear` | Full table linear scan (default) |
-| `StaticHot` | Pre-registered hot-cache lookup |
-| `AdaptiveHot` | Self-learning hot-cache with adaptive promotion |
 
 ---
 
@@ -345,13 +409,12 @@ When no RCU unload is in progress, the timeout check only fires inside `wait_for
 
 **Namespace:** `skl::abix`
 
-### `dll_func_cc<C, Sig, Policy>`
+### `dll_func_cc<C, Sig>`
 
 The primary template for typed function handles. Template parameters:
 
 - `C` — Calling convention tag (`cc::tag::Cdecl` or `cc::tag::Stdcall`)
 - `Sig` — Function signature (e.g., `int(int, double)`)
-- `Policy` — Lookup policy (`AbiLookupPolicy::Linear` by default)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -373,13 +436,13 @@ The primary template for typed function handles. Template parameters:
 - If entry signature/name/hash changed → sets `call_error::table_changed`, returns default `R{}`
 - If function pointer is null → sets `call_error::invalid`, returns default `R{}`
 
-### `dll_func<Sig, C, Policy>`
+### `dll_func<Sig, C>`
 
 Convenience alias for `dll_func_cc` with default calling convention `Cdecl`:
 
 ```cpp
-template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl), AbiLookupPolicy Policy = AbiLookupPolicy::Linear>
-class dll_func : public dll_func_cc<C, Sig, Policy> { ... };
+template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
+class dll_func : public dll_func_cc<C, Sig> { ... };
 ```
 
 **Usage Example:**
@@ -494,16 +557,34 @@ Register a custom type tag for user type `T`, enabling stable cross-compiler typ
 ### `find_index()`
 
 ```cpp
-inline lookup_result find_index(const table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+inline lookup_result find_index(const table &t, const hash_index &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
 ```
 
-Searches the table for an entry matching `name`, `sig`, and optionally `ver`. Returns the result code and sets `out` to the entry index.
+Automatically selects the optimal lookup strategy based on whether `idx` is valid:
+- If `idx.valid()` → uses HashIndex lookup (`find_hash`)
+- Otherwise → uses linear scan (`find_linear`)
+
+### `find_linear()`
+
+```cpp
+inline lookup_result find_linear(const table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+```
+
+Full table linear scan. Used for small tables (< 64 entries).
 
 **Search logic:**
 1. Validate table magic
-2. Compute 32-bit name hash
+2. Compute 32-bit name hash (FNV-1a)
 3. Linear scan: match name hash → strcmp → version check → sig check
 4. Return `ok`, `sig_mismatch`, `version_mismatch`, or `not_found`
+
+### `find_hash()`
+
+```cpp
+inline lookup_result find_hash(const table &t, const hash_index &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+```
+
+Open-addressing hash index lookup. Used for large tables (≥ 64 entries). O(1) average time.
 
 ### `lookup_linear()`
 
@@ -511,70 +592,71 @@ Searches the table for an entry matching `name`, `sig`, and optionally `ver`. Re
 inline const entry *lookup_linear(const table &t, const char *name, name_hash_t nh, sig_t sig) noexcept;
 ```
 
-Direct linear lookup returning the entry pointer (or `nullptr`). Used by the `Linear` lookup policy.
+Direct linear lookup returning the entry pointer (or `nullptr`).
 
----
+### `lookup_hash()`
 
-## 9. `cache.h` — Lookup Acceleration
+```cpp
+inline const entry *lookup_hash(const table &t, const hash_index &idx, const char *name, name_hash_t nh, sig_t sig) noexcept;
+```
 
-**Namespace:** `skl::abix`
+Direct hash index lookup returning the entry pointer (or `nullptr`).
+
+### `hash_slot`
+
+```cpp
+struct hash_slot {
+    name_hash_t hash;
+    index_t index;
+};
+```
+
+A single slot in the hash index. Stores only the name hash and entry index — never copies `entry` data.
+
+### `hash_index`
+
+```cpp
+struct hash_index {
+    hash_slot *slots;
+    uint32_t capacity;
+    uint32_t mask;
+
+    bool valid() const noexcept;
+    void build(const table &t) noexcept;
+    void destroy() noexcept;
+};
+```
+
+Runtime hash index for large tables. Built once at DLL load time.
+
+| Member | Type | Description |
+|--------|------|-------------|
+| `slots` | `hash_slot*` | Open-addressing slot array (power-of-two capacity) |
+| `capacity` | `uint32_t` | Total number of slots (always `next_pow2(count * 2)`) |
+| `mask` | `uint32_t` | `capacity - 1` for fast modulo |
+
+| Method | Description |
+|--------|-------------|
+| `valid()` | Whether the hash index has been built (slots != nullptr) |
+| `build(t)` | Build the hash index from a table. Inserts all entries with linear probing |
+| `destroy()` | Free the slot array |
+
+**Design notes:**
+- **Load factor ~50%**: `capacity = next_pow2(count * 2)`
+- **Open addressing**: Linear probing `pos = (pos + 1) & mask` on collision
+- **Zero ABI impact**: `hash_index` is runtime-only metadata; `table` and `entry` structs remain unchanged
+- **Built at load time**: No runtime initialization races, no lazy initialization complexity
 
 ### Constants
 
-| Constant | Default | Description |
-|----------|---------|-------------|
-| `SKL_ABIX_HOT_SLOTS` | `32` | Maximum hot cache slots |
-| `SKL_ABIX_ADAPTIVE_PERIOD` | `64` | Sampling period for adaptive cache |
-| `SKL_ABIX_ADAPTIVE_THRESHOLD` | `4` | Hit count threshold for promotion |
-
-### `static_hot_cache`
-
-A fixed hot-cache with manually registered entries.
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `add(idx)` | `bool` | Add an index to the hot cache |
-| `contains(idx)` | `bool` | Check if an index is cached |
-| `reset()` | `void` | Clear all cached entries |
-
-### `adaptive_hot_cache`
-
-A self-learning hot-cache that automatically promotes frequently-called entries.
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `init(n)` | `void` | Initialize with table size `n` |
-| `destroy()` | `void` | Free internal hit counters |
-| `contains(idx)` | `bool` | Check if an index is cached |
-| `promote(idx)` | `void` | Manually promote an entry to the hot cache |
-
-**Configurable members:**
-| Member | Type | Description |
-|--------|------|-------------|
-| `threshold` | `uint32_t` | Hit count threshold for auto-promotion |
-| `period` | `uint32_t` | Sampling period (reset after each adaptation) |
-
-### `lookup_static_hot()`
-
-```cpp
-inline const entry *lookup_static_hot(
-    const table &t, const static_hot_cache &c, const char *name, name_hash_t nh, sig_t sig) noexcept;
-```
-
-Checks the static hot cache first, falls back to linear scan.
-
-### `lookup_adaptive()`
-
-```cpp
-inline const entry *lookup_adaptive(
-    const table &t, adaptive_hot_cache &c, const char *name, name_hash_t nh, sig_t sig) noexcept;
-```
-
-Checks the adaptive hot cache first, falls back to linear scan. On each linear scan, increments hit counters and promotes entries that exceed the threshold.
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `HASH_THRESHOLD` | `64` | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
+| `HASH_SLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots |
 
 ---
 
-## 10. `function.h` — Cross-Boundary Closure
+## 9. `function.h` — Cross-Boundary Closure
 
 **Namespace:** `skl::abix`
 
@@ -617,7 +699,7 @@ reg(std::move(cb));
 
 ---
 
-## 11. Smart Pointers (`dll_ptr/`)
+## 10. Smart Pointers (`dll_ptr/`)
 
 **Namespace:** `skl::abix`
 
@@ -715,9 +797,9 @@ Non-owning observer for `shared_dll_ptr<T>`. Does not prevent resource destructi
 
 ---
 
-## 12. `refl.h` — Dynamic Reflection Integration
+## 11. `refl.h` — Dynamic mics Integration
 
-**Namespace:** `skl::abix::refl` (reflection helpers), `skl::abix` (convenience types)
+**Namespace:** `skl::abix::refl` (mics helpers), `skl::abix` (convenience types)
 
 ### Type Aliases
 
@@ -771,9 +853,9 @@ Casts a `DynamicAny` to `T` by value. Returns `T{}` if the cast fails.
 inline void register_dll_table(const table *t, const char *dll_name);
 ```
 
-Registers all entries from an ABIX export table into the dynamic reflection registry.
+Registers all entries from an ABIX export table into the dynamic mics registry.
 
-### Compile-time Reflection Helpers (`refl` namespace)
+### Compile-time mics Helpers (`refl` namespace)
 
 | Symbol | Description |
 |--------|-------------|
@@ -783,7 +865,7 @@ Registers all entries from an ABIX export table into the dynamic reflection regi
 
 ---
 
-## 13. Complete Usage Example
+## 12. Complete Usage Example
 
 ```cpp
 #include "abix/abix.hpp"

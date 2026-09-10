@@ -1,0 +1,9 @@
+[package]
+name = "amc_m8"
+version = "1"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["amc_m8_types.hpp"]
+symbols = ["amc_m8::IntBox", "amc_m8::Count", "amc_m8::cdecl_fn"]

@@ -4,24 +4,24 @@ TEST_CASE("15.closed_source_type_access", "[closed][prompt15]") {
     log_info(
         "Test 15: manual closed-source type registration and consumption - the consumer accesses Player public fields "
         "through a safe facade");
-    dll_object lib;
+    skl::abix::dll_object lib;
     if (!lib.load(dll_path("closed_dll").c_str())) {
         WARN("missing closed_dll, skip closed-source test.");
         return;
     }
 
-    auto create = dll_func<Player *(uint64_t)>(lib, "create_player");
-    auto destroy = dll_func<void(Player *)>(lib, "destroy_player");
-    auto alive = dll_func<int()>(lib, "player_alive");
-    auto get_health = dll_func<int(Player *)>(lib, "player_get_health");
-    auto set_health = dll_func<void(Player *, int)>(lib, "player_set_health");
-    auto get_x = dll_func<float(Player *)>(lib, "player_get_x");
-    auto get_y = dll_func<float(Player *)>(lib, "player_get_y");
-    auto set_pos = dll_func<void(Player *, float, float)>(lib, "player_set_position");
-    auto get_id = dll_func<uint64_t(Player *)>(lib, "player_get_id");
-    auto type_hash_fn = dll_func<uint64_t()>(lib, "player_type_hash");
-    auto offset_health = dll_func<int()>(lib, "player_offset_health");
-    auto sizeof_fn = dll_func<int()>(lib, "player_sizeof");
+    auto create = skl::abix::dll_func<Player *(uint64_t)>(lib, "create_player");
+    auto destroy = skl::abix::dll_func<void(Player *)>(lib, "destroy_player");
+    auto alive = skl::abix::dll_func<int()>(lib, "player_alive");
+    auto get_health = skl::abix::dll_func<int(Player *)>(lib, "player_get_health");
+    auto set_health = skl::abix::dll_func<void(Player *, int)>(lib, "player_set_health");
+    auto get_x = skl::abix::dll_func<float(Player *)>(lib, "player_get_x");
+    auto get_y = skl::abix::dll_func<float(Player *)>(lib, "player_get_y");
+    auto set_pos = skl::abix::dll_func<void(Player *, float, float)>(lib, "player_set_position");
+    auto get_id = skl::abix::dll_func<uint64_t(Player *)>(lib, "player_get_id");
+    auto type_hash_fn = skl::abix::dll_func<uint64_t()>(lib, "player_type_hash");
+    auto offset_health = skl::abix::dll_func<int()>(lib, "player_offset_health");
+    auto sizeof_fn = skl::abix::dll_func<int()>(lib, "player_sizeof");
 
     REQUIRE(create.valid());
     REQUIRE(destroy.valid());
@@ -48,7 +48,7 @@ TEST_CASE("15.closed_source_type_access", "[closed][prompt15]") {
     SECTION("15a.basic_access") {
         INFO("15a: basic create, read/write public fields, auto-destroy");
         {
-            unique_dll_ptr<Player> player(create(42), destroy.raw());
+            skl::abix::unique_dll_ptr<Player> player(create(42), destroy.raw());
             REQUIRE((bool)player);
             REQUIRE(alive() == 1);
             PlayerPublic *pp = pub(player.get());
@@ -78,7 +78,7 @@ TEST_CASE("15.closed_source_type_access", "[closed][prompt15]") {
 
     SECTION("15b.direct_field_access") {
         INFO("15b: read/write directly through safe facade offsets (bypassing function accessors)");
-        unique_dll_ptr<Player> player(create(99), destroy.raw());
+        skl::abix::unique_dll_ptr<Player> player(create(99), destroy.raw());
         REQUIRE((bool)player);
         PlayerPublic *pp = pub(player.get());
 
@@ -103,16 +103,16 @@ TEST_CASE("16.contract_offset_guard", "[closed][prompt16]") {
     static_assert(offsetof(PlayerPublic, x) == 20, "Contract violation: x offset mismatch");
     static_assert(offsetof(PlayerPublic, y) == 24, "Contract violation: y offset mismatch");
 
-    dll_object lib;
+    skl::abix::dll_object lib;
     if (!lib.load(dll_path("closed_dll").c_str())) {
         WARN("missing closed_dll, skip contract offset validation.");
         return;
     }
 
-    auto offset_health = dll_func<int()>(lib, "player_offset_health");
-    auto offset_x = dll_func<int()>(lib, "player_offset_x");
-    auto offset_y = dll_func<int()>(lib, "player_offset_y");
-    auto sizeof_fn = dll_func<int()>(lib, "player_sizeof");
+    auto offset_health = skl::abix::dll_func<int()>(lib, "player_offset_health");
+    auto offset_x = skl::abix::dll_func<int()>(lib, "player_offset_x");
+    auto offset_y = skl::abix::dll_func<int()>(lib, "player_offset_y");
+    auto sizeof_fn = skl::abix::dll_func<int()>(lib, "player_sizeof");
 
     REQUIRE(offset_health.valid());
     REQUIRE(offset_x.valid());
@@ -137,7 +137,7 @@ TEST_CASE("17.closed_cross_crt", "[closed][prompt17][cross]") {
 
     std::string variant = "./variants/msvc_x64/closed_dll/closed_dll.dll";
     bool use_msvc = file_exists(variant);
-    dll_object lib;
+    skl::abix::dll_object lib;
 
     if (use_msvc) {
         log_info("MSVC variant detected, running the cross-CRT heap release test");
@@ -147,10 +147,10 @@ TEST_CASE("17.closed_cross_crt", "[closed][prompt17][cross]") {
         REQUIRE(lib.load(dll_path("closed_dll").c_str()));
     }
 
-    auto create = dll_func<Player *(uint64_t)>(lib, "create_player");
-    auto destroy = dll_func<void(Player *)>(lib, "destroy_player");
-    auto alive = dll_func<int()>(lib, "player_alive");
-    auto get_health = dll_func<int(Player *)>(lib, "player_get_health");
+    auto create = skl::abix::dll_func<Player *(uint64_t)>(lib, "create_player");
+    auto destroy = skl::abix::dll_func<void(Player *)>(lib, "destroy_player");
+    auto alive = skl::abix::dll_func<int()>(lib, "player_alive");
+    auto get_health = skl::abix::dll_func<int(Player *)>(lib, "player_get_health");
 
     REQUIRE(create.valid());
     REQUIRE(destroy.valid());
@@ -158,7 +158,7 @@ TEST_CASE("17.closed_cross_crt", "[closed][prompt17][cross]") {
     REQUIRE(alive() == 0);
 
     {
-        unique_dll_ptr<Player> player(create(77), destroy.raw());
+        skl::abix::unique_dll_ptr<Player> player(create(77), destroy.raw());
         REQUIRE((bool)player);
         REQUIRE(alive() == 1);
         REQUIRE(get_health(player.get()) == 100);

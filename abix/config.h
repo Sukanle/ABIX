@@ -15,12 +15,21 @@
  */
 #ifndef SKL_ABIX_CONFIG_H
 #define SKL_ABIX_CONFIG_H
+
 #if defined(_WIN32) || defined(__CYGWIN__)
-#  define SKL_ABIX_WINDOWS 1
+#  define SKL_ABIX_WINDOWS
+#  define SKL_ABIX_DLL_SUFFIX ".dll"
+#  define SKL_ABIX_PATHSEPARATOR '\\'
+#elif defined(__APPLE__)
+#  define SKL_ABIX_APPLE
+#  define SKL_ABIX_DLL_SUFFIX ".dylib"
+#  define SKL_ABIX_PATHSEPARATOR '/'
 #else
-#  define SKL_ABIX_WINDOWS 0
+#  define SKL_ABIX_DLL_SUFFIX ".so"
+#  define SKL_ABIX_PATHSEPARATOR '/'
 #endif
-#if SKL_ABIX_WINDOWS
+
+#if defined(SKL_ABIX_WINDOWS)
 #  define SKL_ABIX_CALL_CDECL __cdecl
 #  define SKL_ABIX_CALL_STDCALL __stdcall
 #else
@@ -28,7 +37,7 @@
 #  define SKL_ABIX_CALL_STDCALL
 #endif
 
-#if SKL_ABIX_WINDOWS
+#if defined(SKL_ABIX_WINDOWS)
 #  define SKL_ABIX_DLL_EXPORT __declspec(dllexport)
 #else
 #  define SKL_ABIX_DLL_EXPORT __attribute__((visibility("default")))

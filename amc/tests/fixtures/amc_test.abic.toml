@@ -1,0 +1,12 @@
+[package]
+name = "amc_test"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["amc_test_types.hpp"]
+symbols = ["AmcTestFoo", "AmcTestBar", "AmcTestColor", "amc_test_create", "amc_test_destroy", "amc_test_compute"]
+
+[[export]]
+output = "build/amc_test.abix"

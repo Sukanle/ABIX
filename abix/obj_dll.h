@@ -17,18 +17,19 @@
 #define SKL_ABIX_OBJ_DLL_H
 #include "type.h"
 #include "register.h"
+#include "search.h"
 #include "rcu_config.h"
 #include "rcu_domain.h"
 #include "atomic.h"
 #include "log.h"
 #include <new>
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
 #  include <libloaderapi.h>
 #endif
 
 SKL_ABIX_NAMESPACE_BEGIN
 
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
 using module_handle = HMODULE;
 #else
 #  include <dlfcn.h>
@@ -56,20 +57,26 @@ class dll_object;
 
 struct dll_image {
     module_handle module;
-    const table *table;
+    const table *export_table;
+    hash_index index;
 };
 
 namespace detail {
 inline module_handle load_module(const char *path) noexcept {
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
     return LoadLibraryA(path);
 #else
-    return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    module_handle m = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!m) {
+        const char *err = dlerror();
+        ABIX_LOG_ERROR("dlopen('%s') failed: %s", path, err ? err : "unknown error");
+    }
+    return m;
 #endif
 }
 inline void *resolve_symbol(module_handle m, const char *name) noexcept {
     if (!m) return nullptr;
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
     return reinterpret_cast<void *>(GetProcAddress(m, name));
 #else
     return dlsym(m, name);
@@ -77,7 +84,7 @@ inline void *resolve_symbol(module_handle m, const char *name) noexcept {
 }
 inline void unload_module(module_handle m) noexcept {
     if (m) {
-#if SKL_ABIX_WINDOWS
+#ifdef SKL_ABIX_WINDOWS
         FreeLibrary(m);
 #else
         dlclose(m);
@@ -87,6 +94,7 @@ inline void unload_module(module_handle m) noexcept {
 
 inline void reclaim_image(void *p) noexcept {
     dll_image *img = static_cast<dll_image *>(p);
+    img->index.destroy();
     unload_module(img->module);
     delete img;
 }
@@ -128,7 +136,7 @@ public:
             unlock_writer();
             return false;
         }
-        dll_image *img = new (std::nothrow) dll_image{m, t};
+        dll_image *img = new (std::nothrow) dll_image{m, t, {}};
         if (!img) {
             ABIX_LOG_ERROR("dll_object::load: failed to allocate image");
             detail::unload_module(m);
@@ -136,7 +144,8 @@ public:
             unlock_writer();
             return false;
         }
-        atomic::store_release((void **)&_image, img);
+        if (t->count >= HASH_THRESHOLD) img->index.build(*t);
+        atomic::store_release(&_image, img);
         atomic::store_release(&_state, (uint32_t)image_state::active);
         _refs = 0;
         last_error() = call_error::none;
@@ -160,9 +169,10 @@ public:
     void force_unload() noexcept {
         ABIX_LOG_WARNING("dll_object::force_unload: bypassing RCU, caller must ensure safety");
         lock_writer();
-        dll_image *img = static_cast<dll_image *>(atomic::exchange_acq_rel((void **)&_image, nullptr));
+        dll_image *img = static_cast<dll_image *>(atomic::exchange_acq_rel(&_image, nullptr));
         atomic::store_release(&_state, (uint32_t)image_state::zombie);
         if (img) {
+            img->index.destroy();
             detail::unload_module(img->module);
             delete img;
             _refs = 0;
@@ -194,13 +204,14 @@ public:
             return false;
         }
 
-        dll_image *new_img = new (std::nothrow) dll_image{new_m, new_t};
+        dll_image *new_img = new (std::nothrow) dll_image{new_m, new_t, {}};
         if (!new_img) {
             ABIX_LOG_ERROR("dll_object::reload: failed to allocate image");
             detail::unload_module(new_m);
             last_error() = call_error::load_failed;
             return false;
         }
+        if (new_t->count >= HASH_THRESHOLD) new_img->index.build(*new_t);
 
         lock_writer();
         dll_image *old_img = static_cast<dll_image *>(atomic::exchange_acq_rel((void **)&_image, new_img));
@@ -224,7 +235,7 @@ public:
     }
     const table *get_table() const noexcept {
         dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
-        return img ? img->table : nullptr;
+        return img ? img->export_table : nullptr;
     }
     module_handle module() const noexcept {
         dll_image *img = static_cast<dll_image *>(atomic::load_acquire((void * const *)&_image));
@@ -249,7 +260,7 @@ public:
             last_error() = call_error::unloading;
             return nullptr;
         }
-        return img->table;
+        return img->export_table;
     }
 
     void exit_read() noexcept { rcu_domain::instance().exit(); }
@@ -259,9 +270,9 @@ public:
 
 private:
     void lock_writer() noexcept {
-        while (!atomic::cas_relaxed(&_writer_lock, 0, 1)) {}
+        while (!atomic::cas_relaxed(&_writer_lock, 0U, 1U)) {}
     }
-    void unlock_writer() noexcept { atomic::store_relaxed(&_writer_lock, 0); }
+    void unlock_writer() noexcept { atomic::store_relaxed(&_writer_lock, 0U); }
 
     bool unload_internal_locked() noexcept {
         dll_image *img = static_cast<dll_image *>(atomic::exchange_acq_rel((void **)&_image, nullptr));

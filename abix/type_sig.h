@@ -18,8 +18,8 @@
 
 #include <type_traits>
 
-#include "Reflection/utils/hash.h"
-#include "Reflection/utils/type_hash.h"
+#include "mics/utils/hash.h"
+#include "mics/utils/type_hash.h"
 
 #include "abix/type.h"     // IWYU pragma: keep
 #include "abix/config.h"   // IWYU pragma: keep
@@ -29,22 +29,22 @@ SKL_ABIX_NAMESPACE_BEGIN
 #define SKL_ABIX_TYPE_TAG(T, tag) STATIC_TYPE_TAG(T, tag)
 
 template<typename T>
-struct unique_dll_ptr;
+class unique_dll_ptr;
 template<typename T>
-struct ref_dll_ptr;
+class ref_dll_ptr;
 template<typename T>
-struct view_dll_ptr;
+class view_dll_ptr;
 template<typename T>
-struct shared_dll_ptr;
+class shared_dll_ptr;
 template<typename T>
-struct weak_dll_ptr;
+class weak_dll_ptr;
 template<typename Sig>
 class function_dll;
 
 namespace detail {
-using Reflect::Utils::cstr64;
-using Reflect::Utils::mix;
-using Reflect::Utils::type_hash;
+using mics::utils::cstr64;
+using mics::utils::mix;
+using mics::utils::type_hash;
 
 template<typename T>
 struct type_sig_impl;

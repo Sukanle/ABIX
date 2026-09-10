@@ -1,3 +1,3 @@
-[submodule "Reflection"]
-	path = Reflection
-	url = git@github.com:Sukanle/Reflection.git
+[submodule "MICS"]
+	path = mics
+	url = git@github.com:Sukanle/MICS.git

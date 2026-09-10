@@ -4,46 +4,55 @@ from __future__ import annotations
 
 import os
 import shutil
+import argparse
 import subprocess
 import sys
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INCLUDE_DIR = {PROJECT_ROOT, PROJECT_ROOT / "Reflection"}
-DLL_SRC_DIR = PROJECT_ROOT / "dlls"
-VARIANT_DIR = PROJECT_ROOT / "variants"
+INCLUDE_DIR = {PROJECT_ROOT, PROJECT_ROOT / "mics"}
 
 GCC_FALLBACKS = [
-    r"G:\msys2-data\ucrt64\bin\g++.exe",
-    r"C:\msys64\ucrt64\bin\g++.exe",
+    r"g++.exe",
+    r"g++",
 ]
 CLANG_FALLBACKS = [
-    r"G:\msys2-data\ucrt64\bin\clang++.exe",
-    r"C:\msys64\ucrt64\bin\clang++.exe",
+    r"clang++.exe",
+    r"clang++",
 ]
 
-
-def find_compiler(name: str, fallbacks: list[str]) -> str | None:
+def find_compiler(name: str) -> str | None:
     path = shutil.which(name)
     if path:
         return path
-    for fb in fallbacks:
-        if os.path.isfile(fb):
-            return fb
     return None
 
+def is_symlink_to_clang(path: str) -> bool:
+    if not os.path.islink(path):
+        return False
+    target = os.readlink(path)
+    # Check if target is clang (or contains 'clang' in its name)
+    return 'clang' in target.lower() or os.path.basename(target).startswith('clang')
 
-def build_one(compiler: str, tag: str) -> None:
-    out_dir = VARIANT_DIR / tag / "version_dll"
+def build_one(compiler: str, tag: str, build_type: str) -> None:
+    out_dir = PROJECT_ROOT / "build" / build_type / "variants" / tag 
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "version_dll.dll"
-    src = DLL_SRC_DIR / "version_dll.cpp"
+    src = PROJECT_ROOT / "dlls" / "version_dll.cpp"
+    opts = []
+    dSYM = out_dir / "version_dll.dSYM"
+
+    if build_type == "Release":
+        opts.append("-O2")
+    else:
+        opts.append("-g")
+        opts.append("-O0")
 
     print(f"== [{tag}] {compiler} ==")
     cmd = [
         compiler,
-        "-std=c++20", "-shared", "-fPIC", "-O2",
+        "-std=c++17", "-shared", "-fPIC", *opts,
         *map(lambda dir: f"-I{dir}", INCLUDE_DIR), "-o", str(out), str(src),
     ]
     print(f"  \033[90m{' '.join(cmd)}\033[0m")
@@ -58,24 +67,31 @@ def build_one(compiler: str, tag: str) -> None:
         raise SystemExit(f"[{tag}] Compilation failed")
     print(f"    Generated: {out}")
 
-    stage = PROJECT_ROOT / "build" / "plugins" / "variants"
-    dst = stage / tag / "version_dll"
-    dst.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(out, dst / "version_dll.dll")
-    print(f"    Copied to: {dst}")
+    if sys.platform == "darwin" and (build_type == "Debug" or build_type == "RelWithDebInfo"):
+        subprocess.run(["dsymutil", str(out), "-o", str(dSYM)])
+        print(f"    Generated .dSYM: {dSYM}")
 
 
 def main() -> None:
-    gcc = find_compiler("g++.exe", GCC_FALLBACKS)
-    clang = find_compiler("clang++.exe", CLANG_FALLBACKS)
+    parser = argparse.ArgumentParser(description="Build variants of the tool.")
+    parser.add_argument("--build-type", default="Release", help="Build type (Release or Debug)")
+    args = parser.parse_args()
+    
+    gnu = find_compiler("g++")
+    clang = find_compiler("clang++")
 
-    if not gcc and not clang:
-        raise SystemExit("g++ or clang++ compiler not found")
+    if sys.platform == "darwin" and gnu:
+        if is_symlink_to_clang(gnu):
+            print("  [macOS] g++ is a symlink to clang, skipping it.")
+            gnu = None
 
-    if gcc:
-        build_one(gcc, "tool_x")
+    if not gnu and not clang:
+        raise SystemExit("No suitable C++ compiler found (g++ or clang++).")
+
+    if gnu:
+        build_one(gnu, "tool_x", args.build_type)
     if clang:
-        build_one(clang, "tool_y")
+        build_one(clang, "tool_y", args.build_type)
 
     print("== Variant build complete ==")
 

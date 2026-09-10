@@ -1,35 +1,37 @@
 #include "test_common.hpp"
 
-TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
-    log_info("Test 14: verify ABIX integrates the static/dynamic reflection facilities of the Reflection library");
+TEST_CASE("14.mics_integration", "[refl][prompt5-9]") {
+    log_info("Test 14: verify ABIX integrates the static/dynamic mics facilities of the mics library");
 
     SECTION("5.static_fp_table_validation") {
-        using namespace skl::abix::refl;
 
-        using table_type = SRefl::type_list<fn_entry_tag<fn_sig_v<int(int, int)>, URefl::cstr32("add")>,
-            fn_entry_tag<fn_sig_v<double(double, double)>, URefl::cstr32("multiply")>,
-            fn_entry_tag<fn_sig_v<int()>, URefl::cstr32("calc_state_alive")>>;
+        using table_type =
+            SRefl::type_list<skl::abix::refl::fn_entry_tag<skl::abix::fn_sig_v<int(int, int)>, URefl::cstr32("add")>,
+                skl::abix::refl::fn_entry_tag<skl::abix::fn_sig_v<double(double, double)>, URefl::cstr32("multiply")>,
+                skl::abix::refl::fn_entry_tag<skl::abix::fn_sig_v<int()>, URefl::cstr32("calc_state_alive")>>;
 
-        static_assert(has_unique_sigs<table_type>::value, "Table entries must have unique signatures");
+        static_assert(skl::abix::refl::has_unique_sigs<table_type>::value, "Table entries must have unique signatures");
 
-        static_assert(find_by_sig<table_type, fn_sig_v<int(int, int)>>::index == 0, "add should be at index 0");
-        static_assert(
-            find_by_sig<table_type, fn_sig_v<double(double, double)>>::index == 1, "multiply should be at index 1");
-        static_assert(find_by_sig<table_type, fn_sig_v<int()>>::index == 2, "calc_state_alive should be at index 2");
-        static_assert(
-            find_by_sig<table_type, fn_sig_v<float(float)>>::index == -1, "Unknown signature should return -1");
+        static_assert(skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<int(int, int)>>::index == 0,
+            "add should be at index 0");
+        static_assert(skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<double(double, double)>>::index == 1,
+            "multiply should be at index 1");
+        static_assert(skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<int()>>::index == 2,
+            "calc_state_alive should be at index 2");
+        static_assert(skl::abix::refl::find_by_sig<table_type, skl::abix::fn_sig_v<float(float)>>::index == -1,
+            "Unknown signature should return -1");
 
         log_info(" [FP] compile-time function table validation passed: 3 unique signatures, index lookup correct");
     }
 
     SECTION("6.any_cross_dll_parameter") {
-        dll_object lib;
+        skl::abix::dll_object lib;
         REQUIRE(lib.load(dll_path("math_dll").c_str()));
 
-        auto add = dll_func<int(int, int)>(lib, "add");
+        auto add = skl::abix::dll_func<int(int, int)>(lib, "add");
         REQUIRE(add.valid());
-        DynamicAny result = dll_func_call_any(add, 3, 7);
-        int val = any_cast_val<int>(result);
+        skl::abix::DynamicAny result = dll_func_call_any(add, 3, 7);
+        int val = skl::abix::any_cast_val<int>(result);
         REQUIRE(val == 10);
 
         log_info(" [Any] dll_func_call_any(3,7) -> Any -> any_cast_val<int> = %d", val);
@@ -44,19 +46,25 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
         REQUIRE(calc_config_id != shared_counter_id);
         REQUIRE(calc_state_id != shared_counter_id);
 
-        log_info(" [Registry] CalcState id=%zu, CalcConfig id=%zu, SharedCounter id=%zu", (size_t)calc_state_id,
-            (size_t)calc_config_id, (size_t)shared_counter_id);
+        log_info(" [Registry] CalcState id=(%llu,%llu), CalcConfig id=(%llu,%llu), SharedCounter id=(%llu,%llu)",
+            static_cast<unsigned long long>(calc_state_id.lo),
+            static_cast<unsigned long long>(calc_state_id.hi),
+            static_cast<unsigned long long>(calc_config_id.lo),
+            static_cast<unsigned long long>(calc_config_id.hi),
+            static_cast<unsigned long long>(shared_counter_id.lo),
+            static_cast<unsigned long long>(shared_counter_id.hi));
     }
 
     SECTION("8.typeinfo_struct_field_access") {
-        DynamicTypeInfo ti = make_pod_type_info<TestVec3>("TestVec3");
+        skl::abix::DynamicTypeInfo ti = skl::abix::make_pod_type_info<TestVec3>("TestVec3");
         REQUIRE(ti.name == std::string("TestVec3"));
         REQUIRE(ti.kind == DRefl::Kind::Struct);
         REQUIRE(ti.size == sizeof(TestVec3));
 
         log_info(" [TypeInfo] TestVec3: name=%s, size=%zu, kind=Struct", ti.name, ti.size);
 
-        DynamicFieldAccessor field_x = make_offset_field<TestVec3, float, offsetof(TestVec3, x)>("x");
+        skl::abix::DynamicFieldAccessor field_x =
+            skl::abix::make_offset_field<TestVec3, float, offsetof(TestVec3, x)>("x");
         REQUIRE(field_x.info.name == std::string("x"));
         REQUIRE(field_x.info.offset == offsetof(TestVec3, x));
 
@@ -71,16 +79,15 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
             field_x.info.name, field_x.info.offset);
     }
 
-    SECTION("9.static_reflection_field_info") {
+    SECTION("9.static_mics_field_info") {
         using Vec3Info = SRefl::TypeInfo<TestVec3>;
 
         static_assert(
-            Vec3Info::_name == URefl::string_view("TestVec3 [class]"), "Static reflection class name mismatch");
+            Vec3Info::_name == URefl::string_view("TestVec3 [class]"), "Static mics class name mismatch");
 
         constexpr auto &x_field = Vec3Info::Registry::_x;
         constexpr auto &y_field = Vec3Info::Registry::_y;
         constexpr auto &z_field = Vec3Info::Registry::_z;
-        int size = sizeof(Vec3Info::Registry::_x);
 
         static_assert(x_field.getName() == URefl::string_view("x"), "Field name should be 'x'");
         static_assert(y_field.getName() == URefl::string_view("y"), "Field name should be 'y'");
@@ -100,5 +107,17 @@ TEST_CASE("14.reflection_integration", "[refl][prompt5-9]") {
         log_info(" [StaticRefl] TestVec3: x(Float), y(Float), z(Float) - compile-time field info validated");
     }
 
-    log_info("ABIX successfully integrated the FP/Any/Registry/TypeInfo/StaticRefl facilities of Reflection");
+    log_info("ABIX successfully integrated the FP/Any/Registry/TypeInfo/StaticRefl facilities of mics");
+}
+
+TEST_CASE("runtime TypeId uses the full 128-bit identity") {
+    using namespace mics::rt;
+    static_assert(sizeof(TypeId) == 16, "runtime TypeId must remain Hash128");
+    const auto state = DRefl::type_id_of<CalcState>();
+    const auto config = DRefl::type_id_of<CalcConfig>();
+    REQUIRE(state != INVALID_TYPE_ID);
+    REQUIRE(config != INVALID_TYPE_ID);
+    REQUIRE(state != config);
+    REQUIRE(state.lo != 0);
+    REQUIRE(state.hi != 0);
 }

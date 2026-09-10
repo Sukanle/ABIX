@@ -1,0 +1,25 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb-dap",
+            "request": "launch",
+            "name": "Debug Benchmark",
+            "program": "${workspaceFolder}/build/debug/bin/${fileBasenameNoExtension}",
+            "args": ["--benchmark_filter=${input:benchmark_filter}"],
+            "env": [],
+            "cwd": "${workspaceFolder}",
+        }
+    ],
+    "inputs": [
+        {
+            "id": "benchmark_filter",
+            "type": "promptString",
+            "default": "",
+            "description": "Benchmark filter"
+        }
+    ]
+}

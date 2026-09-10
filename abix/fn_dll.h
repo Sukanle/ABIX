@@ -22,22 +22,16 @@
 #include "rcu_domain.h"   // IWYU pragma: keep
 
 SKL_ABIX_NAMESPACE_BEGIN
-enum class AbiLookupPolicy : uint8_t {
-    Linear = 0,
-    StaticHot = 1,
-    AdaptiveHot = 2,
-};
 
-template<cc::tag C, typename Sig, AbiLookupPolicy Policy = AbiLookupPolicy::Linear>
+template<cc::tag C, typename Sig>
 class dll_func_cc;
 
-template<cc::tag C, typename R, typename... Args, AbiLookupPolicy Policy>
-class dll_func_cc<C, R(Args...), Policy> {
+template<cc::tag C, typename R, typename... Args>
+class dll_func_cc<C, R(Args...)> {
     static constexpr sig_t _sig = fn_sig<R(Args...), C>::value;
     using fn_type = R (*)(Args...);
 
 public:
-    static constexpr AbiLookupPolicy lookup_policy = Policy;
 
     dll_func_cc() noexcept = default;
     dll_func_cc(dll_object &lib, const char *name, version_t ver = 0) noexcept { resolve(lib, name, ver); }
@@ -77,7 +71,7 @@ public:
         release_lib();
         _lib = &lib;
         _name = name;
-        _name_hash = Reflect::Utils::cstr64(name);
+        _name_hash = mics::utils::cstr64(name);
         _index = ~index_t{0};
         _valid = false;
 
@@ -87,14 +81,14 @@ public:
             last_error() = call_error::not_loaded;
             return;
         }
-        const table *t = image->table;
+        const table *t = image->export_table;
         if (!t) {
             last_error() = call_error::not_loaded;
             return;
         }
 
         index_t idx = ~index_t{0};
-        lookup_result r = find_index(*t, name, _sig, ver, idx);
+        lookup_result r = find_index(*t, image->index, name, _sig, ver, idx);
         switch (r) {
             case lookup_result::ok:
                 _index = idx;
@@ -122,9 +116,9 @@ public:
         if (!valid()) return nullptr;
         rcu_guard guard(rcu_domain::instance());
         dll_image *image = _lib->image_acquire();
-        if (!image || !image->table) return nullptr;
-        if (_index >= image->table->count) return nullptr;
-        const entry &e = image->table->entries[_index];
+        if (!image || !image->export_table) return nullptr;
+        if (_index >= image->export_table->count) return nullptr;
+        const entry &e = image->export_table->entries[_index];
         fn_type fn = nullptr;
         memcpy(&fn, &e.fnptr, sizeof(fn));
         return fn;
@@ -189,9 +183,9 @@ private:
     bool _valid = false;
 };
 
-template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl), AbiLookupPolicy Policy = AbiLookupPolicy::Linear>
-class dll_func : public dll_func_cc<C, Sig, Policy> {
-    using base_t = dll_func_cc<C, Sig, Policy>;
+template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
+class dll_func : public dll_func_cc<C, Sig> {
+    using base_t = dll_func_cc<C, Sig>;
 
 public:
     dll_func() noexcept = default;

@@ -32,7 +32,7 @@ class view_dll_ptr;
 namespace detail {
 
 template<typename T>
-struct alignas(8) ref_control_block {
+struct ref_control_block {
     T *ptr;
     void (*destroy)(T *);
     uint32_t refs;

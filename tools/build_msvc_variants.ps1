@@ -1,11 +1,11 @@
-﻿param(
-    [string]$VsInstanceId   = "8c4dc5e9",
-    [string]$VsPath         = "E:\Microsoft Visual Studio\2022\Community"
+param(
+    [string]$VsInstanceId   = "fdfdfdfd",
+    [string]$VsPath         = "C:\Microsoft Visual Studio\2022\Community"
 )
 $ErrorActionPreference = "Stop"
 
 $Root    = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$Include = @($Root, (Join-Path $Root "Reflection"))
+$Include = @($Root, (Join-Path $Root "mics"))
 $DllSrc  = Join-Path $Root "dlls"
 $Variant = Join-Path $Root "variants"
 $Tag     = "msvc_x64"
