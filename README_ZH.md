@@ -366,7 +366,7 @@ ABIX/
 
 ## 测试
 
-测试使用 [Catch2](https://github.com/catchorg/Catch2) 框架，入口文件为 `main.cpp`。**全部 31 个测试用例均通过**，覆盖核心功能、边界条件、资源管理、跨编译器兼容性、闭源契约、超时策略及性能基准。
+测试使用 [Catch2](https://github.com/catchorg/Catch2) 框架。CTest 下 **全部 86 个测试用例均通过**（统一入口 `test_all` 覆盖其中 36 个用例 / 310 条断言），覆盖核心功能、边界条件、资源管理、跨编译器兼容性、闭源契约、超时策略及性能基准。
 
 ### 测试分类
 
@@ -409,7 +409,7 @@ cmake --build build --target test_all bench_all
 执行 `python build.py --run-only` 后，控制台输出类似以下摘要：
 
 ```
-All tests passed (31 assertions in 31 test cases)
+All tests passed (310 assertions in 36 test cases)
 ```
 
 每个测试用例均输出带有 `[log]` 前缀的详细步骤，例如：

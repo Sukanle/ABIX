@@ -16,8 +16,6 @@
 #ifndef SKL_ABIX_HPP
 #define SKL_ABIX_HPP
 
-#define SKL_ABIX_VERSION "1.0.0"
-
 #include "atomic.h"        // IWYU pragma: keep
 #include "rcu_domain.h"    // IWYU pragma: keep
 #include "dll.h"           // IWYU pragma: keep

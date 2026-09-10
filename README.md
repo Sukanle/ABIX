@@ -368,7 +368,7 @@ ABIX/
 
 ## Testing
 
-Tests use [Catch2](https://github.com/catchorg/Catch2), driven by `main.cpp`. **All 31 test cases pass**, covering core functionality, edge cases, resource management, cross-compiler compatibility, closed-source contracts, timeout policies, and performance benchmarks.
+Tests use [Catch2](https://github.com/catchorg/Catch2). **All 86 test cases pass** under CTest across the per-feature binaries; the unified `test_all` runner covers 36 cases / 310 assertions. They cover core functionality, edge cases, resource management, cross-compiler compatibility, closed-source contracts, timeout policies, and performance benchmarks.
 
 ### Test Categories
 
@@ -403,7 +403,7 @@ python build.py --run-only
 Running `python build.py --run-only` produces a summary like:
 
 ```
-All tests passed (31 assertions in 31 test cases)
+All tests passed (310 assertions in 36 test cases)
 ```
 
 Each test case outputs detailed steps prefixed with `[log]`, for example:
