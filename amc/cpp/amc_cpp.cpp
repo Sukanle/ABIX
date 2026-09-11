@@ -418,176 +418,204 @@ static int backend(const char *input, const char *output) {
         return 1;
     }
     auto o = fmt::output_file(output);
-    std::string header = "#pragma once\n"
-         "#include <abix/runtime_registry.h>\n"
-         "#include <cstddef>\n"
-         "#include <cstdint>\n"
-         "#include <cstring>\n"
-         "namespace amc_generated {\n"
-         "using TypeId = ::skl::abix::model::TypeId;\n"
-         "using LayoutInfo = ::skl::abix::runtime::LayoutInfo;\n"
-         "using FieldInfo = ::skl::abix::runtime::FieldDescriptor;\n"
-         "using ParameterInfo = ::skl::abix::runtime::ParameterDescriptor;\n"
-         "using FunctionInfo = ::skl::abix::runtime::FunctionDescriptor;\n"
-         "using SymbolInfo = ::skl::abix::runtime::SymbolDescriptor;\n"
-         "using ModuleInfo = ::skl::abix::runtime::ModuleDescriptor;\n"
-         "enum class MapOpcode : std::uint8_t { copy_field, convert_int, convert_float, add_default, skip_field };\n"
-         "struct MapOperation { MapOpcode opcode; std::uint32_t source_field; std::uint32_t target_field; std::uint32_t source_offset; std::uint32_t target_offset; std::uint32_t byte_count; TypeId auxiliary; };\n"
-         "template <typename Source, typename Target> struct MapPrivate;\n"
-         "template <typename T> struct TypeTraits;\n";
+    o.print(
+        "#pragma once\n"
+        "#include <abix/runtime_registry.h>\n"
+        "#include <stddef.h>\n"
+        "#include <stdint.h>\n"
+        "#include <string.h>\n"
+        "namespace amc_generated {{\n"
+        "using TypeId = ::skl::abix::model::TypeId;\n"
+        "using LayoutInfo = ::skl::abix::runtime::LayoutInfo;\n"
+        "using FieldInfo = ::skl::abix::runtime::FieldDescriptor;\n"
+        "using ParameterInfo = ::skl::abix::runtime::ParameterDescriptor;\n"
+        "using FunctionInfo = ::skl::abix::runtime::FunctionDescriptor;\n"
+        "using SymbolInfo = ::skl::abix::runtime::SymbolDescriptor;\n"
+        "using ModuleInfo = ::skl::abix::runtime::ModuleDescriptor;\n"
+        "enum class MapOpcode : uint8_t {{ \n"
+        "    copy_field,\n"
+        "    convert_int,\n"
+        "    convert_float,\n"
+        "    add_default,\n"
+        "    skip_field,\n"
+        "}};\n"
+        "struct MapOperation {{\n"
+        "    MapOpcode opcode;\n"
+        "    uint32_t source_field;\n"
+        "    uint32_t target_field;\n"
+        "    uint32_t source_offset;\n"
+        "    uint32_t target_offset;\n"
+        "    uint32_t byte_count;\n"
+        "    TypeId auxiliary;\n"
+        "}};\n"
+        "template <typename Source, typename Target> struct MapPrivate;\n"
+        "template <typename T> struct TypeTraits;\n");
 
     for (const auto &type : m.types) {
         const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
-        header += fmt::format("struct {} {{\n", id);
-        header += fmt::format("  static constexpr TypeId type_id{{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
-        header += fmt::format("  static constexpr std::uint64_t type_id_lo = {};\n", hex_u64(type.id.lo));
-        header += fmt::format("  static constexpr std::uint64_t type_id_hi = {};\n", hex_u64(type.id.hi));
-        header += fmt::format("  static constexpr LayoutInfo layout{{{}, {}, {}}};\n", type.size, type.align, type.field_count);
-        header += fmt::format("  static constexpr std::size_t size = {};\n", type.size);
-        header += fmt::format("  static constexpr std::size_t align = {};\n", type.align);
+        o.print("struct {} {{\n", id);
+        o.print("    static constexpr TypeId type_id {{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
+        o.print("    static constexpr uint64_t type_id_lo = {};\n", hex_u64(type.id.lo));
+        o.print("    static constexpr uint64_t type_id_hi = {};\n", hex_u64(type.id.hi));
+        o.print("    static constexpr LayoutInfo layout {{{}, {}, {}}};\n", type.size, type.align, type.field_count);
+        o.print("    static constexpr size_t size = {};\n", type.size);
+        o.print("    static constexpr size_t align = {};\n", type.align);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = m.fields[type.field_begin + i];
-            header += fmt::format("  static constexpr std::size_t {}_offset = {};\n", cpp_name(field.name), field.offset);
+            o.print("    static constexpr size_t {}_offset = {};\n", cpp_name(field.name), field.offset);
         }
-        header += fmt::format("}};\n");
-        header += fmt::format("template <> struct TypeTraits<{}> {{\n", id);
-        header += fmt::format("  static constexpr TypeId type_id{{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
-        header += fmt::format("  static constexpr LayoutInfo layout{{{}, {}, {}}};\n", type.size, type.align, type.field_count);
-        header += fmt::format("  static constexpr std::size_t size = {};\n", type.size);
-        header += fmt::format("  static constexpr std::size_t align = {};\n", type.align);
-        header += fmt::format("}};\n");
-        header += fmt::format("inline constexpr FieldInfo {}_fields[{}] = {{\n", id, type.field_count == 0 ? 1 : type.field_count);
+        o.print("}};\n");
+        o.print("template <> struct TypeTraits<{}> {{\n", id);
+        o.print("    static constexpr TypeId type_id {{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
+        o.print("    static constexpr LayoutInfo layout {{{}, {}, {}}};\n", type.size, type.align, type.field_count);
+        o.print("    static constexpr size_t size = {};\n", type.size);
+        o.print("    static constexpr size_t align = {};\n", type.align);
+        o.print("}};\n");
+        o.print("inline constexpr FieldInfo {}_fields[{}] = {{\n", id, type.field_count == 0 ? 1 : type.field_count);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = m.fields[type.field_begin + i];
-            header += fmt::format("  {{{}, {{{}, {}}}, {}, {}}},\n",
-                       cpp_string(field.name), hex_u64(field.type_id.lo), hex_u64(field.type_id.hi),
-                       field.offset, field.flags);
+            o.print("    {{{{{}, {}}}, {}, {}}},\n", hex_u64(field.type_id.lo), hex_u64(field.type_id.hi), field.offset,
+                field.flags);
         }
-        header += fmt::format("}};\n");
+        o.print("}};\n");
     }
 
     for (size_t i = 0; i < m.functions.size(); ++i) {
         const auto &function = m.functions[i];
         const auto param_count = function.parameters.empty() ? 1 : function.parameters.size();
-        header += fmt::format("inline constexpr ParameterInfo amc_function_{}_parameters[{}] = {{\n", i, param_count);
+        o.print("inline constexpr ParameterInfo amc_function_{}_parameters[{}] = {{\n", i, param_count);
         for (const auto &parameter : function.parameters)
-            header += fmt::format("  {{{}, {{{}, {}}}, {}}},\n",
-                       cpp_string(parameter.name), hex_u64(parameter.type_id.lo),
-                       hex_u64(parameter.type_id.hi), parameter.flags);
-        header += fmt::format("}};\n");
-        header += fmt::format("inline constexpr FunctionInfo amc_function_{}{{{}, {{{}, {}}}, {{{}, {}}},"
-                   " amc_function_{}_parameters, {}, {}, {}}};\n",
-                   i, cpp_string(function.name), hex_u64(function.signature.lo),
-                   hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
-                   hex_u64(function.return_type.hi), i, function.parameters.size(),
-                   function.calling_convention, function.flags);
+            o.print("    {{{{{}, {}}}, {}}},\n", hex_u64(parameter.type_id.lo), hex_u64(parameter.type_id.hi),
+                parameter.flags);
+        o.print("}};\n");
+        o.print(
+            "inline constexpr FunctionInfo amc_function_{} {{amc_function_{}_parameters, {{{}, {}}},"
+            " {{{}, {}}}, {}, {}, {}}};\n",
+            i, i, hex_u64(function.signature.lo), hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
+            hex_u64(function.return_type.hi), function.parameters.size(), function.calling_convention, function.flags);
     }
 
     {
         const auto type_count = m.types.empty() ? 1 : m.types.size();
-        header += fmt::format("inline constexpr ::skl::abix::runtime::TypeDescriptor amc_types[{}] = {{\n",
-                   type_count);
+        o.print("inline constexpr ::skl::abix::runtime::TypeDescriptor amc_types[{}] = {{\n", type_count);
         for (const auto &type : m.types) {
             const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
-            header += fmt::format("  {{{}, {{{}, {}}}, {{{}, {}}}, {}, {}, {}, {}_fields, {}}},\n",
-                       cpp_string(type.name), hex_u64(type.id.lo), hex_u64(type.id.hi),
-                       hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi),
-                       type.flags, type.size, type.align, id, type.field_count);
+            o.print("    {{{}_fields, {{{}, {}}}, {{{}, {}}}, {}, {}, {}, {}}},\n", id, hex_u64(type.id.lo),
+                hex_u64(type.id.hi), hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi), type.flags, type.size,
+                type.align, type.field_count);
         }
-        header += fmt::format("}};\n");
+        o.print("}};\n");
     }
 
     {
         const auto func_count = m.functions.empty() ? 1 : m.functions.size();
-        header += fmt::format("inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions[{}] = {{\n",
-                   func_count);
+        o.print("inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions[{}] = {{\n", func_count);
         for (size_t i = 0; i < m.functions.size(); ++i) {
             const auto &function = m.functions[i];
-            header += fmt::format("  {{{}, {{{}, {}}}, {{{}, {}}}, amc_function_{}_parameters, {}, {}, {}}},\n",
-                       cpp_string(function.name), hex_u64(function.signature.lo),
-                       hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
-                       hex_u64(function.return_type.hi), i, function.parameters.size(),
-                       function.calling_convention, function.flags);
+            o.print("    {{amc_function_{}_parameters, {{{}, {}}}, {{{}, {}}}, {}, {}, {}}},\n", i,
+                hex_u64(function.signature.lo), hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
+                hex_u64(function.return_type.hi), function.parameters.size(), function.calling_convention,
+                function.flags);
         }
-        header += fmt::format("}};\n");
+        o.print("}};\n");
     }
 
     {
         const auto sym_count = m.symbols.empty() ? 1 : m.symbols.size();
-        header += fmt::format("inline constexpr SymbolInfo amc_symbols[{}] = {{\n", sym_count);
+        o.print("inline constexpr SymbolInfo amc_symbols[{}] = {{\n", sym_count);
         for (const auto &symbol : m.symbols)
-            header += fmt::format("  {{{}, {}, {}}},\n",
-                       cpp_string(symbol.name), static_cast<uint32_t>(symbol.kind),
-                       symbol.target_index);
-        header += fmt::format("}};\n");
+            o.print("    {{{}, {}}},\n", static_cast<uint32_t>(symbol.kind), symbol.target_index);
+        o.print("}};\n");
     }
 
-    header += fmt::format("inline constexpr ModuleInfo amc_module{{{}, {}, amc_types, {}, amc_functions, {}, amc_symbols, {}}};\n",
-               cpp_string(m.package_name), cpp_string(m.package_version),
-               m.types.size(), m.functions.size(), m.symbols.size());
+    // Struct layout: name, version, types, type_count, function_count, functions, symbols, symbol_count.
+    o.print("inline constexpr ModuleInfo amc_module{{{}, {}, amc_types, {}, {}, amc_functions, amc_symbols, {}}};\n",
+        cpp_string(m.package_name), cpp_string(m.package_version), m.types.size(), m.functions.size(),
+        m.symbols.size());
+
+    // .abix.names section: type/field/function names for diagnostic use only.
+    // This section is NOT referenced by any runtime code and can be safely
+    // stripped via: strip --strip-section=.abix.names <binary>
+    // External tools (amc-dump, ABIX symbol server) read this section from
+    // the binary or from a companion .abix file archived at build time.
+    if (!m.types.empty()) {
+        o.print(
+            "#ifdef __GNUC__\n"
+            "__attribute__((section(\".abix.names\")))\n"
+            "#endif\n"
+            "inline constexpr const char *amc_type_names[] = {{\n");
+        for (const auto &type : m.types)
+            o.print("    {},\n", cpp_string(type.name));
+        o.print("}};\n");
+    }
 
     for (size_t i = 0; i < m.maps.size(); ++i) {
         const auto &map = m.maps[i];
         const auto op_count = map.operations.empty() ? 1 : map.operations.size();
-        header += fmt::format("inline constexpr MapOperation amc_map_{}_operations[{}] = {{\n", i, op_count);
+        o.print("inline constexpr MapOperation amc_map_{}_operations[{}] = {{\n", i, op_count);
         for (const auto &operation : map.operations) {
-            const char *opname =
-                operation.opcode == amc::MapOpcode::copy_field ? "copy_field" :
-                operation.opcode == amc::MapOpcode::convert_int ? "convert_int" :
-                operation.opcode == amc::MapOpcode::convert_float ? "convert_float" :
-                operation.opcode == amc::MapOpcode::add_default ? "add_default" : "skip_field";
-            header += fmt::format("  {{MapOpcode::{}, {}, {}, {}, {}, {}, {{{}, {}}}}},\n",
-                       opname, operation.source_field, operation.target_field,
-                       operation.source_offset, operation.target_offset, operation.byte_count,
-                       hex_u64(operation.auxiliary.lo), hex_u64(operation.auxiliary.hi));
+            const char *opname = operation.opcode == amc::MapOpcode::copy_field    ? "copy_field"
+                               : operation.opcode == amc::MapOpcode::convert_int   ? "convert_int"
+                               : operation.opcode == amc::MapOpcode::convert_float ? "convert_float"
+                               : operation.opcode == amc::MapOpcode::add_default   ? "add_default"
+                                                                                   : "skip_field";
+            o.print("    {{MapOpcode::{}, {}, {}, {}, {}, {}, {{{}, {}}}}},\n", opname, operation.source_field,
+                operation.target_field, operation.source_offset, operation.target_offset, operation.byte_count,
+                hex_u64(operation.auxiliary.lo), hex_u64(operation.auxiliary.hi));
         }
-        header += fmt::format("}};\n"
-                   "template <> struct MapPrivate<{}_ABIX, {}_ABIX> {{\n"
-                   "  static constexpr const MapOperation *operations = amc_map_{}_operations;\n"
-                   "  static constexpr std::size_t operation_count = {};\n"
-                   "  static bool apply(void *target, const void *source) noexcept {{\n"
-                   "    if (!target || !source) return false;\n",
-                   cpp_name(map.source_name), cpp_name(map.target_name), i, map.operations.size());
+        o.print(
+            "}};\n"
+            "template <> struct MapPrivate<{}_ABIX, {}_ABIX> {{\n"
+            "  static constexpr const MapOperation *operations = amc_map_{}_operations;\n"
+            "  static constexpr size_t operation_count = {};\n"
+            "  static bool apply(void *target, const void *source) noexcept {{\n"
+            "    if (!target || !source) return false;\n",
+            cpp_name(map.source_name), cpp_name(map.target_name), i, map.operations.size());
         for (const auto &operation : map.operations) {
             switch (operation.opcode) {
-            case amc::MapOpcode::copy_field:
-                header += fmt::format("    std::memcpy(static_cast<char *>(target) + {}, static_cast<const char *>(source) + {}, {});\n",
-                           operation.target_offset, operation.source_offset, operation.byte_count);
-                break;
-            case amc::MapOpcode::add_default:
-                header += fmt::format("    std::memset(static_cast<char *>(target) + {}, 0, {});\n",
-                           operation.target_offset, operation.byte_count);
-                break;
-            case amc::MapOpcode::skip_field:
-                break;
-            case amc::MapOpcode::convert_int:
-            case amc::MapOpcode::convert_float:
-                header += fmt::format("    return false;  // conversion requires an explicit native converter\n");
-                break;
+                case amc::MapOpcode::copy_field:
+                    o.print(
+                        "    memcpy(static_cast<char *>(target) + {}, static_cast<const char *>(source) + {}, "
+                        "{});\n",
+                        operation.target_offset, operation.source_offset, operation.byte_count);
+                    break;
+                case amc::MapOpcode::add_default:
+                    o.print("    memset(static_cast<char *>(target) + {}, 0, {});\n", operation.target_offset,
+                        operation.byte_count);
+                    break;
+                case amc::MapOpcode::skip_field: break;
+                case amc::MapOpcode::convert_int:
+                case amc::MapOpcode::convert_float:
+                    o.print("    return false;  // conversion requires an explicit native converter\n");
+                    break;
             }
         }
-        header += "    return true;\n"
-                   "  }\n"
-                   "};\n";
+        o.print(
+            "    return true;\n"
+            "}}\n"
+            "}};\n");
     }
 
-    header += "}  // namespace amc_generated\n"
-               "#ifdef AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n"
-               "namespace skl::abix::runtime {\n";
+    o.print(
+        "}}  // namespace amc_generated\n"
+        "#ifdef AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n"
+        "namespace skl::abix::runtime {{\n");
     for (const auto &type : m.types) {
-        if (type.kind != amc::TypeKind::record ||
-            (type.flags & amc::type_template_primary) != 0 ||
-            type.name.find('<') != std::string::npos ||
-            type.name.rfind("std::", 0) == 0) continue;
+        if (type.kind != amc::TypeKind::record
+            || (type.flags & amc::type_template_primary) != 0
+            || type.name.find('<') != std::string::npos
+            || type.name.rfind("std::", 0) == 0)
+            continue;
         const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
-        header += fmt::format("template <> struct TypeTraits<::{}> {{\n"
-                   "  static constexpr ::skl::abix::model::TypeId type_id = ::amc_generated::{}::type_id;\n"
-                   "}};\n",
-                   type.name, id);
+        o.print(
+            "template <> struct TypeTraits<::{}> {{\n"
+            "  static constexpr ::skl::abix::model::TypeId type_id = ::amc_generated::{}::type_id;\n"
+            "}};\n",
+            type.name, id);
     }
-    header += "}  // namespace skl::abix::runtime\n"
-               "#endif  // AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n";
-    o.print("{}", header);
+    o.print(
+        "}}  // namespace skl::abix::runtime\n"
+        "#endif  // AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n");
     return 0;
 }
 
