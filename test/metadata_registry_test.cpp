@@ -54,20 +54,19 @@ TEST_CASE("runtime registry bridges generated descriptors atomically") {
     constexpr model::TypeId int_id{0x11, 0x22};
     constexpr model::TypeId foo_id{0x33, 0x44};
     static const runtime::FieldDescriptor fields[] = {
-        {"value", int_id, 0, 0},
+        {int_id, 0, 0},
     };
     static const runtime::TypeDescriptor types[] = {
-        {"int", int_id, {0x51, 0x61}, 0, 4, 4, nullptr, 0},
-        {"Foo", foo_id, {0x71, 0x81}, 0, 4, 4, fields, 1},
+        {nullptr, int_id, {0x51, 0x61}, 0, 4, 4, 0},
+        {fields, foo_id, {0x71, 0x81}, 0, 4, 4, 1},
     };
     static const runtime::ModuleDescriptor module{
-        "bridge", "1", types, 2, nullptr, 0, nullptr, 0};
+        "bridge", "1", types, 2, 0, nullptr, nullptr, 0};
 
     runtime::RuntimeRegistry<4> registry;
     REQUIRE(registry.register_module(module) == runtime::RuntimeRegisterStatus::ok);
     REQUIRE(registry.size() == 2);
     REQUIRE(registry.find_by_id(foo_id) != nullptr);
-    REQUIRE(registry.find_by_name("Foo") != nullptr);
     REQUIRE(registry.find_by_id(foo_id)->layout->layout_hash == model::Hash128{0x71, 0x81});
     REQUIRE(registry.canonical().find_by_id(foo_id) != nullptr);
 
@@ -80,12 +79,12 @@ TEST_CASE("runtime registry rejects unknown references without partial registrat
     constexpr model::TypeId foo_id{0x33, 0x44};
     constexpr model::TypeId missing_id{0x55, 0x66};
     static const runtime::FieldDescriptor fields[] = {
-        {"missing", missing_id, 0, 0},
+        {missing_id, 0, 0},
     };
     static const runtime::TypeDescriptor type{
-        "Foo", foo_id, {0x71, 0x81}, 0, 4, 4, fields, 1};
+        fields, foo_id, {0x71, 0x81}, 0, 4, 4, 1};
     static const runtime::ModuleDescriptor module{
-        "invalid", "1", &type, 1, nullptr, 0, nullptr, 0};
+        "invalid", "1", &type, 1, 0, nullptr, nullptr, 0};
 
     runtime::RuntimeRegistry<4> registry;
     REQUIRE(registry.register_module(module) == runtime::RuntimeRegisterStatus::unknown_type_reference);
