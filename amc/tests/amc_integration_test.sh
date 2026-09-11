@@ -5,7 +5,10 @@ AMC_BIN="${1:?usage: amc_integration_test.sh <amc_bin_dir>}"
 FIXTURES_DIR="$(cd "$(dirname "$0")" && pwd)/fixtures"
 SOURCE_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/amc-integration.XXXXXX")
-trap 'rm -rf "$BUILD_DIR"' EXIT
+KEEP_ARTIFACTS="${KEEP_ARTIFACTS:-0}"
+if [ "$KEEP_ARTIFACTS" != "1" ]; then
+    trap 'rm -rf "$BUILD_DIR"' EXIT
+fi
 GEN_SEPARATE=$BUILD_DIR/autogen-separate
 GEN_FULL=$BUILD_DIR/autogen-full
 mkdir -p $GEN_SEPARATE
@@ -275,4 +278,7 @@ fi
 
 echo ""
 echo "=== Results: $PASSED passed, $FAILED failed ==="
+if [ "$KEEP_ARTIFACTS" = "1" ]; then
+    info "retained artifacts: $BUILD_DIR"
+fi
 exit $FAILED
