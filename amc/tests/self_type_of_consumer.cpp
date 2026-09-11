@@ -29,7 +29,6 @@ int main() {
 
     const auto *entry = registry.type_of<skl::abix::runtime::RegistryEntry>();
     if (registry.find_by_id(entry->descriptor->type_id) != entry ||
-        registry.find_by_name("skl::abix::runtime::RegistryEntry") != entry ||
         registry.canonical().find_by_id(entry->canonical->id) == nullptr)
         return 3;
 

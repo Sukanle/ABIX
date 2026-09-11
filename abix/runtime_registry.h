@@ -86,15 +86,11 @@ public:
         return nullptr;
     }
 
-    const RuntimeRegistryEntry *find_by_name(const char *name) const noexcept {
-        if (!name) return nullptr;
-        for (size_t i = 0; i < _count; ++i) {
-            const char *candidate = _entries[i].descriptor->name;
-            const char *a = candidate;
-            const char *b = name;
-            while (*a && *b && *a == *b) { ++a; ++b; }
-            if (*a == '\0' && *b == '\0') return &_entries[i];
-        }
+    // Name lookup is intentionally omitted in the compact descriptor build.
+    // Name strings live in a separate .abix.names section (or external .abix
+    // file) for diagnostic use only; runtime contract validation uses type_id.
+    // Use type_of<T>() or find_by_id() for runtime queries.
+    const RuntimeRegistryEntry *find_by_name(const char *) const noexcept {
         return nullptr;
     }
 
