@@ -389,9 +389,26 @@ bool validate(const AbiModule &module, std::string &error) {
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = module.fields[type.field_begin + i];
             const auto *field_type = type_by_id.at(hash_key(field.type_id));
-            if (field.offset > type.size || field_type->size > type.size - field.offset) {
-                error = "field exceeds type layout: " + field.name;
-                return false;
+            if (field.flags & field_bitfield) {
+                // Bitfield layout check: the entire bit range must fit inside
+                // the parent type.  We use the bit-level position so that a
+                // trailing 1-bit field (e.g. libc++ __is_long_) whose
+                // underlying integer type would overflow the byte-level check
+                // is still accepted.
+                const uint32_t bit_offset =
+                    field.offset * 8 + ((field.flags >> field_bit_offset_shift) & 0xFF);
+                const uint32_t bit_width =
+                    (field.flags >> field_bit_width_shift) & 0xFF;
+                if (bit_offset + bit_width > type.size * 8) {
+                    error = "field exceeds type layout: " + field.name;
+                    return false;
+                }
+            } else {
+                // Non-bitfield: the field's storage must fit inside the parent.
+                if (field.offset > type.size || field_type->size > type.size - field.offset) {
+                    error = "field exceeds type layout: " + field.name;
+                    return false;
+                }
             }
         }
     }

@@ -2,22 +2,39 @@
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/Options/OptionUtils.h>
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/JSONCompilationDatabase.h>
 #include <clang/Tooling/Tooling.h>
+#include <llvm/Support/Path.h>
 #include <toml++/toml.h>
-#include <fstream>
-#include <cctype>
+#include <algorithm>
 #include <iostream>
+
+#include <cctype>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <set>
-#include <sstream>
 #include <unordered_map>
 #include <filesystem>
 #include <string_view>
+#include <unistd.h>
+
+#include <fmt/color.h>
+#include <fmt/os.h>
 
 using namespace clang;
 using namespace clang::tooling;
+
+// Clang resource directory (e.g. /opt/homebrew/opt/llvm/lib/clang/22),
+// detected at build time via `clang -print-resource-dir` and injected
+// as a compile definition.  Used to locate built-in headers (stdarg.h,
+// stddef.h, etc.) and the Brew LLVM's libc++ installation.
+#ifndef ABIX_CLANG_RESOURCE_DIR
+#define ABIX_CLANG_RESOURCE_DIR ""
+#endif
+static const char *const kClangResourceDir = ABIX_CLANG_RESOURCE_DIR;
 
 namespace {
 struct Config {
@@ -246,9 +263,19 @@ private:
             // Anonymous implementation fields have no stable ABI name and
             // cannot participate in name-based compatibility or Map IR.
             if (f->getName().empty()) continue;
+            const std::string fname = f->getNameAsString();
+            // Skip if a field with the same name already exists in this type.
+            // (libc++ std::string has both __long and __short inside an
+            // anonymous union, each with fields named __data_, __size_, etc.)
+            bool dup = false;
+            for (uint32_t j = module.types[record_index].field_begin;
+                 j < module.fields.size(); ++j) {
+                if (module.fields[j].name == fname) { dup = true; break; }
+            }
+            if (dup) continue;
             amc::Field x;
             x.owner_type = t.id;
-            x.name = f->getNameAsString();
+            x.name = std::move(fname);
             x.type_id = add_type(f->getType());
             const uint64_t bit_offset = l.getFieldOffset(f->getFieldIndex());
             x.offset = uint32_t(bit_offset / 8);
@@ -380,24 +407,18 @@ static std::string cpp_string(const std::string &value) {
 }
 
 static std::string hex_u64(uint64_t value) {
-    std::ostringstream output;
-    output << "0x" << std::hex << value << "ULL";
-    return output.str();
+    return fmt::format("0x{:x}ULL", value);
 }
 
 static int backend(const char *input, const char *output) {
     amc::AbiModule m;
     std::string e;
     if (!amc::read_abix(input, m, e)) {
-        std::cerr << e << "\n";
+        fmt::print(stderr, "{}\n", e);
         return 1;
     }
-    std::ofstream o(output);
-    if (!o) {
-        std::cerr << "cannot open output: " << output << "\n";
-        return 1;
-    }
-    o << "#pragma once\n"
+    auto o = fmt::output_file(output);
+    std::string header = "#pragma once\n"
          "#include <abix/runtime_registry.h>\n"
          "#include <cstddef>\n"
          "#include <cstdint>\n"
@@ -416,150 +437,157 @@ static int backend(const char *input, const char *output) {
          "template <typename T> struct TypeTraits;\n";
 
     for (const auto &type : m.types) {
-        const std::string id = cpp_name(type.name) + "_ABIX";
-        o << "struct " << id << " {\n"
-          << "  static constexpr TypeId type_id{" << hex_u64(type.id.lo) << ", "
-          << hex_u64(type.id.hi) << "};\n"
-          << "  static constexpr std::uint64_t type_id_lo = " << hex_u64(type.id.lo) << ";\n"
-          << "  static constexpr std::uint64_t type_id_hi = " << hex_u64(type.id.hi) << ";\n"
-          << "  static constexpr LayoutInfo layout{" << type.size << ", " << type.align << ", "
-          << type.field_count << "};\n"
-          << "  static constexpr std::size_t size = " << type.size << ";\n"
-          << "  static constexpr std::size_t align = " << type.align << ";\n"
-          ;
+        const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+        header += fmt::format("struct {} {{\n", id);
+        header += fmt::format("  static constexpr TypeId type_id{{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
+        header += fmt::format("  static constexpr std::uint64_t type_id_lo = {};\n", hex_u64(type.id.lo));
+        header += fmt::format("  static constexpr std::uint64_t type_id_hi = {};\n", hex_u64(type.id.hi));
+        header += fmt::format("  static constexpr LayoutInfo layout{{{}, {}, {}}};\n", type.size, type.align, type.field_count);
+        header += fmt::format("  static constexpr std::size_t size = {};\n", type.size);
+        header += fmt::format("  static constexpr std::size_t align = {};\n", type.align);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = m.fields[type.field_begin + i];
-            o << "  static constexpr std::size_t " << cpp_name(field.name)
-              << "_offset = " << field.offset << ";\n";
+            header += fmt::format("  static constexpr std::size_t {}_offset = {};\n", cpp_name(field.name), field.offset);
         }
-        o << "};\n"
-          << "template <> struct TypeTraits<" << id << "> {\n"
-          << "  static constexpr TypeId type_id{" << hex_u64(type.id.lo) << ", "
-          << hex_u64(type.id.hi) << "};\n"
-          << "  static constexpr LayoutInfo layout{" << type.size << ", " << type.align << ", "
-          << type.field_count << "};\n"
-          << "  static constexpr std::size_t size = " << type.size << ";\n"
-          << "  static constexpr std::size_t align = " << type.align << ";\n"
-          << "};\n";
-        o << "inline constexpr FieldInfo " << id << "_fields["
-          << (type.field_count == 0 ? 1 : type.field_count) << "] = {\n";
+        header += fmt::format("}};\n");
+        header += fmt::format("template <> struct TypeTraits<{}> {{\n", id);
+        header += fmt::format("  static constexpr TypeId type_id{{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
+        header += fmt::format("  static constexpr LayoutInfo layout{{{}, {}, {}}};\n", type.size, type.align, type.field_count);
+        header += fmt::format("  static constexpr std::size_t size = {};\n", type.size);
+        header += fmt::format("  static constexpr std::size_t align = {};\n", type.align);
+        header += fmt::format("}};\n");
+        header += fmt::format("inline constexpr FieldInfo {}_fields[{}] = {{\n", id, type.field_count == 0 ? 1 : type.field_count);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = m.fields[type.field_begin + i];
-            o << "  {" << cpp_string(field.name) << ", {" << hex_u64(field.type_id.lo) << ", "
-              << hex_u64(field.type_id.hi) << "}, " << field.offset << ", " << field.flags << "},\n";
+            header += fmt::format("  {{{}, {{{}, {}}}, {}, {}}},\n",
+                       cpp_string(field.name), hex_u64(field.type_id.lo), hex_u64(field.type_id.hi),
+                       field.offset, field.flags);
         }
-        o << "};\n";
+        header += fmt::format("}};\n");
     }
 
     for (size_t i = 0; i < m.functions.size(); ++i) {
         const auto &function = m.functions[i];
-        o << "inline constexpr ParameterInfo amc_function_" << i << "_parameters["
-          << (function.parameters.empty() ? 1 : function.parameters.size()) << "] = {\n";
+        const auto param_count = function.parameters.empty() ? 1 : function.parameters.size();
+        header += fmt::format("inline constexpr ParameterInfo amc_function_{}_parameters[{}] = {{\n", i, param_count);
         for (const auto &parameter : function.parameters)
-            o << "  {" << cpp_string(parameter.name) << ", {" << hex_u64(parameter.type_id.lo) << ", "
-              << hex_u64(parameter.type_id.hi) << "}, " << parameter.flags << "},\n";
-        o << "};\n"
-          << "inline constexpr FunctionInfo amc_function_" << i << "{" << cpp_string(function.name)
-          << ", {" << hex_u64(function.signature.lo) << ", " << hex_u64(function.signature.hi)
-          << "}, {" << hex_u64(function.return_type.lo) << ", " << hex_u64(function.return_type.hi)
-          << "}, amc_function_" << i << "_parameters, " << function.parameters.size() << ", "
-          << function.calling_convention << ", " << function.flags << "};\n";
+            header += fmt::format("  {{{}, {{{}, {}}}, {}}},\n",
+                       cpp_string(parameter.name), hex_u64(parameter.type_id.lo),
+                       hex_u64(parameter.type_id.hi), parameter.flags);
+        header += fmt::format("}};\n");
+        header += fmt::format("inline constexpr FunctionInfo amc_function_{}{{{}, {{{}, {}}}, {{{}, {}}},"
+                   " amc_function_{}_parameters, {}, {}, {}}};\n",
+                   i, cpp_string(function.name), hex_u64(function.signature.lo),
+                   hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
+                   hex_u64(function.return_type.hi), i, function.parameters.size(),
+                   function.calling_convention, function.flags);
     }
 
-    o << "inline constexpr ::skl::abix::runtime::TypeDescriptor amc_types["
-      << (m.types.empty() ? 1 : m.types.size()) << "] = {\n";
-    for (const auto &type : m.types) {
-        const std::string id = cpp_name(type.name) + "_ABIX";
-        o << "  {" << cpp_string(type.name) << ", {" << hex_u64(type.id.lo) << ", "
-          << hex_u64(type.id.hi) << "}, {" << hex_u64(type.layout_hash.lo) << ", "
-          << hex_u64(type.layout_hash.hi) << "}, " << type.flags << ", " << type.size << ", "
-          << type.align << ", " << id << "_fields, " << type.field_count << "},\n";
+    {
+        const auto type_count = m.types.empty() ? 1 : m.types.size();
+        header += fmt::format("inline constexpr ::skl::abix::runtime::TypeDescriptor amc_types[{}] = {{\n",
+                   type_count);
+        for (const auto &type : m.types) {
+            const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+            header += fmt::format("  {{{}, {{{}, {}}}, {{{}, {}}}, {}, {}, {}, {}_fields, {}}},\n",
+                       cpp_string(type.name), hex_u64(type.id.lo), hex_u64(type.id.hi),
+                       hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi),
+                       type.flags, type.size, type.align, id, type.field_count);
+        }
+        header += fmt::format("}};\n");
     }
-    o << "};\n"
-      << "inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions["
-      << (m.functions.empty() ? 1 : m.functions.size()) << "] = {\n";
-    for (size_t i = 0; i < m.functions.size(); ++i) {
-        const auto &function = m.functions[i];
-        o << "  {" << cpp_string(function.name) << ", {" << hex_u64(function.signature.lo) << ", "
-          << hex_u64(function.signature.hi) << "}, {" << hex_u64(function.return_type.lo) << ", "
-          << hex_u64(function.return_type.hi) << "}, amc_function_" << i << "_parameters, "
-          << function.parameters.size() << ", " << function.calling_convention << ", "
-          << function.flags << "},\n";
-    }
-    o << "};\n";
 
-    o << "inline constexpr SymbolInfo amc_symbols["
-      << (m.symbols.empty() ? 1 : m.symbols.size()) << "] = {\n";
-    for (const auto &symbol : m.symbols)
-        o << "  {" << cpp_string(symbol.name) << ", " << static_cast<uint32_t>(symbol.kind)
-          << ", " << symbol.target_index << "},\n";
-    o << "};\n"
-      << "inline constexpr ModuleInfo amc_module{" << cpp_string(m.package_name) << ", "
-      << cpp_string(m.package_version) << ", amc_types, " << m.types.size() << ", amc_functions, "
-      << m.functions.size() << ", amc_symbols, " << m.symbols.size() << "};\n";
+    {
+        const auto func_count = m.functions.empty() ? 1 : m.functions.size();
+        header += fmt::format("inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions[{}] = {{\n",
+                   func_count);
+        for (size_t i = 0; i < m.functions.size(); ++i) {
+            const auto &function = m.functions[i];
+            header += fmt::format("  {{{}, {{{}, {}}}, {{{}, {}}}, amc_function_{}_parameters, {}, {}, {}}},\n",
+                       cpp_string(function.name), hex_u64(function.signature.lo),
+                       hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
+                       hex_u64(function.return_type.hi), i, function.parameters.size(),
+                       function.calling_convention, function.flags);
+        }
+        header += fmt::format("}};\n");
+    }
+
+    {
+        const auto sym_count = m.symbols.empty() ? 1 : m.symbols.size();
+        header += fmt::format("inline constexpr SymbolInfo amc_symbols[{}] = {{\n", sym_count);
+        for (const auto &symbol : m.symbols)
+            header += fmt::format("  {{{}, {}, {}}},\n",
+                       cpp_string(symbol.name), static_cast<uint32_t>(symbol.kind),
+                       symbol.target_index);
+        header += fmt::format("}};\n");
+    }
+
+    header += fmt::format("inline constexpr ModuleInfo amc_module{{{}, {}, amc_types, {}, amc_functions, {}, amc_symbols, {}}};\n",
+               cpp_string(m.package_name), cpp_string(m.package_version),
+               m.types.size(), m.functions.size(), m.symbols.size());
+
     for (size_t i = 0; i < m.maps.size(); ++i) {
         const auto &map = m.maps[i];
-        o << "inline constexpr MapOperation amc_map_" << i << "_operations["
-          << (map.operations.empty() ? 1 : map.operations.size()) << "] = {\n";
-        for (const auto &operation : map.operations)
-            o << "  {MapOpcode::" << (operation.opcode == amc::MapOpcode::copy_field ? "copy_field" :
-                                      operation.opcode == amc::MapOpcode::convert_int ? "convert_int" :
-                                      operation.opcode == amc::MapOpcode::convert_float ? "convert_float" :
-                                      operation.opcode == amc::MapOpcode::add_default ? "add_default" : "skip_field")
-              << ", " << operation.source_field << ", " << operation.target_field << ", "
-              << operation.source_offset << ", " << operation.target_offset << ", " << operation.byte_count << ", {"
-              << hex_u64(operation.auxiliary.lo) << ", " << hex_u64(operation.auxiliary.hi) << "}},\n";
-        o << "};\n"
-          << "template <> struct MapPrivate<" << cpp_name(map.source_name) << "_ABIX, "
-          << cpp_name(map.target_name) << "_ABIX> {\n"
-          << "  static constexpr const MapOperation *operations = amc_map_" << i << "_operations;\n"
-          << "  static constexpr std::size_t operation_count = " << map.operations.size() << ";\n"
-          << "  static bool apply(void *target, const void *source) noexcept {\n"
-          << "    if (!target || !source) return false;\n";
+        const auto op_count = map.operations.empty() ? 1 : map.operations.size();
+        header += fmt::format("inline constexpr MapOperation amc_map_{}_operations[{}] = {{\n", i, op_count);
+        for (const auto &operation : map.operations) {
+            const char *opname =
+                operation.opcode == amc::MapOpcode::copy_field ? "copy_field" :
+                operation.opcode == amc::MapOpcode::convert_int ? "convert_int" :
+                operation.opcode == amc::MapOpcode::convert_float ? "convert_float" :
+                operation.opcode == amc::MapOpcode::add_default ? "add_default" : "skip_field";
+            header += fmt::format("  {{MapOpcode::{}, {}, {}, {}, {}, {}, {{{}, {}}}}},\n",
+                       opname, operation.source_field, operation.target_field,
+                       operation.source_offset, operation.target_offset, operation.byte_count,
+                       hex_u64(operation.auxiliary.lo), hex_u64(operation.auxiliary.hi));
+        }
+        header += fmt::format("}};\n"
+                   "template <> struct MapPrivate<{}_ABIX, {}_ABIX> {{\n"
+                   "  static constexpr const MapOperation *operations = amc_map_{}_operations;\n"
+                   "  static constexpr std::size_t operation_count = {};\n"
+                   "  static bool apply(void *target, const void *source) noexcept {{\n"
+                   "    if (!target || !source) return false;\n",
+                   cpp_name(map.source_name), cpp_name(map.target_name), i, map.operations.size());
         for (const auto &operation : map.operations) {
             switch (operation.opcode) {
             case amc::MapOpcode::copy_field:
-                o << "    std::memcpy(static_cast<char *>(target) + " << operation.target_offset
-                  << ", static_cast<const char *>(source) + " << operation.source_offset << ", "
-                  << operation.byte_count << ");\n";
+                header += fmt::format("    std::memcpy(static_cast<char *>(target) + {}, static_cast<const char *>(source) + {}, {});\n",
+                           operation.target_offset, operation.source_offset, operation.byte_count);
                 break;
             case amc::MapOpcode::add_default:
-                o << "    std::memset(static_cast<char *>(target) + " << operation.target_offset
-                  << ", 0, " << operation.byte_count << ");\n";
+                header += fmt::format("    std::memset(static_cast<char *>(target) + {}, 0, {});\n",
+                           operation.target_offset, operation.byte_count);
                 break;
             case amc::MapOpcode::skip_field:
                 break;
             case amc::MapOpcode::convert_int:
             case amc::MapOpcode::convert_float:
-                o << "    return false;  // conversion requires an explicit native converter\n";
+                header += fmt::format("    return false;  // conversion requires an explicit native converter\n");
                 break;
             }
         }
-        o << "    return true;\n"
-          << "  }\n"
-          << "};\n";
+        header += "    return true;\n"
+                   "  }\n"
+                   "};\n";
     }
-    o << "}  // namespace amc_generated\n"
-         "#ifdef AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n"
-         "namespace skl::abix::runtime {\n";
+
+    header += "}  // namespace amc_generated\n"
+               "#ifdef AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n"
+               "namespace skl::abix::runtime {\n";
     for (const auto &type : m.types) {
-        // Native traits are an opt-in convenience projection.  A record
-        // discovered while walking a layout may be a library template primary
-        // (Clang does not consistently retain that fact on every visited
-        // CXXRecordDecl), for which `TypeTraits<::std::vector>` is ill-formed.
-        // Only emit a specialization when the spelling denotes a concrete,
-        // non-standard-library C++ type.
         if (type.kind != amc::TypeKind::record ||
             (type.flags & amc::type_template_primary) != 0 ||
             type.name.find('<') != std::string::npos ||
             type.name.rfind("std::", 0) == 0) continue;
-        const std::string id = cpp_name(type.name) + "_ABIX";
-        o << "template <> struct TypeTraits<::" << type.name << "> {\n"
-          << "  static constexpr ::skl::abix::model::TypeId type_id = ::amc_generated::"
-          << id << "::type_id;\n};\n";
+        const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+        header += fmt::format("template <> struct TypeTraits<::{}> {{\n"
+                   "  static constexpr ::skl::abix::model::TypeId type_id = ::amc_generated::{}::type_id;\n"
+                   "}};\n",
+                   type.name, id);
     }
-    o << "}  // namespace skl::abix::runtime\n"
-         "#endif  // AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n";
+    header += "}  // namespace skl::abix::runtime\n"
+               "#endif  // AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n";
+    o.print("{}", header);
     return 0;
 }
 
@@ -572,26 +600,184 @@ static std::string json_value(const std::string &line, const char *key) {
     return end == std::string::npos ? std::string{} : line.substr(start, end - start);
 }
 
+// Derive the Homebrew LLVM installation prefix from the known resource-dir.
+//   kClangResourceDir  →  /opt/homebrew/opt/llvm/lib/clang/22
+//   brew_prefix        →  /opt/homebrew/opt/llvm
+//
+// Returns the empty string when the prefix cannot be derived.
+// On non-macOS platforms this always returns empty.
+static std::string brew_llvm_prefix() {
+#if defined(__APPLE__)
+    if (!kClangResourceDir[0]) return {};
+    llvm::SmallString<128> pfx(kClangResourceDir);
+    llvm::sys::path::remove_filename(pfx);
+    llvm::sys::path::remove_filename(pfx);
+    llvm::sys::path::remove_filename(pfx);
+    llvm::SmallString<128> sanity(pfx);
+    llvm::sys::path::append(sanity, "include", "c++", "v1");
+    return access(sanity.c_str(), F_OK) == 0 ? pfx.c_str() : std::string{};
+#else
+    return {};
+#endif
+}
+
+// Detect the macOS SDK path and append flags that mirror what the Clang
+// driver would normally set when invoked from the command line.
+//
+// When loaded as a library (no config file is read), Clang does not
+// automatically know its resource directory or the active SDK sysroot.
+// This function fills those gaps.
+//
+// Include order (required by libc++ <cstddef>):
+//   1. libc++ headers  (Brew LLVM: -cxx-isystem via -nostdinc++)
+//   2. Clang built-ins (via -resource-dir + -isystem)
+//   3. System headers  (via -isysroot)
+//
+// The most important design rule is that **all three sets of headers must
+// come from the same LLVM distribution**.  On macOS the default Xcode SDK
+// ships its own libc++ at <sdk>/usr/include/c++/v1, but that version may
+// be incompatible with the Homebrew LLVM's Clang built-in headers (e.g.
+// std::string internal layout differs, leading to duplicate member errors).
+//
+// We therefore:
+//   a. Derive the Homebrew LLVM prefix from the resource-dir known at
+//      build time (kClangResourceDir);
+//   b. Use -nostdinc++ to suppress the default C++ standard library search
+//      (which would otherwise pick up the SDK's libc++);
+//   c. Use -cxx-isystem to re-add only the Homebrew LLVM's own libc++.
+//
+// All three values are derived automatically: the resource directory is
+// detected at build time via `clang -print-resource-dir` and injected through
+// the ABIX_CLANG_RESOURCE_DIR compile definition; the SDK path is looked up
+// at runtime from the SDKROOT environment variable or via xcrun.
+static void append_macos_sysroot(std::vector<std::string> &flags) {
+#if defined(__APPLE__)
+    // ----- 1. Detect SDK path -------------------------------------------
+    auto detect_sdk = []() -> std::string {
+        if (const char *sdk = std::getenv("SDKROOT"))
+            return sdk;
+        FILE *fp = popen("xcrun --sdk macosx --show-sdk-path 2>/dev/null", "r");
+        if (!fp) return {};
+        char buf[4096] = {0};
+        std::string result;
+        if (std::fgets(buf, sizeof(buf), fp))
+            result = buf;
+        pclose(fp);
+        while (!result.empty() && std::isspace(static_cast<unsigned char>(result.back())))
+            result.pop_back();
+        return result;
+    };
+
+    // ----- 2. Check for existing configuration ----------------------------
+    // If the user (or the .abic.toml) already provides explicit sysroot or
+    // a valid -isystem, don't override their choices.
+    for (size_t i = 0; i < flags.size(); ++i) {
+        const auto &f = flags[i];
+        if (f == "-isysroot" || f.find("--sysroot") == 0) return;
+        if (f == "-isystem" && i + 1 < flags.size()) {
+            if (access(flags[i + 1].c_str(), F_OK) == 0) return;
+        }
+    }
+
+    // ----- 3. Derive Homebrew LLVM prefix --------------------------------
+    const std::string brew_prefix = brew_llvm_prefix();
+    const bool have_brew_libcxx = !brew_prefix.empty();
+
+    // ----- 4. macOS SDK setup --------------------------------------------
+    //
+    // Include order (all from the same LLVM distribution):
+    //   1. libc++ headers   (Homebrew LLVM via -isystem)
+    //   2. Clang built-ins  (<resource>/include via -isystem)
+    //   3. System headers   (-isysroot)
+    //
+    // IMPORTANT: We use `-isystem` (NOT `-cxx-isystem`) for brew libc++.
+    // In Clang's header search, `-isystem` paths are searched *before*
+    // `-cxx-isystem` paths.  If we used `-cxx-isystem`, the resource-dir's
+    // `-isystem` path would win over libc++, and `<cstddef>` would fail
+    // because it finds Clang's `<stddef.h>` instead of libc++'s wrapper.
+    // ---------------------------------------------------------------------
+    {
+        std::string sdk = detect_sdk();
+        if (!sdk.empty()) {
+            // (a) libc++ – from Brew LLVM (compatible with our resource-dir)
+            if (have_brew_libcxx) {
+                llvm::SmallString<128> brew_libcxx(brew_prefix);
+                llvm::sys::path::append(brew_libcxx, "include", "c++", "v1");
+                flags.push_back("-nostdinc++");
+                flags.push_back("-isystem");
+                flags.push_back(brew_libcxx.c_str());
+            }
+
+            // (b) Clang built-in headers (stdarg.h, stddef.h, etc.)
+            if (kClangResourceDir[0]) {
+                flags.push_back("-resource-dir");
+                flags.push_back(kClangResourceDir);
+                llvm::SmallString<128> res_inc(kClangResourceDir);
+                llvm::sys::path::append(res_inc, "include");
+                if (access(res_inc.c_str(), F_OK) == 0) {
+                    flags.push_back("-isystem");
+                    flags.push_back(res_inc.c_str());
+                }
+            }
+
+            // (c) SDK sysroot – system C headers, frameworks, etc.
+            flags.push_back("-isysroot");
+            flags.push_back(std::move(sdk));
+        }
+    }
+
+    // ----- 5. Fallback (no SDK) ------------------------------------------
+    // If no SDK is available, at least set the resource directory and
+    // libc++ from the Brew LLVM prefix, so basic analysis still works.
+    if (!flags.empty() &&
+        std::find(flags.begin(), flags.end(), "-resource-dir") == flags.end()) {
+        // (a) libc++ from Brew LLVM (must use -isystem, not -cxx-isystem,
+        //     because -cxx-isystem has lower priority than -isystem and
+        //     would lose to the resource-dir's built-in headers below)
+        if (have_brew_libcxx) {
+            llvm::SmallString<128> brew_libcxx(brew_prefix);
+            llvm::sys::path::append(brew_libcxx, "include", "c++", "v1");
+            flags.push_back("-nostdinc++");
+            flags.push_back("-isystem");
+            flags.push_back(brew_libcxx.c_str());
+        }
+
+        // (b) Clang built-in headers
+        if (kClangResourceDir[0]) {
+            flags.push_back("-resource-dir");
+            flags.push_back(kClangResourceDir);
+            llvm::SmallString<128> res_inc(kClangResourceDir);
+            llvm::sys::path::append(res_inc, "include");
+            if (access(res_inc.c_str(), F_OK) == 0) {
+                flags.push_back("-isystem");
+                flags.push_back(res_inc.c_str());
+            }
+        }
+    }
+#endif
+}
+
 static int run_frontend(const char *config_path, const char *output_path) {
     Config c;
     std::string e;
-    if (!config_load(config_path, c, e)) { std::cerr << e << "\n"; return 1; }
+    if (!config_load(config_path, c, e)) { fmt::print(stderr, "{}\n", e); return EXIT_FAILURE; }
     std::filesystem::path base = std::filesystem::absolute(config_path).parent_path();
     if (!c.db.empty() && std::filesystem::path(c.db).is_relative()) c.db = (base / c.db).string();
     for (auto &f : c.files) if (std::filesystem::path(f).is_relative()) f = (base / f).string();
+    append_macos_sysroot(c.flags);
     std::string db_error;
     std::unique_ptr<CompilationDatabase> db;
     if (!c.db.empty()) db = JSONCompilationDatabase::loadFromFile(c.db, db_error, JSONCommandLineSyntax::AutoDetect);
     else db = std::make_unique<FixedCompilationDatabase>(base.string(), c.flags);
-    if (!db) { std::cerr << db_error << "\n"; return 1; }
+    if (!db) { fmt::print(stderr, "{}\n", db_error); return EXIT_FAILURE; }
     std::set<std::string> wanted(c.symbols.begin(), c.symbols.end());
     amc::AbiModule module;
     module.package_name = "cpp";
     Factory factory(wanted, module);
     ClangTool tool(*db, c.files);
-    if (tool.run(&factory) != 0) { std::cerr << "clang analysis failed\n"; return 1; }
-    if (!amc::write_abix(module, output_path, e)) { std::cerr << e << "\n"; return 1; }
-    return 0;
+    if (tool.run(&factory) != 0) { fmt::print(stderr, "clang analysis failed\n"); return EXIT_FAILURE; }
+    if (!amc::write_abix(module, output_path, e)) { fmt::print(stderr, "{}\n", e); return EXIT_FAILURE; }
+    return EXIT_SUCCESS;
 }
 
 static int ipc() {
@@ -600,18 +786,21 @@ static int ipc() {
     while (std::getline(std::cin, line)) {
         if (line.find("\"type\":\"INIT\"") != std::string::npos) {
             initialized = line.find("\"protocol\":1") != std::string::npos;
-            std::cout << "{\"type\":\"READY\",\"protocol\":1}\n" << std::flush;
+            fmt::print("{{\"type\":\"READY\",\"protocol\":1}}\n");
+            std::fflush(stdout);
         } else if (line.find("\"type\":\"QUERY_CAPABILITIES\"") != std::string::npos) {
             if (!initialized) return 2;
-            std::cout << "{\"type\":\"CAPABILITIES\",\"language\":\"cpp\",\"capabilities\":[\"frontend\",\"backend\"]}\n" << std::flush;
+            fmt::print("{{\"type\":\"CAPABILITIES\",\"language\":\"cpp\",\"capabilities\":[\"frontend\",\"backend\"]}}\n");
+            std::fflush(stdout);
         } else if (line.find("\"type\":\"ANALYZE\"") != std::string::npos) {
             capability = json_value(line, "capability");
             input = json_value(line, "input"); output = json_value(line, "output");
             int result = capability == "frontend" ? run_frontend(input.c_str(), output.c_str()) :
                          capability == "backend" ? backend(input.c_str(), output.c_str()) : 2;
             if (result == 0)
-                std::cout << "{\"type\":\"ABI_MODULE\",\"path\":\"" << output << "\"}\n";
-            std::cout << "{\"type\":\"ANALYZE_RESULT\",\"status\":" << result << "}\n" << std::flush;
+                fmt::print("{{\"type\":\"ABI_MODULE\",\"path\":\"{}\"}}\n", output);
+            fmt::print("{{\"type\":\"ANALYZE_RESULT\",\"status\":{}}}\n", result);
+            std::fflush(stdout);
             if (result != 0) return result;
         } else if (line.find("\"type\":\"DONE\"") != std::string::npos) return 0;
     }
@@ -619,14 +808,21 @@ static int ipc() {
 }
 
 int main(int argc, char **argv) {
+    #ifdef __APPLE__
+    if (!kClangResourceDir[0]) {
+        fmt::print(stderr, "warning: ABIX_CLANG_RESOURCE_DIR not set at build time; "
+                   "built-in headers (stdarg.h, etc.) may not be found.\n");
+    }
+    #endif
+
     if (argc == 2 && std::string(argv[1]) == "--ipc") return ipc();
     if (argc != 4) {
-        std::cerr << "usage: amc-cpp frontend <config.abic.toml> <output.abix> | backend <input.abix> <output.hpp>\n";
+        fmt::print(stderr, "usage: amc-cpp frontend <config.abic.toml> <output.abix> | backend <input.abix> <output.hpp>\n");
         return 2;
     }
     if (std::string(argv[1]) == "backend") return backend(argv[2], argv[3]);
     if (std::string(argv[1]) != "frontend") {
-        std::cerr << "unknown capability\n";
+        fmt::print(stderr, "unknown capability\n");
         return 2;
     }
     return run_frontend(argv[2], argv[3]);

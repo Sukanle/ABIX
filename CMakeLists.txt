@@ -82,18 +82,21 @@ else()
   endif()
 endif()
 
-find_package(Catch2 3 QUIET)
+# ---------------------------------------------------------------------------
+# External dependencies (unified via cmake/AbixDependencies.cmake)
+# ---------------------------------------------------------------------------
+include(cmake/AbixDependencies.cmake)
 
 include(CTest)
 if(BUILD_TESTING)
   enable_testing()
 endif()
-if(Catch2_FOUND)
+if(ABIX_Catch2_FOUND)
   include(Catch)
   set(SKL_ABIX_HAVE_TEST RunnerBuildsTests ON)
 else()
   set(SKL_ABIX_HAVE_TEST RunnerBuildsTests OFF)
-  message(STATUS "No matching Catch2 found, only build plugin DLLs")
+  message(STATUS "Catch2 not found — only building plugin DLLs")
 endif()
 
 function(abi_add_dll name)
@@ -143,29 +146,43 @@ abi_add_dll(closed_dll_v2)
 include_directories(${SKL_ABIX_INC_DIR})
 include_directories(${SKL_ABIX_INC_DIR}/mics)
 
-if(Catch2_FOUND)
+if(ABIX_Catch2_FOUND)
   add_subdirectory(test)
 endif()
 
-find_package(benchmark QUIET)
-if(benchmark_FOUND)
+if(ABIX_benchmark_FOUND)
   add_subdirectory(bench)
-  message(STATUS "Google Benchmark found, building benchmarks")
-else()
-  message(STATUS "Google Benchmark not found, skipping benchmarks")
 endif()
 
 file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json SYMBOLIC)
 
 if(AMC_BUILD)
-  find_package(LLVM CONFIG QUIET)
-  find_package(Clang CONFIG QUIET)
-  if(LLVM_FOUND AND TARGET clang-cpp)
+  if(ABIX_LLVM_FOUND)
+    # Detect Clang resource directory at build time (avoids runtime
+    # path-inference that breaks for standalone executables).
+    find_program(ABIX_CLANG_EXECUTABLE NAMES clang PATHS /opt/homebrew/opt/llvm/bin NO_DEFAULT_PATH)
+    if(ABIX_CLANG_EXECUTABLE)
+      execute_process(
+        COMMAND ${ABIX_CLANG_EXECUTABLE} -print-resource-dir
+        OUTPUT_VARIABLE ABIX_CLANG_RESOURCE_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+      message(STATUS "Clang resource dir: ${ABIX_CLANG_RESOURCE_DIR}")
+    endif()
+    if(NOT ABIX_CLANG_RESOURCE_DIR)
+      message(WARNING "Could not detect Clang resource dir; AMC frontend may fail to find built-in headers")
+    endif()
+
     add_library(amc-core STATIC amc/core/amc_core.cpp)
     target_include_directories(amc-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     add_executable(amc-cpp amc/cpp/amc_cpp.cpp)
-    target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
-    target_link_libraries(amc-cpp PRIVATE amc-core clang-cpp LLVM)
+    target_include_directories(amc-cpp PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/amc/core
+      ${LLVM_INCLUDE_DIRS}
+      ${CLANG_INCLUDE_DIRS})
+    target_compile_definitions(amc-cpp PRIVATE
+      ABIX_CLANG_RESOURCE_DIR="${ABIX_CLANG_RESOURCE_DIR}")
+    target_link_libraries(amc-cpp PRIVATE amc-core clang-cpp LLVM fmt::fmt)
     add_executable(amc amc/main.cpp)
     target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc)
     target_link_libraries(amc PRIVATE amc-core)

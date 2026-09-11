@@ -23,7 +23,7 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 - **RCU 非阻塞卸载** — 全局 `rcu_domain`（基于 Epoch-Based Reclamation），`dll_object` 通过 `enter_read()`/`exit_read()` 委托至全局域，配合编译器内建原子操作，实现安全的并发 DLL 卸载，不阻塞活跃的调用者。
 - **查找加速** — 自动查找策略：小表（< 64 条目）线性扫描，大表（≥ 64 条目）HashIndex，零 ABI 格式变更。
 - **ABI 元数据运行时** — 版本化 `.abix` v4 artifact、生成的静态 descriptor 与有界 `RuntimeRegistry` 提供原生类型元数据，不改变 DLL 函数表 ABI。
-- **AMC 管线** — `amc` 提取选定的 C++ ABI 布局、校验/检查 artifact、生成 C++ 投影，并产出 Compatibility / Map IR 报告。
+- **AMC 管线** — `amc` 从**原生 C++ 源码**（不限于 `extern "C"`）提取 ABI 布局，校验/检查 artifact，生成原生 C++ 投影/头文件，并产出 Compatibility/Map IR 报告。
 
 > [!IMPORTANT]
 > ABIX 的 Hash Container、Micro-RCU、RCU batching 等性能优化均**针对 ABIX 自身的 read-mostly 场景特化**，并非通用并发容器或通用 RCU 实现。
@@ -48,9 +48,12 @@ ABIX（SKL_ABIX 接口）是一个轻量级 C++ 库，支持跨 DLL/共享库边
 ## ABI 元数据与 AMC
 
 稳定 DLL 函数表仍是公共调用 ABI。元数据是额外且显式的一层：AMC 读取选定的
-C++ 接口，写出包含 type/layout、field、function、symbol、hash、compatibility 和
-map record 的 `.abix` v4 artifact，随后可生成供运行时 Registry 注册的 C++17
-descriptor 投影。
+**原生 C++ 接口**（无需 `extern "C"`），写出包含 type/layout、field、function、
+symbol、hash、compatibility 和 map record 的 `.abix` v4 artifact，随后可生成
+**原生 C++17 头文件**，供运行时 Registry 注册。
+
+> AMC 是语言配对的：给定 C++ 源码，生成 C++ 头文件；未来的 Rust 前端将生成
+> Rust 原生代码。输出始终是同一语言的原生代码，而非 C 兼容的胶水层。
 
 ```sh
 amc build -c package.abic.toml -B build
@@ -64,6 +67,96 @@ amc diff v1.abix v2.abix -o compatibility.abix
 `amc_generated::amc_module` descriptor，再调用
 `RuntimeRegistry::type_of<T>()`。参见 [API 参考](docs/api_zh.md) 和
 [`.abix` 格式说明](docs/abix.md)。
+
+### 示例：原生 C++ AMC 工作流
+
+以下示例演示 AMC 的**原生 C++ 管线**——无需 `extern "C"`。AMC 直接读取
+纯 C++ 类/枚举/函数，生成包含完整类型元数据的 C++17 头文件。
+
+**1. 原生 C++ 源码** — `include/math_api.hpp`：
+
+```cpp
+#pragma once
+#include <cstdint>
+
+struct Point2D {
+    double x;
+    double y;
+};
+
+struct Rectangle {
+    Point2D min;
+    Point2D max;
+};
+
+enum class ShapeType : int32_t {
+    Circle = 0,
+    Rect = 1,
+    Polygon = 2,
+};
+
+double area_of(const Rectangle &r);
+bool contains(const Rectangle &r, const Point2D &p);
+```
+
+**2. AMC 配置文件** — `math_api.abic.toml`：
+
+```toml
+[package]
+name = "math_api"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["include/math_api.hpp"]
+symbols = ["Point2D", "Rectangle", "ShapeType", "area_of", "contains"]
+
+[[export]]
+output = "build/math_api.abix"
+```
+
+**3. 构建并生成**：
+
+```sh
+amc build -c math_api.abic.toml -B build
+amc validate build/build/math_api.abix
+amc generate build/build/math_api.abix -l cpp -o generated/math_api_abix.hpp
+```
+
+**4. 使用生成的头文件** — `consumer.cpp`：
+
+```cpp
+#include "generated/math_api_abix.hpp"
+#include <iostream>
+
+int main() {
+    // 编译期访问类型元数据
+    constexpr auto pid = amc_generated::Point2D_ABIX::type_id;
+    constexpr auto rid = amc_generated::Rectangle_ABIX::type_id;
+    constexpr auto sid = amc_generated::ShapeType_ABIX::type_id;
+
+    std::cout << "Point2D 布局: size=" << amc_generated::Point2D_ABIX::size
+              << " align=" << amc_generated::Point2D_ABIX::align
+              << " x@offset=" << amc_generated::Point2D_ABIX::x_offset
+              << " y@offset=" << amc_generated::Point2D_ABIX::y_offset
+              << "\n";
+
+    // 注册模块到 RuntimeRegistry 以支持运行时查询
+    //（需在 #include 前定义 AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS）
+    skl::abix::runtime::RuntimeRegistry::register_module(
+        &amc_generated::amc_module);
+
+    auto ti = skl::abix::runtime::type_of<Point2D>();
+    if (ti) {
+        std::cout << "运行时的类型: " << ti->name << "\n";
+    }
+    return 0;
+}
+```
+
+关键要点：AMC 直接作用于**原生 C++ 类型**——无需 `extern "C"` 包装、
+无需 C 兼容结构体、无需手动维护字段偏移。生成的头文件自动与原始 C++ 布局保持同步。
 
 ## 快速开始
 

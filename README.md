@@ -23,7 +23,7 @@ Key design goals:
 - **RCU Non-Blocking Unload** — Global `rcu_domain` (Epoch-Based Reclamation), `dll_object` delegates to a global domain via `enter_read()`/`exit_read()` with compiler-builtin atomics, allowing safe concurrent DLL unload without blocking active callers.
 - **Lookup acceleration** — Automatic lookup strategy: linear scan for small tables (< 64 entries), HashIndex for large tables (≥ 64 entries), with zero ABI format changes.
 - **ABI metadata runtime** — Versioned `.abix` v4 artifacts, generated static descriptors, and a bounded `RuntimeRegistry` provide native type metadata without changing the DLL function-table ABI.
-- **AMC pipeline** — `amc` extracts selected C++ ABI layouts, validates/inspects artifacts, generates C++ projections, and produces compatibility/Map IR reports.
+- **AMC pipeline** — `amc` extracts ABI layouts from **native C++ sources** (not limited to `extern "C"`), validates/inspects artifacts, generates native C++ projections/headers, and produces compatibility/Map IR reports.
 
 > [!IMPORTANT]
 > ABIX's Hash Container, Micro-RCU, RCU batching, and other performance optimizations are **specialized for ABIX's own read-mostly workloads**. They are not general-purpose concurrent containers or a general-purpose RCU implementation.
@@ -48,10 +48,15 @@ Key design goals:
 ## ABI Metadata and AMC
 
 The stable DLL function table remains the public call ABI.  Metadata is an
-additional, explicit layer: AMC reads a selected C++ surface and writes an
-`.abix` v4 artifact containing type/layout, field, function, symbol, hash,
-compatibility, and map records.  It can then generate a C++17 descriptor
-projection for registration in the runtime registry.
+additional, explicit layer: AMC reads a selected **native C++ surface** (no
+`extern "C"` required) and writes an `.abix` v4 artifact containing type/layout,
+field, function, symbol, hash, compatibility, and map records.  It can then
+generate a **native C++17 header** with descriptor projections for registration
+in the runtime registry.
+
+> AMC is language-paired: given C++ source code, it generates C++ headers;
+> a future Rust frontend would generate Rust native code. The output is always
+> native code for the same language, not a C-compatible shim.
 
 ```sh
 amc build -c package.abic.toml -B build
@@ -65,6 +70,98 @@ Generated native traits are deliberately opt-in: define
 header, then register its `amc_generated::amc_module` descriptor before
 calling `RuntimeRegistry::type_of<T>()`.  See [the API reference](docs/api.md)
 and [the `.abix` format notes](docs/abix.md).
+
+### Example: Native C++ AMC Workflow
+
+This example walks through AMC's **native C++ pipeline** — no `extern "C"` required.
+AMC reads plain C++ classes/enums/functions and produces a C++17 header with
+full type metadata.
+
+**1. Native C++ source** — `include/math_api.hpp`:
+
+```cpp
+#pragma once
+#include <cstdint>
+
+struct Point2D {
+    double x;
+    double y;
+};
+
+struct Rectangle {
+    Point2D min;
+    Point2D max;
+};
+
+enum class ShapeType : int32_t {
+    Circle = 0,
+    Rect = 1,
+    Polygon = 2,
+};
+
+double area_of(const Rectangle &r);
+bool contains(const Rectangle &r, const Point2D &p);
+```
+
+**2. AMC config** — `math_api.abic.toml`:
+
+```toml
+[package]
+name = "math_api"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["include/math_api.hpp"]
+symbols = ["Point2D", "Rectangle", "ShapeType", "area_of", "contains"]
+
+[[export]]
+output = "build/math_api.abix"
+```
+
+**3. Build and generate**:
+
+```sh
+amc build -c math_api.abic.toml -B build
+amc validate build/build/math_api.abix
+amc generate build/build/math_api.abix -l cpp -o generated/math_api_abix.hpp
+```
+
+**4. Use the generated header** — `consumer.cpp`:
+
+```cpp
+#include "generated/math_api_abix.hpp"
+#include <iostream>
+
+int main() {
+    // Access type metadata at compile time
+    constexpr auto pid = amc_generated::Point2D_ABIX::type_id;
+    constexpr auto rid = amc_generated::Rectangle_ABIX::type_id;
+    constexpr auto sid = amc_generated::ShapeType_ABIX::type_id;
+
+    std::cout << "Point2D layout: size=" << amc_generated::Point2D_ABIX::size
+              << " align=" << amc_generated::Point2D_ABIX::align
+              << " x@offset=" << amc_generated::Point2D_ABIX::x_offset
+              << " y@offset=" << amc_generated::Point2D_ABIX::y_offset
+              << "\n";
+
+    // Register module with RuntimeRegistry for dynamic queries
+    // (requires AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS before include)
+    skl::abix::runtime::RuntimeRegistry::register_module(
+        &amc_generated::amc_module);
+
+    auto ti = skl::abix::runtime::type_of<Point2D>();
+    if (ti) {
+        std::cout << "Runtime type: " << ti->name << "\n";
+    }
+    return 0;
+}
+```
+
+The key takeaway: AMC works directly with **native C++ types** — no `extern "C"`
+wrappers, no C-compatible structs, no manual offset maintenance. The generated
+header stays in sync with the original C++ layout automatically.
 
 ## Quick Start
 
