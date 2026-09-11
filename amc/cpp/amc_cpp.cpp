@@ -628,6 +628,7 @@ static std::string json_value(const std::string &line, const char *key) {
     return end == std::string::npos ? std::string{} : line.substr(start, end - start);
 }
 
+#if defined(__APPLE__)
 // Derive the Homebrew LLVM installation prefix from the known resource-dir.
 //   kClangResourceDir  →  /opt/homebrew/opt/llvm/lib/clang/22
 //   brew_prefix        →  /opt/homebrew/opt/llvm
@@ -635,7 +636,6 @@ static std::string json_value(const std::string &line, const char *key) {
 // Returns the empty string when the prefix cannot be derived.
 // On non-macOS platforms this always returns empty.
 static std::string brew_llvm_prefix() {
-#if defined(__APPLE__)
     if (!kClangResourceDir[0]) return {};
     llvm::SmallString<128> pfx(kClangResourceDir);
     llvm::sys::path::remove_filename(pfx);
@@ -644,11 +644,10 @@ static std::string brew_llvm_prefix() {
     llvm::SmallString<128> sanity(pfx);
     llvm::sys::path::append(sanity, "include", "c++", "v1");
     return access(sanity.c_str(), F_OK) == 0 ? pfx.c_str() : std::string{};
-#else
-    return {};
-#endif
 }
+#endif
 
+#if defined(__APPLE__)
 // Detect the macOS SDK path and append flags that mirror what the Clang
 // driver would normally set when invoked from the command line.
 //
@@ -679,17 +678,14 @@ static std::string brew_llvm_prefix() {
 // the ABIX_CLANG_RESOURCE_DIR compile definition; the SDK path is looked up
 // at runtime from the SDKROOT environment variable or via xcrun.
 static void append_macos_sysroot(std::vector<std::string> &flags) {
-#if defined(__APPLE__)
     // ----- 1. Detect SDK path -------------------------------------------
     auto detect_sdk = []() -> std::string {
-        if (const char *sdk = std::getenv("SDKROOT"))
-            return sdk;
+        if (const char *sdk = std::getenv("SDKROOT")) return sdk;
         FILE *fp = popen("xcrun --sdk macosx --show-sdk-path 2>/dev/null", "r");
         if (!fp) return {};
-        char buf[4096] = {0};
+        char buf[4'096] = {0};
         std::string result;
-        if (std::fgets(buf, sizeof(buf), fp))
-            result = buf;
+        if (std::fgets(buf, sizeof(buf), fp)) result = buf;
         pclose(fp);
         while (!result.empty() && std::isspace(static_cast<unsigned char>(result.back())))
             result.pop_back();
@@ -782,29 +778,47 @@ static void append_macos_sysroot(std::vector<std::string> &flags) {
             }
         }
     }
-#endif
 }
+#endif
 
 static int run_frontend(const char *config_path, const char *output_path) {
     Config c;
     std::string e;
-    if (!config_load(config_path, c, e)) { fmt::print(stderr, "{}\n", e); return EXIT_FAILURE; }
+    if (!config_load(config_path, c, e)) {
+        fmt::print(stderr, "{}\n", e);
+        return EXIT_FAILURE;
+    }
     std::filesystem::path base = std::filesystem::absolute(config_path).parent_path();
     if (!c.db.empty() && std::filesystem::path(c.db).is_relative()) c.db = (base / c.db).string();
-    for (auto &f : c.files) if (std::filesystem::path(f).is_relative()) f = (base / f).string();
+    for (auto &f : c.files)
+        if (std::filesystem::path(f).is_relative()) f = (base / f).string();
+#if defined(__APPLE__)
     append_macos_sysroot(c.flags);
+#endif
     std::string db_error;
-    std::unique_ptr<CompilationDatabase> db;
-    if (!c.db.empty()) db = JSONCompilationDatabase::loadFromFile(c.db, db_error, JSONCommandLineSyntax::AutoDetect);
-    else db = std::make_unique<FixedCompilationDatabase>(base.string(), c.flags);
-    if (!db) { fmt::print(stderr, "{}\n", db_error); return EXIT_FAILURE; }
+    std::unique_ptr<clang::tooling::CompilationDatabase> db;
+    if (!c.db.empty())
+        db = clang::tooling::JSONCompilationDatabase::loadFromFile(
+            c.db, db_error, clang::tooling::JSONCommandLineSyntax::AutoDetect);
+    else
+        db = std::make_unique<clang::tooling::FixedCompilationDatabase>(base.string(), c.flags);
+    if (!db) {
+        fmt::print(stderr, "{}\n", db_error);
+        return EXIT_FAILURE;
+    }
     std::set<std::string> wanted(c.symbols.begin(), c.symbols.end());
     amc::AbiModule module;
     module.package_name = "cpp";
     Factory factory(wanted, module);
-    ClangTool tool(*db, c.files);
-    if (tool.run(&factory) != 0) { fmt::print(stderr, "clang analysis failed\n"); return EXIT_FAILURE; }
-    if (!amc::write_abix(module, output_path, e)) { fmt::print(stderr, "{}\n", e); return EXIT_FAILURE; }
+    clang::tooling::ClangTool tool(*db, c.files);
+    if (tool.run(&factory) != 0) {
+        fmt::print(stderr, "clang analysis failed\n");
+        return EXIT_FAILURE;
+    }
+    if (!amc::write_abix(module, output_path, e)) {
+        fmt::print(stderr, "{}\n", e);
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }
 
