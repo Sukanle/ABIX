@@ -773,13 +773,13 @@ std::string generate_projection(const amc::AbiModule &m) {
     o << "#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace amc_generated {\n";
     for (auto &t : m.types) {
         o << "struct " << cpp_name(t.name) << "_ABIX {\n"
-          << " static constexpr std::uint64_t type_id_lo = 0x" << std::hex << t.id.lo << "ULL;\n"
-          << " static constexpr std::uint64_t type_id_hi = 0x" << t.id.hi << "ULL;\n"
+          << " static constexpr uint64_t type_id_lo = 0x" << std::hex << t.id.lo << "ULL;\n"
+          << " static constexpr uint64_t type_id_hi = 0x" << t.id.hi << "ULL;\n"
           << std::dec
-          << " static constexpr std::size_t size = " << t.size << ";\n"
-          << " static constexpr std::size_t align = " << t.align << ";\n";
+          << " static constexpr size_t size = " << t.size << ";\n"
+          << " static constexpr size_t align = " << t.align << ";\n";
         for (uint32_t i = 0; i < t.field_count; ++i)
-            o << " static constexpr std::size_t " << cpp_name(m.fields[t.field_begin + i].name)
+            o << " static constexpr size_t " << cpp_name(m.fields[t.field_begin + i].name)
               << "_offset = " << m.fields[t.field_begin + i].offset << ";\n";
         o << "};\n";
     }
