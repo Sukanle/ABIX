@@ -160,7 +160,13 @@ if(AMC_BUILD)
   if(ABIX_LLVM_FOUND)
     # Detect Clang resource directory at build time (avoids runtime
     # path-inference that breaks for standalone executables).
-    find_program(ABIX_CLANG_EXECUTABLE NAMES clang PATHS /opt/homebrew/opt/llvm/bin NO_DEFAULT_PATH)
+    #
+    # Use LLVM_TOOLS_BINARY_DIR (set by find_package(LLVM)) as the primary
+    # hint — this works across macOS (Homebrew → /opt/homebrew/opt/llvm/bin),
+    # Linux (system LLVM → /usr/lib/llvm-*/bin), and other platforms without
+    # hardcoding a single OS-specific path or using NO_DEFAULT_PATH.
+    find_program(ABIX_CLANG_EXECUTABLE NAMES clang
+      HINTS ${LLVM_TOOLS_BINARY_DIR})
     if(ABIX_CLANG_EXECUTABLE)
       execute_process(
         COMMAND ${ABIX_CLANG_EXECUTABLE} -print-resource-dir
