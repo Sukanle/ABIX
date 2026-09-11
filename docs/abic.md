@@ -1,41 +1,41 @@
 # .abic — ABI Configuration
 
-## 定位
+## Positioning
 
-`.abic` 是**声明式 ABI 配置文件**，描述"如何构建 ABI"的意图与策略，而非 ABI 事实本身。
+`.abic` is a **declarative ABI configuration file** that describes the intent and strategy for "how to build ABI", rather than the ABI facts themselves.
 
 ```
 .abic = Intent / Policy
 .abix = Fact / Artifact
 ```
 
-`.abic` 更接近 CMakeLists.txt / Cargo.toml / protobuf options / compiler configuration，而不是最终 ABI 数据库。
+`.abic` is closer to CMakeLists.txt / Cargo.toml / protobuf options / compiler configuration, rather than a final ABI database.
 
 ---
 
-## 核心职责
+## Core Responsibilities
 
-| 职责 | 说明 |
+| Responsibility | Description |
 |------|------|
-| 声明源文件路径 | 指定需要扫描的源文件，避免全项目扫描 |
-| 声明导出范围 | 哪些类型、函数需要导出 |
-| 声明目标平台 | arch / OS |
-| 声明 ABI 约定 | 编译器 / 调用约定 |
-| 声明归一化策略 | 类型名如何规范化 |
-| 声明兼容性策略 | 是否生成兼容关系、兼容规则 |
-| 声明映射策略 | 是否生成 Map、映射方向 |
-| 声明生成目标 | 目标语言、输出格式 |
-| 声明运行模式 | 静态/动态/混合 |
+| Declare source file paths | Specify which source files to scan, avoiding full-project scanning |
+| Declare export scope | Which types and functions need to be exported |
+| Declare target platform | arch / OS |
+| Declare ABI conventions | Compiler / calling convention |
+| Declare normalization strategy | How type names are normalized |
+| Declare compatibility strategy | Whether to generate compatibility relationships and rules |
+| Declare mapping strategy | Whether to generate Map, mapping direction |
+| Declare generation targets | Target language, output format |
+| Declare runtime mode | Static / Dynamic / Hybrid |
 
 ---
 
-## 格式：TOML
+## Format: TOML
 
-`.abic` 面向**人**，因此使用 TOML（或 YAML）这种可读性高的格式。
+`.abic` is intended for **humans**, therefore it uses a highly readable format like TOML (or YAML).
 
 ---
 
-## 完整示例
+## Complete Example
 
 ```toml
 [package]
@@ -76,86 +76,86 @@ mode = "layout_hash"           # layout_hash | type_id | strict
 max_minor_version = 4
 
 [map]
-Foo_v1 = "Foo_v2"              # 版本映射
-Bar_old = "Bar_new"            # 重命名映射
+Foo_v1 = "Foo_v2"              # Version mapping
+Bar_old = "Bar_new"            # Rename mapping
 
 [generator]
 language = ["cpp", "rust"]
 hash_algorithm = "fnv1a64"     # fnv1a64 | xxh3 | blake3
-emit_map_ir = true             # 在 .abix 中生成 Map IR
-emit_static_map = true         # 生成 MapPrivate 静态转换
+emit_map_ir = true             # Generate Map IR in .abix
+emit_static_map = true         # Generate MapPrivate static conversion
 
 [runtime]
 mode = "hybrid"                # static | dynamic | hybrid
-lazy_load = true               # Runtime 延迟加载
+lazy_load = true               # Runtime lazy loading
 
 [output]
 format = "abix"                # abix | json | none
-compact = true                 # 二进制紧凑布局
-debug_info = false             # 嵌入调试字符串（与 compact 互斥，debug_info 优先）
+compact = true                 # Binary compact layout
+debug_info = false             # Embed debug strings (mutually exclusive with compact; debug_info takes priority)
 ```
 
 ---
 
-## 配置节详解
+## Configuration Section Details
 
 ### `[package]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `name` | string | 包名 |
-| `version` | string | 语义版本号 |
-| `abi_version` | uint | ABI 格式版本（与包版本解耦） |
+| `name` | string | Package name |
+| `version` | string | Semantic version string |
+| `abi_version` | uint | ABI format version (decoupled from package version) |
 
 ### `[source]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `files` | string[] | 需要扫描的源文件路径（相对 .abic 所在目录） |
-| `include_dirs` | string[] | 头文件搜索路径 |
-| `exclude` | string[] | 排除的文件模式（glob） |
+| `files` | string[] | Source file paths to scan (relative to .abic directory) |
+| `include_dirs` | string[] | Header file search paths |
+| `exclude` | string[] | File patterns to exclude (glob) |
 
-**设计意图**：AMC 仅扫描 `[source]` 指定的文件，而非整个项目。这显著加快编译速度，尤其在大型项目中避免不必要的 AST 解析。
+**Design intent**: AMC only scans the files specified in `[source]`, not the entire project. This significantly speeds up compilation, especially in large projects, by avoiding unnecessary AST parsing.
 
-如果 `[source]` 缺失，AMC 将扫描 .abic 同目录下所有 `.hpp` / `.h` / `.cpp` 文件（向后兼容，但会发出警告）。
+If `[source]` is missing, AMC will scan all `.hpp` / `.h` / `.cpp` files in the same directory as .abic (backward compatible, but emits a warning).
 
 ### `[target]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `arch` | string | 目标架构：`x86_64` / `aarch64` / `riscv64` / ... |
-| `os` | string | 目标 OS：`linux` / `windows` / `macos` / ... |
+| `arch` | string | Target architecture: `x86_64` / `aarch64` / `riscv64` / ... |
+| `os` | string | Target OS: `linux` / `windows` / `macos` / ... |
 
-`[target]` 仅描述**目标平台**，不包含编译器/调用约定（后者属于 `[abi]`）。
+`[target]` only describes the **target platform**, not the compiler/calling convention (the latter belongs to `[abi]`).
 
 ### `[abi]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `compiler` | string | 编译器：`gcc` / `clang` / `msvc` / ... |
-| `calling_convention` | string | 调用约定：`sysv_abi` / `ms_abi` / `aapcs` / ... |
+| `compiler` | string | Compiler: `gcc` / `clang` / `msvc` / ... |
+| `calling_convention` | string | Calling convention: `sysv_abi` / `ms_abi` / `aapcs` / ... |
 
-`[abi]` 描述**编译器与 ABI 约定**，与 `[target]`（平台）职责分离。
+`[abi]` describes the **compiler and ABI convention**, with a clear separation of concerns from `[target]` (platform).
 
 ### `[export]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `types` | string[] | 需要导出 ABI 的类型名（含枚举） |
-| `functions` | string[] | 需要导出 ABI 的函数名 |
+| `types` | string[] | Type names to export ABI for (including enums) |
+| `functions` | string[] | Function names to export ABI for |
 
-枚举本质上是 Type，统一列入 `types`。不再单独设置 `enums` 字段，避免语义重叠。
+Enums are essentially Types and are uniformly listed under `types`. No separate `enums` field to avoid semantic overlap.
 
 ### `[normalization]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `integer` | enum | 整数归一化策略：`fixed-width` / `native` / `none` |
-| `pointer` | enum | 指针归一化策略：`opaque` / `typed` / `none` |
-| `string` | enum | 字符串归一化策略：`slice` / `ptr` / `none` |
-| `container` | enum | 容器归一化策略：`abi_stable` / `none` |
+| `integer` | enum | Integer normalization strategy: `fixed-width` / `native` / `none` |
+| `pointer` | enum | Pointer normalization strategy: `opaque` / `typed` / `none` |
+| `string` | enum | String normalization strategy: `slice` / `ptr` / `none` |
+| `container` | enum | Container normalization strategy: `abi_stable` / `none` |
 
-归一化的目的是让不同编译器/语言产生的类型名映射到同一规范表示：
+The purpose of normalization is to map type names produced by different compilers/languages to the same canonical representation:
 
 ```
 C++ int        → i32
@@ -166,59 +166,59 @@ Zig i32        → i32
 
 ### `[compatibility]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `enable` | bool | 是否生成兼容性信息 |
-| `mode` | enum | 兼容检查模式：`layout_hash` / `type_id` / `strict` |
-| `max_minor_version` | uint | 最大兼容的 minor 版本号 |
+| `enable` | bool | Whether to generate compatibility information |
+| `mode` | enum | Compatibility check mode: `layout_hash` / `type_id` / `strict` |
+| `max_minor_version` | uint | Maximum compatible minor version number |
 
 ### `[map]`
 
-键值对形式，声明类型映射关系：
+Key-value pairs declaring type mappings:
 
-- 版本映射：`Foo_v1 = "Foo_v2"` — 从旧版本映射到新版本
-- 重命名映射：`Bar_old = "Bar_new"` — 从旧名称映射到新名称
+- Version mapping: `Foo_v1 = "Foo_v2"` — maps from old version to new version
+- Rename mapping: `Bar_old = "Bar_new"` — maps from old name to new name
 
 ### `[generator]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `language` | string[] | 目标语言：`cpp` / `rust` / `zig` / ... |
-| `hash_algorithm` | enum | Hash 算法：`fnv1a64` / `xxh3` / `blake3` |
-| `emit_map_ir` | bool | 是否在 .abix 中生成 Map IR |
-| `emit_static_map` | bool | 是否生成 MapPrivate 静态转换 |
+| `language` | string[] | Target language: `cpp` / `rust` / `zig` / ... |
+| `hash_algorithm` | enum | Hash algorithm: `fnv1a64` / `xxh3` / `blake3` |
+| `emit_map_ir` | bool | Whether to generate Map IR in .abix |
+| `emit_static_map` | bool | Whether to generate MapPrivate static conversion |
 
-`emit_map_ir` 和 `emit_static_map` 是独立的生成开关，与 `[runtime].mode` 无耦合：
-- `emit_map_ir = true, emit_static_map = false`：仅在 .abix 中保存 Map IR，运行时动态执行
-- `emit_map_ir = true, emit_static_map = true`：同时生成运行时 IR 和编译期 MapPrivate
-- `emit_map_ir = false, emit_static_map = true`：仅生成 MapPrivate（.abix 中无 Map IR）
+`emit_map_ir` and `emit_static_map` are independent generation switches, decoupled from `[runtime].mode`:
+- `emit_map_ir = true, emit_static_map = false`: Only save Map IR in .abix, execute dynamically at runtime
+- `emit_map_ir = true, emit_static_map = true`: Generate both runtime IR and compile-time MapPrivate
+- `emit_map_ir = false, emit_static_map = true`: Only generate MapPrivate (no Map IR in .abix)
 
-`hash_algorithm` 是**生成策略**（输入），.abix Header 中的 `hash_algorithm` 是**实际使用的算法**（输出），两者是合理的配置→产物关系。
+`hash_algorithm` is **generation strategy** (input); the `hash_algorithm` in .abix Header is the **actually used algorithm** (output) — a reasonable configuration-to-artifact relationship.
 
 ### `[runtime]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `mode` | enum | 运行模式：`static` / `dynamic` / `hybrid` |
-| `lazy_load` | bool | Runtime 是否延迟加载 |
+| `mode` | enum | Runtime mode: `static` / `dynamic` / `hybrid` |
+| `lazy_load` | bool | Whether Runtime uses lazy loading |
 
 ### `[output]`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `format` | enum | 输出格式：`abix` / `json` / `none` |
-| `compact` | bool | 二进制是否紧凑布局 |
-| `debug_info` | bool | 是否嵌入调试字符串 |
+| `format` | enum | Output format: `abix` / `json` / `none` |
+| `compact` | bool | Whether binary uses compact layout |
+| `debug_info` | bool | Whether to embed debug strings |
 
-`debug_info` 与 `compact` 互斥：当 `debug_info = true` 时，忽略 `compact`（调试信息优先）。
+`debug_info` is mutually exclusive with `compact`: when `debug_info = true`, `compact` is ignored (debug information takes priority).
 
 ---
 
-## 运行模式
+## Runtime Modes
 
 ### `static`
 
-所有 ABI 信息在编译期确定，生成 `constexpr` 元数据和 `MapPrivate`。
+All ABI information is determined at compile time, generating `constexpr` metadata and `MapPrivate`.
 
 ```
 .abic → AMC → .abix → AMC → .abix.hpp → Compiler → inline
@@ -226,15 +226,15 @@ Zig i32        → i32
 
 ### `dynamic`
 
-所有 ABI 信息在运行时加载，通过 `mmap` + Registry 动态查询。
+All ABI information is loaded at runtime, queried dynamically via `mmap` + Registry.
 
 ```
-.abic → AMC → .abix → Runtime → mmap → Registry → 动态查询
+.abic → AMC → .abix → Runtime → mmap → Registry → dynamic query
 ```
 
-### `hybrid`（推荐）
+### `hybrid` (recommended)
 
-已知 ABI 走静态路径，未知 ABI 走动态路径。
+Known ABIs take the static path, unknown ABIs take the dynamic path.
 
 ```
                   .abix
@@ -251,7 +251,7 @@ Zig i32        → i32
 
 ---
 
-## 与 .abix 的关系
+## Relationship with .abix
 
 ```
                  ┌───────────────┐
@@ -269,17 +269,17 @@ Zig i32        → i32
                  └───────────────┘
 ```
 
-- `.abic` 是输入：描述意图
-- `.abix` 是输出：记录事实
-- AMC 是编译器：从意图产生事实
+- `.abic` is input: describes intent
+- `.abix` is output: records facts
+- AMC is the compiler: transforms intent into facts
 
-**Source of Truth 永远是 `.abix`**，而非 `.abic`。`.abic` 只在构建时使用，运行时不参与。
+**The Source of Truth is always `.abix`**, not `.abic`. `.abic` is only used at build time and does not participate at runtime.
 
 ---
 
-## 最小示例
+## Minimal Example
 
-仅导出类型，使用默认配置：
+Export types only, using default configuration:
 
 ```toml
 [package]
@@ -293,15 +293,15 @@ files = ["src/foo.hpp"]
 types = ["Foo"]
 ```
 
-AMC 将使用所有字段的默认值补全配置。
+AMC will fill in defaults for all omitted fields.
 
 ---
 
-## 设计原则
+## Design Principles
 
-1. **声明式**：描述"要什么"，而非"怎么做"
-2. **人可读**：TOML 格式，便于手写和版本控制
-3. **可补全**：所有字段都有合理默认值
-4. **与版本解耦**：`abi_version` 独立于 `version`
-5. **仅构建时使用**：运行时不依赖 `.abic`
-6. **无语义重叠**：每个配置项有唯一职责，不同节之间不产生冲突组合
+1. **Declarative**: describes "what you want", not "how to do it"
+2. **Human-readable**: TOML format, easy to hand-write and version-control
+3. **Completable**: all fields have sensible defaults
+4. **Decoupled from version**: `abi_version` is independent of `version`
+5. **Build-time only**: no dependency on `.abic` at runtime
+6. **No semantic overlap**: each configuration item has a unique responsibility; no conflicting combinations across different sections
