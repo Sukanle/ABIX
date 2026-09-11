@@ -8,12 +8,10 @@
 #include <clang/Tooling/Tooling.h>
 #include <llvm/Support/Path.h>
 #include <toml++/toml.h>
-#include <algorithm>
 #include <iostream>
 
-#include <cctype>
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <memory>
 #include <set>
 #include <unordered_map>
@@ -24,17 +22,14 @@
 #include <fmt/color.h>
 #include <fmt/os.h>
 
-using namespace clang;
-using namespace clang::tooling;
-
 // Clang resource directory (e.g. /opt/homebrew/opt/llvm/lib/clang/22),
 // detected at build time via `clang -print-resource-dir` and injected
 // as a compile definition.  Used to locate built-in headers (stdarg.h,
 // stddef.h, etc.) and the Brew LLVM's libc++ installation.
 #ifndef ABIX_CLANG_RESOURCE_DIR
-#define ABIX_CLANG_RESOURCE_DIR ""
+#  define ABIX_CLANG_RESOURCE_DIR ""
 #endif
-static const char *const kClangResourceDir = ABIX_CLANG_RESOURCE_DIR;
+static const char * const kClangResourceDir = ABIX_CLANG_RESOURCE_DIR;
 
 namespace {
 struct Config {
@@ -53,26 +48,26 @@ bool config_load(const std::string &path, Config &c, std::string &e) {
             e = "MVP supports exactly one [[import]]";
             return false;
         }
-        auto tab = (*imp)[0].as_table();
+        auto *tab = (*imp)[0].as_table();
         if (!tab || tab->get("language")->value_or(std::string{}) != "cpp") {
             e = "only cpp import is supported";
             return false;
         }
         c.db = (*tab)["compile_commands"].value_or("");
-        auto files = (*tab)["files"].as_array();
-        auto symbols = (*tab)["symbols"].as_array();
-        auto flags = (*tab)["flags"].as_array();
+        auto *files = (*tab)["files"].as_array();
+        auto *symbols = (*tab)["symbols"].as_array();
+        auto *flags = (*tab)["flags"].as_array();
         if (flags)
-            for (auto &&v : *flags) c.flags.push_back(v.value_or(""));
+            for (auto &&v : *flags)
+                c.flags.push_back(v.value_or(""));
         if (files)
             for (auto &&v : *files)
                 c.files.push_back(v.value_or(""));
         if (symbols)
             for (auto &&v : *symbols)
                 c.symbols.push_back(v.value_or(""));
-        if (auto ex = t["export"].as_array(); ex && !ex->empty()) {
-            if (auto et = (*ex)[0].as_table()) c.output = (*et)["output"].value_or("");
-        }
+        if (auto *ex = t["export"].as_array(); ex && !ex->empty())
+            if (auto *et = (*ex)[0].as_table()) c.output = (*et)["output"].value_or("");
         if ((c.db.empty() && c.flags.empty()) || c.files.empty() || c.symbols.empty()) {
             e = "cpp import requires compile_commands or flags, files and symbols";
             return false;
@@ -84,45 +79,47 @@ bool config_load(const std::string &path, Config &c, std::string &e) {
     }
 }
 
-class Extractor : public RecursiveASTVisitor<Extractor> {
+class Extractor : public clang::RecursiveASTVisitor<Extractor> {
 public:
-    Extractor(ASTContext &c, const std::set<std::string> &wanted, amc::AbiModule &m)
+    Extractor(clang::ASTContext &c, const std::set<std::string> &wanted, amc::AbiModule &m)
         : ctx(c)
         , wanted(wanted)
         , module(m) {}
-    bool VisitRecordDecl(RecordDecl *d) {
-        auto *cxx = dyn_cast<CXXRecordDecl>(d);
-        if (!cxx || d->isImplicit() || !d->isThisDeclarationADefinition() ||
-            (!selected(d) && !has_selected_member(cxx))) return true;
+    bool VisitRecordDecl(clang::RecordDecl *d) {
+        auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(d);
+        if (!cxx
+            || d->isImplicit()
+            || !d->isThisDeclarationADefinition()
+            || (!selected(d) && !has_selected_member(cxx)))
+            return true;
         add_record(cxx);
         return true;
     }
-    bool VisitEnumDecl(EnumDecl *d) {
+    bool VisitEnumDecl(clang::EnumDecl *d) {
         if (d->isCompleteDefinition() && selected(d)) add_enum(d);
         return true;
     }
-    bool VisitTypedefNameDecl(TypedefNameDecl *d) {
+    bool VisitTypedefNameDecl(clang::TypedefNameDecl *d) {
         if (selected(d)) add_alias(d);
         return true;
     }
-    bool VisitDecl(Decl *d) {
-        if (auto *fn = dyn_cast<FunctionDecl>(d)) {
+    bool VisitDecl(clang::Decl *d) {
+        if (auto *fn = llvm::dyn_cast<clang::FunctionDecl>(d))
             if (selected(fn)) add_function(fn);
-        }
         return true;
     }
 
 private:
-    ASTContext &ctx;
+    clang::ASTContext &ctx;
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
     std::unordered_map<std::string, amc::Hash128> ids;
-    std::string name(const NamedDecl *d) const { return d->getQualifiedNameAsString(); }
-    void add_namespaces(const NamedDecl *d) {
+    std::string name(const clang::NamedDecl *d) const { return d->getQualifiedNameAsString(); }
+    void add_namespaces(const clang::NamedDecl *d) {
         const auto *context = d->getDeclContext();
         std::vector<std::string> names;
-        while (context && !isa<TranslationUnitDecl>(context)) {
-            if (const auto *named = dyn_cast<NamespaceDecl>(context)) {
+        while (context && !llvm::isa<clang::TranslationUnitDecl>(context)) {
+            if (const auto *named = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
                 if (!named->isAnonymousNamespace()) names.push_back(named->getQualifiedNameAsString());
             }
             context = context->getParent();
@@ -138,17 +135,17 @@ private:
             module.types.push_back(std::move(t));
         }
     }
-    bool selected(const NamedDecl *d) const {
+    bool selected(const clang::NamedDecl *d) const {
         auto n = name(d);
         return wanted.count(n) || wanted.count(d->getNameAsString());
     }
-    bool has_selected_member(const CXXRecordDecl *d) const {
+    bool has_selected_member(const clang::CXXRecordDecl *d) const {
         const auto prefix = name(d) + "::";
         for (const auto &symbol : wanted)
             if (symbol.compare(0, prefix.size(), prefix) == 0) return true;
         return false;
     }
-    amc::Hash128 add_type(QualType qt) {
+    amc::Hash128 add_type(clang::QualType qt) {
         qt = qt.getCanonicalType();
         auto s = qt.getAsString();
         auto it = ids.find(s);
@@ -166,7 +163,7 @@ private:
         // but walking its primary template can expose dependent AST nodes.
         // Record the specialization as an opaque ABI type here; its concrete
         // fields are still available when Clang presents a complete record.
-        if (qt->getAs<TemplateSpecializationType>()) {
+        if (qt->getAs<clang::TemplateSpecializationType>()) {
             amc::Type t;
             t.name = s;
             t.kind = amc::TypeKind::record;
@@ -179,14 +176,14 @@ private:
         }
         if (const auto *record = qt->getAsCXXRecordDecl()) {
             const auto record_key = qt.getAsString();
-            add_record(const_cast<CXXRecordDecl *>(record));
+            add_record(const_cast<clang::CXXRecordDecl *>(record));
             auto found = ids.find(record_key);
             if (found != ids.end()) return found->second;
             found = ids.find(name(record));
             if (found != ids.end()) return found->second;
-            return add_type(ctx.getCanonicalTagType(const_cast<CXXRecordDecl *>(record)));
+            return add_type(ctx.getCanonicalTagType(const_cast<clang::CXXRecordDecl *>(record)));
         }
-        if (const auto *enumeration = qt->getAs<EnumType>()) {
+        if (const auto *enumeration = qt->getAs<clang::EnumType>()) {
             add_enum(enumeration->getDecl());
             auto found = ids.find(name(enumeration->getDecl()));
             if (found != ids.end()) return found->second;
@@ -198,13 +195,13 @@ private:
         t.size = uint32_t(ctx.getTypeSize(qt) / 8);
         t.align = uint32_t(ctx.getTypeAlign(qt) / 8);
         t.kind = amc::TypeKind::primitive;
-        if (const auto *p = qt->getAs<PointerType>()) {
+        if (const auto *p = qt->getAs<clang::PointerType>()) {
             t.kind = amc::TypeKind::pointer;
             t.name = p->getPointeeType().getAsString() + "*";
             t.size = ctx.getTypeSize(qt) / 8;
             t.align = ctx.getTypeAlign(qt) / 8;
         }
-        if (const auto *a = dyn_cast<ConstantArrayType>(qt.getTypePtr())) {
+        if (const auto *a = llvm::dyn_cast<clang::ConstantArrayType>(qt.getTypePtr())) {
             t.kind = amc::TypeKind::array;
             t.array_count = uint32_t(a->getSize().getZExtValue());
         }
@@ -212,28 +209,27 @@ private:
         module.types.push_back(t);
         return t.id;
     }
-    static uint32_t access_flags(AccessSpecifier access) {
+    static uint32_t access_flags(clang::AccessSpecifier access) {
         switch (access) {
-            case AS_public: return amc::visibility_flags(amc::Visibility::public_);
-            case AS_protected: return amc::visibility_flags(amc::Visibility::protected_);
-            case AS_private: return amc::visibility_flags(amc::Visibility::private_);
-            case AS_none: return amc::visibility_flags(amc::Visibility::none);
+            case clang::AS_public:    return amc::visibility_flags(amc::Visibility::public_);
+            case clang::AS_protected: return amc::visibility_flags(amc::Visibility::protected_);
+            case clang::AS_private:   return amc::visibility_flags(amc::Visibility::private_);
+            case clang::AS_none:      return amc::visibility_flags(amc::Visibility::none);
         }
         return 0;
     }
-    static uint32_t calling_convention(FunctionDecl *d) {
-        const auto *prototype = d->getType()->getAs<FunctionProtoType>();
+    static uint32_t calling_convention(clang::FunctionDecl *d) {
+        const auto *prototype = d->getType()->getAs<clang::FunctionProtoType>();
         if (!prototype) return 0;
         switch (prototype->getCallConv()) {
-            case CC_C: return 1;
-            case CC_X86StdCall: return 2;
-            case CC_X86FastCall: return 3;
-            case CC_X86ThisCall: return 4;
-            default:
-                return d->hasAttr<AArch64SVEPcsAttr>() ? 5 : 0;
+            case clang::CC_C:           return 1;
+            case clang::CC_X86StdCall:  return 2;
+            case clang::CC_X86FastCall: return 3;
+            case clang::CC_X86ThisCall: return 4;
+            default:                    return d->hasAttr<clang::AArch64SVEPcsAttr>() ? 5 : 0;
         }
     }
-    void add_record(CXXRecordDecl *d) {
+    void add_record(clang::CXXRecordDecl *d) {
         const auto record_name = name(d);
         if (ids.count(record_name) != 0) return;
         if (d->isDependentContext() || ctx.getCanonicalTagType(d)->isDependentType()) return;
@@ -268,9 +264,11 @@ private:
             // (libc++ std::string has both __long and __short inside an
             // anonymous union, each with fields named __data_, __size_, etc.)
             bool dup = false;
-            for (uint32_t j = module.types[record_index].field_begin;
-                 j < module.fields.size(); ++j) {
-                if (module.fields[j].name == fname) { dup = true; break; }
+            for (uint32_t j = module.types[record_index].field_begin; j < module.fields.size(); ++j) {
+                if (module.fields[j].name == fname) {
+                    dup = true;
+                    break;
+                }
             }
             if (dup) continue;
             amc::Field x;
@@ -292,10 +290,9 @@ private:
         std::vector<amc::Field> layout_fields;
         for (uint32_t i = 0; i < module.types[record_index].field_count; ++i)
             layout_fields.push_back(module.fields[module.types[record_index].field_begin + i]);
-        module.types[record_index].layout_hash =
-            amc::layout_hash(module.types[record_index], layout_fields);
+        module.types[record_index].layout_hash = amc::layout_hash(module.types[record_index], layout_fields);
     }
-    void add_enum(EnumDecl *d) {
+    void add_enum(clang::EnumDecl *d) {
         add_namespaces(d);
         if (ids.count(name(d)) != 0) return;
         amc::Type t;
@@ -307,7 +304,7 @@ private:
         ids[t.name] = t.id;
         module.types.push_back(t);
     }
-    void add_alias(TypedefNameDecl *d) {
+    void add_alias(clang::TypedefNameDecl *d) {
         add_namespaces(d);
         const auto alias_name = name(d);
         if (ids.count(alias_name) != 0) return;
@@ -324,12 +321,12 @@ private:
         module.types.push_back(t);
         module.fields.push_back({t.id, "underlying", underlying, 0, 0});
     }
-    void add_function(FunctionDecl *d) {
+    void add_function(clang::FunctionDecl *d) {
         amc::Function f;
-        if (const auto *method = dyn_cast<CXXMethodDecl>(d)) {
+        if (const auto *method = llvm::dyn_cast<clang::CXXMethodDecl>(d)) {
             if (const auto *owner = method->getParent()) {
                 f.owner_type = amc::hash_text(name(owner), 0x54595045);
-                if (ids.count(name(owner)) == 0) add_record(const_cast<CXXRecordDecl *>(owner));
+                if (ids.count(name(owner)) == 0) add_record(const_cast<clang::CXXRecordDecl *>(owner));
             }
         }
         f.name = name(d);
@@ -346,12 +343,12 @@ private:
         module.functions.push_back(std::move(f));
     }
 };
-class Consumer : public ASTConsumer {
+class Consumer : public clang::ASTConsumer {
 public:
     Consumer(const std::set<std::string> &w, amc::AbiModule &m)
         : wanted(w)
         , module(m) {}
-    void HandleTranslationUnit(ASTContext &c) override {
+    void HandleTranslationUnit(clang::ASTContext &c) override {
         Extractor x(c, wanted, module);
         x.TraverseDecl(c.getTranslationUnitDecl());
     }
@@ -360,12 +357,12 @@ private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
 };
-class Action : public ASTFrontendAction {
+class Action : public clang::ASTFrontendAction {
 public:
     Action(const std::set<std::string> &w, amc::AbiModule &m)
         : wanted(w)
         , module(m) {}
-    std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &, StringRef) override {
+    std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &, clang::StringRef) override {
         return std::make_unique<Consumer>(wanted, module);
     }
 
@@ -373,12 +370,12 @@ private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
 };
-class Factory : public FrontendActionFactory {
+class Factory : public clang::tooling::FrontendActionFactory {
 public:
     Factory(const std::set<std::string> &w, amc::AbiModule &m)
         : wanted(w)
         , module(m) {}
-    std::unique_ptr<FrontendAction> create() override { return std::make_unique<Action>(wanted, module); }
+    std::unique_ptr<clang::FrontendAction> create() override { return std::make_unique<Action>(wanted, module); }
 
 private:
     const std::set<std::string> &wanted;
@@ -397,18 +394,20 @@ static std::string cpp_string(const std::string &value) {
     std::string result = "\"";
     for (const char c : value) {
         if (c == '\\' || c == '"') result += '\\';
-        if (c == '\n') result += "\\n";
-        else if (c == '\r') result += "\\r";
-        else if (c == '\t') result += "\\t";
-        else result += c;
+        if (c == '\n')
+            result += "\\n";
+        else if (c == '\r')
+            result += "\\r";
+        else if (c == '\t')
+            result += "\\t";
+        else
+            result += c;
     }
     result += '"';
     return result;
 }
 
-static std::string hex_u64(uint64_t value) {
-    return fmt::format("0x{:x}ULL", value);
-}
+static std::string hex_u64(uint64_t value) { return fmt::format("0x{:x}ULL", value); }
 
 static int backend(const char *input, const char *output) {
     amc::AbiModule m;
@@ -753,8 +752,7 @@ static void append_macos_sysroot(std::vector<std::string> &flags) {
     // ----- 5. Fallback (no SDK) ------------------------------------------
     // If no SDK is available, at least set the resource directory and
     // libc++ from the Brew LLVM prefix, so basic analysis still works.
-    if (!flags.empty() &&
-        std::find(flags.begin(), flags.end(), "-resource-dir") == flags.end()) {
+    if (!flags.empty() && std::find(flags.begin(), flags.end(), "-resource-dir") == flags.end()) {
         // (a) libc++ from Brew LLVM (must use -isystem, not -cxx-isystem,
         //     because -cxx-isystem has lower priority than -isystem and
         //     would lose to the resource-dir's built-in headers below)
@@ -832,34 +830,39 @@ static int ipc() {
             std::fflush(stdout);
         } else if (line.find("\"type\":\"QUERY_CAPABILITIES\"") != std::string::npos) {
             if (!initialized) return 2;
-            fmt::print("{{\"type\":\"CAPABILITIES\",\"language\":\"cpp\",\"capabilities\":[\"frontend\",\"backend\"]}}\n");
+            fmt::print(
+                "{{\"type\":\"CAPABILITIES\",\"language\":\"cpp\",\"capabilities\":[\"frontend\",\"backend\"]}}\n");
             std::fflush(stdout);
         } else if (line.find("\"type\":\"ANALYZE\"") != std::string::npos) {
             capability = json_value(line, "capability");
-            input = json_value(line, "input"); output = json_value(line, "output");
-            int result = capability == "frontend" ? run_frontend(input.c_str(), output.c_str()) :
-                         capability == "backend" ? backend(input.c_str(), output.c_str()) : 2;
-            if (result == 0)
-                fmt::print("{{\"type\":\"ABI_MODULE\",\"path\":\"{}\"}}\n", output);
+            input = json_value(line, "input");
+            output = json_value(line, "output");
+            int result = capability == "frontend" ? run_frontend(input.c_str(), output.c_str())
+                       : capability == "backend"  ? backend(input.c_str(), output.c_str())
+                                                  : 2;
+            if (result == 0) fmt::print("{{\"type\":\"ABI_MODULE\",\"path\":\"{}\"}}\n", output);
             fmt::print("{{\"type\":\"ANALYZE_RESULT\",\"status\":{}}}\n", result);
             std::fflush(stdout);
             if (result != 0) return result;
-        } else if (line.find("\"type\":\"DONE\"") != std::string::npos) return 0;
+        } else if (line.find("\"type\":\"DONE\"") != std::string::npos)
+            return 0;
     }
     return 2;
 }
 
 int main(int argc, char **argv) {
-    #ifdef __APPLE__
+#ifdef __APPLE__
     if (!kClangResourceDir[0]) {
-        fmt::print(stderr, "warning: ABIX_CLANG_RESOURCE_DIR not set at build time; "
-                   "built-in headers (stdarg.h, etc.) may not be found.\n");
+        fmt::print(stderr,
+            "warning: ABIX_CLANG_RESOURCE_DIR not set at build time; "
+            "built-in headers (stdarg.h, etc.) may not be found.\n");
     }
-    #endif
+#endif
 
     if (argc == 2 && std::string(argv[1]) == "--ipc") return ipc();
     if (argc != 4) {
-        fmt::print(stderr, "usage: amc-cpp frontend <config.abic.toml> <output.abix> | backend <input.abix> <output.hpp>\n");
+        fmt::print(
+            stderr, "usage: amc-cpp frontend <config.abic.toml> <output.abix> | backend <input.abix> <output.hpp>\n");
         return 2;
     }
     if (std::string(argv[1]) == "backend") return backend(argv[2], argv[3]);
