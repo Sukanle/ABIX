@@ -179,8 +179,45 @@ if(AMC_BUILD)
       message(WARNING "Could not detect Clang resource dir; AMC frontend may fail to find built-in headers")
     endif()
 
-    add_library(amc-core STATIC amc/core/amc_core.cpp)
-    target_include_directories(amc-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
+    # ------------------------------------------------------------------
+    # libabix-* — the shared ABIX libraries (plan AI-PS).
+    #
+    # Concern-partitioned so LLDB / clangd / MCP / the runtime can link only
+    # what they need. Every library shares libabix-format, so there is exactly
+    # one `.abix`/Metadata Region parser in the project.
+    # ------------------------------------------------------------------
+    add_library(libabix-format STATIC
+      amc/core/amc_core.cpp      # .abix v4 read/write + hashing + canonical form
+      amc/core/amc_error.cpp
+      amc/core/amc_elf.cpp
+      amc/core/amc_json.cpp)
+    target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
+
+    add_library(libabix-abi STATIC amc/core/amc_verify.cpp)
+    target_link_libraries(libabix-abi PUBLIC libabix-format)
+
+    add_library(libabix-metadata STATIC
+      amc/core/amc_metadata.cpp  # Metadata Region serialize/parse/materialize
+      amc/core/amc_materialize.cpp
+      amc/core/amc_context.cpp
+      amc/core/amc_query.cpp)
+    target_link_libraries(libabix-metadata PUBLIC libabix-abi)
+
+    add_library(libabix-tools STATIC
+      amc/core/amc_lua.cpp
+      amc/core/amc_symbol_store.cpp)
+    target_link_libraries(libabix-tools PUBLIC libabix-metadata)
+
+    # Header-only runtime registry/binding layer; consumers link it for the
+    # `abix/` include root.
+    add_library(libabix-runtime INTERFACE)
+    target_include_directories(libabix-runtime INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Backwards-compatible aggregate used by the AMC executables and tests.
+    add_library(amc-core INTERFACE)
+    target_link_libraries(amc-core INTERFACE
+      libabix-format libabix-abi libabix-metadata libabix-tools)
+
     add_executable(amc-cpp amc/cpp/amc_cpp.cpp)
     target_include_directories(amc-cpp PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/amc/core
@@ -195,16 +232,54 @@ if(AMC_BUILD)
     add_executable(amc-dump amc/dump/amc_dump.cpp)
     target_include_directories(amc-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     target_link_libraries(amc-dump PRIVATE amc-core)
+    add_executable(amc-mcp amc/mcp/amc_mcp.cpp)
+    target_include_directories(amc-mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
+    target_link_libraries(amc-mcp PRIVATE amc-core)
     add_executable(amc-core-test amc/tests/core_test.cpp)
+    target_include_directories(amc-core-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     target_link_libraries(amc-core-test PRIVATE amc-core)
     add_test(NAME amc-core-test COMMAND amc-core-test)
     add_executable(amc-e2e-test amc/tests/amc_e2e_test.cpp)
+    target_include_directories(amc-e2e-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     target_link_libraries(amc-e2e-test PRIVATE amc-core)
     add_test(NAME amc-e2e-test COMMAND amc-e2e-test)
-    add_test(NAME amc-integration-test COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_integration_test.sh ${CMAKE_BINARY_DIR}/bin)
-    add_test(NAME amc-cmake-integration-test COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_cmake_integration_test.sh ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
-    set_target_properties(amc amc-cpp amc-dump amc-core-test amc-e2e-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    find_program(AMC_PYTHON_EXECUTABLE NAMES python3 python)
+    if(AMC_PYTHON_EXECUTABLE)
+      add_test(NAME amc-integration-test
+        COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_integration_test.py ${CMAKE_BINARY_DIR}/bin)
+      add_test(NAME amc-cmake-integration-test
+        COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_cmake_integration_test.py ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+    else()
+      message(WARNING "python3 not found: AMC integration tests will not be registered")
+    endif()
+    set_target_properties(amc amc-cpp amc-dump amc-mcp amc-core-test amc-e2e-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
   else()
     message(WARNING "LLVM/Clang not found: AMC tools will not be built")
+  endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# Aue: Lua L0/L1 differential-conformance prototype (plan direction 4).
+# Optional: built only when a Lua development package is available.
+# ---------------------------------------------------------------------------
+if(NOT WIN32)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(LUA QUIET lua5.4)
+  endif()
+  if(NOT LUA_FOUND)
+    find_path(LUA_INCLUDE_DIR lua.h PATH_SUFFIXES lua5.4)
+    find_library(LUA_LIBRARY NAMES lua5.4 lua)
+    if(LUA_INCLUDE_DIR AND LUA_LIBRARY)
+      set(LUA_FOUND TRUE)
+      set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
+      set(LUA_LIBRARIES ${LUA_LIBRARY})
+    endif()
+  endif()
+  if(LUA_FOUND)
+    message(STATUS "Lua found: building the Aue conformance prototype")
+    add_subdirectory(aue)
+  else()
+    message(STATUS "Lua not found: Aue conformance prototype will not be built")
   endif()
 endif()
