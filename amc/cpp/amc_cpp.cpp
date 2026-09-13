@@ -1,7 +1,9 @@
 #include "../core/amc_core.h"
+#include "../core/amc_metadata.h"
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/Basic/SourceManager.h>
 #include <clang/Options/OptionUtils.h>
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/JSONCompilationDatabase.h>
@@ -115,6 +117,17 @@ private:
     amc::AbiModule &module;
     std::unordered_map<std::string, amc::Hash128> ids;
     std::string name(const clang::NamedDecl *d) const { return d->getQualifiedNameAsString(); }
+    void record_source(amc::Hash128 type_id, clang::SourceLocation location) {
+        if (location.isInvalid()) return;
+        const auto presumed = ctx.getSourceManager().getPresumedLoc(location);
+        if (presumed.isInvalid()) return;
+        amc::SourceOrigin origin;
+        origin.type_id = type_id;
+        origin.file = presumed.getFilename() != nullptr ? presumed.getFilename() : "";
+        origin.line = presumed.getLine();
+        origin.column = presumed.getColumn();
+        module.sources.push_back(std::move(origin));
+    }
     void add_namespaces(const clang::NamedDecl *d) {
         const auto *context = d->getDeclContext();
         std::vector<std::string> names;
@@ -246,6 +259,7 @@ private:
         t.field_begin = uint32_t(module.fields.size());
         ids[t.name] = t.id;
         module.types.push_back(t);
+        record_source(t.id, d->getLocation());
         const auto record_index = module.types.size() - 1;
         for (const auto &base : d->bases()) {
             amc::Field x;
@@ -303,6 +317,7 @@ private:
         t.align = uint32_t(ctx.getTypeAlign(d->getIntegerType()) / 8);
         ids[t.name] = t.id;
         module.types.push_back(t);
+        record_source(t.id, d->getLocation());
     }
     void add_alias(clang::TypedefNameDecl *d) {
         add_namespaces(d);
@@ -319,6 +334,7 @@ private:
         t.field_begin = uint32_t(module.fields.size());
         t.field_count = 1;
         module.types.push_back(t);
+        record_source(t.id, d->getLocation());
         module.fields.push_back({t.id, "underlying", underlying, 0, 0});
     }
     void add_function(clang::FunctionDecl *d) {
@@ -506,6 +522,35 @@ static int backend(const char *input, const char *output) {
         o.print("}};\n");
     }
 
+    // Canonical TypeDesc / TypeLayout arrays — the one ABI truth.
+    // These are imported directly by RuntimeRegistry instead of being
+    // reconstructed from the runtime projection (amc_types[]).
+    {
+        const auto type_count = m.types.empty() ? 1 : m.types.size();
+        o.print("inline constexpr ::skl::abix::model::TypeDesc amc_canonical_types[{}] = {{\n", type_count);
+        for (size_t i = 0; i < m.types.size(); ++i) {
+            const auto &type = m.types[i];
+            // name_offset = 0 (names live in .abix.names section for
+            // diagnostic use only — stripped from the runtime registry).
+            o.print("    {{{{{}, {}}}, {}, {}, {}}},\n", hex_u64(type.id.lo), hex_u64(type.id.hi), type.flags, 0U,
+                static_cast<uint32_t>(i));
+        }
+        if (m.types.empty()) {
+            o.print("    {{{{{}, {}}}, {}, {}, {}}},\n", "0ULL", "0ULL", 0U, 0U, 0U);
+        }
+        o.print("}};\n");
+
+        o.print("inline constexpr ::skl::abix::model::TypeLayout amc_canonical_layouts[{}] = {{\n", type_count);
+        for (const auto &type : m.types) {
+            o.print("    {{{}, {}, {}, {}, {{{}, {}}}}},\n", type.size, type.align, type.field_begin, type.field_count,
+                hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi));
+        }
+        if (m.types.empty()) {
+            o.print("    {{}, {}, {}, {}, {{{}, {}}}}},\n", 0U, 0U, 0U, 0U, "0ULL", "0ULL");
+        }
+        o.print("}};\n");
+    }
+
     {
         const auto func_count = m.functions.empty() ? 1 : m.functions.size();
         o.print("inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions[{}] = {{\n", func_count);
@@ -527,25 +572,61 @@ static int backend(const char *input, const char *output) {
         o.print("}};\n");
     }
 
-    // Struct layout: name, version, types, type_count, function_count, functions, symbols, symbol_count.
-    o.print("inline constexpr ModuleInfo amc_module{{{}, {}, amc_types, {}, {}, amc_functions, amc_symbols, {}}};\n",
+    // Struct layout: name, version, types, canonical_types, canonical_layouts,
+    // type_count, function_count, functions, symbols, symbol_count.
+    o.print(
+        "inline constexpr ModuleInfo amc_module{{{}, {}, amc_types, amc_canonical_types, amc_canonical_layouts, {}, "
+        "{}, amc_functions, amc_symbols, {}}};\n",
         cpp_string(m.package_name), cpp_string(m.package_version), m.types.size(), m.functions.size(),
         m.symbols.size());
 
     // .abix.names section: type/field/function names for diagnostic use only.
     // This section is NOT referenced by any runtime code and can be safely
-    // stripped via: strip --strip-section=.abix.names <binary>
+    // stripped via: strip --remove-section=.abix.names <binary>
     // External tools (amc-dump, ABIX symbol server) read this section from
     // the binary or from a companion .abix file archived at build time.
+    //
+    // `used` is required: without it the compiler is free to drop this
+    // unreferenced variable entirely, which would silently make the names
+    // un-strippable because they were never emitted.
     if (!m.types.empty()) {
         o.print(
-            "#ifdef __GNUC__\n"
-            "__attribute__((section(\".abix.names\")))\n"
+            "#if defined(__GNUC__) || defined(__clang__)\n"
+            "__attribute__((used, section(\".abix.names\")))\n"
             "#endif\n"
             "inline constexpr const char *amc_type_names[] = {{\n");
         for (const auto &type : m.types)
             o.print("    {},\n", cpp_string(type.name));
         o.print("}};\n");
+    }
+
+    // ABIX Metadata Region (AI-PM): the self-describing, pointer-free image of
+    // this module (manifest + desc + hash + names). It lives in its own section
+    // so an offline tool can locate the whole region through the ELF section
+    // table without loading the program. The C++ descriptors above are its
+    // runtime projection and remain the hot path.
+    {
+        amc::MetadataOptions metadata_options;
+        std::vector<uint8_t> region;
+        std::string metadata_error;
+        if (!amc::build_metadata_region(m, metadata_options, region, metadata_error)) {
+            fmt::print(stderr, "{}\n", metadata_error);
+            return 1;
+        }
+        o.print(
+            "\n// ABIX Metadata Region: manifest + desc + hash + names (offset-based).\n"
+            "#if defined(__GNUC__) || defined(__clang__)\n"
+            "__attribute__((used, section(\".abix.metadata\"), aligned(8)))\n"
+            "#endif\n"
+            "inline constexpr unsigned char amc_metadata_region[{}] = {{\n",
+            region.size());
+        for (size_t i = 0; i < region.size(); ++i) {
+            if (i % 12 == 0) o.print("    ");
+            o.print("0x{:02x},", region[i]);
+            if (i % 12 == 11 || i + 1 == region.size()) o.print("\n");
+        }
+        o.print("}};\n");
+        o.print("inline constexpr size_t amc_metadata_region_size = {};\n", region.size());
     }
 
     for (size_t i = 0; i < m.maps.size(); ++i) {
