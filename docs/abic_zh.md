@@ -11,8 +11,6 @@
 
 `.abic` 更接近 CMakeLists.txt / Cargo.toml / protobuf options / compiler configuration，而不是最终 ABI 数据库。
 
----
-
 ## 核心职责
 
 | 职责 | 说明 |
@@ -27,13 +25,9 @@
 | 声明生成目标 | 目标语言、输出格式 |
 | 声明运行模式 | 静态/动态/混合 |
 
----
-
 ## 格式：TOML
 
-`.abic` 面向**人**，因此使用 TOML（或 YAML）这种可读性高的格式。
-
----
+`.abic` 面向**人**，因此使用 TOML（或 YAML）这种可读的格式。
 
 ## 完整示例
 
@@ -95,8 +89,6 @@ compact = true                 # 二进制紧凑布局
 debug_info = false             # 嵌入调试字符串（与 compact 互斥，debug_info 优先）
 ```
 
----
-
 ## 配置节详解
 
 ### `[package]`
@@ -115,7 +107,7 @@ debug_info = false             # 嵌入调试字符串（与 compact 互斥，de
 | `include_dirs` | string[] | 头文件搜索路径 |
 | `exclude` | string[] | 排除的文件模式（glob） |
 
-**设计意图**：AMC 仅扫描 `[source]` 指定的文件，而非整个项目。这显著加快编译速度，尤其在大型项目中避免不必要的 AST 解析。
+**设计意图**：AMC 仅扫描 `[source]` 指定的文件，而非整个项目，避免大型项目中不必要的 AST 解析。
 
 如果 `[source]` 缺失，AMC 将扫描 .abic 同目录下所有 `.hpp` / `.h` / `.cpp` 文件（向后兼容，但会发出警告）。
 
@@ -193,7 +185,7 @@ Zig i32        → i32
 - `emit_map_ir = true, emit_static_map = true`：同时生成运行时 IR 和编译期 MapPrivate
 - `emit_map_ir = false, emit_static_map = true`：仅生成 MapPrivate（.abix 中无 Map IR）
 
-`hash_algorithm` 是**生成策略**（输入），.abix Header 中的 `hash_algorithm` 是**实际使用的算法**（输出），两者是合理的配置→产物关系。
+`hash_algorithm` 是**生成策略**（输入），.abix Header 中的 `hash_algorithm` 是**实际使用的算法**（输出），两者是配置→产物关系。
 
 ### `[runtime]`
 
@@ -211,8 +203,6 @@ Zig i32        → i32
 | `debug_info` | bool | 是否嵌入调试字符串 |
 
 `debug_info` 与 `compact` 互斥：当 `debug_info = true` 时，忽略 `compact`（调试信息优先）。
-
----
 
 ## 运行模式
 
@@ -249,8 +239,6 @@ Zig i32        → i32
  zero/low overhead       dynamic compatibility
 ```
 
----
-
 ## 与 .abix 的关系
 
 ```
@@ -275,8 +263,6 @@ Zig i32        → i32
 
 **Source of Truth 永远是 `.abix`**，而非 `.abic`。`.abic` 只在构建时使用，运行时不参与。
 
----
-
 ## 最小示例
 
 仅导出类型，使用默认配置：
@@ -294,8 +280,6 @@ types = ["Foo"]
 ```
 
 AMC 将使用所有字段的默认值补全配置。
-
----
 
 ## 设计原则
 

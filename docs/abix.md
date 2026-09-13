@@ -2,7 +2,7 @@
 
 ## Positioning
 
-`.abix` is the core artifact of the ABIX system — a **language-agnostic, compiler-agnostic, C++ ABI-agnostic normalized ABI metadata container**.
+`.abix` is the core artifact of the ABIX system: a language-agnostic, compiler-agnostic, C++ ABI-agnostic normalized ABI metadata container.
 
 ```
 .abic = Intent / Policy    (configuration/intent)
@@ -15,8 +15,6 @@
 - **ABI IR** — analogous to LLVM IR, but describes ABI layout/compatibility/mapping rather than control flow
 - **ABI Bytecode** — can be directly consumed by Runtime via `mmap`, or lowered by AMC to compile-time code
 
----
-
 ## Core Responsibilities
 
 | Responsibility | Description |
@@ -26,8 +24,6 @@
 | Record compatibility | LayoutHash / SignatureHash / Compatibility |
 | Support mmap | Binary format, zero deserialization, direct access |
 | Support projection | Can be projected by AMC to C++ / Rust / Zig and other target code |
-
----
 
 ## Format: Binary
 
@@ -48,8 +44,6 @@
 ### "No deserialization" ≠ "Zero runtime cost"
 
 After `mmap`, there may still be: page faults / cache misses / bounds checks / hash lookups / pointer chasing. Therefore, `.abix` optimizes its layout for access patterns.
-
----
 
 ## Overall Structure
 
@@ -73,7 +67,7 @@ After `mmap`, there may still be: page faults / cache misses / bounds checks / h
 └── Extensions
 ```
 
-**Streamlining notes** (compared to initial design):
+Changes from the initial design:
 
 | Removed/Changed | Reason |
 |-----------|------|
@@ -84,8 +78,6 @@ After `mmap`, there may still be: page faults / cache misses / bounds checks / h
 | Symbol Table `target_hash` | Changed to `(target_kind, target_index)` typed index |
 | Parameter Table `position` | Derived from array order |
 | Field Table `size` | Default derived from Layout corresponding to field TypeId (only retained for special cases like arrays/opaque) |
-
----
 
 ## Section Details
 
@@ -102,7 +94,7 @@ Offset  Size  Field
 0x10    u32   section_dir_offset ← Section Directory offset
 ```
 
-**Hash algorithm is explicitly recorded in the Header**, rather than being implicit in the implementation. This is a key design for `.abix` as a stable ABI artifact.
+The hash algorithm is explicitly recorded in the Header rather than being implicit in the implementation, which keeps `.abix` a stable ABI artifact.
 
 A Section Directory replaces fixed `*_offset` fields, avoiding Header layout changes when adding new sections.
 
@@ -375,11 +367,9 @@ Offset  Size  Field             (per record)
 
 Reserved area for future extension. Section Directory `section_id = 255` points to this area.
 
----
-
 ## Type / Layout / Function / Symbol Separation
 
-This is an important principle of `.abix` design:
+This is a principle of `.abix` design:
 
 | Concept | Question Answered | Example |
 |------|-----------|------|
@@ -393,8 +383,6 @@ This is an important principle of `.abix` design:
 **Function ≠ Symbol**: The same Function can have different mangled Symbols with different compilers.
 
 This avoids mixing C++/Rust/compiler-specific implementations into the `.abix` core model.
-
----
 
 ## Hash System
 
@@ -531,9 +519,7 @@ struct B { double b; int a; };   // TypeHash_B, LayoutHash_B
 // But sizeof(A) == sizeof(B) && alignof(A) == alignof(B)  (size/align alone is insufficient!)
 ```
 
-**Distinguishing TypeHash and LayoutHash is fundamental to the ABIX compatibility system.**
-
----
+Distinguishing TypeHash and LayoutHash is fundamental to the ABIX compatibility system.
 
 ## Three Consumption Modes
 
@@ -614,9 +600,7 @@ End result: `ABI metadata → compile-time → direct offset/load/store`.
  zero/low overhead       dynamic compatibility
 ```
 
-**Static when possible, Dynamic when necessary.**
-
----
+Static when possible, dynamic when necessary.
 
 ## Relationship with .abic
 
@@ -644,8 +628,6 @@ End result: `ABI metadata → compile-time → direct offset/load/store`.
 | Runtime dependency | None | Yes (in Runtime mode) |
 | Source of Truth | No | **Yes** |
 
----
-
 ## Projection System
 
 `.abix` is the Source of Truth; all target code is its projection:
@@ -660,9 +642,7 @@ foo.abix
   └── Debug projection    → foo.abix.txt    → Human-readable
 ```
 
-**`.abix.hpp` should not become a new "ABI source file"**, but rather a compile-time projection of `.abix`.
-
----
+`.abix.hpp` is not a new "ABI source file"; it is a compile-time projection of `.abix`.
 
 ## Differences from Traditional Approaches
 
@@ -674,9 +654,7 @@ foo.abix
 | IDL | Interface description language | ABIX extracts from actual compiled artifacts, not hand-written interfaces |
 | Protobuf/FlatBuffers | Data schema | ABIX describes memory layout ABI, not serialization schema |
 
-ABIX is an **ABI intermediate layer positioned between source code/compiler and ABI Runtime**.
-
----
+ABIX is an ABI intermediate layer positioned between source code/compiler and ABI Runtime.
 
 ## Core Concepts
 
@@ -687,8 +665,6 @@ ABIX is an **ABI intermediate layer positioned between source code/compiler and 
 | **Dynamic** | Runtime can load dynamically; both sides' ABI don't need to be fully fixed at compile time |
 | **Static** | Known ABIs can be lowered by AMC to constexpr / MapPrivate / inline |
 | **Self-hosting** | ABIX itself uses ABIX: `abix.abix` → ABIX Runtime → reads its own ABI |
-
----
 
 ## Complete File Relationship
 
@@ -713,7 +689,3 @@ ABIX is an **ABI intermediate layer positioned between source code/compiler and 
            ▼             ▼             ▼
        Dynamic ABI   Static ABI     Static ABI
 ```
-
-**One-sentence definition:**
-
-> `.abix` is a normalized binary fact and ABI IR describing "what the ABI actually is"; the same `.abix` can serve as both the Runtime's dynamic ABI database and be lowered by AMC into nearly zero-overhead compile-time ABI code, thus unifying "dynamic ABI" with "static performance".

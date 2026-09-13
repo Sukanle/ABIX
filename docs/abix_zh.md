@@ -2,7 +2,7 @@
 
 ## 定位
 
-`.abix` 是 ABIX 体系的核心产物——**与具体语言、编译器、C++ ABI 无关的规范化 ABI 元数据容器**。
+`.abix` 是 ABIX 体系的核心产物：与具体语言、编译器、C++ ABI 无关的规范化 ABI 元数据容器。
 
 ```
 .abic = Intent / Policy    （配置/意图）
@@ -15,8 +15,6 @@
 - **ABI IR** — 类比 LLVM IR，但描述的是 ABI 布局/兼容/映射而非控制流
 - **ABI Bytecode** — 可被 Runtime 直接 `mmap` 消费，也可被 AMC 降级为编译期代码
 
----
-
 ## 核心职责
 
 | 职责 | 说明 |
@@ -26,8 +24,6 @@
 | 记录兼容性 | LayoutHash / SignatureHash / Compatibility |
 | 支持 mmap | 二进制格式，零反序列化，直接访问 |
 | 支持投影 | 可被 AMC 投影为 C++ / Rust / Zig 等目标代码 |
-
----
 
 ## 格式：Binary
 
@@ -49,8 +45,6 @@
 
 `mmap` 后仍可能存在：page fault / cache miss / bounds check / hash lookup / pointer chasing。因此 `.abix` 针对访问模式优化布局。
 
----
-
 ## 整体结构
 
 ```
@@ -65,13 +59,15 @@
 ├── Function Table
 ├── Parameter Table
 ├── Symbol Table
+├── Compatibility Table
 ├── Map Table
 ├── Map Operation Table
 ├── Dependency Table
+├── Hash Cache（可选）
 └── Extensions
 ```
 
-**精简说明**（相比初始设计）：
+相比初始设计的变更：
 
 | 移除/变更 | 原因 |
 |-----------|------|
@@ -82,8 +78,6 @@
 | Symbol Table 中的 `target_hash` | 改为 `(target_kind, target_index)` typed index |
 | Parameter Table 中的 `position` | 由数组顺序推导 |
 | Field Table 中的 `size` | 默认从字段 TypeId 对应的 Layout 推导（仅数组/opaque 等特殊情况保留） |
-
----
 
 ## 各节详解
 
@@ -100,7 +94,7 @@ Offset  Size  Field
 0x10    u32   section_dir_offset ← Section Directory 偏移
 ```
 
-**Hash 算法明确记录在 Header 中**，而非隐含在实现里。这是 `.abix` 作为稳定 ABI artifact 的关键设计。
+Hash 算法明确记录在 Header 中，而非隐含在实现里，从而使 `.abix` 保持为稳定的 ABI artifact。
 
 新增 Section Directory 替代固定的 `*_offset` 字段，避免新增 section 时修改 Header 布局。
 
@@ -141,7 +135,6 @@ Offset  Size  Field             (per entry)
 0x0C    u32   count             ← 该 section 的记录数
 0x10    u32   entry_size        ← 固定记录大小；0 表示变长 section
 0x14    u32   flags             ← bit 0: required
-0x0C    u32   entry_size        ← 每条记录的字节数（0 = 变长）
 ```
 
 ### ABI Identity
@@ -402,11 +395,9 @@ Offset  Size  Field             (per record)
 
 保留区域，用于未来扩展。Section Directory 中 `section_id = 255` 指向此区域。
 
----
-
 ## Type / Layout / Function / Symbol 分离
 
-这是 `.abix` 设计的重要原则：
+这是 `.abix` 设计的原则：
 
 | 概念 | 回答的问题 | 举例 |
 |------|-----------|------|
@@ -420,8 +411,6 @@ Offset  Size  Field             (per record)
 **Function ≠ Symbol**：同一 Function 在不同编译器可有不同 mangled Symbol。
 
 这样避免把 C++/Rust/编译器具体实现混入 `.abix` 核心模型。
-
----
 
 ## Hash 体系
 
@@ -573,9 +562,7 @@ struct B { double b; int a; };   // TypeHash_B, LayoutHash_B
 // 但 sizeof(A) == sizeof(B) 且 alignof(A) == alignof(B)  （仅靠 size/align 不够！）
 ```
 
-**区分 TypeHash 和 LayoutHash 是 ABIX 兼容性系统的基础。**
-
----
+区分 TypeHash 和 LayoutHash 是 ABIX 兼容性系统的基础。
 
 ## 三种消费方式
 
@@ -656,9 +643,7 @@ struct MapPrivate<FooV1, FooV2> {
  zero/low overhead       dynamic compatibility
 ```
 
-**Static when possible, Dynamic when necessary.**
-
----
+Static when possible, dynamic when necessary.
 
 ## 与 .abic 的关系
 
@@ -686,8 +671,6 @@ struct MapPrivate<FooV1, FooV2> {
 | 运行时依赖 | 无 | 有（Runtime 模式） |
 | Source of Truth | 否 | **是** |
 
----
-
 ## 投影体系
 
 `.abix` 是 Source of Truth，所有目标代码都是它的投影：
@@ -702,9 +685,7 @@ foo.abix
   └── Debug projection    → foo.abix.txt    → 人类可读
 ```
 
-**`.abix.hpp` 不应该成为新的"ABI 源文件"**，而是 `.abix` 的编译期投影。
-
----
+`.abix.hpp` 不是新的"ABI 源文件"，而是 `.abix` 的编译期投影。
 
 ## 与传统方案的区别
 
@@ -716,9 +697,7 @@ foo.abix
 | IDL | 接口描述语言 | ABIX 从实际编译产物提取，非手写接口 |
 | Protobuf/FlatBuffers | 数据 schema | ABIX 描述内存布局 ABI，非序列化 schema |
 
-ABIX 是一个**位于源码/编译器与 ABI Runtime 之间的 ABI 中间层**。
-
----
+ABIX 是一个位于源码/编译器与 ABI Runtime 之间的 ABI 中间层。
 
 ## 核心理念
 
@@ -729,8 +708,6 @@ ABIX 是一个**位于源码/编译器与 ABI Runtime 之间的 ABI 中间层**�
 | **Dynamic** | Runtime 可动态加载，不要求双方 ABI 在编译时完全固定 |
 | **Static** | 已知 ABI 可被 AMC 降级为 constexpr / MapPrivate / inline |
 | **Self-hosting** | ABIX 自己也使用 ABIX：`abix.abix` → ABIX Runtime → 读取自己的 ABI |
-
----
 
 ## 完整文件关系
 
@@ -756,6 +733,3 @@ ABIX 是一个**位于源码/编译器与 ABI Runtime 之间的 ABI 中间层**�
        Dynamic ABI   Static ABI     Static ABI
 ```
 
-**一句话定义：**
-
-> `.abix` 是"ABI 实际是什么"的规范化二进制事实与 ABI IR；同一份 `.abix` 既可以成为 Runtime 的动态 ABI 数据库，也可以被 AMC 降级为几乎零开销的编译期 ABI 代码，从而把"动态 ABI"与"静态性能"统一起来。

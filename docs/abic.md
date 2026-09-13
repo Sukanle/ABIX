@@ -11,8 +11,6 @@
 
 `.abic` is closer to CMakeLists.txt / Cargo.toml / protobuf options / compiler configuration, rather than a final ABI database.
 
----
-
 ## Core Responsibilities
 
 | Responsibility | Description |
@@ -27,13 +25,9 @@
 | Declare generation targets | Target language, output format |
 | Declare runtime mode | Static / Dynamic / Hybrid |
 
----
-
 ## Format: TOML
 
-`.abic` is intended for **humans**, therefore it uses a highly readable format like TOML (or YAML).
-
----
+`.abic` is intended for **humans**, therefore it uses a readable format like TOML (or YAML).
 
 ## Complete Example
 
@@ -95,8 +89,6 @@ compact = true                 # Binary compact layout
 debug_info = false             # Embed debug strings (mutually exclusive with compact; debug_info takes priority)
 ```
 
----
-
 ## Configuration Section Details
 
 ### `[package]`
@@ -115,7 +107,7 @@ debug_info = false             # Embed debug strings (mutually exclusive with co
 | `include_dirs` | string[] | Header file search paths |
 | `exclude` | string[] | File patterns to exclude (glob) |
 
-**Design intent**: AMC only scans the files specified in `[source]`, not the entire project. This significantly speeds up compilation, especially in large projects, by avoiding unnecessary AST parsing.
+**Design intent**: AMC only scans the files specified in `[source]`, not the entire project, avoiding unnecessary AST parsing in large projects.
 
 If `[source]` is missing, AMC will scan all `.hpp` / `.h` / `.cpp` files in the same directory as .abic (backward compatible, but emits a warning).
 
@@ -193,7 +185,7 @@ Key-value pairs declaring type mappings:
 - `emit_map_ir = true, emit_static_map = true`: Generate both runtime IR and compile-time MapPrivate
 - `emit_map_ir = false, emit_static_map = true`: Only generate MapPrivate (no Map IR in .abix)
 
-`hash_algorithm` is **generation strategy** (input); the `hash_algorithm` in .abix Header is the **actually used algorithm** (output) — a reasonable configuration-to-artifact relationship.
+`hash_algorithm` is **generation strategy** (input); the `hash_algorithm` in .abix Header is the **actually used algorithm** (output) — a configuration-to-artifact relationship.
 
 ### `[runtime]`
 
@@ -211,8 +203,6 @@ Key-value pairs declaring type mappings:
 | `debug_info` | bool | Whether to embed debug strings |
 
 `debug_info` is mutually exclusive with `compact`: when `debug_info = true`, `compact` is ignored (debug information takes priority).
-
----
 
 ## Runtime Modes
 
@@ -249,8 +239,6 @@ Known ABIs take the static path, unknown ABIs take the dynamic path.
  zero/low overhead       dynamic compatibility
 ```
 
----
-
 ## Relationship with .abix
 
 ```
@@ -275,8 +263,6 @@ Known ABIs take the static path, unknown ABIs take the dynamic path.
 
 **The Source of Truth is always `.abix`**, not `.abic`. `.abic` is only used at build time and does not participate at runtime.
 
----
-
 ## Minimal Example
 
 Export types only, using default configuration:
@@ -294,8 +280,6 @@ types = ["Foo"]
 ```
 
 AMC will fill in defaults for all omitted fields.
-
----
 
 ## Design Principles
 

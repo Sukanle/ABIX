@@ -2,8 +2,6 @@
 
 本文档涵盖 ABIX 跨 DLL 函数调用库（`abix/`）。
 
----
-
 ## 架构概览
 
 ```mermaid
@@ -42,8 +40,6 @@ flowchart TB
 
     D --- D3["*_dll_ptr<br/>智能指针体系"]
 ```
-
----
 
 ## ABI 元数据运行时与 AMC
 
@@ -109,8 +105,6 @@ if (registry.register_module(amc_generated::amc_module) ==
 ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。这是 metadata
 自举，而非 C++ 编译器源码自举：AMC 的 C++ provider 仍依赖 Clang/LLVM 的语义分析。
 
----
-
 ## 1. `config.h` — 平台检测与核心枚举
 
 **命名空间：** `skl::abix`
@@ -126,8 +120,6 @@ ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。
 | `SKL_ABIX_NAMESPACE_BEGIN` | — | 打开 `namespace skl { namespace abix {` |
 | `SKL_ABIX_NAMESPACE_END` | — | 关闭 `} }` |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | 控制块的魔数 |
-
----
 
 ## 2. `type.h` — 核心类型
 
@@ -184,8 +176,6 @@ inline const table *make_table(const entry (&arr)[N]) noexcept;
 
 从编译期条目数组创建静态 `table`。由 `SKL_ABIX_DEFINE_TABLE` 内部使用。
 
----
-
 ## 3. `register.h` — 注册宏
 
 **命名空间：** `skl::abix`
@@ -213,8 +203,6 @@ inline const table *make_table(const entry (&arr)[N]) noexcept;
 |----------|-------------|
 | `abi_alloc(n)` | 分配 `n` 字节（Windows 上使用 `HeapAlloc`，否则使用 `malloc`） |
 | `abi_free(p)` | 释放由 `abi_alloc` 分配的内存 |
-
----
 
 ## 4. `obj_dll.h` — DLL 模块包装器
 
@@ -343,8 +331,6 @@ dll_object lib3(RCUTimeoutConfig{5000, 300});             // 5 秒或 300 帧
 
 **`abix::tick()` 始终可用。** 启用饥饿防护后，在主循环中调用 `tick()` 可保持时间基线最新，同时为帧数超时截止提供帧计数器。
 
----
-
 ### `rcu_domain`（`rcu_domain.h`）
 
 **命名空间：** `skl::abix`
@@ -401,8 +387,6 @@ domain.synchronize();
 | `ABIX_LOG_INFO(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO` |
 | `ABIX_LOG_WARNING(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
 | `ABIX_LOG_ERROR(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR` |
-
----
 
 ## 5. `fn_dll.h` — 类型化函数句柄
 
@@ -465,8 +449,6 @@ if (!add.valid()) {
 }
 ```
 
----
-
 ## 6. `fn_sig.h` — 编译期签名哈希
 
 **命名空间：** `skl::abix`
@@ -509,8 +491,6 @@ constexpr sig_t mul_sig = fn_sig_v<double(double, double)>;
 constexpr sig_t int_sig = type_sig<int>();
 ```
 
----
-
 ## 7. `type_sig.h` — 类型签名哈希
 
 **命名空间：** `skl::abix`
@@ -536,8 +516,6 @@ constexpr sig_t int_sig = type_sig<int>();
 ```
 
 为用户类型 `T` 注册自定义类型标签，实现稳定的跨编译器类型哈希。
-
----
 
 ## 8. `search.h` — 表查找函数
 
@@ -653,8 +631,6 @@ struct hash_index {
 | `HASH_THRESHOLD` | `64` | 少于 64 条目的表使用线性扫描；≥ 64 条目的表使用 HashIndex |
 | `HASH_SLOT_EMPTY` | `~index_t{0}` | 空哈希槽位的哨兵值 |
 
----
-
 ## 9. `function.h` — 跨边界闭包
 
 **命名空间：** `skl::abix`
@@ -695,8 +671,6 @@ function_dll<void(int)> cb = [captured](int x) {
 auto reg = dll_func<void(function_dll<void(int)>)>(lib, "register_callback");
 reg(std::move(cb));
 ```
-
----
 
 ## 10. 智能指针（`dll_ptr/`）
 
@@ -794,8 +768,6 @@ struct fn_deleter {
 | `lock()` | `shared_dll_ptr<T>` | 提升为 `shared_dll_ptr`（若仍存活） |
 | `use_count()` | `uint32_t` | 底层资源的当前强引用计数 |
 
----
-
 ## 11. `refl.h` — 动态反射集成
 
 **命名空间：** `skl::abix::refl`（反射辅助工具），`skl::abix`（便捷类型）
@@ -861,8 +833,6 @@ inline void register_dll_table(const table *t, const char *dll_name);
 | `fn_entry_tag<Sig, NameHash>` | 将签名哈希和名称哈希配对的标签类型 |
 | `has_unique_sigs<TypeList>` | 编译期检查：列表中所有 `fn_entry_tag` 条目的签名是否唯一 |
 | `find_by_sig<TypeList, TargetSig>` | 编译期搜索：查找具有匹配 `sig` 的 `fn_entry_tag` 的索引 |
-
----
 
 ## 12. 完整使用示例
 

@@ -6,7 +6,7 @@ ABIX runtime type metadata needs to make a trade-off between **diagnostic capabi
 
 In early implementations, `TypeDescriptor` carried a `name` pointer (72 bytes), string constants fell into `.rdata`, and each type's metadata was ~120 bytes. This was convenient for development debugging, but for production releases, this overhead becomes a noticeable space cost when accumulated across hundreds of types.
 
-The DWARF/PDB approach is: debug information is a separate section; `strip` can remove it without affecting `.text` and `.data`. ABIX borrows this model but goes further with deeper layout optimization — **not just separating sections, but also adjusting the descriptor layout itself based on the mode**.
+The DWARF/PDB approach is: debug information is a separate section; `strip` can remove it without affecting `.text` and `.data`. ABIX borrows this model and additionally adjusts the descriptor layout itself based on the mode.
 
 ## Core Concept
 
@@ -33,8 +33,6 @@ Key properties:
 - **RelWithDebInfo and Release binaries are bit-identical**, differing only in whether the `.abix` file is archived
 - **Same binary**: debug before strip, release after strip
 - **Compile once, two forms**, enabling differential testing
-
----
 
 ## Debug Mode: Embedded Readable
 
@@ -82,8 +80,6 @@ This section:
 - Unit tests, where readable type information aids assertion failures
 - Scenarios where binary size is not a concern
 
----
-
 ## Release Mode: Full Hash
 
 ### TypeDescriptor Layout (56 bytes)
@@ -130,8 +126,6 @@ The `type_id` is identical across both build modes because it is the **hash of c
 
 Since the layout varies by build mode, `TypeDescriptor` cannot be a type passed across DLL/so boundaries. It is an in-process structure only. If future use cases require cross-boundary descriptor passing, a fixed layout will be needed.
 
----
-
 ## RelWithDebInfo: Stripped File
 
 ### Core Idea
@@ -169,8 +163,6 @@ Crash stack → extract type_id (Hash128)
 Key point: `type_id` is the hash of canonical type identity; it is identical under debug and release. So debug and release binaries can cross-validate each other; `.abix` files and binaries can be bi-directionally verified. A hash mismatch indicates version mismatch — **a detectable error at load time**, not one that only manifests at runtime.
 
 This is safer than DWARF. DWARF's `DW_AT_name` is a string with no built-in validation; ABIX's hash provides strong verification.
-
----
 
 ## Section Separation Mechanism
 
@@ -220,11 +212,9 @@ inline constexpr const char *amc_type_names[] = {
 };
 ```
 
----
-
 ## ABIX Symbol Server
 
-This design unlocks a natural capability: the **ABIX symbol server**.
+The design enables an ABIX symbol server:
 
 ```
 Production crash → extract list of type_id hashes
@@ -233,7 +223,7 @@ Production crash → extract list of type_id hashes
                  → restore type names / field names / layout
 ```
 
-This follows the same pattern as Microsoft's symbol server and Mozilla's Tecken. ABIX has a natural advantage: **hashes are content-addressed**, so the same `.abix` artifact can be shared across multiple projects without being stored per-build-version.
+This follows the same pattern as Microsoft's symbol server and Mozilla's Tecken. Hashes are content-addressed, so the same `.abix` artifact can be shared across multiple projects without being stored per-build-version.
 
 ### .abix.meta Metadata File
 
@@ -248,8 +238,6 @@ type_count = 61
 ```
 
 This allows the symbol server to retrieve by build ID, without relying on filename conventions.
-
----
 
 ## Quantitative Savings
 
@@ -278,8 +266,6 @@ Release: 56 B (TypeDescriptor without name) + no string constants           ≈ 
 ```
 
 The 22% Release savings come from removing the `name` pointer from `TypeDescriptor` itself (along with reduced padding), while the savings from string constants (~20-50 B/type) are an additional benefit.
-
----
 
 ## Operation Guide
 
@@ -329,9 +315,7 @@ strip --strip-section=.abix.names bin/test_all
 readelf -S bin/test_all | grep -c .abix.names  # Output 0
 ```
 
----
-
-## Boundaries That Must Be Maintained
+## Design Boundaries
 
 ### Boundary 1: `.abix` File Must Exactly Match the Binary Version
 
@@ -348,17 +332,3 @@ If cross-DLL/so descriptor passing is needed, a fixed layout must be used — at
 ### Boundary 4: `.abix` Archival Strategy Must Be Explicit
 
 It is recommended that AMC generates, in addition to `.abix`, an `.abix.meta` metadata file recording build ID, timestamp, compiler version, and hash algorithm version. This allows the symbol server to retrieve by build ID, without relying on filename conventions.
-
----
-
-## Summary
-
-This design downgrades "metadata bloat" from a **structural cost** to a **configurable debugging overhead**. The default path is optimized for production, with diagnostic capabilities added on demand.
-
-```
-Debug:       72 B descriptor + .abix.names section  → full readability
-Release:     56 B descriptor + no name strings       → minimal size
-RelWithDeb:  56 B descriptor + companion .abix file  → post-hoc diagnostics
-                                                     ↑
-                                      Same binary, only .abix file differs
-```

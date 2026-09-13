@@ -2,8 +2,6 @@
 
 This document covers the ABIX cross-DLL function calling library (`abix/`).
 
----
-
 ## Architecture Overview
 
 ```mermaid
@@ -42,8 +40,6 @@ flowchart TB
 
     D --- D3["*_dll_ptr<br/>Smart Pointer System"]
 ```
-
----
 
 ## ABI Metadata Runtime and AMC
 
@@ -115,8 +111,6 @@ ABIX Runtime and AMC core metadata are covered by reproducible self-description
 tests. This is metadata self-hosting, not C++ compiler-source self-hosting:
 AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 
----
-
 ## 1. `config.h` — Platform Detection & Core Enums
 
 **Namespace:** `skl::abix`
@@ -132,8 +126,6 @@ AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 | `SKL_ABIX_NAMESPACE_BEGIN` | — | Opens `namespace skl { namespace abix {` |
 | `SKL_ABIX_NAMESPACE_END` | — | Closes `} }` |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | Magic number for control blocks |
-
----
 
 ## 2. `type.h` — Core Types
 
@@ -190,8 +182,6 @@ inline const table *make_table(const entry (&arr)[N]) noexcept;
 
 Creates a static `table` from a compile-time entry array. Used internally by `SKL_ABIX_DEFINE_TABLE`.
 
----
-
 ## 3. `register.h` — Registration Macros
 
 **Namespace:** `skl::abix`
@@ -219,8 +209,6 @@ Creates a static `table` from a compile-time entry array. Used internally by `SK
 |----------|-------------|
 | `abi_alloc(n)` | Allocate `n` bytes (uses `HeapAlloc` on Windows, `malloc` otherwise) |
 | `abi_free(p)` | Free memory allocated by `abi_alloc` |
-
----
 
 ## 4. `obj_dll.h` — DLL Module Wrapper
 
@@ -403,8 +391,6 @@ When no RCU unload is in progress, the timeout check only fires inside `wait_for
 | `ABIX_LOG_WARNING(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
 | `ABIX_LOG_ERROR(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR` |
 
----
-
 ## 5. `fn_dll.h` — Typed Function Handles
 
 **Namespace:** `skl::abix`
@@ -466,8 +452,6 @@ if (!add.valid()) {
 }
 ```
 
----
-
 ## 6. `fn_sig.h` — Compile-time Signature Hashing
 
 **Namespace:** `skl::abix`
@@ -510,8 +494,6 @@ constexpr sig_t mul_sig = fn_sig_v<double(double, double)>;
 constexpr sig_t int_sig = type_sig<int>();
 ```
 
----
-
 ## 7. `type_sig.h` — Type Signature Hashing
 
 **Namespace:** `skl::abix`
@@ -537,8 +519,6 @@ Specialized for ABIX smart pointer types and `function_dll`:
 ```
 
 Register a custom type tag for user type `T`, enabling stable cross-compiler type hashing.
-
----
 
 ## 8. `search.h` — Table Search Functions
 
@@ -654,8 +634,6 @@ Runtime hash index for large tables. Built once at DLL load time.
 | `HASH_THRESHOLD` | `64` | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
 | `HASH_SLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots |
 
----
-
 ## 9. `function.h` — Cross-Boundary Closure
 
 **Namespace:** `skl::abix`
@@ -696,8 +674,6 @@ function_dll<void(int)> cb = [captured](int x) {
 auto reg = dll_func<void(function_dll<void(int)>)>(lib, "register_callback");
 reg(std::move(cb));
 ```
-
----
 
 ## 10. Smart Pointers (`dll_ptr/`)
 
@@ -795,8 +771,6 @@ Non-owning observer for `shared_dll_ptr<T>`. Does not prevent resource destructi
 | `lock()` | `shared_dll_ptr<T>` | Promote to a `shared_dll_ptr` (if alive) |
 | `use_count()` | `uint32_t` | Current strong count of the underlying resource |
 
----
-
 ## 11. `refl.h` — Dynamic mics Integration
 
 **Namespace:** `skl::abix::refl` (mics helpers), `skl::abix` (convenience types)
@@ -862,8 +836,6 @@ Registers all entries from an ABIX export table into the dynamic mics registry.
 | `fn_entry_tag<Sig, NameHash>` | Tag type pairing a signature hash and name hash |
 | `has_unique_sigs<TypeList>` | Compile-time check: all `fn_entry_tag` entries in the list have unique signatures |
 | `find_by_sig<TypeList, TargetSig>` | Compile-time search: find the index of a `fn_entry_tag` with matching `sig` |
-
----
 
 ## 12. Complete Usage Example
 
