@@ -52,11 +52,11 @@ Authoritative project-level documents live at the repository root:
 |----------|----------|
 | [design-notes.md](design-notes.md) | design principles and project history |
 | [bootstrap.md](bootstrap.md) | bootstrap model and milestones |
-| [plan.md](plan.md) | AI-native ABI toolchain plan |
 
 ## Chinese editions
 
 Most documents have a `_zh` edition (for example
 [abix_zh.md](abix_zh.md), [amc_zh.md](amc_zh.md),
+[MCP_zh.md](MCP_zh.md),
 [getting-started_zh.md](getting-started_zh.md),
 [roadmap_zh.md](roadmap_zh.md)).

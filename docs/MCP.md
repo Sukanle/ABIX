@@ -1,9 +1,9 @@
-# ABIX MCP：ABI Metadata 作为 AI Agent 的 ABI 信息入口
+# ABIX MCP: ABI Metadata as the AI Agent's ABI Information Gateway
 
-## 定位
+## Positioning
 
-独立的 ABIX Metadata Region + 外部 `.abix` 为 AMC 提供了面向机器/AI Agent 的
-ABI 信息入口。
+Standalone ABIX Metadata Region + external `.abix` files provide AMC with a
+machine/AI-agent-facing ABI information gateway.
 
 ```
               AI Agent
@@ -26,86 +26,115 @@ ABI 信息入口。
          └─────────────────┘
 ```
 
-## `amc-mcp` 原型
+## `amc-mcp` Prototype
 
-`amc-mcp` 在 stdio 上实现 MCP JSON-RPC（newline-delimited），支持
-`initialize` / `ping` / `tools/list` / `tools/call`；notification 不产生响应，未知 method
-返回 `-32601`，解析失败返回 `-32700`。当前暴露的工具：
+`amc-mcp` implements MCP JSON-RPC over stdio (newline-delimited), supporting
+`initialize` / `ping` / `tools/list` / `tools/call`; notifications produce no
+response, unknown methods return `-32601`, and parse failures return `-32700`.
+The exposed tools are:
 
-| 工具 | 参数 | 说明 |
-|------|------|------|
+| Tool | Parameters | Description |
+|------|------------|-------------|
 | `abix.get_module` | `module?` | package/target/ABIHash/counts |
-| `abix.list_types` | `module?` | 全部类型的 TypeID / LayoutHash / size / align |
-| `abix.get_type` | `name`\|`id`, `layout?`, `module?` | 单个类型；`layout` 附字段偏移 |
-| `abix.list_functions` | `module?` | 全部函数：签名、返回类型、参数个数 |
-| `abix.get_function` | `name`, `module?` | 函数签名、返回类型、参数 |
-| `abix.get_layout` | `name`\|`id`, `module?` | 单个类型的内存布局（size/align/字段偏移） |
-| `abix.resolve_type` | `name`\|`id`, `module?` | 按名/部分 TypeID 解析出匹配类型 |
-| `abix.compare_abi` | `other`, `module?` | 严格 ABI 对比（缺类型/布局变化均算 drift） |
-| `abix.compare_types` | `name`, `other`, `module?` | 跨 artifact 比较单个类型 |
-| `abix.find_compatible` | `name`, `other`, `module?` | 跨 artifact 判断单个类型是否兼容 |
+| `abix.list_types` | `module?` | all types with TypeID / LayoutHash / size / align |
+| `abix.get_type` | `name`\|`id`, `layout?`, `module?` | single type; `layout` includes field offsets |
+| `abix.list_functions` | `module?` | all functions: signature, return type, parameter count |
+| `abix.get_function` | `name`, `module?` | function signature, return type, parameters |
+| `abix.get_layout` | `name`\|`id`, `module?` | single type memory layout (size/align/field offsets) |
+| `abix.resolve_type` | `name`\|`id`, `module?` | resolve matching types by name or partial TypeID |
+| `abix.compare_abi` | `other`, `module?` | strict ABI comparison (missing types/layout changes count as drift) |
+| `abix.compare_types` | `name`, `other`, `module?` | cross-artifact single type comparison |
+| `abix.find_compatible` | `name`, `other?`, `module?` | cross-artifact compatibility check; omitting `other` searches the knowledge base |
+| `abix.list_modules` | — | list all indexed modules in the knowledge base |
+| `abix.search_type` | `name`\|`id` | cross-module type search, grouped by name with ABI consistency flags |
 
-工具复用 AMC 的 query 与 verify 实现，返回
-`structuredContent`（结构化 JSON）与 `content[].text`（同一 JSON 的文本形式），
-CLI、MCP 与其他消费者因此共享同一实现。运行方式：
+All tools reuse AMC's query and verify implementations, returning
+`structuredContent` (structured JSON) and `content[].text` (text form of the
+same JSON), so the CLI, MCP, and other consumers share one implementation.
+Usage:
 
 ```sh
-amc-mcp path/to/module.abix        # 以某个 module 作为默认数据源
-amc-mcp --list-tools               # 打印工具目录
+amc-mcp path/to/module.abix        # use a module as default data source
+amc-mcp --list-tools               # print the tool catalogue
 ```
 
-## 对 `amc dump` 的简化
+### Multi-module ABI Knowledge Base
 
-传统方式：`amc dump` 需要做 ELF 解析。
+`amc-mcp` can index multiple artifacts (`.abix` or binaries with embedded
+Metadata Regions) at once, loading them all at startup so that cross-module
+queries are a single index walk instead of repeated file parsing:
+
+```sh
+amc-mcp libfoo.abix libbar.abix plugin.so    # positional args are all indexed
+amc-mcp --index libfoo.abix --index plugin.so # equivalent form
+```
+
+After indexing:
+
+* `abix.list_modules` enumerates each module's path / package / ABIHash / counts;
+* `abix.search_type "Foo"` looks up matching types in every module, groups hits
+  by type name, and flags each group as `consistent` — whether all occurrences
+  share one TypeID and LayoutHash. This directly answers "find all types that
+  implement the same ABI";
+* `abix.find_compatible "Foo"` (without `other`) uses the default module as
+  source and checks compatibility against every other indexed module.
+
+Single-module usage is unchanged: giving one path makes that module the default
+data source.
+
+## Simplifying `amc dump`
+
+Traditional path: `amc dump` required ELF parsing.
 
 ```
 .so / executable
     ↓
-ELF/Mach-O/PE 解析
+ELF/Mach-O/PE parsing
     ↓
-扫描各种 section
+scan various sections
     ↓
-定位 Descriptor
+locate Descriptor
     ↓
-处理 relocation / pointer
+handle relocation / pointer
     ↓
-解析字符串
+parse strings
 ```
 
-独立 Metadata 后，`amc dump` 只需要解析 Metadata 自身。
+With standalone Metadata, `amc dump` only needs to parse the Metadata itself.
 
 ```
 binary
    ↓
-ABIX Metadata Header（magic 定位）
+ABIX Metadata Header (magic-based location)
    ↓
-offset + size（自描述）
+offset + size (self-describing)
    ↓
-直接 mmap
+direct mmap
    ↓
 amc dump
 ```
 
-采用 Header + TypeRecords + FieldRecords + FunctionRecords + **offset-based、pointer-free** 后，
-`amc dump` 主要是一个 Metadata parser，而不是 ELF parser。
+After adopting Header + TypeRecords + FieldRecords + FunctionRecords with an
+**offset-based, pointer-free** layout, `amc dump` is primarily a Metadata
+parser, not an ELF parser.
 
-### 支持的操作
+### Supported Operations
 
 ```bash
-amc dump libfoo.so           # 从二进制扫描 Metadata Region
-amc dump foo.abix            # 从独立 .abix 文件读取
-amc dump foo.abix --type Foo           # 查询特定类型
-amc dump foo.abix --function bar       # 查询特定函数
-amc dump foo.abix --layout Foo         # 查询布局信息
-amc query foo.abix "Foo::bar"          # 按名字查询
+amc dump libfoo.so           # scan Metadata Region from binary
+amc dump foo.abix            # read from standalone .abix file
+amc dump foo.abix --type Foo           # query a specific type
+amc dump foo.abix --function bar       # query a specific function
+amc dump foo.abix --layout Foo         # query layout information
+amc query foo.abix "Foo::bar"          # query by name
 ```
 
-## MCP 集成
+## MCP Integration
 
-该设计面向 MCP：Agent 无需为每次查询让 LLM 阅读数十 MB 的 ELF、头文件或
-反编译结果。
+The design targets MCP: agents no longer need LLMs to read tens of MB of ELF,
+headers, or decompiled output for each query.
 
-### 架构
+### Architecture
 
 ```
                  AI Agent
@@ -127,22 +156,22 @@ amc query foo.abix "Foo::bar"          # 按名字查询
     TypeID       Signature    LayoutHash
 ```
 
-### 查询接口
+### Query Interface
 
 ```
-get_type("Foo")                 → 结构化类型信息
-get_function("Foo::bar")        → 函数签名 + ABI 信息
-get_layout(type_id)             → 布局详情
-find_compatible_type(type_id)   → 兼容类型列表
-find_function("create")         → 按名字查找函数
-get_module_info()               → 模块元信息
+get_type("Foo")                 → structured type information
+get_function("Foo::bar")        → function signature + ABI information
+get_layout(type_id)             → layout details
+find_compatible_type(type_id)   → compatible type list
+find_function("create")         → find functions by name
+get_module_info()               → module metadata
 ```
 
-返回值为结构化数据（JSON / protobuf），而非大量文本。
+Return values are structured data (JSON / protobuf), not large text blobs.
 
-## Token 成本
+## Token Cost
 
-传统方式：让 Agent 阅读 C++ 源码推断 ABI。
+Traditional approach: have the agent read C++ source to infer ABI.
 
 ```cpp
 class Foo {
@@ -156,10 +185,10 @@ private:
 };
 ```
 
-Agent 需要从源码中推断：ABI、layout、visibility、calling convention、
-parameter type、inheritance、template 实例、实际导出情况。
+The agent must infer from source: ABI, layout, visibility, calling convention,
+parameter types, inheritance, template instantiation, actual export status.
 
-ABIX 直接给出已经解析好的结果：
+ABIX directly provides already-parsed results:
 
 ```json
 {
@@ -183,27 +212,27 @@ ABIX 直接给出已经解析好的结果：
 }
 ```
 
-返回的是经过 AMC 语义归一化后的 ABI 事实，而不是让 AI 自行分析 C++ AST
-得到的推断。
+What is returned is ABI fact after AMC semantic normalization, not an inference
+the AI derives by analyzing the C++ AST.
 
-## ABIX 作为 Agent 的 "ABI API"
+## ABIX as the Agent's "ABI API"
 
-MCP 暴露的是更高层的 ABI 查询 API，而非直接暴露 `read_abix_file()`：
+MCP exposes a higher-level ABI query API, not raw `read_abix_file()`:
 
 ```
-abix.get_module()          → 模块基本信息
-abix.list_types()          → 类型列表
-abix.get_type()            → 单个类型详情
-abix.get_layout()          → 布局信息
-abix.list_functions()      → 函数列表
-abix.get_function()        → 单个函数详情
-abix.compare_types()       → 类型比较
-abix.compare_abi()         → ABI 兼容性分析
-abix.find_compatible()     → 查找兼容类型
-abix.resolve_type()        → 按名字/ID 解析类型
+abix.get_module()          → module basic information
+abix.list_types()          → type list
+abix.get_type()            → single type details
+abix.get_layout()          → layout information
+abix.list_functions()      → function list
+abix.get_function()        → single function details
+abix.compare_types()       → type comparison
+abix.compare_abi()         → ABI compatibility analysis
+abix.find_compatible()     → find compatible types
+abix.resolve_type()        → resolve type by name/ID
 ```
 
-### 示例：跨 artifact 类型兼容性查询
+### Example: Cross-artifact Type Compatibility Query
 
 ```
 libA.Foo
@@ -216,30 +245,31 @@ TypeID + LayoutHash
    ↓
 ABIX compatibility analysis
    ↓
-结果：
+Result:
 
-Semantic type:     compatible
-Layout:            compatible
+Semantic type:      compatible
+Layout:             compatible
 Calling convention: compatible
-Fields:            compatible
-Functions:         compatible
-ABI patch:         possible
+Fields:             compatible
+Functions:          compatible
+ABI patch:          possible
 ```
 
-该查询由 ABIX 在 Metadata 层面完成，无需读取源码。
+This query is performed at the Metadata layer by ABIX, with no source reading
+required.
 
-## 外部 `.abix`
+## External `.abix`
 
-### 生产环境 vs 分析环境的分离
+### Separating Production and Analysis Environments
 
-Release：
+Release:
 ```
 program
 ├── code
 └── compact ABIX Runtime Metadata
 ```
 
-Debug / AI / 分析环境：
+Debug / AI / Analysis environment:
 ```
 program
        │
@@ -252,12 +282,12 @@ program
         MCP / AMC / Debugger
 ```
 
-Release binary 仅包含最小 Runtime Metadata；分析环境通过 BuildID 关联
-`.abix`，从而获得完整 ABI 信息。
+The release binary contains only minimal Runtime Metadata; the analysis
+environment associates `.abix` via BuildID to obtain full ABI information.
 
-## `.abix` 作为 ABI Knowledge Base
+## `.abix` as an ABI Knowledge Base
 
-多个 `.abix` 文件可以组成一个可索引的 ABI Knowledge Base：
+Multiple `.abix` files can form an indexable ABI Knowledge Base:
 
 ```
 ABIX Repository
@@ -268,7 +298,7 @@ ABIX Repository
 └── pluginB.abix
 ```
 
-MCP 在上面建立索引：
+MCP builds an index on top of it:
 
 ```
 TypeID      → Type
@@ -277,29 +307,30 @@ LayoutHash  → Layout
 BuildID     → Module
 ```
 
-### 推理查询示例
+### Example Reasoning Queries
 
-- "找出所有实现相同 ABI 的类型"
-- "找出 Foo 的兼容版本"
-- "这个插件是否兼容当前 Host？"
-- "这个 ABI crash 对应哪个类型？"
-- "哪个版本改变了 Foo 的 layout？"
-- "能不能自动生成 ABIX binding？"
+- "Find all types that implement the same ABI"
+- "Find compatible versions of Foo"
+- "Is this plugin compatible with the current host?"
+- "Which type does this ABI crash correspond to?"
+- "Which version changed Foo's layout?"
+- "Can we auto-generate ABIX bindings?"
 
-该结构对应 Metadata 到 ABI 知识图谱再到 Agent 推理的路径：
+This structure maps from Metadata to an ABI Knowledge Graph to Agent reasoning:
 
-> ABIX Metadata → ABI Knowledge Graph → AI Agent ABI reasoning
+> ABIX Metadata → ABI Knowledge Graph → AI Agent ABI Reasoning
 
-## 三层统一入口
+## Three-layer Unified Entry Point
 
-"简洁 Runtime Metadata + 独立 Metadata Region + 外部 `.abix`" 同时对应 ABIX
-的三个入口：
+"Compact Runtime Metadata + standalone Metadata Region + external `.abix`"
+simultaneously correspond to ABIX's three entry points:
 
-| 入口 | 消费方式 | 用途 |
-|------|---------|------|
-| **Runtime** | 高速 ABI lookup | 动态绑定、契约校验 |
-| **AMC** | 快速 dump / query / verify / generate | 开发调试、兼容性分析 |
-| **AI Agent / MCP** | 结构化 ABI 查询 / 比较 / 推理 / 自动生成 | 智能代码生成、ABI 推理 |
+| Entry Point | Consumption Method | Purpose |
+|-------------|-------------------|---------|
+| **Runtime** | high-speed ABI lookup | dynamic binding, contract verification |
+| **AMC** | fast dump / query / verify / generate | development debugging, compatibility analysis |
+| **AI Agent / MCP** | structured ABI query / comparison / reasoning / auto-generation | intelligent code generation, ABI reasoning |
 
-ABIX Metadata 因此也是 ABIX 生态中的机器可读 ABI Interface，而不仅是 Runtime
-为动态绑定附带的描述数据。
+ABIX Metadata is therefore also the machine-readable ABI interface in the ABIX
+ecosystem, not merely descriptive data attached to the Runtime for dynamic
+binding.
