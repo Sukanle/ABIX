@@ -137,10 +137,11 @@ private:
             }
             context = context->getParent();
         }
-        for (auto it = names.rbegin(); it != names.rend(); ++it) {
-            if (ids.count(*it) != 0) continue;
+        // for (auto it = names.rbegin(); it != names.rend(); ++it) {
+        for (auto &e : names) {
+            if (ids.count(e)) continue;
             amc::Type t;
-            t.name = *it;
+            t.name = e;
             t.kind = amc::TypeKind::namespace_type;
             t.id = amc::hash_text(t.name, 0x54595045);
             t.size = t.align = 1;
@@ -573,7 +574,7 @@ static int backend(const char *input, const char *output) {
                 hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi));
         }
         if (m.types.empty()) {
-            o.print("    {{}, {}, {}, {}, {{{}, {}}}}},\n", 0U, 0U, 0U, 0U, "0ULL", "0ULL");
+            o.print("    {{{}, {}, {}, {}, {{{}, {}}}}},\n", 0U, 0U, 0U, 0U, "0ULL", "0ULL");
         }
         o.print("}};\n");
     }
@@ -998,27 +999,26 @@ static int ipc() {
     std::string line, capability, input, output;
     bool initialized = false;
     while (std::getline(std::cin, line)) {
-        if (line.find("\"type\":\"INIT\"") != std::string::npos) {
-            initialized = line.find("\"protocol\":1") != std::string::npos;
-            fmt::print("{{\"type\":\"READY\",\"protocol\":1}}\n");
+        if (line.find(R"("type":"INIT")") != std::string::npos) {
+            initialized = line.find(R"("protocol":1)") != std::string::npos;
+            fmt::println(R"({{"type":"READY","protocol":1}})");
             std::fflush(stdout);
-        } else if (line.find("\"type\":\"QUERY_CAPABILITIES\"") != std::string::npos) {
+        } else if (line.find(R"("type":"QUERY_CAPABILITIES")") != std::string::npos) {
             if (!initialized) return 2;
-            fmt::print(
-                "{{\"type\":\"CAPABILITIES\",\"language\":\"cpp\",\"capabilities\":[\"frontend\",\"backend\"]}}\n");
+            fmt::println(R"({{"type":"CAPABILITIES","language":"cpp","capabilities":["frontend","backend"]}})");
             std::fflush(stdout);
-        } else if (line.find("\"type\":\"ANALYZE\"") != std::string::npos) {
+        } else if (line.find(R"("type":"ANALYZE")") != std::string::npos) {
             capability = json_value(line, "capability");
             input = json_value(line, "input");
             output = json_value(line, "output");
             int result = capability == "frontend" ? run_frontend(input.c_str(), output.c_str())
                        : capability == "backend"  ? backend(input.c_str(), output.c_str())
                                                   : 2;
-            if (result == 0) fmt::print("{{\"type\":\"ABI_MODULE\",\"path\":\"{}\"}}\n", output);
-            fmt::print("{{\"type\":\"ANALYZE_RESULT\",\"status\":{}}}\n", result);
+            if (result == 0) fmt::println(R"({{"type":"ABI_MODULE","path":"{}"}})", output);
+            fmt::println(R"({{"type":"ANALYZE_RESULT","status":{}}})", result);
             std::fflush(stdout);
             if (result != 0) return result;
-        } else if (line.find("\"type\":\"DONE\"") != std::string::npos)
+        } else if (line.find(R"("type":"DONE")") != std::string::npos)
             return 0;
     }
     return 2;

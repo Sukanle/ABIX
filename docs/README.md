@@ -45,6 +45,7 @@ Authoritative project-level documents live at the repository root:
 |----------|----------|
 | [amc.md](amc.md) | the AMC toolchain and CLI |
 | [MCP.md](MCP.md) | MCP server and the ABIX tool catalogue |
+| [elf-inspection.md](elf-inspection.md) | inspecting ABIX metadata sections in ELF binaries |
 
 ## Project
 
