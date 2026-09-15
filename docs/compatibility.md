@@ -14,8 +14,9 @@ ABIX separates identities that are often conflated. Keeping them distinct makes
 
 Lookup chain:
 
-```text
-Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash
+```mermaid
+graph LR
+    A[Binary] --> B[BuildID] --> C[".abix"] --> D[MetadataID] --> E[TypeID] --> F[LayoutHash]
 ```
 
 * `TypeID` is name-independent: two modules may spell the same type differently
@@ -47,10 +48,11 @@ explicit decision.
 When a `RuntimeRegistry` registers modules, the same TypeID must resolve to the
 same LayoutHash:
 
-```text
-TypeID in ModuleA and ModuleB
-        ├── same layout  → compatible, deduplicated
-        └── different    → layout_conflict (ABI conflict)
+```mermaid
+graph TD
+    A["TypeID in ModuleA and ModuleB"] --> B{same layout?}
+    B -->|yes| C["compatible, deduplicated"]
+    B -->|no| D["layout_conflict (ABI conflict)"]
 ```
 
 Compatible duplicates are shared; conflicting layouts are rejected. This is the

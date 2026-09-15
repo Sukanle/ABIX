@@ -5,8 +5,9 @@ does not interpret compatible calls.
 
 ## Responsibilities
 
-```text
-discover → verify → identify → bind → adapt → native call
+```mermaid
+graph LR
+    A[discover] --> B[verify] --> C[identify] --> D[bind] --> E[adapt] --> F["native call"]
 ```
 
 The runtime may participate in all of these, but after binding, a compatible
@@ -18,21 +19,19 @@ call goes through the native ABI with no per-call ABI machinery.
 at load time:
 
 * canonical `TypeDesc` / `TypeLayout` records are the one ABI truth;
-* a shared `TypeID` must carry the same `LayoutHash` (compatible duplicates are
-  deduplicated; conflicts are rejected);
-* lookups are by `TypeID` (`find_by_id`, `type_of<T>()`); name lookup is
+* a shared `TypeID` must carry the same `LayoutHash` within one module version
+  (compatible duplicates are deduplicated; conflicts are rejected), while a
+  newer version may carry a different layout as a separate entry;
+* lookups are by `TypeID` (`find_by_id` for the newest version,
+  `find_type(id, version)` for a pinned one, `type_of<T>()`); name lookup is
   intentionally diagnostic-only and returns `nullptr` in the compact build.
 
 ## Three metadata modes
 
-```text
-.abix (full artifact, names included)
-   │ projection
-   ▼
-Metadata Region (embedded, pointer-free, mmap-able)
-   │ materialization
-   ▼
-Runtime Descriptor (pointer-rich, hot path)
+```mermaid
+graph TD
+    A[".abix (full artifact, names included)"] -->|projection| B["Metadata Region (embedded, pointer-free, mmap-able)"]
+    B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
 ```
 
 * The toolchain emits the Region into the `.abix.metadata` section of a

@@ -8,28 +8,14 @@ source of ABI truth across the toolchain and the runtime.
 
 ## Layers
 
-```text
-┌──────────────────────────────────────────────────────┐
-│                  Language Ecosystem                   │
-│       C      C++      Rust      Zig      ...          │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                         AMC                           │
-│                 ABI Toolchain / Driver                │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                       ABIX IR                         │
-│              ABI Semantic Representation              │
-└───────────────┬───────────────────────┬──────────────┘
-                ▼                       ▼
-        ┌──────────────┐       ┌──────────────────┐
-        │    .abix     │       │  ABIX Runtime    │
-        │ ABI Artifact │       │  Native Binding  │
-        └──────┬───────┘       └────────┬─────────┘
-               ▼                        ▼
-      CI / Package / Tools         Native Binary
+```mermaid
+graph TD
+    LE["Language Ecosystem<br/>C / C++ / Rust / Zig / ..."] --> AMC
+    AMC["AMC<br/>ABI Toolchain / Driver"] --> IR
+    IR["ABIX IR<br/>ABI Semantic Representation"] --> ART[".abix<br/>ABI Artifact"]
+    IR --> RT["ABIX Runtime<br/>Native Binding"]
+    ART --> CI["CI / Package / Tools"]
+    RT --> NB["Native Binary"]
 ```
 
 * **ABIX IR** — the language-independent ABI model: types, fields, functions,
@@ -76,14 +62,10 @@ See [`compatibility.md`](compatibility.md).
 
 ABIX metadata has three consumption modes, from richest to most compact:
 
-```text
-.abix (full artifact)
-   │  projection
-   ▼
-Metadata Region (embedded, pointer-free, mmap-able)
-   │  materialization
-   ▼
-Runtime Descriptor (pointer-rich, hot path)
+```mermaid
+graph TD
+    A[".abix (full artifact)"] -->|projection| B["Metadata Region (embedded, pointer-free, mmap-able)"]
+    B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
 ```
 
 * The **Region** is offset-based and relocation-free; it can be shipped as a
@@ -99,8 +81,9 @@ ABIX is **not** a VM, RPC framework or universal object runtime. For a
 compatible native function, ABIX establishes the relationship and then executes
 through the native ABI:
 
-```text
-discover → verify → identify → bind → adapt → native call
+```mermaid
+graph LR
+    A[discover] --> B[verify] --> C[identify] --> D[bind] --> E[adapt] --> F["native call"]
 ```
 
 ## Repository layout

@@ -7,30 +7,15 @@ evolving native binary interfaces. It makes ABI information explicit and
 machine-readable, independent of any particular compiler or language
 implementation.
 
-```text
-                         Native Ecosystem
-                 C / C++ / Rust / Zig / ...
-                              │
-                              ▼
-                         ┌─────────┐
-                         │   AMC   │
-                         │   ABI   │
-                         │Toolchain│
-                         └────┬────┘
-                              │
-                              ▼
-                         ┌─────────┐
-                         │ ABIX IR │
-                         └────┬────┘
-                              │
-                 ┌────────────┼────────────┐
-                 ▼            ▼            ▼
-              .abix       Tooling      Runtime
-                 │                         │
-                 ▼                         ▼
-          ABI verification          Native binding
-          ABI diff / analysis       Native execution
-          Code generation           ABI adaptation
+```mermaid
+graph TD
+    A[Native Ecosystem<br>C / C++ / Rust / Zig / ...] --> B[AMC<br>ABI Toolchain]
+    B --> C[ABIX IR]
+    C --> D[.abix]
+    C --> E[Tooling]
+    C --> F[Runtime]
+    D --> G[ABI verification<br>ABI diff / analysis<br>Code generation]
+    F --> H[Native binding<br>Native execution<br>ABI adaptation]
 ```
 
 ABIX is currently implemented with **C++ as its first host language**. The ABI
@@ -47,41 +32,29 @@ and reuse as an independent artifact.
 
 ABIX makes it explicit:
 
-```text
-Traditional                          ABIX
-
-Source                               Source / Binary
-  │                                       │
-  ▼                                       ▼
-Compiler                                 AMC
-  │                                       │
-  ▼                                       ▼
-Binary                                ABIX IR
-  │                                       │
-  ▼                                       ▼
-ABI exists implicitly                  .abix
-                                          │
-                                          ▼
-                                   ABI is an explicit object
+```mermaid
+graph TD
+    subgraph Traditional
+        A1[Source] --> A2[Compiler] --> A3[Binary] --> A4[ABI exists implicitly]
+    end
+    subgraph ABIX
+        B1[Source / Binary] --> B2[AMC] --> B3[ABIX IR] --> B4[.abix] --> B5[ABI is an explicit object]
+    end
 ```
 
 Once ABI is an object, it can be consumed across the toolchain:
 
-```text
-                     ABIX
-                       │
-       ┌───────────────┼────────────────┐
-       │               │                │
-       ▼               ▼                ▼
-      Build           CI             Runtime
-       │               │                │
-       ▼               ▼                ▼
-    Package        ABI Diff        Native Binding
-    Manager        Verification    / Adaptation
-       │               │                │
-       └───────────────┼────────────────┘
-                       ▼
-                  Developer Tools
+```mermaid
+graph TD
+    A[ABIX] --> B[Build]
+    A --> C[CI]
+    A --> D[Runtime]
+    B --> E[Package Manager]
+    C --> F[ABI Diff Verification]
+    D --> G[Native Binding / Adaptation]
+    E --> H[Developer Tools]
+    F --> H
+    G --> H
 ```
 
 ---
@@ -101,20 +74,18 @@ int add(int a, int b);
 
 The native ABI contains more than the source declaration:
 
-```text
-Foo
- ├── size
- ├── alignment
- ├── field offsets
- ├── field types
- └── layout identity
-
-add
- ├── symbol
- ├── return type
- ├── parameter types
- ├── calling convention
- └── ABI identity
+```mermaid
+graph TD
+    Foo --> F1[size]
+    Foo --> F2[alignment]
+    Foo --> F3[field offsets]
+    Foo --> F4[field types]
+    Foo --> F5[layout identity]
+    add --> A1[symbol]
+    add --> A2[return type]
+    add --> A3[parameter types]
+    add --> A4[calling convention]
+    add --> A5[ABI identity]
 ```
 
 ABIX records these facts in a machine-readable model, so an ABI change becomes
@@ -144,13 +115,9 @@ Result: incompatible
 ABIX is not a virtual machine, an RPC framework, or a universal object runtime.
 For a compatible native function the intended execution path is:
 
-```text
-Application
-     │  native call
-     ▼
-┌──────────────┐
-│ Native Binary│
-└──────────────┘
+```mermaid
+graph TD
+    A[Application] -->|native call| B[Native Binary]
 ```
 
 ABIX may participate in **discover / verify / identify / bind / adapt**, but it
@@ -164,21 +131,17 @@ does not continuously interpret or dispatch compatible calls.
 
 ABIX is centered on a small set of concepts:
 
-```text
-                    ABIX
-                     │
-             ABI Semantic Model
-                     │
-       ┌─────────────┼─────────────┐
-       ▼             ▼             ▼
-     Type         Function       Module
-       │             │             │
-       ▼             ▼             ▼
-    Layout       Parameters   Target / ABI
-       │
-       ▼
-   Type Identity
-   Layout Identity
+```mermaid
+graph TD
+    A[ABIX] --> B[ABI Semantic Model]
+    B --> C[Type]
+    B --> D[Function]
+    B --> E[Module]
+    C --> F[Layout]
+    D --> G[Parameters]
+    E --> H[Target / ABI]
+    F --> I[Type Identity]
+    F --> J[Layout Identity]
 ```
 
 The model describes existing native binary contracts. It does not replace C++,
@@ -195,20 +158,14 @@ Type identity is a 128-bit `TypeID`; layout identity is a separate
 The ABIX Intermediate Representation is the common representation shared by
 language tooling and the runtime:
 
-```text
-Language AST
-     │
-     ▼
-Language Adapter
-     │
-     ▼
-┌──────────────┐
-│   ABIX IR    │
-└──────┬───────┘
-       ├──────────────► .abix
-       ├──────────────► Code generation
-       ├──────────────► ABI analysis
-       └──────────────► Runtime binding
+```mermaid
+graph TD
+    A[Language AST] --> B[Language Adapter]
+    B --> C[ABIX IR]
+    C --> D[.abix]
+    C --> E[Code generation]
+    C --> F[ABI analysis]
+    C --> G[Runtime binding]
 ```
 
 The IR focuses on ABI semantics rather than source-level detail. Its serialized
@@ -224,16 +181,14 @@ form is the `.abix` artifact:
 
 **AMC — ABI Meta Compiler** is the toolchain entry point.
 
-```text
-                   AMC
-                    │
-       ┌────────────┼────────────┐
-       ▼            ▼            ▼
-     Parse        Generate      Analyze
-       │            │            │
-       └────────────┼────────────┘
-                    ▼
-                 ABIX IR
+```mermaid
+graph TD
+    A[AMC] --> B[Parse]
+    A --> C[Generate]
+    A --> D[Analyze]
+    B --> E[ABIX IR]
+    C --> E
+    D --> E
 ```
 
 Typical workflows:
@@ -262,20 +217,13 @@ See [`docs/amc.md`](docs/amc.md).
 ABIX 1.0 is self-hosting for its own public ABI: it describes its public ABI with
 its own model, and uses that to build and verify the next version.
 
-```text
-             ABIX 1.0
-                 │
-                 ▼
-          Describe itself
-                 │
-                 ▼
-          Verify / Bind
-                 │
-                 ▼
-           Build next ABI
-                 │
-                 ▼
-             ABIX 2.x ──► describes itself
+```mermaid
+graph TD
+    A[ABIX 1.0] --> B[Describe itself]
+    B --> C[Verify / Bind]
+    C --> D[Build next ABI]
+    D --> E[ABIX 2.x]
+    E -->|describes itself| E
 ```
 
 This separates the **stable bootstrap ABI** from **internal implementation**
@@ -287,31 +235,16 @@ implementation can evolve while its external contract stays explicit. See
 
 ## Architecture
 
-```text
-┌──────────────────────────────────────────────────────┐
-│                  Language Ecosystem                   │
-│       C      C++      Rust      Zig      ...          │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                         AMC                           │
-│                 ABI Toolchain / Driver                │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                       ABIX IR                         │
-│              ABI Semantic Representation              │
-└───────────────┬───────────────────────┬──────────────┘
-                ▼                       ▼
-        ┌──────────────┐       ┌──────────────────┐
-        │    .abix     │       │  ABIX Runtime    │
-        │ ABI Artifact │       │  Native Binding  │
-        └──────┬───────┘       └────────┬─────────┘
-               │                        │
-       ┌───────┼────────┐               ▼
-       ▼       ▼        ▼          Native Binary
-      CI     Package   Tools
-             Manager
+```mermaid
+graph TD
+    A[Language Ecosystem<br>C / C++ / Rust / Zig / ...] --> B[AMC<br>ABI Toolchain / Driver]
+    B --> C[ABIX IR<br>ABI Semantic Representation]
+    C --> D[.abix<br>ABI Artifact]
+    C --> E[ABIX Runtime<br>Native Binding]
+    D --> F[CI]
+    D --> G[Package Manager]
+    D --> H[Tools]
+    E --> I[Native Binary]
 ```
 
 The core architectural rule:
@@ -370,24 +303,24 @@ ABIX
 ```bash
 git clone <repository>
 cd ABIX
-cmake -B build
-cmake --build build -j
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
+cmake --build build/Release --parallel
 ```
 
 ### Try it
 
 ```bash
 # Build an .abix artifact from the example config
-./build/bin/amc build -c amc/tests/fixtures/amc_test.abic.toml -B build/demo
+./build/Release/bin/amc build -c amc/tests/fixtures/amc_test.abic.toml -B build/demo
 
 # Inspect it
-./build/bin/amc inspect build/demo/build/amc_test.abix
+./build/Release/bin/amc inspect build/demo/build/amc_test.abix
 
 # Query a type and its layout
-./build/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+./build/Release/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM-friendly ABI context
-./build/bin/amc context build/demo/build/amc_test.abix --format llm
+./build/Release/bin/amc context build/demo/build/amc_test.abix --format llm
 ```
 
 For the first complete walkthrough see
@@ -451,13 +384,15 @@ Current focus:
 
 ## Roadmap
 
-```text
-ABIX Core ──► AMC ──► ABI-aware Toolchain ──► Native ABI Ecosystem
-                │
-                ├── C / C++
-                ├── Rust
-                ├── Zig
-                └── other language frontends
+```mermaid
+graph LR
+    A[ABIX Core] --> B[AMC]
+    B --> C[ABI-aware Toolchain]
+    C --> D[Native ABI Ecosystem]
+    B --> E[C / C++]
+    B --> F[Rust]
+    B --> G[Zig]
+    B --> H[other language frontends]
 ```
 
 The roadmap prioritises interoperability and real-world usage over adding

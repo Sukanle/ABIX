@@ -7,13 +7,15 @@
 
 ## 方向
 
-```text
-ABIX Core ──► AMC ──► ABI-aware 工具链 ──► 原生 ABI 生态
-                │
-                ├── C / C++
-                ├── Rust
-                ├── Zig
-                └── 其他语言前端
+```mermaid
+graph LR
+    A[ABIX Core] --> B[AMC]
+    B --> C[ABI-aware 工具链]
+    C --> D[原生 ABI 生态]
+    B --> E[C / C++]
+    B --> F[Rust]
+    B --> G[Zig]
+    B --> H[其他语言前端]
 ```
 
 ## 近期
@@ -30,7 +32,7 @@ ABIX Core ──► AMC ──► ABI-aware 工具链 ──► 原生 ABI 生�
 ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI coding agent
 提供持久、机器可读的接口。
 
-当前与计划中的工作（详细计划见 [`plan_zh.md`](plan_zh.md)）：
+当前与计划中的工作：
 
 * `amc context --format llm` — 紧凑、token 友好的 ABI 上下文。
 * 所有工具统一的结构化 JSON 错误。

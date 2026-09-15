@@ -22,26 +22,13 @@ RCU/EBR 状态等。递归地描述这套机制会陷入鸡生蛋问题。自举
 原方案为三阶段——`Bootstrap → Runtime → Self-hosting`。工程上调整为四阶段，将
 ABI 元模型前置为独立的 Phase 0。
 
-```text
-                  ┌──────────────────────┐
-                  │ Phase 0              │
-                  │ ABI Model / Format   │  ← 先冻结元模型
-                  └──────────┬───────────┘
-                             ↓
-                  ┌──────────────────────┐
-                  │ Phase 1              │
-                  │ Bootstrap Kernel     │  ← 静态 metadata loader
-                  └──────────┬───────────┘
-                             ↓
-                  ┌──────────────────────┐
-                  │ Phase 2              │
-                  │ ABIX Runtime         │  ← Registry → Type → Map → RCU
-                  └──────────┬───────────┘
-                             ↓
-                  ┌──────────────────────┐
-                  │ Phase 3              │
-                  │ ABIX Self-hosting    │  ← ABIX 描述 ABIX
-                  └──────────────────────┘
+```mermaid
+graph TD
+    P0["Phase 0<br/>ABI Model / Format<br/>← 先冻结元模型"]
+    P1["Phase 1<br/>Bootstrap Kernel<br/>← 静态 metadata loader"]
+    P2["Phase 2<br/>ABIX Runtime<br/>← Registry → Type → Map → RCU"]
+    P3["Phase 3<br/>ABIX Self-hosting<br/>← ABIX 描述 ABIX"]
+    P0 --> P1 --> P2 --> P3
 ```
 
 Phase 0 至关重要。Bootstrap 内核需要消费什么，取决于 `.abix`、`TypeInfo`、
@@ -52,28 +39,17 @@ Phase 0 至关重要。Bootstrap 内核需要消费什么，取决于 `.abix`、
 
 定义后续所有阶段消费的对象模型：
 
-```text
-                          ABI
-                           │
-                 ┌─────────┴─────────┐
-                 │                   │
-              Target             ABI Identity
-                 │
-                 ▼
-              TypeInfo
-                 │
-        ┌────────┼────────┐
-        ▼        ▼        ▼
-      Layout    Field    Method
-        │
-        ▼
-     TypeId / Hash
-        │
-        ▼
-  Compatibility
-        │
-        ▼
-       Map
+```mermaid
+graph TD
+    ABI --> Target
+    ABI --> ABIIdentity["ABI Identity"]
+    Target --> TypeInfo
+    TypeInfo --> Layout
+    TypeInfo --> Field
+    TypeInfo --> Method
+    Layout --> TypeIdHash["TypeId / Hash"]
+    TypeIdHash --> Compatibility
+    Compatibility --> Map
 ```
 
 ### Phase 1 —— Bootstrap 内核
@@ -188,19 +164,13 @@ constexpr LayoutHash layout_hash(...);
 
 `abixc` 消费 Clang AST 并产出两个相互配合的产物：
 
-```text
-                  Clang AST
-                     │
-                     ▼
-                   abixc
-               ┌─────┴─────┐
-               ▼           ▼
-           generated       .abix
-           C++ metadata    ABI artifact
-               │           │
-               └─────┬─────┘
-                     ▼
-                ABIX Runtime
+```mermaid
+graph TD
+    AST["Clang AST"] --> abixc
+    abixc --> Gen["generated<br/>C++ metadata"]
+    abixc --> Abix[".abix<br/>ABI artifact"]
+    Gen --> Runtime["ABIX Runtime"]
+    Abix --> Runtime
 ```
 
 * `.abix` —— 跨进程、跨工具、跨语言共享的稳定 ABI artifact。
@@ -208,26 +178,19 @@ constexpr LayoutHash layout_hash(...);
 
 v0 布局为顺序结构：
 
-```text
-Header
-    ├── magic
-    ├── format_version
-    ├── hash_algorithm      ← Hash 算法记录在 schema 中
-    └── section_offsets
-ABI Identity
-    ├── arch, os, compiler, calling_convention, abi_flags
-Target
-    ├── target_arch, target_os, target_abi
-String Table
-    ├── count, entries (offset, length)
-Type Table
-    ├── count, entries (TypeDesc)
-Field Table
-    ├── count, entries (name, TypeId, offset, flags)
-Function Table
-    ├── count, entries (name, signature_hash, cc, params)
-Symbol Table
-    ├── count, entries (name, kind, type_id / function_id)
+```mermaid
+graph TD
+    Header --> H_magic["magic"]
+    Header --> H_fmt["format_version"]
+    Header --> H_hash["hash_algorithm<br/>← Hash 算法记录在 schema 中"]
+    Header --> H_sec["section_offsets"]
+    ABIIdentity["ABI Identity"] --> AI["arch, os, compiler, calling_convention, abi_flags"]
+    Target --> T["target_arch, target_os, target_abi"]
+    StringTable["String Table"] --> ST["count, entries (offset, length)"]
+    TypeTable["Type Table"] --> TT["count, entries (TypeDesc)"]
+    FieldTable["Field Table"] --> FT["count, entries (name, TypeId, offset, flags)"]
+    FunctionTable["Function Table"] --> FuT["count, entries (name, signature_hash, cc, params)"]
+    SymbolTable["Symbol Table"] --> SyT["count, entries (name, kind, type_id / function_id)"]
 ```
 
 当前实现采用 Section Directory 布局，配合去重的 String Table 与 offset/index 引用
@@ -315,74 +278,50 @@ void abix_initialize() {
 不一开始就实现 RCU/EBR。初始目标是证明
 `Bootstrap → Registry → Type lookup → self metadata` 闭环：
 
-```text
-Phase 2a: 单线程 Runtime
-    Bootstrap → Registry → Type lookup → Type validation → Map lookup
-
-Phase 2b: 并发 Runtime
-    + RCU/EBR → ThreadState → 多线程安全
+```mermaid
+graph TD
+    subgraph P2a["Phase 2a: 单线程 Runtime"]
+        A1["Bootstrap"] --> A2["Registry"] --> A3["Type lookup"] --> A4["Type validation"] --> A5["Map lookup"]
+    end
+    subgraph P2b["Phase 2b: 并发 Runtime"]
+        B1["+ RCU/EBR"] --> B2["ThreadState"] --> B3["多线程安全"]
+    end
 ```
 
 ### 依赖图
 
 依赖自上而下，禁止反向依赖。
 
-```text
- Bootstrap
-     │
-     ▼
- Metadata
-     │
-     ▼
- Registry
-     │
-     ├───────────┐
-     ▼           ▼
-  Type System   Map
-     │           │
-     └─────┬─────┘
-           ▼
-         RCU/EBR
-           │
-           ▼
-      Dynamic ABI
+```mermaid
+graph TD
+    Bootstrap --> Metadata
+    Metadata --> Registry
+    Registry --> TypeSystem["Type System"]
+    Registry --> Map
+    TypeSystem --> RCU["RCU/EBR"]
+    Map --> RCU
+    RCU --> DynamicABI["Dynamic ABI"]
 ```
 
 尤其禁止以下依赖：
 
-```text
-Bootstrap → RCU
-Bootstrap → Map
-Bootstrap → Dynamic ABI
-Bootstrap → Registry API   (Bootstrap 不是 Registry)
+```mermaid
+graph TD
+    Bootstrap -.-> RCU
+    Bootstrap -.-> Map
+    Bootstrap -.-> DynamicABI["Dynamic ABI"]
+    Bootstrap -.-> RegistryAPI["Registry API<br/>(Bootstrap 不是 Registry)"]
 ```
 
 ### 状态机
 
-```text
-                     ┌──────────────┐
-                     │ UNINITIALIZED│
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │  BOOTSTRAP   │  ← 加载 BootstrapImage
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │ SELF_METADATA│  ← 注册 ABIX 内部元数据
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │   RUNTIME    │  ← Runtime 初始化
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │   PROMOTE    │  ← 发布到正式 Registry
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │    READY     │
-                     └──────────────┘
+```mermaid
+flowchart TD
+    UNINITIALIZED --> BOOTSTRAP["BOOTSTRAP<br/>← 加载 BootstrapImage"]
+    BOOTSTRAP --> SELF_METADATA["SELF_METADATA<br/>← 注册 ABIX 内部元数据"]
+    SELF_METADATA --> RUNTIME["RUNTIME<br/>← Runtime 初始化"]
+    RUNTIME --> PROMOTE["PROMOTE<br/>← 发布到正式 Registry"]
+    PROMOTE --> READY
 ```
 
 `BOOTSTRAP`、`SELF_METADATA`、`RUNTIME` 与 `PROMOTE` 只存在于初始化线程。普通用户
@@ -390,17 +329,11 @@ Bootstrap → Registry API   (Bootstrap 不是 Registry)
 
 ### 线程安全切入点
 
-```text
-BOOTSTRAP (single-thread)
-    │
-    ▼
-Runtime Registry
-    │  publish
-    ▼
-READY
-    │  std::atomic_thread_fence(release)
-    ▼
-RCU/EBR (multi-thread)
+```mermaid
+graph TD
+    B["BOOTSTRAP (single-thread)"] --> RR["Runtime Registry"]
+    RR -->|publish| READY
+    READY -->|"std::atomic_thread_fence(release)"| RCU["RCU/EBR (multi-thread)"]
 ```
 
 ```cpp
@@ -422,12 +355,10 @@ if (state.load(std::memory_order_acquire) == State::READY) {
 
 类型 metadata 与 registry 先于 RCU，而不是相反：
 
-```text
- Type metadata          RCU
-     ↓                   ↓
- Registry              Registry
-     ↓                   ↓
-   RCU             Type metadata
+```mermaid
+graph TD
+    A1["Type metadata"] --> A2["Registry"] --> A3["RCU"]
+    B1["RCU"] --> B2["Registry"] --> B3["Type metadata"]
 ```
 
 在 RCU 初始化之前，`ThreadState`、`RetiredNode`、`Epoch` 只是普通 C++ 类型。RCU
@@ -437,17 +368,14 @@ if (state.load(std::memory_order_acquire) == State::READY) {
 
 `Map` 是同一语义模型的两条实现路径，而不是两个系统：
 
-```text
-                  Map Model
-                     │
-           ┌─────────┴─────────┐
-           ▼                   ▼
-     Runtime Map            Static Map
-           │                   │
-       MapInfo             MapPrivate
-           │                   │
-           ▼                   ▼
-    dynamic lookup       compile-time offset
+```mermaid
+graph TD
+    MapModel["Map Model"] --> RuntimeMap["Runtime Map"]
+    MapModel --> StaticMap["Static Map"]
+    RuntimeMap --> MapInfo
+    StaticMap --> MapPrivate
+    MapInfo --> DynLookup["dynamic lookup"]
+    MapPrivate --> CompileTime["compile-time offset"]
 ```
 
 | 场景 | 路径 |
@@ -462,35 +390,13 @@ if (state.load(std::memory_order_acquire) == State::READY) {
 
 ### 内核是可信任基
 
-```text
-                  ┌───────────────────────┐
-                  │ Bootstrap Kernel      │
-                  │  极小                 │
-                  │  稳定                 │
-                  │  手工维护             │
-                  │  不依赖 ABIX          │
-                  │  永远不需要自描述      │
-                  └──────────┬────────────┘
-                             │
-                             ▼
-                  ┌───────────────────────┐
-                  │ ABIX Runtime          │
-                  │  Registry             │
-                  │  Type                 │
-                  │  Map                  │
-                  │  RCU / EBR            │
-                  └──────────┬────────────┘
-                             │
-                             ▼
-                  ┌───────────────────────┐
-                  │ ABIX Self Description │
-                  │  ABIX describes ABIX  │
-                  └──────────┬────────────┘
-                             │
-                             ▼
-                  ┌───────────────────────┐
-                  │ User ABI              │
-                  └───────────────────────┘
+```mermaid
+graph TD
+    Kernel["Bootstrap Kernel<br/>极小<br/>稳定<br/>手工维护<br/>不依赖 ABIX<br/>永远不需要自描述"]
+    Runtime["ABIX Runtime<br/>Registry<br/>Type<br/>Map<br/>RCU / EBR"]
+    SelfDesc["ABIX Self Description<br/>ABIX describes ABIX"]
+    UserABI["User ABI"]
+    Kernel --> Runtime --> SelfDesc --> UserABI
 ```
 
 Bootstrap 内核是 TCB（可信计算基）。类似 BIOS/firmware 或 compiler bootstrap

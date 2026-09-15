@@ -6,28 +6,14 @@ ABIX 把 ABI 变成显式、机器可读的对象，并在整个工具链与运�
 
 ## 分层
 
-```text
-┌──────────────────────────────────────────────────────┐
-│                     语言生态                          │
-│       C      C++      Rust      Zig      ...          │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                         AMC                           │
-│                    ABI 工具链 / Driver                │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                       ABIX IR                         │
-│                  ABI 语义表示                          │
-└───────────────┬───────────────────────┬──────────────┘
-                ▼                       ▼
-        ┌──────────────┐       ┌──────────────────┐
-        │    .abix     │       │  ABIX Runtime    │
-        │ ABI Artifact │       │  原生绑定         │
-        └──────┬───────┘       └────────┬─────────┘
-               ▼                        ▼
-      CI / 包管理 / 工具           原生二进制
+```mermaid
+graph TD
+    LE["语言生态<br/>C / C++ / Rust / Zig / ..."] --> AMC
+    AMC["AMC<br/>ABI 工具链 / Driver"] --> IR
+    IR["ABIX IR<br/>ABI 语义表示"] --> ART[".abix<br/>ABI Artifact"]
+    IR --> RT["ABIX Runtime<br/>原生绑定"]
+    ART --> CI["CI / 包管理 / 工具"]
+    RT --> NB["原生二进制"]
 ```
 
 * **ABIX IR** — 语言无关的 ABI 模型：类型、字段、函数、参数、符号、hash、兼容性与映射。
@@ -65,14 +51,10 @@ ABIX 区分四种经常被混用的身份：
 
 ## Metadata 三种模式
 
-```text
-.abix（完整 artifact）
-   │ 投影
-   ▼
-Metadata Region（内嵌、pointer-free、可 mmap）
-   │ materialize
-   ▼
-Runtime Descriptor（pointer-rich，热路径）
+```mermaid
+graph TD
+    A[".abix（完整 artifact）"] -->|投影| B["Metadata Region（内嵌、pointer-free、可 mmap）"]
+    B -->|materialize| C["Runtime Descriptor（pointer-rich，热路径）"]
 ```
 
 Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser
@@ -84,8 +66,9 @@ mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接
 ABIX **不是** VM、RPC 框架或通用对象运行时。对兼容的原生函数，ABIX 建立关系后走
 原生 ABI 执行：
 
-```text
-discover → verify → identify → bind → adapt → native call
+```mermaid
+graph LR
+    A[discover] --> B[verify] --> C[identify] --> D[bind] --> E[adapt] --> F["native call"]
 ```
 
 ## 仓库结构

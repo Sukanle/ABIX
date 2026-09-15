@@ -14,8 +14,9 @@ ABIX 把经常被混用的几种身份区分开来，使"是不是同一个类�
 
 查找链条：
 
-```text
-Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash
+```mermaid
+graph LR
+    A[Binary] --> B[BuildID] --> C[".abix"] --> D[MetadataID] --> E[TypeID] --> F[LayoutHash]
 ```
 
 * `TypeID` 与名字无关：两个模块可以用不同拼写表示同一类型而共享 TypeID；名字只用于诊断。
@@ -41,10 +42,11 @@ Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash
 
 `RuntimeRegistry` 注册模块时，同一 TypeID 必须解析到同一 LayoutHash：
 
-```text
-TypeID 同时出现在 ModuleA / ModuleB
-        ├── 布局相同 → 兼容，去重共享
-        └── 布局不同 → layout_conflict（ABI 冲突）
+```mermaid
+graph TD
+    A["TypeID 同时出现在 ModuleA / ModuleB"] --> B{布局相同?}
+    B -->|是| C["兼容，去重共享"]
+    B -->|否| D["layout_conflict（ABI 冲突）"]
 ```
 
 兼容的重复会被共享，冲突的布局会被拒绝。这是 ABI 边界在运行时的实现。

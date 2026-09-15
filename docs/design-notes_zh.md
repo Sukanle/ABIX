@@ -2,7 +2,7 @@
 
 ABIX 面向跨 DLL / 共享库边界的类型安全函数调用，用稳定函数表、编译期签名哈希与版本令牌替代
 `GetProcAddress` / `dlsym` 的手工字符串加裸指针解析。围绕这一核心长出两个子系统：双轨反射库
-MICS 与 ABI 元数据编译器 AMC，“ABI 真相”收敛到语言无关的 `.abix` 产物。
+MICS 与 ABI 元数据编译器 AMC，"ABI 真相"收敛到语言无关的 `.abix` 产物。
 
 本页汇总项目的设计原则与发展历程。原则界定架构不可跨越的边界；历程记录当前形态经由的各个阶段。
 
@@ -20,36 +20,27 @@ ABIX 解决的原始问题是狭义的：跨 DLL / 共享库边界的类型安�
 
 允许的架构先 resolve / verify，再把函数指针交给调用方；调用本身是原生调用。
 
-```text
-                 ABIX Runtime
-                      │
-              resolve / verify
-                      │
-                      ▼
-caller ──────────► function pointer
-                      │
-                      ▼
-                 native call
+```mermaid
+flowchart TD
+    runtime["ABIX Runtime"]
+    runtime -- "resolve / verify" --> fp["function pointer"]
+    caller["caller"] --> fp
+    fp --> call["native call"]
 ```
 
 禁止的架构把 Runtime 放在调用方与目标之间，在每次调用时查找类型与函数、检查与转换参数、分发并
 调用。前者是 dynamic linking 的职责边界；后者开始滑向 VM、对象运行时或 RPC 运行时。
 
-```text
-caller
-  │
-  ▼
-ABIX Runtime
-  │
-  ├─ lookup type
-  ├─ lookup function
-  ├─ inspect arguments
-  ├─ convert arguments
-  ├─ dispatch
-  └─ invoke
-        │
-        ▼
-      target
+```mermaid
+flowchart TD
+    caller["caller"] --> runtime["ABIX Runtime"]
+    runtime --> lt["lookup type"]
+    runtime --> lf["lookup function"]
+    runtime --> ia["inspect arguments"]
+    runtime --> ca["convert arguments"]
+    runtime --> dp["dispatch"]
+    runtime --> iv["invoke"]
+    iv --> target["target"]
 ```
 
 约束：类型化句柄的热路径直接调用函数指针，不做类型查询、参数检查或动态分发；Runtime 只在
@@ -62,7 +53,7 @@ resolve 阶段参与。
 | | 对象模型 | ABI 事实模型 |
 |---|---|---|
 | 职责 | 定义类型、管理类型、执行类型语义 | 描述类型、标识类型、验证类型、比较类型 |
-| 问题 | “对象如何构造？如何继承？如何分发？” | “这个东西的 ABI identity 是什么？占多少空间？怎么布局？” |
+| 问题 | "对象如何构造？如何继承？如何分发？" | "这个东西的 ABI identity 是什么？占多少空间？怎么布局？" |
 | 使用者 | 应用代码必须进入该模型 | 原生二进制站在旁边，不被侵入 |
 
 核心记录回答的是 ABI 事实。`TypeDesc` 标识类型并指向其布局；`TypeLayout` 记录大小、对齐、
@@ -85,33 +76,27 @@ struct TypeLayout {     // 32 字节
 };
 ```
 
-术语规范：项目使用 **ABI Fact Model** 或 **ABI Semantic Model**。避免使用 “ABIX Type
-System”，因为它会暗示一种对象模型。
+术语规范：项目使用 **ABI Fact Model** 或 **ABI Semantic Model**。避免使用 "ABIX Type
+System"，因为它会暗示一种对象模型。
 
 ### 原则 3：适配不是默认调用路径
 
 > 兼容 ABI → 直接原生调用。不兼容 ABI → 显式或生成的适配。
 
-```text
-ABI Compatibility
-      │
-      ├── compatible
-      │      ↓
-      │   direct call (fn(args...))
-      │
-      └── incompatible
-             ↓
-         adaptation (MapPlan / generated adapter)
+```mermaid
+flowchart TD
+    compat["ABI Compatibility"]
+    compat --> comp["compatible"]
+    comp --> direct["direct call (fn(args...))"]
+    compat --> incomp["incompatible"]
+    incomp --> adapt["adaptation (MapPlan / generated adapter)"]
 ```
 
 禁止的形态让所有调用都经过计划：
 
-```text
-all ABI calls
-      ↓
-   MapPlan
-      ↓
-   call
+```mermaid
+flowchart TD
+    all["all ABI calls"] --> plan["MapPlan"] --> call["call"]
 ```
 
 `MapPlan` 是显式 opt-in。默认路径是零转换开销的直接调用；只有显式构造并 apply 计划时才触发
@@ -127,16 +112,16 @@ MapPlan plan(info, ops, count);
 plan.apply(src_layout, tgt_layout, src_fields, tgt_fields, target, source);
 ```
 
-因此基本语义不是“自动转换”，而是“先判断能不能直接用；不能直接用才进入 adaptation”。这接近
+因此基本语义不是"自动转换"，而是"先判断能不能直接用；不能直接用才进入 adaptation"。这接近
 linker 的行为：直接绑定 vs. relocation / PLT / resolver。
 
 ### 原则 4：ABIX 不是调试信息
 
-> ABI 事实不等于源码 / 调试事实。`.abix` 绝不能变成“更小的 DWARF”。
+> ABI 事实不等于源码 / 调试事实。`.abix` 绝不能变成"更小的 DWARF"。
 
 | | DWARF（调试本体） | ABIX（ABI 本体） |
 |---|---|---|
-| 回答 | “这个东西从哪来？” | “它暴露的二进制契约是什么？” |
+| 回答 | "这个东西从哪来？" | "它暴露的二进制契约是什么？" |
 | 描述 | source、file、line、scope、variable、expression、call frame、inline、macro | module、symbol、type、layout、function、parameter、调用约定、ownership、target、ABI version、compatibility |
 
 两者可能描述同一个 `Foo`：
@@ -165,25 +150,17 @@ ABIX 不应该知道 `foo.cpp:37` 是什么。
 
 > 必须恰好有一个 ABI 真相源。Runtime 绝不能自行发明 ABI 语义。
 
-```text
-               Clang AST
-                   │
-                   ▼
-                  AMC
-                   │
-                   ▼
-              AbiModule  ←── 唯一 ABI 真相源
-                   │
-           ┌───────┴────────┐
-           ▼                ▼
-       .abix artifact   Runtime Image
-           │                │
-           ▼                ▼
-        tools/CI         Registry
-           │                │
-           └───────┬────────┘
-                   ▼
-              same ABI facts
+```mermaid
+flowchart TD
+    ast["Clang AST"] --> amc["AMC"]
+    amc --> module["AbiModule"]
+    truth["唯一 ABI 真相源"] -.-> module
+    module --> abix[".abix artifact"]
+    module --> image["Runtime Image"]
+    abix --> tools["tools/CI"]
+    image --> registry["Registry"]
+    tools --> same["same ABI facts"]
+    registry --> same
 ```
 
 两条约束界定了这条边界。
@@ -201,18 +178,12 @@ ABIX 不应该知道 `foo.cpp:37` 是什么。
 不再重建；`valid()` 校验 runtime 投影与 canonical 数据在 `type_id`、`size`、`align`、
 `layout_hash` 上严格一致。
 
-```text
-Clang AST → AMC → AbiModule
-                         │
-             ┌───────────┴───────────┐
-             ▼                       ▼
-      amc_types[]              amc_canonical_types[]
-      (runtime 投影)            amc_canonical_layouts[]
-                                   (唯一 ABI 真相)
-                                     │
-                                     ▼
-                              RuntimeRegistry
-                              (直接 import canonical 数据)
+```mermaid
+flowchart TD
+    ast["Clang AST"] --> amc["AMC"] --> module["AbiModule"]
+    module --> types["amc_types[]<br/>(runtime 投影)"]
+    module --> canon["amc_canonical_types[]<br/>amc_canonical_layouts[]<br/>(唯一 ABI 真相)"]
+    canon --> registry["RuntimeRegistry<br/>(直接 import canonical 数据)"]
 ```
 
 ### 边界风险清单
@@ -227,48 +198,36 @@ Clang AST → AMC → AbiModule
 
 ### ABIX 与 SOM 的历史差异
 
-```text
-SOM:
-  Application
-      │
-      ▼
-  SOM Object Model
-      │
-      ▼
-  SOM Runtime
-      │
-      ▼
-  SOM ABI
-  （应用必须进入 SOM 的世界）
-
-ABIX:
-                  Native Application
-                        │
-                  normal C++ ABI
-                        │
-                        ▼
-                 ┌─────────────┐
-                 │    ABIX     │
-                 │ ABI Facts   │
-                 └─────────────┘
-                        │
-              ┌─────────┼─────────┐
-              ▼         ▼         ▼
-           .abix      Runtime    AMC
-              │       Registry     │
-              ▼         │          ▼
-             CI       Binding    Package
-  （ABIX 不接管对象模型，只站在原生二进制旁边）
+```mermaid
+flowchart TD
+    subgraph SOM["SOM（应用必须进入 SOM 的世界）"]
+        direction TD
+        s_app["Application"] --> s_model["SOM Object Model"] --> s_rt["SOM Runtime"] --> s_abi["SOM ABI"]
+    end
+    subgraph ABIX["ABIX（不接管对象模型，只站在原生二进制旁边）"]
+        direction TD
+        a_app["Native Application"] -- "normal C++ ABI" --> a_core["ABIX<br/>ABI Facts"]
+        a_core --> a_abix[".abix"]
+        a_core --> a_reg["Runtime Registry"]
+        a_core --> a_amc["AMC"]
+        a_abix --> a_ci["CI"]
+        a_reg --> a_bind["Binding"]
+        a_amc --> a_pkg["Package"]
+    end
 ```
 
-### “二进制接口的 Git”之精确化
+### "二进制接口的 Git"之精确化
 
-```text
-Git:
-  source → object → identity → diff → merge → history
-
-ABIX:
-  binary interface → ABI object → identity → diff → compatibility → adaptation → binding
+```mermaid
+flowchart LR
+    subgraph Git
+        direction LR
+        g1["source"] --> g2["object"] --> g3["identity"] --> g4["diff"] --> g5["merge"] --> g6["history"]
+    end
+    subgraph ABIX
+        direction LR
+        a1["binary interface"] --> a2["ABI object"] --> a3["identity"] --> a4["diff"] --> a5["compatibility"] --> a6["adaptation"] --> a7["binding"]
+    end
 ```
 
 Git 把 source evolution 变成可计算对象；ABIX 把 binary interface evolution 变成可计算对象。
@@ -278,27 +237,21 @@ Runtime 只是该对象的一个 consumer。
 
 五条原则就位后，核心里程碑不是 Runtime，而是 ABI Semantic Model。
 
-```text
-                 ┌───────────────────────┐
-                 │       ABIX Core       │
-                 │                       │
-                 │  ABI Semantic Model   │
-                 │  ABI Identity         │
-                 │  ABI Metadata         │
-                 │  ABI Compatibility    │
-                 └──────────┬────────────┘
-                            │
-              ┌─────────────┼─────────────┐
-              ▼             ▼             ▼
-           Compiler       Runtime       Tools
-              │             │             │
-             AMC          Registry      LLDB/LSP
-              │             │             │
-              ▼             ▼             ▼
-          Generation      Binding       Analysis
+```mermaid
+flowchart TD
+    core["ABIX Core<br/>ABI Semantic Model<br/>ABI Identity<br/>ABI Metadata<br/>ABI Compatibility"]
+    core --> compiler["Compiler"]
+    core --> runtime["Runtime"]
+    core --> tools["Tools"]
+    compiler --> amc["AMC"]
+    runtime --> registry["Registry"]
+    tools --> lldb["LLDB/LSP"]
+    amc --> gen["Generation"]
+    registry --> bind["Binding"]
+    lldb --> analysis["Analysis"]
 ```
 
-把 ABIX 描述成“那个 Runtime”是不准确的：ABIX 是 ABI 语义层，Runtime 只是它的一个执行载体。
+把 ABIX 描述成"那个 Runtime"是不准确的：ABIX 是 ABI 语义层，Runtime 只是它的一个执行载体。
 
 ## 发展历程
 
@@ -322,7 +275,7 @@ Runtime 只是该对象的一个 consumer。
 
 方案对比了两条路线：引入反射或 IDL 生成边界描述；保持纯 C 结构与头文件，把校验前移到编译期。
 第二条作为主路线采用，第一条则作为元数据层的自然后续演进。导出表宏体系
-（`SKL_ABIX_DEFINE_TABLE`、`SKL_ABIX_ENTRY*`）把“注册函数”变成声明；编译期 FNV-1a 表达签名
+（`SKL_ABIX_DEFINE_TABLE`、`SKL_ABIX_ENTRY*`）把"注册函数"变成声明；编译期 FNV-1a 表达签名
 （`sig_t`）、名称哈希（`name_hash`）与版本令牌（`version_t`）；解析分层校验：哈希、`strcmp`、
 版本、签名。
 
@@ -339,12 +292,12 @@ CRT 共同解释。
 2. **类型化句柄。** `dll_func<Sig, CC>` 把 `(库, 名字, 版本)` 封装起来；`operator()` 自动进出
    读侧临界区，错误统一收敛到线程本地 `last_error()`。
 3. **签名与类型哈希。** `type_sig` 统一类型签名，为 `*_dll_ptr`、`function_dll` 特化复合哈希，
-   让“对象归属哪个模块、如何被持有”也成为 ABI 的一部分。
+   让"对象归属哪个模块、如何被持有"也成为 ABI 的一部分。
 4. **版本共存与演进。** 同名多版本函数通过 `SKL_ABIX_VERSION` 并存，老、新客户端各取所需；
    `handle_id()` 在热重载前后稳定。
 5. **卸载安全（RCU/EBR）。** 把 Linux 内核 RCU 的思想移植到用户态，做成读者侧无锁的读写锁：
    读者进临界区不拿锁、彼此不阻塞，写者卸载前等所有在读线程退出（epoch + grace）再回收。
-   它叠在“谁创建、谁释放”的 ownership/RAII 模型之上，是单线程生命周期管理在多线程下的适配。
+   它叠在"谁创建、谁释放"的 ownership/RAII 模型之上，是单线程生命周期管理在多线程下的适配。
    于是 `unload()` 就是标记、等读侧清空、回收。超时策略有 `Safe`、`ForceUnload`、
    `ForceLeak`；`Safe` 宁转 zombie 也不崩溃。原子操作全部使用编译器内建 `__atomic_*`，刻意
    避开 `<std::atomic>`，因为其布局随 STL 而异，会破坏跨模块 ABI。
@@ -441,11 +394,11 @@ CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh
   排除系统噪声再下结论。正式 benchmark 记中位数、p90 与变异系数，而非单次值。
 
 卸载与回收的稳定态开销被压到接近直接调用。该阶段沉淀了读多写少并发回收的调优指引，以及
-“batch 不是架构常量、必须在目标平台重测”的规范。见 [`benchmark_ZH.md`](benchmark_ZH.md)。
+"batch 不是架构常量、必须在目标平台重测"的规范。见 [`benchmark_ZH.md`](benchmark_ZH.md)。
 
 ### 阶段七 · 工程质量体系
 
-测试、插件矩阵、基准与文档共同保证“跨模块 ABI”这类易碎点在改动后仍然成立。
+测试、插件矩阵、基准与文档共同保证"跨模块 ABI"这类易碎点在改动后仍然成立。
 
 * **测试。** Catch2 v3 覆盖加载与卸载、资源智能指针、回调闭包、版本共存、查找性能、热重载
   句柄稳定性、调用约定边界、RCU 配置、并发加载与卸载，以及关闭/僵尸态。

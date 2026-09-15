@@ -4,37 +4,32 @@ ABIX 1.0 is self-hosting for its own public ABI: it describes its public ABI
 with its own model, and uses that description to build and verify later
 versions.
 
-```text
-             ABIX 1.0
-                 │
-                 ▼
-          Describe itself
-                 │
-                 ▼
-          Verify / Bind
-                 │
-                 ▼
-           Build next ABI
-                 │
-                 ▼
-             ABIX 2.x ──► describes itself
+```mermaid
+graph TD
+    A["ABIX 1.0"] --> B["Describe itself"]
+    B --> C["Verify / Bind"]
+    C --> D["Build next ABI"]
+    D --> E["ABIX 2.x"]
+    E --> F["describes itself"]
 ```
 
 ## What self-hosting means here
 
 Self-hosting does **not** mean the implementation is frozen. It separates:
 
-```text
-Bootstrap ABI
-     ├── stable public contract
-     └── ABI evolution rules
-
-Internal Implementation
-     ├── runtime internals
-     ├── data structures
-     ├── synchronization
-     ├── caches
-     └── implementation details
+```mermaid
+graph TD
+    subgraph "Bootstrap ABI"
+        A1[stable public contract]
+        A2[ABI evolution rules]
+    end
+    subgraph "Internal Implementation"
+        B1[runtime internals]
+        B2[data structures]
+        B3[synchronization]
+        B4[caches]
+        B5[implementation details]
+    end
 ```
 
 The public ABI is explicit and verifiable; internals remain free to evolve.

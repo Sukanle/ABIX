@@ -47,24 +47,25 @@
 
 ## 整体结构
 
-```
-.abix
-├── Header
-├── Section Directory
-├── ABI Identity
-├── String Table
-├── Type Table
-├── Layout Table
-├── Field Table
-├── Function Table
-├── Parameter Table
-├── Symbol Table
-├── Compatibility Table
-├── Map Table
-├── Map Operation Table
-├── Dependency Table
-├── Hash Cache（可选）
-└── Extensions
+```mermaid
+graph TD
+    R[".abix"]
+    R --> A["Header"]
+    R --> B["Section Directory"]
+    R --> C["ABI Identity"]
+    R --> D["String Table"]
+    R --> E["Type Table"]
+    R --> F["Layout Table"]
+    R --> G["Field Table"]
+    R --> H["Function Table"]
+    R --> I["Parameter Table"]
+    R --> J["Symbol Table"]
+    R --> K["Compatibility Table"]
+    R --> L["Map Table"]
+    R --> M["Map Operation Table"]
+    R --> N["Dependency Table"]
+    R --> O["Hash Cache (optional)"]
+    R --> P["Extensions"]
 ```
 
 相比初始设计的变更：
@@ -568,16 +569,12 @@ struct B { double b; int a; };   // TypeHash_B, LayoutHash_B
 
 ### Mode A：Runtime（动态）
 
-```
-.abix
-  ↓
-mmap
-  ↓
-ABIX Runtime
-  ↓
-Registry
-  ↓
-动态查询
+```mermaid
+graph TD
+    A[".abix"] --> B["mmap"]
+    B --> C["ABIX Runtime"]
+    C --> D["Registry"]
+    D --> E["动态查询"]
 ```
 
 适用场景：动态库、插件、动态 ABI、未知类型、运行时兼容检查。
@@ -591,18 +588,13 @@ Registry
 
 ### Mode B：Static（编译期）
 
-```
-.abix
-  ↓
-AMC
-  ↓
-foo.abix.hpp
-  ↓
-constexpr
-  ↓
-Compiler
-  ↓
-inline
+```mermaid
+graph TD
+    A[".abix"] --> B["AMC"]
+    B --> C["foo.abix.hpp"]
+    C --> D["constexpr"]
+    D --> E["Compiler"]
+    E --> F["inline"]
 ```
 
 生成结果示例：
@@ -630,37 +622,22 @@ struct MapPrivate<FooV1, FooV2> {
 
 ### Mode C：Hybrid（混合，推荐）
 
-```
-                  .abix
-                   │
-        ┌──────────┴──────────┐
-        ↓                     ↓
- Known ABI              Unknown ABI
-        ↓                     ↓
- Compile-time            Runtime
- MapPrivate              Registry
-        ↓                     ↓
- zero/low overhead       dynamic compatibility
+```mermaid
+graph TD
+    A[".abix"] --> B{"Known ABI?"}
+    B -->|Yes| C["Compile-time<br/>MapPrivate"]
+    B -->|No| D["Runtime<br/>Registry"]
+    C --> E["zero/low overhead"]
+    D --> F["dynamic compatibility"]
 ```
 
 Static when possible, dynamic when necessary.
 
 ## 与 .abic 的关系
 
-```
-                 ┌───────────────┐
-                 │    .abic      │
-                 │ Intent/Policy │
-                 └───────┬───────┘
-                         │
-                        AMC
-                         │
-                         ▼
-                 ┌───────────────┐
-                 │    .abix      │
-                 │ ABI Artifact  │
-                 │   + ABI IR    │
-                 └───────────────┘
+```mermaid
+graph TD
+    A[".abic<br/>Intent/Policy"] -->|"AMC"| B[".abix<br/>ABI Artifact<br/>+ ABI IR"]
 ```
 
 | 属性 | `.abic` | `.abix` |
@@ -675,14 +652,18 @@ Static when possible, dynamic when necessary.
 
 `.abix` 是 Source of Truth，所有目标代码都是它的投影：
 
-```
-foo.abix
-  ↓
-  ├── Runtime projection  → mmap / Registry → Dynamic ABI
-  ├── C++ projection      → foo.abix.hpp    → Static ABI (constexpr)
-  ├── Rust projection     → foo.abix.rs     → Static ABI
-  ├── Zig projection      → foo.abix.zig    → Static ABI
-  └── Debug projection    → foo.abix.txt    → 人类可读
+```mermaid
+graph TD
+    A["foo.abix"] --> B["Runtime projection"]
+    A --> C["C++ projection"]
+    A --> D["Rust projection"]
+    A --> E["Zig projection"]
+    A --> F["Debug projection"]
+    B --> B1["mmap / Registry → Dynamic ABI"]
+    C --> C1["foo.abix.hpp → Static ABI (constexpr)"]
+    D --> D1["foo.abix.rs → Static ABI"]
+    E --> E1["foo.abix.zig → Static ABI"]
+    F --> F1["foo.abix.txt → 人类可读"]
 ```
 
 `.abix.hpp` 不是新的"ABI 源文件"，而是 `.abix` 的编译期投影。
@@ -711,25 +692,15 @@ ABIX 是一个位于源码/编译器与 ABI Runtime 之间的 ABI 中间层。
 
 ## 完整文件关系
 
-```
-                      Project
-                         │
-                         ▼
-                      xxx.abic
-                    Configuration
-                         │
-                         │ AMC
-                         ▼
-                      xxx.abix
-               Canonical ABI Artifact
-                         │
-           ┌─────────────┼─────────────┐
-           │             │             │
-           ▼             ▼             ▼
-        Runtime        C++          Rust/Zig
-         mmap        .abix.hpp       .abix.rs
-           │             │             │
-           ▼             ▼             ▼
-       Dynamic ABI   Static ABI     Static ABI
+```mermaid
+graph TD
+    A["Project"] --> B["xxx.abic<br/>Configuration"]
+    B -->|"AMC"| C["xxx.abix<br/>Canonical ABI Artifact"]
+    C --> D["Runtime<br/>mmap"]
+    C --> E["C++<br/>.abix.hpp"]
+    C --> F["Rust/Zig<br/>.abix.rs / .abix.zig"]
+    D --> G["Dynamic ABI"]
+    E --> H["Static ABI"]
+    F --> I["Static ABI"]
 ```
 

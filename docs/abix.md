@@ -47,24 +47,25 @@ After `mmap`, there may still be: page faults / cache misses / bounds checks / h
 
 ## Overall Structure
 
-```
-.abix
-├── Header
-├── Section Directory
-├── ABI Identity
-├── String Table
-├── Type Table
-├── Layout Table
-├── Field Table
-├── Function Table
-├── Parameter Table
-├── Symbol Table
-├── Compatibility Table
-├── Map Table
-├── Map Operation Table
-├── Dependency Table
-├── Hash Cache (optional)
-└── Extensions
+```mermaid
+graph TD
+    R[".abix"]
+    R --> A["Header"]
+    R --> B["Section Directory"]
+    R --> C["ABI Identity"]
+    R --> D["String Table"]
+    R --> E["Type Table"]
+    R --> F["Layout Table"]
+    R --> G["Field Table"]
+    R --> H["Function Table"]
+    R --> I["Parameter Table"]
+    R --> J["Symbol Table"]
+    R --> K["Compatibility Table"]
+    R --> L["Map Table"]
+    R --> M["Map Operation Table"]
+    R --> N["Dependency Table"]
+    R --> O["Hash Cache (optional)"]
+    R --> P["Extensions"]
 ```
 
 Changes from the initial design:
@@ -525,16 +526,12 @@ Distinguishing TypeHash and LayoutHash is fundamental to the ABIX compatibility 
 
 ### Mode A: Runtime (Dynamic)
 
-```
-.abix
-  ↓
-mmap
-  ↓
-ABIX Runtime
-  ↓
-Registry
-  ↓
-Dynamic query
+```mermaid
+graph TD
+    A[".abix"] --> B["mmap"]
+    B --> C["ABIX Runtime"]
+    C --> D["Registry"]
+    D --> E["Dynamic query"]
 ```
 
 Applicable scenarios: dynamic libraries, plugins, dynamic ABI, unknown types, runtime compatibility checks.
@@ -548,18 +545,13 @@ Supports two loading modes:
 
 ### Mode B: Static (Compile-time)
 
-```
-.abix
-  ↓
-AMC
-  ↓
-foo.abix.hpp
-  ↓
-constexpr
-  ↓
-Compiler
-  ↓
-inline
+```mermaid
+graph TD
+    A[".abix"] --> B["AMC"]
+    B --> C["foo.abix.hpp"]
+    C --> D["constexpr"]
+    D --> E["Compiler"]
+    E --> F["inline"]
 ```
 
 Example generated output:
@@ -587,37 +579,22 @@ End result: `ABI metadata → compile-time → direct offset/load/store`.
 
 ### Mode C: Hybrid (Recommended)
 
-```
-                  .abix
-                   │
-        ┌──────────┴──────────┐
-        ↓                     ↓
- Known ABI              Unknown ABI
-        ↓                     ↓
- Compile-time            Runtime
- MapPrivate              Registry
-        ↓                     ↓
- zero/low overhead       dynamic compatibility
+```mermaid
+graph TD
+    A[".abix"] --> B{"Known ABI?"}
+    B -->|Yes| C["Compile-time<br/>MapPrivate"]
+    B -->|No| D["Runtime<br/>Registry"]
+    C --> E["zero/low overhead"]
+    D --> F["dynamic compatibility"]
 ```
 
 Static when possible, dynamic when necessary.
 
 ## Relationship with .abic
 
-```
-                 ┌───────────────┐
-                 │    .abic      │
-                 │ Intent/Policy │
-                 └───────┬───────┘
-                         │
-                        AMC
-                         │
-                         ▼
-                 ┌───────────────┐
-                 │    .abix      │
-                 │ ABI Artifact  │
-                 │   + ABI IR    │
-                 └───────────────┘
+```mermaid
+graph TD
+    A[".abic<br/>Intent/Policy"] -->|"AMC"| B[".abix<br/>ABI Artifact<br/>+ ABI IR"]
 ```
 
 | Property | `.abic` | `.abix` |
@@ -632,14 +609,18 @@ Static when possible, dynamic when necessary.
 
 `.abix` is the Source of Truth; all target code is its projection:
 
-```
-foo.abix
-  ↓
-  ├── Runtime projection  → mmap / Registry → Dynamic ABI
-  ├── C++ projection      → foo.abix.hpp    → Static ABI (constexpr)
-  ├── Rust projection     → foo.abix.rs     → Static ABI
-  ├── Zig projection      → foo.abix.zig    → Static ABI
-  └── Debug projection    → foo.abix.txt    → Human-readable
+```mermaid
+graph TD
+    A["foo.abix"] --> B["Runtime projection"]
+    A --> C["C++ projection"]
+    A --> D["Rust projection"]
+    A --> E["Zig projection"]
+    A --> F["Debug projection"]
+    B --> B1["mmap / Registry → Dynamic ABI"]
+    C --> C1["foo.abix.hpp → Static ABI (constexpr)"]
+    D --> D1["foo.abix.rs → Static ABI"]
+    E --> E1["foo.abix.zig → Static ABI"]
+    F --> F1["foo.abix.txt → Human-readable"]
 ```
 
 `.abix.hpp` is not a new "ABI source file"; it is a compile-time projection of `.abix`.
@@ -668,24 +649,14 @@ ABIX is an ABI intermediate layer positioned between source code/compiler and AB
 
 ## Complete File Relationship
 
-```
-                      Project
-                         │
-                         ▼
-                      xxx.abic
-                    Configuration
-                         │
-                         │ AMC
-                         ▼
-                      xxx.abix
-               Canonical ABI Artifact
-                         │
-           ┌─────────────┼─────────────┐
-           │             │             │
-           ▼             ▼             ▼
-        Runtime        C++          Rust/Zig
-         mmap        .abix.hpp       .abix.rs
-           │             │             │
-           ▼             ▼             ▼
-       Dynamic ABI   Static ABI     Static ABI
+```mermaid
+graph TD
+    A["Project"] --> B["xxx.abic<br/>Configuration"]
+    B -->|"AMC"| C["xxx.abix<br/>Canonical ABI Artifact"]
+    C --> D["Runtime<br/>mmap"]
+    C --> E["C++<br/>.abix.hpp"]
+    C --> F["Rust/Zig<br/>.abix.rs / .abix.zig"]
+    D --> G["Dynamic ABI"]
+    E --> H["Static ABI"]
+    F --> I["Static ABI"]
 ```

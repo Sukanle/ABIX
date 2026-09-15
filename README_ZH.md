@@ -5,30 +5,15 @@
 ABIX 是一个 **ABI 语义层**：用于描述、标识、校验并演进原生二进制接口。它让 ABI
 信息变得显式、机器可读，且不依赖某个具体编译器或语言实现。
 
-```text
-                         原生生态
-                 C / C++ / Rust / Zig / ...
-                              │
-                              ▼
-                         ┌─────────┐
-                         │   AMC   │
-                         │  ABI    │
-                         │ 工具链  │
-                         └────┬────┘
-                              │
-                              ▼
-                         ┌─────────┐
-                         │ ABIX IR │
-                         └────┬────┘
-                              │
-                 ┌────────────┼────────────┐
-                 ▼            ▼            ▼
-              .abix        工具链       运行时
-                 │                         │
-                 ▼                         ▼
-          ABI 校验                  原生绑定
-          ABI diff / 分析           原生执行
-          代码生成                  ABI 适配
+```mermaid
+graph TD
+    A[原生生态<br>C / C++ / Rust / Zig / ...] --> B[AMC<br>ABI 工具链]
+    B --> C[ABIX IR]
+    C --> D[.abix]
+    C --> E[工具链]
+    C --> F[运行时]
+    D --> G[ABI 校验<br>ABI diff / 分析<br>代码生成]
+    F --> H[原生绑定<br>原生执行<br>ABI 适配]
 ```
 
 ABIX 目前以 **C++ 作为第一个宿主语言**实现；ABI 模型本身保持语言无关。
@@ -43,41 +28,29 @@ ABIX 目前以 **C++ 作为第一个宿主语言**实现；ABI 模型本身保�
 
 ABIX 让它显式化：
 
-```text
-传统                                  ABIX
-
-源码                                  源码 / 二进制
-  │                                       │
-  ▼                                       ▼
-编译器                                  AMC
-  │                                       │
-  ▼                                       ▼
-二进制                                 ABIX IR
-  │                                       │
-  ▼                                       ▼
-ABI 隐式存在                            .abix
-                                          │
-                                          ▼
-                                   ABI 成为显式对象
+```mermaid
+graph TD
+    subgraph 传统
+        A1[源码] --> A2[编译器] --> A3[二进制] --> A4[ABI 隐式存在]
+    end
+    subgraph ABIX
+        B1[源码 / 二进制] --> B2[AMC] --> B3[ABIX IR] --> B4[.abix] --> B5[ABI 成为显式对象]
+    end
 ```
 
 一旦 ABI 成为对象，它就能贯穿整个工具链：
 
-```text
-                     ABIX
-                       │
-       ┌───────────────┼────────────────┐
-       │               │                │
-       ▼               ▼                ▼
-     构建             CI              运行时
-       │               │                │
-       ▼               ▼                ▼
-    包管理         ABI Diff         原生绑定
-                  兼容性校验        / ABI 适配
-       │               │                │
-       └───────────────┼────────────────┘
-                       ▼
-                   开发者工具
+```mermaid
+graph TD
+    A[ABIX] --> B[构建]
+    A --> C[CI]
+    A --> D[运行时]
+    B --> E[包管理]
+    C --> F[ABI Diff 兼容性校验]
+    D --> G[原生绑定 / ABI 适配]
+    E --> H[开发者工具]
+    F --> H
+    G --> H
 ```
 
 ---
@@ -97,20 +70,18 @@ int add(int a, int b);
 
 原生 ABI 远不止源码声明本身：
 
-```text
-Foo
- ├── size
- ├── alignment
- ├── field offsets
- ├── field types
- └── layout identity
-
-add
- ├── symbol
- ├── return type
- ├── parameter types
- ├── calling convention
- └── ABI identity
+```mermaid
+graph TD
+    Foo --> F1[size]
+    Foo --> F2[alignment]
+    Foo --> F3[field offsets]
+    Foo --> F4[field types]
+    Foo --> F5[layout identity]
+    add --> A1[symbol]
+    add --> A2[return type]
+    add --> A3[parameter types]
+    add --> A4[calling convention]
+    add --> A5[ABI identity]
 ```
 
 ABIX 把这些 ABI 事实记录为机器可读模型，于是 ABI 变化可以被直接观察，而不是等到
@@ -139,13 +110,9 @@ Result: incompatible
 ABIX 不是虚拟机、不是 RPC 框架、也不是通用对象运行时。对一个兼容的原生函数，
 期望的执行路径是：
 
-```text
-应用
-  │ 原生调用
-  ▼
-┌──────────────┐
-│  原生二进制  │
-└──────────────┘
+```mermaid
+graph TD
+    A[应用] -->|原生调用| B[原生二进制]
 ```
 
 ABIX 可以参与 **发现 / 校验 / 标识 / 绑定 / 适配**，但不会持续解释或分派兼容调用。
@@ -158,21 +125,17 @@ ABIX 可以参与 **发现 / 校验 / 标识 / 绑定 / 适配**，但不会持�
 
 ABIX 围绕少量概念展开：
 
-```text
-                    ABIX
-                     │
-                 ABI 语义模型
-                     │
-       ┌─────────────┼─────────────┐
-       ▼             ▼             ▼
-     类型          函数          模块
-       │             │             │
-       ▼             ▼             ▼
-    布局          参数        Target / ABI
-       │
-       ▼
-   Type Identity
-   Layout Identity
+```mermaid
+graph TD
+    A[ABIX] --> B[ABI 语义模型]
+    B --> C[类型]
+    B --> D[函数]
+    B --> E[模块]
+    C --> F[布局]
+    D --> G[参数]
+    E --> H[Target / ABI]
+    F --> I[Type Identity]
+    F --> J[Layout Identity]
 ```
 
 该模型描述的是既有的原生二进制契约，而不是用一套新的通用运行时类型系统去取代
@@ -187,20 +150,14 @@ C++ / Rust / C。
 
 ABIX 中间表示是语言工具与运行时共享的统一表示：
 
-```text
-语言 AST
-     │
-     ▼
-语言适配层
-     │
-     ▼
-┌──────────────┐
-│   ABIX IR    │
-└──────┬───────┘
-       ├──────────────► .abix
-       ├──────────────► 代码生成
-       ├──────────────► ABI 分析
-       └──────────────► 运行时绑定
+```mermaid
+graph TD
+    A[语言 AST] --> B[语言适配层]
+    B --> C[ABIX IR]
+    C --> D[.abix]
+    C --> E[代码生成]
+    C --> F[ABI 分析]
+    C --> G[运行时绑定]
 ```
 
 IR 关注 ABI 语义，而非源码级实现细节。其序列化形式即 `.abix`：
@@ -215,16 +172,14 @@ IR 关注 ABI 语义，而非源码级实现细节。其序列化形式即 `.abi
 
 **AMC — ABI Meta Compiler** 是工具链入口。
 
-```text
-                   AMC
-                    │
-       ┌────────────┼────────────┐
-       ▼            ▼            ▼
-     解析         生成          分析
-       │            │            │
-       └────────────┼────────────┘
-                    ▼
-                 ABIX IR
+```mermaid
+graph TD
+    A[AMC] --> B[解析]
+    A --> C[生成]
+    A --> D[分析]
+    B --> E[ABIX IR]
+    C --> E
+    D --> E
 ```
 
 典型用法：
@@ -252,20 +207,13 @@ AMC 是可扩展工具链而非语言专用编译器：前端从语言 AST 提�
 ABIX 1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公开 ABI，并用它构建和
 校验下一个版本。
 
-```text
-             ABIX 1.0
-                 │
-                 ▼
-             描述自身
-                 │
-                 ▼
-             校验 / 绑定
-                 │
-                 ▼
-            构建下一个 ABI
-                 │
-                 ▼
-             ABIX 2.x ──► 描述自身
+```mermaid
+graph TD
+    A[ABIX 1.0] --> B[描述自身]
+    B --> C[校验 / 绑定]
+    C --> D[构建下一个 ABI]
+    D --> E[ABIX 2.x]
+    E -->|描述自身| E
 ```
 
 这把**稳定的 bootstrap ABI** 与**内部实现**（运行时内部结构、数据结构、同步、缓存）
@@ -276,30 +224,16 @@ ABIX 1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公
 
 ## 架构
 
-```text
-┌──────────────────────────────────────────────────────┐
-│                     语言生态                          │
-│       C      C++      Rust      Zig      ...          │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                         AMC                           │
-│                    ABI 工具链 / Driver                │
-└─────────────────────────┬────────────────────────────┘
-                          ▼
-┌──────────────────────────────────────────────────────┐
-│                       ABIX IR                         │
-│                  ABI 语义表示                          │
-└───────────────┬───────────────────────┬──────────────┘
-                ▼                       ▼
-        ┌──────────────┐       ┌──────────────────┐
-        │    .abix     │       │  ABIX Runtime    │
-        │ ABI Artifact │       │  原生绑定         │
-        └──────┬───────┘       └────────┬─────────┘
-               │                        │
-       ┌───────┼────────┐               ▼
-       ▼       ▼        ▼          原生二进制
-      CI     包管理     工具
+```mermaid
+graph TD
+    A[语言生态<br>C / C++ / Rust / Zig / ...] --> B[AMC<br>ABI 工具链 / Driver]
+    B --> C[ABIX IR<br>ABI 语义表示]
+    C --> D[.abix<br>ABI Artifact]
+    C --> E[ABIX Runtime<br>原生绑定]
+    D --> F[CI]
+    D --> G[包管理]
+    D --> H[工具]
+    E --> I[原生二进制]
 ```
 
 核心架构原则：
@@ -357,24 +291,24 @@ ABIX
 ```bash
 git clone <repository>
 cd ABIX
-cmake -B build
-cmake --build build -j
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
+cmake --build build/Release --parallel
 ```
 
 ### 试用
 
 ```bash
 # 从示例配置构建 .abix
-./build/bin/amc build -c amc/tests/fixtures/amc_test.abic.toml -B build/demo
+./build/Release/bin/amc build -c amc/tests/fixtures/amc_test.abic.toml -B build/demo
 
 # 查看
-./build/bin/amc inspect build/demo/build/amc_test.abix
+./build/Release/bin/amc inspect build/demo/build/amc_test.abix
 
 # 查询类型及其布局
-./build/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+./build/Release/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM 友好的 ABI 上下文
-./build/bin/amc context build/demo/build/amc_test.abix --format llm
+./build/Release/bin/amc context build/demo/build/amc_test.abix --format llm
 ```
 
 完整走查见 [`docs/getting-started_zh.md`](docs/getting-started_zh.md)。
@@ -436,13 +370,15 @@ cmake --build build -j
 
 ## 路线图
 
-```text
-ABIX Core ──► AMC ──► ABI-aware 工具链 ──► 原生 ABI 生态
-                │
-                ├── C / C++
-                ├── Rust
-                ├── Zig
-                └── 其他语言前端
+```mermaid
+graph LR
+    A[ABIX Core] --> B[AMC]
+    B --> C[ABI-aware 工具链]
+    C --> D[原生 ABI 生态]
+    B --> E[C / C++]
+    B --> F[Rust]
+    B --> G[Zig]
+    B --> H[其他语言前端]
 ```
 
 路线图优先考虑互操作性与真实使用，而不是增加运行时特性。见

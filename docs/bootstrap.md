@@ -28,26 +28,13 @@ The original plan was three phases — `Bootstrap → Runtime → Self-hosting`.
 was adjusted to four by moving the ABI meta-model forward as an independent
 Phase 0.
 
-```text
-                  ┌──────────────────────┐
-                  │ Phase 0              │
-                  │ ABI Model / Format   │  ← freeze the meta-model first
-                  └──────────┬───────────┘
-                             ↓
-                  ┌──────────────────────┐
-                  │ Phase 1              │
-                  │ Bootstrap Kernel     │  ← static metadata loader
-                  └──────────┬───────────┘
-                             ↓
-                  ┌──────────────────────┐
-                  │ Phase 2              │
-                  │ ABIX Runtime         │  ← Registry → Type → Map → RCU
-                  └──────────┬───────────┘
-                             ↓
-                  ┌──────────────────────┐
-                  │ Phase 3              │
-                  │ ABIX Self-hosting    │  ← ABIX describes ABIX
-                  └──────────────────────┘
+```mermaid
+graph TD
+    P0["Phase 0<br/>ABI Model / Format<br/>← freeze the meta-model first"]
+    P1["Phase 1<br/>Bootstrap Kernel<br/>← static metadata loader"]
+    P2["Phase 2<br/>ABIX Runtime<br/>← Registry → Type → Map → RCU"]
+    P3["Phase 3<br/>ABIX Self-hosting<br/>← ABIX describes ABIX"]
+    P0 --> P1 --> P2 --> P3
 ```
 
 Phase 0 carries the weight. What the bootstrap kernel must consume depends on
@@ -59,28 +46,17 @@ depend on each other.
 
 Defines the object model that all later phases consume:
 
-```text
-                          ABI
-                           │
-                 ┌─────────┴─────────┐
-                 │                   │
-              Target             ABI Identity
-                 │
-                 ▼
-              TypeInfo
-                 │
-        ┌────────┼────────┐
-        ▼        ▼        ▼
-      Layout    Field    Method
-        │
-        ▼
-     TypeId / Hash
-        │
-        ▼
-  Compatibility
-        │
-        ▼
-       Map
+```mermaid
+graph TD
+    ABI --> Target
+    ABI --> ABIIdentity["ABI Identity"]
+    Target --> TypeInfo
+    TypeInfo --> Layout
+    TypeInfo --> Field
+    TypeInfo --> Method
+    Layout --> TypeIdHash["TypeId / Hash"]
+    TypeIdHash --> Compatibility
+    Compatibility --> Map
 ```
 
 ### Phase 1 — Bootstrap kernel
@@ -202,19 +178,13 @@ rather than being implied by the implementation.
 
 `abixc` consumes a Clang AST and emits two coordinated products:
 
-```text
-                  Clang AST
-                     │
-                     ▼
-                   abixc
-               ┌─────┴─────┐
-               ▼           ▼
-           generated       .abix
-           C++ metadata    ABI artifact
-               │           │
-               └─────┬─────┘
-                     ▼
-                ABIX Runtime
+```mermaid
+graph TD
+    AST["Clang AST"] --> abixc
+    abixc --> Gen["generated<br/>C++ metadata"]
+    abixc --> Abix[".abix<br/>ABI artifact"]
+    Gen --> Runtime["ABIX Runtime"]
+    Abix --> Runtime
 ```
 
 * `.abix` — a stable ABI artifact shared across processes, tools and languages.
@@ -223,26 +193,19 @@ rather than being implied by the implementation.
 
 The v0 layout is a flat sequence:
 
-```text
-Header
-    ├── magic
-    ├── format_version
-    ├── hash_algorithm      ← hash algorithm recorded in the schema
-    └── section_offsets
-ABI Identity
-    ├── arch, os, compiler, calling_convention, abi_flags
-Target
-    ├── target_arch, target_os, target_abi
-String Table
-    ├── count, entries (offset, length)
-Type Table
-    ├── count, entries (TypeDesc)
-Field Table
-    ├── count, entries (name, TypeId, offset, flags)
-Function Table
-    ├── count, entries (name, signature_hash, cc, params)
-Symbol Table
-    ├── count, entries (name, kind, type_id / function_id)
+```mermaid
+graph TD
+    Header --> H_magic["magic"]
+    Header --> H_fmt["format_version"]
+    Header --> H_hash["hash_algorithm<br/>← hash algorithm recorded in the schema"]
+    Header --> H_sec["section_offsets"]
+    ABIIdentity["ABI Identity"] --> AI["arch, os, compiler, calling_convention, abi_flags"]
+    Target --> T["target_arch, target_os, target_abi"]
+    StringTable["String Table"] --> ST["count, entries (offset, length)"]
+    TypeTable["Type Table"] --> TT["count, entries (TypeDesc)"]
+    FieldTable["Field Table"] --> FT["count, entries (name, TypeId, offset, flags)"]
+    FunctionTable["Function Table"] --> FuT["count, entries (name, signature_hash, cc, params)"]
+    SymbolTable["Symbol Table"] --> SyT["count, entries (name, kind, type_id / function_id)"]
 ```
 
 The current implementation uses a Section Directory layout with a deduplicated
@@ -332,74 +295,50 @@ void abix_initialize() {
 RCU/EBR is not implemented first. The initial goal is to prove the
 `Bootstrap → Registry → Type lookup → self metadata` loop:
 
-```text
-Phase 2a: single-threaded runtime
-    Bootstrap → Registry → Type lookup → Type validation → Map lookup
-
-Phase 2b: concurrent runtime
-    + RCU/EBR → ThreadState → multi-thread safety
+```mermaid
+graph TD
+    subgraph P2a["Phase 2a: single-threaded runtime"]
+        A1["Bootstrap"] --> A2["Registry"] --> A3["Type lookup"] --> A4["Type validation"] --> A5["Map lookup"]
+    end
+    subgraph P2b["Phase 2b: concurrent runtime"]
+        B1["+ RCU/EBR"] --> B2["ThreadState"] --> B3["multi-thread safety"]
+    end
 ```
 
 ### Dependency graph
 
 Dependencies flow downward and reverse edges are forbidden.
 
-```text
- Bootstrap
-     │
-     ▼
- Metadata
-     │
-     ▼
- Registry
-     │
-     ├───────────┐
-     ▼           ▼
-  Type System   Map
-     │           │
-     └─────┬─────┘
-           ▼
-         RCU/EBR
-           │
-           ▼
-      Dynamic ABI
+```mermaid
+graph TD
+    Bootstrap --> Metadata
+    Metadata --> Registry
+    Registry --> TypeSystem["Type System"]
+    Registry --> Map
+    TypeSystem --> RCU["RCU/EBR"]
+    Map --> RCU
+    RCU --> DynamicABI["Dynamic ABI"]
 ```
 
 In particular, the following dependencies must not exist:
 
-```text
-Bootstrap → RCU
-Bootstrap → Map
-Bootstrap → Dynamic ABI
-Bootstrap → Registry API   (Bootstrap is not a Registry)
+```mermaid
+graph TD
+    Bootstrap -.-> RCU
+    Bootstrap -.-> Map
+    Bootstrap -.-> DynamicABI["Dynamic ABI"]
+    Bootstrap -.-> RegistryAPI["Registry API<br/>(Bootstrap is not a Registry)"]
 ```
 
 ### State machine
 
-```text
-                     ┌──────────────┐
-                     │ UNINITIALIZED│
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │  BOOTSTRAP   │  ← load BootstrapImage
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │ SELF_METADATA│  ← register ABIX internal metadata
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │   RUNTIME    │  ← runtime initialization
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │   PROMOTE    │  ← publish to the formal Registry
-                     └──────┬───────┘
-                            ▼
-                     ┌──────────────┐
-                     │    READY     │
-                     └──────────────┘
+```mermaid
+flowchart TD
+    UNINITIALIZED --> BOOTSTRAP["BOOTSTRAP<br/>← load BootstrapImage"]
+    BOOTSTRAP --> SELF_METADATA["SELF_METADATA<br/>← register ABIX internal metadata"]
+    SELF_METADATA --> RUNTIME["RUNTIME<br/>← runtime initialization"]
+    RUNTIME --> PROMOTE["PROMOTE<br/>← publish to the formal Registry"]
+    PROMOTE --> READY
 ```
 
 `BOOTSTRAP`, `SELF_METADATA`, `RUNTIME` and `PROMOTE` exist only on the
@@ -408,17 +347,11 @@ initialization thread. Ordinary user threads observe only `NOT_READY` and
 
 ### Thread-safety handoff
 
-```text
-BOOTSTRAP (single-thread)
-    │
-    ▼
-Runtime Registry
-    │  publish
-    ▼
-READY
-    │  std::atomic_thread_fence(release)
-    ▼
-RCU/EBR (multi-thread)
+```mermaid
+graph TD
+    B["BOOTSTRAP (single-thread)"] --> RR["Runtime Registry"]
+    RR -->|publish| READY
+    READY -->|"std::atomic_thread_fence(release)"| RCU["RCU/EBR (multi-thread)"]
 ```
 
 ```cpp
@@ -441,12 +374,10 @@ registry lookup.
 
 Type metadata and the registry come before RCU, not after:
 
-```text
- Type metadata          RCU
-     ↓                   ↓
- Registry              Registry
-     ↓                   ↓
-   RCU             Type metadata
+```mermaid
+graph TD
+    A1["Type metadata"] --> A2["Registry"] --> A3["RCU"]
+    B1["RCU"] --> B2["Registry"] --> B3["Type metadata"]
 ```
 
 Before RCU initialization, `ThreadState`, `RetiredNode` and `Epoch` are
@@ -457,17 +388,14 @@ registry, after which RCU itself can consume ABIX metadata.
 
 `Map` is one semantic model with two implementation paths, not two systems:
 
-```text
-                  Map Model
-                     │
-           ┌─────────┴─────────┐
-           ▼                   ▼
-     Runtime Map            Static Map
-           │                   │
-       MapInfo             MapPrivate
-           │                   │
-           ▼                   ▼
-    dynamic lookup       compile-time offset
+```mermaid
+graph TD
+    MapModel["Map Model"] --> RuntimeMap["Runtime Map"]
+    MapModel --> StaticMap["Static Map"]
+    RuntimeMap --> MapInfo
+    StaticMap --> MapPrivate
+    MapInfo --> DynLookup["dynamic lookup"]
+    MapPrivate --> CompileTime["compile-time offset"]
 ```
 
 | Scenario | Path |
@@ -484,35 +412,13 @@ native converter.
 
 ### The kernel is the trusted base
 
-```text
-                  ┌───────────────────────┐
-                  │ Bootstrap Kernel      │
-                  │  minimal              │
-                  │  stable               │
-                  │  hand-maintained      │
-                  │  does not use ABIX    │
-                  │  never self-described │
-                  └──────────┬────────────┘
-                             │
-                             ▼
-                  ┌───────────────────────┐
-                  │ ABIX Runtime          │
-                  │  Registry             │
-                  │  Type                 │
-                  │  Map                  │
-                  │  RCU / EBR            │
-                  └──────────┬────────────┘
-                             │
-                             ▼
-                  ┌───────────────────────┐
-                  │ ABIX Self Description │
-                  │  ABIX describes ABIX  │
-                  └──────────┬────────────┘
-                             │
-                             ▼
-                  ┌───────────────────────┐
-                  │ User ABI              │
-                  └───────────────────────┘
+```mermaid
+graph TD
+    Kernel["Bootstrap Kernel<br/>minimal<br/>stable<br/>hand-maintained<br/>does not use ABIX<br/>never self-described"]
+    Runtime["ABIX Runtime<br/>Registry<br/>Type<br/>Map<br/>RCU / EBR"]
+    SelfDesc["ABIX Self Description<br/>ABIX describes ABIX"]
+    UserABI["User ABI"]
+    Kernel --> Runtime --> SelfDesc --> UserABI
 ```
 
 The bootstrap kernel is the trusted computing base (TCB). Like BIOS/firmware or
