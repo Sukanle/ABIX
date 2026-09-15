@@ -4,16 +4,14 @@ AMC is the ABIX toolchain entry point. It extracts ABI information from a
 language AST, projects it into ABIX IR, and provides inspection, comparison,
 verification, generation and distribution tooling.
 
-```text
-                   AMC
-                    │
-       ┌────────────┼────────────┐
-       ▼            ▼            ▼
-     Parse        Generate      Analyze
-       │            │            │
-       └────────────┼────────────┘
-                    ▼
-                 ABIX IR
+```mermaid
+graph TD
+    A["AMC"] --> B["Parse"]
+    A --> C["Generate"]
+    A --> D["Analyze"]
+    B --> E["ABIX IR"]
+    C --> E
+    D --> E
 ```
 
 AMC is an extensible toolchain, not a language-specific compiler: language
@@ -112,6 +110,75 @@ amc generate file.abix -l lua -o aue_contract.hpp # Aue contract (header)
 amc generate file.abix -l lua -o conformance.lua  # generated Lua test case
 ```
 
+The C++ provider writes `amc_generated.hpp` (the projection) and, next to it,
+`amc_abi_check.hpp` — a compile-time ABI check that turns layout drift into an
+ordinary compiler/clangd diagnostic while editing, with no clangd plugin:
+
+```cpp
+#include "my_native_types.hpp"   // declares ns::Foo
+#include "amc_abi_check.hpp"     // static_asserts sizeof/alignof/offsetof
+```
+
+Include the check header *after* the native declarations it names. It asserts
+`sizeof`, `alignof`, per-field `offsetof` **and per-field width**
+(`sizeof(static_cast<T *>(nullptr)->field)`) for every type whose ABIX name is a
+valid C++ qualified name, so a mismatch such as an inserted field is reported at
+the point of inclusion instead of at runtime. The width assertion catches a
+field whose type changed to another type of a different size without moving the
+following offsets or the total size — the part of the LayoutHash comparison the
+offset checks miss. Bit-fields are skipped because `offsetof`/`sizeof` are not
+defined for them, and types AMC names implicitly (`struct Foo *`, anonymous
+enums) are skipped.
+
+### `amc adapter`
+
+Generates a standalone C++ ABI adapter from the mapping between two artifacts:
+a raw-memory `apply(source, target)` per compatible type, plus an entry table.
+The target buffer is zero-initialised, so `add_default`/`skip_field` need no
+code, and `convert_int`/`convert_float` are emitted as widening/narrowing casts.
+Unsignedness is not tracked by the model, so conversions go through signed
+intermediates.
+
+```bash
+amc adapter foo_v1.abix foo_v2.abix -o adapter_foo.hpp
+```
+
+```cpp
+const auto *entry = abix_adapter::find("ns::Foo", "ns::Foo");
+if (entry) entry->apply(&foo_v1, &foo_v2);
+```
+
+With `--typed`, it also emits an `abix::adapter<Source, Target>` specialization
+over the generated C++ projection types (`<namespace>::<type>_ABIX`). Include
+the projection header, define `ABIX_ADAPTER_TYPED`, then include the adapter:
+
+```cpp
+#define ABIX_ADAPTER_TYPED 1
+#include "amc_generated.hpp"   // amc_generated::ns_Foo_ABIX
+#include "adapter_foo.hpp"
+abix::adapter<amc_generated::ns_Foo_v2_ABIX,
+              amc_generated::ns_Foo_v2_ABIX>::apply(&v2, &v1);
+```
+
+`--typed-namespace <ns>` overrides the projection namespace (default
+`amc_generated`).
+
+`--shim` emits the adapter as a translation unit with a C ABI, so it can be
+compiled into a standalone shim shared library:
+
+```bash
+amc adapter foo_v1.abix foo_v2.abix --shim -o shim.cpp
+clang++ -std=c++17 -shared -fPIC shim.cpp -o libabix_shim.so
+```
+
+```c
+/* host side */
+void *h = dlopen("./libabix_shim.so", RTLD_NOW);
+bool (*apply)(const char *, const char *, const void *, void *) =
+    dlsym(h, "abix_adapter_apply");
+apply("ns::Foo", "ns::Foo", &foo_v1, &foo_v2);
+```
+
 ### `amc metadata`
 
 The self-describing Metadata Region (manifest + desc + hash + names), emitted,
@@ -160,5 +227,6 @@ amc validate missing.abix --error-format json
 |------|---------|
 | `amc-cpp` | C++ frontend/backend provider (JSON-lines IPC) |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
-| `amc-mcp` | MCP server exposing ABIX tools ([MCP.md](MCP.md)) |
+| `amc-mcp` | MCP server exposing ABIX tools; indexes multiple artifacts as a knowledge base ([MCP.md](MCP.md)) |
+| `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`tools/lldb_abix.cpp`](../tools/lldb_abix.cpp)) |
 | `abix-conformance` | Aue L0/L1 differential runner (when Lua is present) |

@@ -78,11 +78,16 @@ compatibility、map 和 map-operation section。
 `RuntimeRegistry<Capacity>::register_module()` 会先校验完整 module（包括 type 引用
 和重复 ID），随后从调用者视角原子地完成注册。Registry 同时保留 canonical 的
 `model::TypeDesc`/`TypeLayout` 视图和生成 descriptor。
+注册以 `(TypeID, version)` 为键：同一 version 内重复的 `TypeID` 必须具有相同的
+`LayoutHash`（Boundary #1）；而更新的 version 可以携带不同 layout，作为独立 entry 共存。
 
 | API | 结果 |
 |---|---|
 | `register_module(const ModuleDescriptor&)` | `RuntimeRegisterStatus`；拒绝格式错误、重复、超容量或未解析引用的 module |
-| `find_by_id(TypeId)` / `find_by_name(const char*)` | 生成的 `RuntimeRegistryEntry`，或 `nullptr` |
+| `register_module(const ModuleDescriptor&, uint32_t version)` | 按版本注册；同一 `TypeID` 可跨版本以不同 layout 共存 |
+| `find_by_id(TypeId)` / `find_by_name(const char*)` | 生成的 `RuntimeRegistryEntry`，或 `nullptr`；`find_by_id` 返回最新版本 |
+| `find_type(TypeId, uint32_t version)` | 精确匹配该 `(TypeID, version)` 的 entry，或 `nullptr` |
+| `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | module version 字符串的前导十进制整数（`"2.1"` → `2`） |
 | `type_of<T>()` | 由生成的 `TypeTraits<T>::type_id` 选中的 entry |
 | `canonical()` | 底层有界 `MetadataRegistry` 视图 |
 

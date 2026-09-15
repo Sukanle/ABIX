@@ -19,8 +19,8 @@ generate。
 ```bash
 git clone <repository>
 cd ABIX
-cmake -B build
-cmake --build build -j
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
+cmake --build build/Release --parallel
 ```
 
 产物在 `build/bin`：
@@ -36,7 +36,7 @@ cmake --build build -j
 运行测试：
 
 ```bash
-ctest --test-dir build --output-on-failure
+ctest --test-dir build/Release --output-on-failure
 ```
 
 ## 3. 描述一个 ABI
@@ -67,7 +67,7 @@ int add(int a, int b);
 ```
 
 ```bash
-./build/bin/amc build -c math_api.abic.toml -B build
+./build/Release/bin/amc build -c math_api.abic.toml -B build
 # -> build/build/math_api.abix
 # -> build/build/math_api.abix.meta
 ```
@@ -77,25 +77,25 @@ int add(int a, int b);
 ## 4. 查看与查询
 
 ```bash
-./build/bin/amc inspect build/build/math_api.abix
-./build/bin/amc query build/build/math_api.abix --type math::Point --layout
-./build/bin/amc query build/build/math_api.abix --function math::add --format json
-./build/bin/amc context build/build/math_api.abix --format llm
+./build/Release/bin/amc inspect build/build/math_api.abix
+./build/Release/bin/amc query build/build/math_api.abix --type math::Point --layout
+./build/Release/bin/amc query build/build/math_api.abix --function math::add --format json
+./build/Release/bin/amc context build/build/math_api.abix --format llm
 ```
 
 所有消费者也能直接吃编译产物（生成头文件把 ABI 内嵌为 `.abix.metadata` 段）：
 
 ```bash
-./build/bin/amc query libfoo.so --type math::Point --layout
+./build/Release/bin/amc query libfoo.so --type math::Point --layout
 ```
 
 ## 5. 对比与校验
 
 ```bash
-./build/bin/amc diff v1.abix v2.abix
-./build/bin/amc compatibility v1.abix v2.abix          # 不兼容退出 1
-./build/bin/amc verify -c math_api.abic.toml -B build   # 契约 vs 当前实现
-./build/bin/amc verify v1.abix v2.abix --format diagnostics
+./build/Release/bin/amc diff v1.abix v2.abix
+./build/Release/bin/amc compatibility v1.abix v2.abix          # 不兼容退出 1
+./build/Release/bin/amc verify -c math_api.abic.toml -B build   # 契约 vs 当前实现
+./build/Release/bin/amc verify v1.abix v2.abix --format diagnostics
 ```
 
 `amc verify` 把任何差异（包括新增类型/函数）都视为 drift。
@@ -103,29 +103,29 @@ int add(int a, int b);
 ## 6. 代码生成
 
 ```bash
-./build/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
-./build/bin/amc generate build/build/math_api.abix -l lua -o aue_contract.hpp
+./build/Release/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
+./build/Release/bin/amc generate build/build/math_api.abix -l lua -o aue_contract.hpp
 ```
 
 ## 7. Metadata Region 与 symbol server
 
 ```bash
-./build/bin/amc metadata build/build/math_api.abix -o math_api.abixmeta
-./build/bin/amc metadata --verify math_api.abixmeta
-./build/bin/amc metadata --from-elf libfoo.so --format json
-./build/bin/amc publish libfoo.so --root ~/.abix/symbols
-./build/bin/amc fetch libfoo.so -o libfoo.abixmeta
+./build/Release/bin/amc metadata build/build/math_api.abix -o math_api.abixmeta
+./build/Release/bin/amc metadata --verify math_api.abixmeta
+./build/Release/bin/amc metadata --from-elf libfoo.so --format json
+./build/Release/bin/amc publish libfoo.so --root ~/.abix/symbols
+./build/Release/bin/amc fetch libfoo.so -o libfoo.abixmeta
 ```
 
 ## 8. AI Agent 集成
 
 ```bash
-./build/bin/amc-mcp build/build/math_api.abix
+./build/Release/bin/amc-mcp build/build/math_api.abix
 python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
-        --amc-mcp ./build/bin/amc-mcp
+        --amc-mcp ./build/Release/bin/amc-mcp
 ```
 
-工具目录见 [`MCP.md`](MCP.md)。
+工具目录见 [`MCP_zh.md`](MCP_zh.md)。
 
 ## 下一步
 

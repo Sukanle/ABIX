@@ -85,14 +85,13 @@ build/Release/bin/bench_all \
 
 需要重点关注的潜在瓶颈包括：
 
-```text
-reader enter/exit
-    -> 共享 epoch 读取
-synchronize
-    -> writer 竞争
-    -> epoch 原子 RMW
-    -> reader scan / grace period
-    -> retire 发布与回收
+```mermaid
+graph TD
+    A[reader enter/exit] --> B[共享 epoch 读取]
+    C[synchronize] --> D[writer 竞争]
+    C --> E[epoch 原子 RMW]
+    C --> F[reader scan / grace period]
+    C --> G[retire 发布与回收]
 ```
 
 `alignas`、epoch batching 和 publish batching 只能在对应路径的测量结果支持时保留。全局 padding 可能降低 cache 利用率，批处理则可能增加回收延迟；它们都不是无条件优化。

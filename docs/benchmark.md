@@ -72,14 +72,13 @@ Both `SKL_ABIX_RCU_EPOCH_BATCH=8` and `SKL_ABIX_RCU_EPOCH_BATCH=16` builds run t
 
 The potential contention chain is:
 
-```text
-reader enter/exit
-    -> shared epoch load
-synchronize
-    -> writer contention
-    -> epoch atomic RMW
-    -> reader scan / grace period
-    -> retire publication and reclamation
+```mermaid
+graph TD
+    A[reader enter/exit] --> B[shared epoch load]
+    C[synchronize] --> D[writer contention]
+    C --> E[epoch atomic RMW]
+    C --> F[reader scan / grace period]
+    C --> G[retire publication and reclamation]
 ```
 
 `alignas`, epoch batching, and publish batching should be retained only when measurements support the corresponding change. Global padding can reduce cache utilization, while batching can increase reclamation delay; neither is a universal optimization.

@@ -83,11 +83,17 @@ Headers: `abix/runtime_descriptor.h`, `abix/runtime_registry.h`.
 module, including type references and duplicate IDs, then registers it
 atomically from the caller's perspective. The registry retains canonical
 `model::TypeDesc`/`TypeLayout` views alongside generated descriptors.
+Registration is keyed by `(TypeID, version)`: a repeated `TypeID` within the
+same version must carry an identical `LayoutHash` (Boundary #1), while a later
+version may carry a different layout and coexists as its own entry.
 
 | API | Result |
 |---|---|
 | `register_module(const ModuleDescriptor&)` | `RuntimeRegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules |
-| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `RuntimeRegistryEntry`, or `nullptr` |
+| `register_module(const ModuleDescriptor&, uint32_t version)` | Versioned registration; the same `TypeID` may coexist across versions with different layouts |
+| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `RuntimeRegistryEntry`, or `nullptr`; `find_by_id` returns the newest version |
+| `find_type(TypeId, uint32_t version)` | Entry for that exact `(TypeID, version)` pair, or `nullptr` |
+| `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | Leading decimal integer of a module version string (`"2.1"` → `2`) |
 | `type_of<T>()` | Entry selected by generated `TypeTraits<T>::type_id` |
 | `canonical()` | Underlying bounded `MetadataRegistry` view |
 
