@@ -6,9 +6,14 @@
 // server and any future consumer answer from exactly one implementation.
 //
 // Usage:
-//   amc-mcp [<file.abix>]              serve one module by default
-//   amc-mcp --abix <file.abix>
-//   amc-mcp --list-tools               print the tool catalogue and exit
+//   amc-mcp [<file.abix|libfoo.so>...]  index one or more artifacts
+//   amc-mcp --index <path>              add an artifact to the knowledge base
+//   amc-mcp --abix <file.abix>          serve one module by default
+//   amc-mcp --list-tools                print the tool catalogue and exit
+//
+// With more than one artifact the server becomes a small ABI knowledge base:
+// `abix.list_modules` and `abix.search_type` span every indexed module, and
+// `abix.find_compatible` can decide compatibility across the whole index.
 #include "amc_core.h"
 #include "amc_json.h"
 #include "amc_metadata.h"
@@ -21,7 +26,22 @@
 
 namespace {
 
+// An artifact loaded once at startup. A knowledge base is just a list of these,
+// so cross-module queries stay a matter of iterating the index rather than
+// re-parsing files.
+struct IndexedModule {
+    std::string path;
+    amc::AbiModule module;
+};
+
 std::string g_default_module;
+std::vector<IndexedModule> g_index;
+
+const IndexedModule *find_indexed(const std::string &path) {
+    for (const auto &entry : g_index)
+        if (entry.path == path) return &entry;
+    return nullptr;
+}
 
 std::string hash_hex(amc::Hash128 value) {
     static const char digits[] = "0123456789abcdef";
@@ -49,9 +69,14 @@ bool json_from_string(const std::string &text, amc::Json &out, std::string &erro
 bool load_module(const amc::Json &args, amc::AbiModule &module, std::string &error) {
     std::string path = arg_string(args, "module");
     if (path.empty()) path = g_default_module;
+    if (path.empty() && !g_index.empty()) path = g_index.front().path;
     if (path.empty()) {
         error = "no module selected: pass 'module' or start amc-mcp with a .abix path";
         return false;
+    }
+    if (const IndexedModule *entry = find_indexed(path)) {
+        module = entry->module;
+        return true;
     }
     if (!amc::load_module_source(path, module, error)) {
         error = "cannot read module '" + path + "': " + error;
@@ -169,15 +194,74 @@ amc::Json tool_compare_abi(const amc::Json &args, std::string &error) {
     return result;
 }
 
+amc::Json type_summary(const amc::Type &type) {
+    amc::Json summary = amc::Json::object();
+    summary.set("name", type.name);
+    summary.set("id", hash_hex(type.id));
+    summary.set("layout_hash", hash_hex(type.layout_hash));
+    summary.set("size", static_cast<long long>(type.size));
+    return summary;
+}
+
+// Two modes:
+//  * with `other`      — compare one type across two artifacts (unchanged).
+//  * without `other`   — knowledge-base mode: compare the type in the default
+//                        module against every other indexed module and report
+//                        which ones stay layout-compatible.
 amc::Json tool_find_compatible(const amc::Json &args, std::string &error) {
-    amc::AbiModule module, other;
+    amc::AbiModule module;
     if (!load_module(args, module, error)) return amc::Json();
     const std::string needle = arg_string(args, "name");
     const std::string other_path = arg_string(args, "other");
-    if (needle.empty() || other_path.empty()) {
-        error = "find_compatible requires 'name' and 'other'";
+    if (needle.empty()) {
+        error = "find_compatible requires 'name'";
         return amc::Json();
     }
+
+    if (other_path.empty()) {
+        if (g_index.empty()) {
+            error = "find_compatible requires 'other' when no modules are indexed";
+            return amc::Json();
+        }
+        const std::string source_path =
+            arg_string(args, "module").empty() ? g_default_module : arg_string(args, "module");
+        const auto source_indices = amc::query_type_indices(module, needle);
+        amc::Json result = amc::Json::object();
+        result.set("name", needle);
+        if (source_indices.empty()) {
+            result.set("found", false);
+            result.set("compatible", false);
+            result.set("reason", "type not found in the source module");
+            return result;
+        }
+        const auto &source = module.types[source_indices.front()];
+        amc::Json candidates = amc::Json::array();
+        bool all_compatible = true;
+        for (const auto &entry : g_index) {
+            if (entry.path == source_path) continue;
+            const auto indices = amc::query_type_indices(entry.module, needle);
+            if (indices.empty()) continue;
+            const auto &candidate = entry.module.types[indices.front()];
+            const bool same_id = source.id == candidate.id;
+            const bool same_layout = source.layout_hash == candidate.layout_hash;
+            amc::Json item = type_summary(candidate);
+            item.set("module", entry.path);
+            item.set("compatible", same_id && same_layout);
+            item.set("same_type_id", same_id);
+            item.set("same_layout_hash", same_layout);
+            if (!(same_id && same_layout)) all_compatible = false;
+            candidates.push_back(std::move(item));
+        }
+        const auto candidate_count = static_cast<long long>(candidates.items().size());
+        result.set("found", true);
+        result.set("candidate_count", candidate_count);
+        result.set("compatible", all_compatible && candidate_count > 0);
+        result.set("source", type_summary(source));
+        result.set("candidates", std::move(candidates));
+        return result;
+    }
+
+    amc::AbiModule other;
     std::string read_error;
     if (!amc::read_abix(other_path, other, read_error)) {
         error = "cannot read '" + other_path + "': " + read_error;
@@ -201,18 +285,8 @@ amc::Json tool_find_compatible(const amc::Json &args, std::string &error) {
     result.set("compatible", same_id && same_layout);
     result.set("same_type_id", same_id);
     result.set("same_layout_hash", same_layout);
-    amc::Json source_json = amc::Json::object();
-    source_json.set("name", source.name);
-    source_json.set("id", hash_hex(source.id));
-    source_json.set("layout_hash", hash_hex(source.layout_hash));
-    source_json.set("size", static_cast<long long>(source.size));
-    result.set("source", std::move(source_json));
-    amc::Json target_json = amc::Json::object();
-    target_json.set("name", target.name);
-    target_json.set("id", hash_hex(target.id));
-    target_json.set("layout_hash", hash_hex(target.layout_hash));
-    target_json.set("size", static_cast<long long>(target.size));
-    result.set("target", std::move(target_json));
+    result.set("source", type_summary(source));
+    result.set("target", type_summary(target));
     return result;
 }
 
@@ -308,6 +382,111 @@ amc::Json tool_resolve_type(const amc::Json &args, std::string &error) {
     return result;
 }
 
+amc::Json tool_list_modules(const amc::Json &args, std::string &error) {
+    (void)args;
+    if (g_index.empty()) {
+        error = "no indexed modules: start amc-mcp with one or more .abix paths";
+        return amc::Json();
+    }
+    amc::Json modules = amc::Json::array();
+    for (const auto &entry : g_index) {
+        const auto &module = entry.module;
+        amc::Json item = amc::Json::object();
+        item.set("path", entry.path);
+        item.set("package", module.package_name);
+        item.set("package_version", module.package_version);
+        item.set("abi_hash", hash_hex(amc::abi_hash(module)));
+        amc::Json counts = amc::Json::object();
+        counts.set("types", static_cast<long long>(module.types.size()));
+        counts.set("functions", static_cast<long long>(module.functions.size()));
+        item.set("counts", std::move(counts));
+        modules.push_back(std::move(item));
+    }
+    amc::Json result = amc::Json::object();
+    result.set("module_count", static_cast<long long>(g_index.size()));
+    result.set("modules", std::move(modules));
+    return result;
+}
+
+// Cross-module type search for the knowledge base. Matches are grouped by type
+// name, and each group records whether every occurrence in the index shares one
+// TypeID and LayoutHash. This answers "find every module that declares Foo, and
+// are they the same ABI?" without a per-pair query.
+amc::Json tool_search_type(const amc::Json &args, std::string &error) {
+    if (g_index.empty()) {
+        error = "no indexed modules: start amc-mcp with one or more .abix paths";
+        return amc::Json();
+    }
+    std::string needle = arg_string(args, "name");
+    if (needle.empty()) needle = arg_string(args, "id");
+    if (needle.empty()) {
+        error = "search_type requires 'name' or 'id'";
+        return amc::Json();
+    }
+
+    struct Group {
+        std::string name;
+        bool have_reference = false;
+        bool consistent = true;
+        amc::Hash128 reference_id{}, reference_layout{};
+        amc::Json matches = amc::Json::array();
+    };
+    std::vector<Group> groups;
+    for (const auto &entry : g_index) {
+        const auto indices = amc::query_type_indices(entry.module, needle);
+        for (const auto index : indices) {
+            const auto &type = entry.module.types[index];
+            Group *group = nullptr;
+            for (auto &candidate : groups) {
+                if (candidate.name == type.name) {
+                    group = &candidate;
+                    break;
+                }
+            }
+            if (group == nullptr) {
+                groups.push_back(Group{});
+                group = &groups.back();
+                group->name = type.name;
+            }
+            amc::Json item = amc::Json::object();
+            item.set("module", entry.path);
+            item.set("package", entry.module.package_name);
+            item.set("id", hash_hex(type.id));
+            item.set("layout_hash", hash_hex(type.layout_hash));
+            item.set("size", static_cast<long long>(type.size));
+            item.set("align", static_cast<long long>(type.align));
+            if (!group->have_reference) {
+                group->have_reference = true;
+                group->reference_id = type.id;
+                group->reference_layout = type.layout_hash;
+            } else if (!(type.id == group->reference_id && type.layout_hash == group->reference_layout)) {
+                group->consistent = false;
+            }
+            group->matches.push_back(std::move(item));
+        }
+    }
+
+    amc::Json groups_json = amc::Json::array();
+    long long total = 0;
+    for (auto &group : groups) {
+        const auto count = static_cast<long long>(group.matches.items().size());
+        total += count;
+        amc::Json item = amc::Json::object();
+        item.set("name", group.name);
+        item.set("match_count", count);
+        item.set("consistent", group.consistent);
+        item.set("matches", std::move(group.matches));
+        groups_json.push_back(std::move(item));
+    }
+
+    amc::Json result = amc::Json::object();
+    result.set("needle", needle);
+    result.set("match_count", total);
+    result.set("group_count", static_cast<long long>(groups.size()));
+    result.set("groups", std::move(groups_json));
+    return result;
+}
+
 // --- tool catalogue ------------------------------------------------------
 
 amc::Json property(const char *type, const char *description) {
@@ -376,10 +555,24 @@ amc::Json tools_catalogue() {
     {
         amc::Json props = amc::Json::object();
         props.set("name", property("string", "Type name or 0x TypeID"));
-        props.set("other", property("string", "Path of the artifact holding the candidate type"));
+        props.set("other", property("string", "Candidate artifact; omit to compare across every indexed module"));
         props.set("module", module_prop);
         tools.push_back(make_tool("abix.find_compatible",
-            "Decide whether a type is ABI-compatible across two artifacts.", std::move(props), {"name", "other"}));
+            "Decide whether a type is ABI-compatible across two artifacts, or across the whole index.",
+            std::move(props), {"name"}));
+    }
+    {
+        amc::Json props = amc::Json::object();
+        tools.push_back(make_tool("abix.list_modules",
+            "List every module in the knowledge base with its package and record counts.", std::move(props), {}));
+    }
+    {
+        amc::Json props = amc::Json::object();
+        props.set("name", property("string", "Type name, Owner::Type or 0x TypeID"));
+        props.set("id", property("string", "TypeID as 0x<32 hex>"));
+        tools.push_back(make_tool("abix.search_type",
+            "Find matching types across the indexed modules, grouped by name, flagging ABI disagreement.",
+            std::move(props), {}));
     }
     {
         amc::Json props = amc::Json::object();
@@ -530,6 +723,10 @@ void handle_request(const amc::Json &request) {
             structured = tool_resolve_type(arguments, error);
         else if (tool == "abix.compare_types")
             structured = tool_find_compatible(arguments, error);
+        else if (tool == "abix.list_modules")
+            structured = tool_list_modules(arguments, error);
+        else if (tool == "abix.search_type")
+            structured = tool_search_type(arguments, error);
         else
             error = "unknown tool '" + tool + "'";
 
@@ -544,15 +741,36 @@ void handle_request(const amc::Json &request) {
     respond(make_error(id, -32'601, "method not found: " + method));
 }
 
-void print_usage() { std::cerr << "usage: amc-mcp [<file.abix>] [--abix <file.abix>] [--list-tools]\n"; }
+void print_usage() {
+    std::cerr << "usage: amc-mcp [<file.abix|libfoo.so>...] [--index <path>] "
+                 "[--abix <file.abix>] [--list-tools]\n";
+}
+
+bool load_index(const std::vector<std::string> &paths, std::string &error) {
+    for (const auto &path : paths) {
+        IndexedModule entry;
+        entry.path = path;
+        if (!amc::load_module_source(path, entry.module, error)) {
+            error = "cannot read module '" + path + "': " + error;
+            return false;
+        }
+        g_index.push_back(std::move(entry));
+    }
+    return true;
+}
 
 }   // namespace
 
 int main(int argc, char **argv) {
+    std::vector<std::string> paths;
+    std::string explicit_default;
     for (int i = 1; i < argc; ++i) {
         const std::string argument = argv[i];
         if ((argument == "--abix" || argument == "-m") && i + 1 < argc) {
-            g_default_module = argv[++i];
+            explicit_default = argv[++i];
+            paths.push_back(explicit_default);
+        } else if (argument == "--index" && i + 1 < argc) {
+            paths.push_back(argv[++i]);
         } else if (argument == "--list-tools") {
             std::cout << tools_catalogue().dump_pretty() << "\n";
             return 0;
@@ -560,12 +778,19 @@ int main(int argc, char **argv) {
             print_usage();
             return 0;
         } else if (!argument.empty() && argument[0] != '-') {
-            g_default_module = argument;
+            paths.push_back(argument);
         } else {
             print_usage();
             return 2;
         }
     }
+
+    std::string load_error;
+    if (!load_index(paths, load_error)) {
+        std::cerr << "amc-mcp: " << load_error << "\n";
+        return 1;
+    }
+    g_default_module = !explicit_default.empty() ? explicit_default : (paths.empty() ? std::string() : paths.front());
 
     std::ios::sync_with_stdio(false);
     std::string line;
