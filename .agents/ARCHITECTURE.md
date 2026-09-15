@@ -120,6 +120,48 @@ Dynamic cost is concentrated at initialisation. After materialization the hot
 path is close to a static ABI. See [`docs/runtime.md`](../docs/runtime.md) and
 [`docs/metadata_modes.md`](../docs/metadata_modes.md).
 
+## 7.1 Versioned TypeID Registration
+
+The `RuntimeRegistry` supports versioned registration: the same `TypeID` may
+coexist under distinct module ABI versions with different layouts. Only a
+repeated `TypeID` *within the same version* is a layout conflict (Boundary #1).
+
+```cpp
+// Two versions of the same module may register the same TypeID.
+registry.register_module(v1_module, /*version=*/1);
+registry.register_module(v2_module, /*version=*/2);
+
+// find_type() selects by exact (TypeID, version) pair.
+const auto *entry = registry.find_type(my_type_id, /*version=*/2);
+
+// find_by_id() returns the newest registered version.
+const auto *latest = registry.find_by_id(my_type_id);
+```
+
+The version is parsed from the module's `version` string: leading decimal
+digits map to an integer (`"1"` → 1, `"1.0"` → 1, `"2"` → 2); no digits → 0
+(experimental). The adapter layer selects the version at dispatch time.
+
+## 7.2 ABI Adapter
+
+The ABI adapter generates field-level mapping code between two ABIX modules:
+
+```text
+amc diff v1.abix v2.abix  →  compatibility report (maps[])
+amc adapter v1.abix v2.abix  →  C++ header with field-level copy
+```
+
+The generated adapter applies `copy_field` / `add_default` / `skip_field` /
+`convert_int` / `convert_float` mappings from raw source memory to raw target
+memory. It works without the C++ projections being present.
+
+Typed mode (`amc adapter --typed`) generates `abix::adapter<Source, Target>`
+specializations for each compatible type pair. The primary template returns
+`false` so callers can fall back gracefully.
+
+See [`docs/amc.md`](../docs/amc.md) `amc adapter` section and
+[`amc/core/amc_adapter.h`](../amc/core/amc_adapter.h).
+
 ## 8. Extension Points
 
 * **New language** → implement a frontend/plugin ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
@@ -127,6 +169,8 @@ path is close to a static ABI. See [`docs/runtime.md`](../docs/runtime.md) and
 * **New tool** → build on `amc/core` query/verify APIs; keep JSON schemas stable.
 * **New runtime capability** → extend the runtime projection, not the ABI model,
   unless it is a genuine ABI concept.
+* **ABI adaptation** → use `amc adapter` to generate field-level mapping code
+  between ABI versions; the runtime adapter dispatches via `abix::adapter<S,T>`.
 
 ## 9. Forbidden Architectural Patterns
 
@@ -140,7 +184,8 @@ Do not:
 * let names participate in ABI identity or compatibility;
 * hand-edit generated artifacts instead of regenerating them;
 * duplicate a metadata parser in a new consumer;
-* change ABI semantics to simplify an implementation.
+* change ABI semantics to simplify an implementation;
+* hardcode adapter mappings instead of deriving them from compatibility reports;
 
 If a task appears to require one of these, stop and explain the conflict
 before changing the constraint ([`AGENTS.md`](AGENTS.md) §13).

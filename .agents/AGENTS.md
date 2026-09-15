@@ -85,14 +85,28 @@ genuine ABI concept. Language-specific behaviour belongs in a
 ## 2. Repository Orientation
 
 ```text
-abix/    ABI model + runtime (header-only registry, descriptors)
-amc/     AMC: core/, cpp/ (Clang frontend+backend), dump/, mcp/
+abix/    ABI model + runtime (header-only registry, descriptors, adapter)
+amc/     AMC: core/ (ELF reader, metadata, adapter, symbol store, query, verify),
+           cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
 aue/     experimental Lua boundary layer + differential conformance
-tools/   helper scripts (MCP demo, token cost, LLDB command)
+tools/   helper scripts (MCP demo, token cost, LLDB command, ELF test)
 docs/    specification and design
 ```
+
+### Key subsystems
+
+| Subsystem | Location | Responsibility |
+|-----------|----------|----------------|
+| ABI model | `abix/` | `TypeDescriptor`, `FieldDescriptor`, `RuntimeRegistry`, `TypeTraits`, adapter dispatch |
+| ELF reader | `amc/core/amc_elf.h` | Minimal ELF64 section reader (`is_elf`, `find_elf_section`, `read_elf_sections`) |
+| Metadata Region | `amc/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
+| ABI adapter | `amc/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
+| Symbol store | `amc/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
+| MCP server | `amc/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
+| LLDB plugin | `amc/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
+| Versioned registry | `abix/runtime_registry.h` | `RuntimeRegistry::register_module(module, version)` — same TypeID across versions |
 
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
 your change.
