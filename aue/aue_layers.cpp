@@ -55,4 +55,24 @@ void register_meta(lua_State *state, const Contract &contract) {
     lua_setmetatable(state, -2);
 }
 
+const char *level_name(Level level) noexcept {
+    switch (level) {
+        case Level::l0: return "l0";
+        case Level::l1: return "l1";
+        case Level::l2: return "l2";
+    }
+    return "unknown";
+}
+
+Level register_layer(lua_State *state, const Contract &contract, Level requested) {
+    const Level selected = select_level(requested);
+    if (selected == Level::l1) {
+        register_meta(state, contract);
+    } else {
+        // L0 also covers a requested L2 that this build cannot provide.
+        register_direct(state, contract);
+    }
+    return selected;
+}
+
 }   // namespace aue

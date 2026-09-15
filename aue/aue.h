@@ -39,12 +39,40 @@ struct Contract {
     size_t entry_count;
 };
 
+// Aue boundary levels. L2 (VM inline dispatch) is not implemented yet; the
+// plan's design principle is that the level is chosen at compile time and the
+// runtime may only *downgrade*, never upgrade.
+enum class Level : uint32_t {
+    l0 = 0,   // Default: direct C binding (golden reference)
+    l1 = 1,   // Meta: __index contract dispatch
+    l2 = 2,   // Native: VM inline dispatch (reserved)
+};
+
+// Highest level compiled into this build. L1 is available whenever the Meta
+// layer is; L2 is reserved and never compiled in yet.
+#ifdef AUE_ENABLE_L1
+constexpr Level compiled_level = Level::l1;
+#else
+constexpr Level compiled_level = Level::l0;
+#endif
+
+// Clamps a requested level to what this build supports (downgrade only).
+constexpr Level select_level(Level requested) noexcept {
+    return static_cast<uint32_t>(requested) <= static_cast<uint32_t>(compiled_level) ? requested : compiled_level;
+}
+
+const char *level_name(Level level) noexcept;
+
 // L0 Default: eagerly copy every function into the module table.
 void register_direct(lua_State *state, const Contract &contract);
 
 // L1 Meta: expose a lazy table; `__index` looks a function up in the contract
 // and memoizes it on first access.
 void register_meta(lua_State *state, const Contract &contract);
+
+// Registers the module at `requested`, clamped to `compiled_level`. Returns the
+// level actually used, so callers can report the (possibly degraded) choice.
+Level register_layer(lua_State *state, const Contract &contract, Level requested);
 
 // --- the demo native module (`counter`) ----------------------------------
 void register_counter_types(lua_State *state);

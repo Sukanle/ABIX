@@ -9,6 +9,14 @@ set(AUE_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 set(AUE_CONTRACT_HEADER "")
 
 if(TARGET amc)
+  # `amc build` execs the `amc-cpp` provider next to the driver, so the codegen
+  # step must depend on that provider too — not only on the `amc` driver.
+  # Without this a clean Ninja build runs the generator before amc-cpp exists
+  # (provider exit 127).
+  set(AUE_CONTRACT_DEPS $<TARGET_FILE:amc>)
+  if(TARGET amc-cpp)
+    list(APPEND AUE_CONTRACT_DEPS $<TARGET_FILE:amc-cpp>)
+  endif()
   add_custom_command(
     OUTPUT ${AUE_GENERATED_DIR}/counter_contract.hpp
     COMMAND ${CMAKE_COMMAND} -E make_directory ${AUE_GENERATED_DIR}
@@ -18,7 +26,7 @@ if(TARGET amc)
     COMMAND $<TARGET_FILE:amc> generate
             ${AUE_GENERATED_DIR}/build/build/counter.abix
             -l lua -o ${AUE_GENERATED_DIR}/counter_contract.hpp
-    DEPENDS $<TARGET_FILE:amc>
+    DEPENDS ${AUE_CONTRACT_DEPS}
             ${CMAKE_CURRENT_SOURCE_DIR}/counter.abic.toml
             ${CMAKE_CURRENT_SOURCE_DIR}/counter_api.hpp
     COMMENT "Generating the Aue contract from counter.abix"
@@ -36,6 +44,8 @@ function(aue_configure_target target)
     target_link_directories(${target} PRIVATE ${LUA_LIBRARY_DIRS})
   endif()
   target_link_libraries(${target} PRIVATE ${LUA_LIBRARIES})
+  # The L1 Meta layer is compiled in; a runtime request for L2 degrades to L1.
+  target_compile_definitions(${target} PRIVATE AUE_ENABLE_L1=1)
   set_target_properties(${target} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
   if(AUE_CONTRACT_HEADER)
@@ -58,6 +68,11 @@ if(NOT TARGET abix-conformance)
       COMMAND abix-conformance ${CMAKE_CURRENT_SOURCE_DIR}/conformance.lua)
     add_test(NAME aue-conformance-edges
       COMMAND abix-conformance ${CMAKE_CURRENT_SOURCE_DIR}/conformance_edges.lua)
+    # Requesting L2 must degrade to the compiled-in L1 (downgrade only).
+    add_test(NAME aue-level-downgrade
+      COMMAND abix-conformance ${CMAKE_CURRENT_SOURCE_DIR}/conformance.lua --requested l2)
+    set_tests_properties(aue-level-downgrade PROPERTIES
+      PASS_REGULAR_EXPRESSION "requested=l2 selected=l1")
   endif()
 
   add_executable(abix-bench
