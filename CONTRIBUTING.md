@@ -57,9 +57,9 @@ before changing the constraint — do not silently relax it.
 ```bash
 git clone <repository>
 cd ABIX
-cmake -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
+cmake --build build/Release --parallel
+ctest --test-dir build/Release --output-on-failure
 ```
 
 Requirements:

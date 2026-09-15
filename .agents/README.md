@@ -14,21 +14,25 @@ knowledge type; do not duplicate content across these files — link instead.
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | contribution workflow + change types | process |
 | [`../docs/`](../docs/) | detailed implementation knowledge | detail |
 
-## Entry points (auto-discovered by tools)
+## Entry point
 
-Tooling looks for instructions in fixed locations, so the repository keeps thin
-shims that point here — the content lives in this directory:
+The canonical entry point is **[`AGENTS.md`](AGENTS.md)** in this directory.
+Agents that support `.agents/AGENTS.md` discovery read it directly; there is no
+duplicated copy elsewhere.
 
-| Discovered by | File |
-|---------------|------|
-| Codex / generic agents | [`../AGENTS.md`](../AGENTS.md) |
-| Claude Code | [`../CLAUDE.md`](../CLAUDE.md) |
-| Gemini | [`../GEMINI.md`](../GEMINI.md) |
-| GitHub Copilot | [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md) |
-| Copilot path-scoped rules | [`../.github/instructions/`](../.github/instructions/) |
+Platform-mandated files stay where the platform requires and link back here:
+
+| Tool | Location |
+|------|----------|
+| GitHub Copilot (repository-wide) | [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md) |
+| GitHub Copilot (path-scoped) | [`../.github/instructions/`](../.github/instructions/) |
 
 Path-scoped rules stay under `.github/instructions/` because GitHub Copilot
 requires that location; keeping a second copy here would let the two drift.
+
+If a tool only discovers instructions at the repository root (for example
+`CLAUDE.md` or `GEMINI.md`), add a one-line shim there that imports
+`.agents/AGENTS.md` rather than copying its content.
 
 ## Skills
 

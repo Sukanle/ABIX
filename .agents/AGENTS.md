@@ -218,14 +218,47 @@ If the change is intentional, add or update an ABI regression test.
 
 ---
 
-## 9. Testing
+## 9. Build & Testing
 
-Verify the smallest relevant scope; state clearly what you actually ran.
+### Build
+
+Configure and build using `build/<CMAKE_BUILD_TYPE>` as the output directory:
 
 ```bash
-cmake -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+# Release build
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
+cmake --build build/Release --parallel
+
+# Debug build (with optional AddressSanitizer)
+cmake -B build/Debug -DCMAKE_BUILD_TYPE=Debug -DSANITIZER=asan -G Ninja -S .
+cmake --build build/Debug --parallel
+
+# Debug build (no sanitizer)
+cmake -B build/Debug -DCMAKE_BUILD_TYPE=Debug -DSANITIZER=none -G Ninja -S .
+cmake --build build/Debug --parallel
+```
+
+Additional CMake options (see `CMakeLists.txt`):
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-DBUILD_TESTING=ON` | ON | Build tests |
+| `-DBUILD_BENCHMARKS=ON` | ON | Build benchmarks |
+| `-DSKL_ABIX_DEVELOPMENT=OFF` | OFF | Enable development-only diagnostics |
+| `-DSKL_ABIX_BUILD_DLL_VARIANTS=ON` | ON | Build cross-toolchain DLL variants |
+| `-DAMC_BUILD=ON` | ON | Build AMC toolchain (requires Clang/LLVM) |
+
+### Test & Run
+
+```bash
+# Run tests
+ctest --test-dir build/Release --output-on-failure
+
+# Or run directly
+build/Release/bin/test_all
+
+# Run benchmarks
+build/Release/bin/bench_all
 ```
 
 For AMC changes, also exercise the CLI manually. For ABI changes, verify
