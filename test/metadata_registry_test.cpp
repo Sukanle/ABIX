@@ -159,6 +159,76 @@ TEST_CASE("runtime registry validates shared type ids across modules") {
     REQUIRE(registry.validate() == runtime::RuntimeRegisterStatus::ok);
 }
 
+TEST_CASE("runtime registry dispatches a TypeID across module versions") {
+    using namespace skl::abix;
+    constexpr model::TypeId shared_id{0x0A, 0x0B};
+
+    // Version 1: a 4-byte type. Version 2: the same TypeID grew to 8 bytes.
+    static const runtime::TypeDescriptor v1_types[] = {
+        {nullptr, shared_id, {0xC1, 0xC2}, 0, 4, 4, 0},
+    };
+    static const model::TypeDesc v1_canonical[] = {
+        {shared_id, 0, 0, 0}
+    };
+    static const model::TypeLayout v1_layouts[] = {
+        {4, 4, 0, 0, {0xC1, 0xC2}}
+    };
+    static const runtime::ModuleDescriptor module_v1{
+        "pkg", "1", v1_types, v1_canonical, v1_layouts, 1, 0, nullptr, nullptr, 0};
+
+    static const runtime::TypeDescriptor v2_types[] = {
+        {nullptr, shared_id, {0xD1, 0xD2}, 0, 8, 8, 0},
+    };
+    static const model::TypeDesc v2_canonical[] = {
+        {shared_id, 0, 0, 0}
+    };
+    static const model::TypeLayout v2_layouts[] = {
+        {8, 8, 0, 0, {0xD1, 0xD2}}
+    };
+    static const runtime::ModuleDescriptor module_v2{
+        "pkg", "2", v2_types, v2_canonical, v2_layouts, 1, 0, nullptr, nullptr, 0};
+
+    // A second claim on version 2 with a different layout stays a conflict.
+    static const runtime::TypeDescriptor v2b_types[] = {
+        {nullptr, shared_id, {0xE1, 0xE2}, 0, 16, 16, 0},
+    };
+    static const model::TypeDesc v2b_canonical[] = {
+        {shared_id, 0, 0, 0}
+    };
+    static const model::TypeLayout v2b_layouts[] = {
+        {16, 16, 0, 0, {0xE1, 0xE2}}
+    };
+    static const runtime::ModuleDescriptor module_v2b{
+        "pkg", "2", v2b_types, v2b_canonical, v2b_layouts, 1, 0, nullptr, nullptr, 0};
+
+    REQUIRE(runtime::RuntimeRegistry<4>::parse_version("1.0") == 1);
+    REQUIRE(runtime::RuntimeRegistry<4>::module_version(module_v2) == 2);
+
+    runtime::RuntimeRegistry<4> registry;
+    REQUIRE(registry.register_module(module_v1) == runtime::RuntimeRegisterStatus::ok);
+    REQUIRE(registry.size() == 1);
+    REQUIRE(registry.find_type(shared_id, 1)->layout == &v1_layouts[0]);
+    REQUIRE(registry.find_type(shared_id, 2) == nullptr);
+
+    // Same TypeID under a newer version coexists instead of conflicting.
+    REQUIRE(registry.check_module(module_v2) == runtime::RuntimeRegisterStatus::ok);
+    REQUIRE(registry.register_module(module_v2) == runtime::RuntimeRegisterStatus::ok);
+    REQUIRE(registry.size() == 2);
+    REQUIRE(registry.find_type(shared_id, 1)->layout == &v1_layouts[0]);
+    REQUIRE(registry.find_type(shared_id, 2)->layout == &v2_layouts[0]);
+    // Unversioned lookup resolves to the newest version.
+    REQUIRE(registry.find_by_id(shared_id) == registry.find_type(shared_id, 2));
+
+    // Re-registering version 1 is a no-op; version 2 stays intact.
+    REQUIRE(registry.register_module(module_v1) == runtime::RuntimeRegisterStatus::ok);
+    REQUIRE(registry.size() == 2);
+    REQUIRE(registry.find_by_id(shared_id)->layout == &v2_layouts[0]);
+
+    REQUIRE(registry.register_module(module_v2b) == runtime::RuntimeRegisterStatus::layout_conflict);
+    REQUIRE(registry.size() == 2);
+    REQUIRE(registry.validate() == runtime::RuntimeRegisterStatus::ok);
+}
+
 TEST_CASE("runtime registry rejects unknown references without partial registration") {
     using namespace skl::abix;
     constexpr model::TypeId foo_id{0x33, 0x44};

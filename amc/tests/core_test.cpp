@@ -1,3 +1,4 @@
+#include "../core/amc_adapter.h"
 #include "../core/amc_context.h"
 #include "../core/amc_core.h"
 #include "../core/amc_elf.h"
@@ -287,6 +288,35 @@ int main() {
         check(!amc::parse_json("{bad}", round, error), "reject invalid json");
         check(!amc::parse_json("{\"a\":1} trailing", round, error), "reject trailing input");
 
+        check(amc::parse_json("// head\n{\"a\": 1, /* middle */}", round, error), "accept json comments");
+        check(amc::parse_json("[1, 2,]", round, error) && round.items().size() == 2, "accept array trailing comma");
+        check(amc::parse_json("{\"a\": 1,}", round, error), "accept object trailing comma");
+        check(amc::parse_json("\"foo\\\nbar\"", round, error) && round.as_string() == "foobar",
+            "accept LF string continuation");
+        check(amc::parse_json("\"foo\\\r\nbar\"", round, error) && round.as_string() == "foobar",
+            "accept CRLF string continuation");
+        check(!amc::parse_json("\"foo\nbar\"", round, error), "reject raw newline in string");
+        check(!amc::parse_json("{'a': 1}", round, error), "reject single quote extension");
+        check(!amc::parse_json("{a: 1}", round, error), "reject unquoted key extension");
+        check(!amc::parse_json("0x10", round, error), "reject hexadecimal extension");
+        check(!amc::parse_json("NaN", round, error), "reject NaN extension");
+
+        amc::Json copied(value);
+        copied.set("c", false);
+        check(value.find("c")->as_bool(true) && !copied.find("c")->as_bool(true), "json deep copy");
+        amc::Json moved(std::move(copied));
+        check(moved.find("a") != nullptr, "json move");
+        value.set("a", 42);
+        check(value.find("a")->as_number() == 42, "json replacement invalidates cache");
+        amc::Json numbers = amc::Json::array();
+        numbers.push_back(3);
+        check(numbers.items().size() == 1 && numbers.items()[0].as_number() == 3, "json array mutation");
+
+        amc::Json pooled;
+        check(amc::parse_json("{\"a\":1}", pooled, error), "pooled parse");
+        pooled.set("b", 2);
+        check(pooled.find("b") != nullptr && pooled.dump() == "{\"a\":1,\"b\":2}", "modify pooled root");
+
         amc::Json built = amc::Json::object();
         built.set("x", 1);
         built.set("y", "text");
@@ -372,6 +402,89 @@ int main() {
             "lua conformance lists the entry");
         check(contains(conformance, "counter._abi_hash"), "lua conformance checks the abi hash");
         check(contains(conformance, "\"counter\""), "lua conformance checks the module name");
+    }
+
+    // --- ABI adapter generation -------------------------------------------
+    {
+        amc::AbiModule v1, v2, report;
+        v1.package_name = "v1";
+        v2.package_name = "v2";
+        const amc::Hash128 int_id = amc::hash_text("int", 0x54595045);
+        const amc::Hash128 long_id = amc::hash_text("long", 0x54595045);
+        const auto primitive = [](const char *name, amc::Hash128 id, uint32_t size) {
+            amc::Type type;
+            type.name = name;
+            type.kind = amc::TypeKind::primitive;
+            type.id = id;
+            type.size = size;
+            type.align = size;
+            type.layout_hash = amc::hash_text(std::string(name) + "-layout", 9);
+            return type;
+        };
+
+        v1.types.push_back(make_type("MapRecord", 8, 4));
+        v1.types[0].layout_hash = amc::hash_text("v1-layout", 1);
+        v1.types.push_back(primitive("int", int_id, 4));
+        amc::Field value;
+        value.owner_type = v1.types[0].id;
+        value.name = "value";
+        value.type_id = int_id;
+        value.offset = 0;
+        amc::Field count = value;
+        count.name = "count";
+        count.offset = 4;
+        v1.fields = {value, count};
+        v1.types[0].field_begin = 0;
+        v1.types[0].field_count = 2;
+
+        v2.types.push_back(make_type("MapRecord", 16, 8));
+        v2.types[0].layout_hash = amc::hash_text("v2-layout", 2);
+        v2.types.push_back(primitive("int", int_id, 4));
+        v2.types.push_back(primitive("long", long_id, 8));
+        amc::Field copied = value;
+        copied.owner_type = v2.types[0].id;
+        amc::Field added = copied;
+        added.name = "added";
+        added.offset = 4;
+        amc::Field widened = copied;
+        widened.name = "count";
+        widened.type_id = long_id;
+        widened.offset = 8;
+        v2.fields = {copied, added, widened};
+        v2.types[0].field_begin = 0;
+        v2.types[0].field_count = 3;
+
+        std::string error;
+        check(amc::adapter_symbol("a::B") == "a_B", "adapter symbol scope");
+        check(amc::adapter_symbol("weird-name") == "weird_name", "adapter symbol chars");
+
+        check(amc::build_compatibility(v1, v2, report, error), "compatibility for adapter");
+        check(!report.maps.empty(), "compatibility produced a mapping");
+        const std::string adapter = amc::generate_adapter(v1, v2, report, error);
+        check(error.empty(), "adapter generation succeeds");
+        check(contains(adapter, "namespace abix_adapter"), "adapter namespace");
+        check(contains(adapter, "copy_field"), "adapter copy operation");
+        check(contains(adapter, "add_default"), "adapter default operation");
+        check(contains(adapter, "convert_int"), "adapter integer conversion");
+
+        amc::AdapterOptions typed_options;
+        typed_options.typed = true;
+        const std::string typed = amc::generate_adapter(v1, v2, report, typed_options, error);
+        check(contains(typed, "::abix::adapter<"), "typed adapter specialization");
+        check(contains(typed, "amc_generated::MapRecord_ABIX"), "typed adapter projection type");
+        check(contains(typed, "ABIX_ADAPTER_TYPED"), "typed adapter is guarded");
+
+        amc::AdapterOptions shim_options;
+        shim_options.shim = true;
+        const std::string shim = amc::generate_adapter(v1, v2, report, shim_options, error);
+        check(contains(shim, "extern \"C\""), "shim exports a C ABI");
+        check(contains(shim, "abix_adapter_apply"), "shim exposes abix_adapter_apply");
+        check(!contains(shim, "#pragma once"), "shim is emitted as a translation unit");
+
+        amc::AbiModule empty;
+        std::string missing;
+        const std::string none = amc::generate_adapter(empty, empty, empty, missing);
+        check(none.empty() && !missing.empty(), "adapter without a mapping reports an error");
     }
 
     // --- region -> runtime projection ------------------------------------

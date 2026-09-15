@@ -987,7 +987,7 @@ class TestRunner:
             ok = False  # notifications must not produce a response
         if responses.get(1, {}).get("result", {}).get("serverInfo", {}).get("name") != "amc-mcp":
             ok = False
-        if len(responses.get(2, {}).get("result", {}).get("tools", [])) != 10:
+        if len(responses.get(2, {}).get("result", {}).get("tools", [])) != 12:
             ok = False
         if structured(3).get("counts", {}).get("types", 0) == 0:
             ok = False
@@ -1370,6 +1370,518 @@ int main() {
         self.pass_("amc context renders the declaration site")
         return True
 
+    def step31_abi_diagnostics(self) -> bool:
+        """Step 31: amc verify --format diagnostics emits editor-style lines."""
+        build = os.path.join(self.build_dir, "diagnostics")
+        os.makedirs(build, exist_ok=True)
+        config = os.path.join(SOURCE_ROOT, "amc/tests/fixtures/amc_test.abic.toml")
+        if self.run([self.bin_path("amc"), "build", "-c", config, "-B", build]).returncode != 0:
+            self.fail("amc build failed for the diagnostics test")
+            return False
+        contract = os.path.join(build, "build", "amc_test.abix")
+        implementation = os.path.join(self.build_dir, "m8.abix")
+        if not os.path.isfile(implementation):
+            self.fail("diagnostics prerequisite (m8.abix) is missing")
+            return False
+
+        result = self.run([self.bin_path("amc"), "verify", contract, implementation,
+                           "--format", "diagnostics"])
+        if result.returncode != 1:
+            self.fail("amc verify --format diagnostics should exit 1 on drift")
+            return False
+        if "amc_test_types.hpp:" not in result.stdout or "error: ABI " not in result.stdout:
+            self.fail("diagnostics output is missing file:line:column / error lines")
+            return False
+        self.pass_("amc verify --format diagnostics emits file:line: error lines")
+
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        if len(lines) < 2 or not any("amc_test_types.hpp:" not in line for line in lines):
+            self.fail("diagnostics did not report source-less drift changes")
+            return False
+        self.pass_("diagnostics report every drift change, with or without a source")
+        return True
+
+    def step32_go_to_definition(self) -> bool:
+        """Step 32: LLDB go-to-definition via BuildID -> symbol server -> .abix."""
+        if not (self.has_binary("clang++") and self.has_binary("lldb")
+                and self.has_binary("readelf")):
+            info("clang++/lldb/readelf not found, skipping go-to-definition test")
+            return True
+        # A binary carrying the embedded (source-free) Metadata Region.
+        consumer_src = os.path.join(SCRIPT_DIR, "strip_consumer.cpp")
+        binary = os.path.join(self.build_dir, "gotodef_consumer")
+        compiled = self.run([
+            "clang++", "-std=c++17",
+            f"-I{SOURCE_ROOT}", f"-I{self.gen_separate}",
+            consumer_src, "-o", binary, "-Wl,--build-id=sha1",
+        ])
+        if compiled.returncode != 0:
+            self.fail("go-to-definition consumer failed to compile")
+            return False
+
+        notes = self.run(["readelf", "-n", binary])
+        match = re.search(r"BuildID:\s*([0-9a-f]+)", notes.stdout.replace("Build ID:", "BuildID:"))
+        if match is None:
+            self.fail("go-to-definition binary has no GNU build id")
+            return False
+        build_id = match.group(1)
+
+        # The debug .abix (with Source Origin) published under the binary's BuildID.
+        build = os.path.join(self.build_dir, "gotodef-abi")
+        os.makedirs(build, exist_ok=True)
+        config = os.path.join(SOURCE_ROOT, "amc/tests/fixtures/amc_test.abic.toml")
+        if self.run([self.bin_path("amc"), "build", "-c", config, "-B", build]).returncode != 0:
+            self.fail("go-to-definition .abix build failed")
+            return False
+        debug_abix = os.path.join(build, "build", "amc_test.abix")
+        store = os.path.join(self.build_dir, "gotodef-store")
+        if self.run([self.bin_path("amc"), "publish", debug_abix,
+                     "--root", store, "--build-id", build_id]).returncode != 0:
+            self.fail("could not publish the debug .abix to the symbol server")
+            return False
+
+        module = os.path.join(SOURCE_ROOT, "tools", "lldb_abix.py")
+        environment = dict(os.environ,
+                           ABIX_AMC=self.bin_path("amc"),
+                           ABIX_SYMBOL_STORE=store)
+        session = self.run([
+            shutil.which("lldb"), "-b",
+            "-o", f"command script import {module}",
+            "-o", "abix source AmcTestFoo",
+            "-o", "quit",
+            binary,
+        ], env=environment)
+        if "amc_test_types.hpp:" not in session.stdout:
+            self.fail("LLDB `abix source` did not resolve go-to-definition")
+            return False
+        self.pass_("LLDB `abix source` resolves TypeID -> declaration site")
+        return True
+
+    def step33_lldb_cast(self) -> bool:
+        """Step 33: LLDB `abix cast` interprets memory via AMC layout data."""
+        if not (self.has_binary("clang++") and self.has_binary("lldb")):
+            info("clang++/lldb not found, skipping the LLDB cast test")
+            return True
+        source = os.path.join(self.build_dir, "cast_prog.cpp")
+        with open(source, "w") as handle:
+            handle.write(
+                '#include "amc_generated.hpp"\n'
+                '#include "amc_test_types.hpp"\n'
+                'AmcTestFoo g_foo{7, 2.5};\n'
+                'int main() { return g_foo.x == 7 ? 0 : 1; }\n')
+        binary = os.path.join(self.build_dir, "cast_prog")
+        fixtures = os.path.join(SOURCE_ROOT, "amc/tests/fixtures")
+        compiled = self.run([
+            "clang++", "-std=c++17",
+            f"-I{SOURCE_ROOT}", f"-I{self.gen_separate}", f"-I{fixtures}",
+            source, "-o", binary,
+        ])
+        if compiled.returncode != 0:
+            self.fail("LLDB cast program failed to compile")
+            return False
+
+        module = os.path.join(SOURCE_ROOT, "tools", "lldb_abix.py")
+        environment = dict(os.environ, ABIX_AMC=self.bin_path("amc"))
+        session = self.run([
+            shutil.which("lldb"), "-b",
+            "-o", f"command script import {module}",
+            "-o", "breakpoint set -n main",
+            "-o", "run",
+            "-o", "abix cast &g_foo AmcTestFoo",
+            "-o", "quit",
+            binary,
+        ], env=environment)
+        output = session.stdout
+        if "abix cast: AmcTestFoo @" not in output:
+            self.fail("LLDB `abix cast` did not resolve the layout")
+            return False
+        if "2.5" not in output or "7" not in output:
+            self.fail("LLDB `abix cast` did not decode field values")
+            return False
+        self.pass_("LLDB `abix cast` interprets memory via ABIX layout")
+        return True
+
+    def step34_abi_adapter(self) -> bool:
+        """Step 34: `amc adapter` generates a working ABI conversion."""
+        build = os.path.join(self.build_dir, "adapter")
+        os.makedirs(build, exist_ok=True)
+        fixtures = os.path.join(SOURCE_ROOT, "amc/tests/fixtures")
+        for name in ("map_v1", "map_v2"):
+            config = os.path.join(fixtures, f"{name}.abic.toml")
+            if self.run([self.bin_path("amc"), "build", "-c", config,
+                         "-B", build]).returncode != 0:
+                self.fail(f"amc build {name} failed for the adapter test")
+                return False
+        v1 = os.path.join(build, "build", "map_v1.abix")
+        v2 = os.path.join(build, "build", "map_v2.abix")
+
+        adapter = os.path.join(build, "adapter.hpp")
+        generated = self.run([self.bin_path("amc"), "adapter", v1, v2, "-o", adapter])
+        if generated.returncode != 0 or not os.path.isfile(adapter):
+            self.fail("amc adapter did not generate a file")
+            return False
+        with open(adapter) as handle:
+            text = handle.read()
+        if ("copy_field" not in text or "add_default" not in text
+                or "abix_adapter" not in text):
+            self.fail("generated adapter is missing the mapping")
+            return False
+        self.pass_("amc adapter generates a mapping from two artifacts")
+
+        if not self.has_binary("clang++"):
+            info("clang++ not found, skipping the adapter compile check")
+            return True
+        source = os.path.join(build, "adapter_check.cpp")
+        with open(source, "w") as handle:
+            handle.write(
+                '#include "adapter.hpp"\n'
+                'struct V1 { int value; };\n'
+                'struct V2 { int value; int added; };\n'
+                'int main() {\n'
+                '    V1 a{42}; V2 b{9, 9};\n'
+                '    const auto *e = abix_adapter::find("amc_map::MapRecord",'
+                ' "amc_map::MapRecord");\n'
+                '    if (!e) return 1;\n'
+                '    e->apply(&a, &b);\n'
+                '    return (b.value == 42 && b.added == 0) ? 0 : 2;\n'
+                '}\n')
+        binary = os.path.join(build, "adapter_check")
+        compiled = self.run(["clang++", "-std=c++17", f"-I{build}",
+                             source, "-o", binary])
+        if compiled.returncode != 0 or self.run([binary]).returncode != 0:
+            self.fail("generated adapter failed to compile or apply")
+            return False
+        self.pass_("generated adapter applies the field mapping correctly")
+
+        # A conversion map: int -> long and float -> double.
+        for name in ("map_conv_v1", "map_conv_v2"):
+            config = os.path.join(fixtures, f"{name}.abic.toml")
+            if self.run([self.bin_path("amc"), "build", "-c", config,
+                         "-B", build]).returncode != 0:
+                self.fail(f"amc build {name} failed for the conversion test")
+                return False
+        conv_adapter = os.path.join(build, "convert.hpp")
+        if self.run([self.bin_path("amc"), "adapter",
+                     os.path.join(build, "build", "map_conv_v1.abix"),
+                     os.path.join(build, "build", "map_conv_v2.abix"),
+                     "-o", conv_adapter]).returncode != 0:
+            self.fail("amc adapter failed for the conversion fixture")
+            return False
+        with open(conv_adapter) as handle:
+            converted = handle.read()
+        if "convert_int" not in converted or "convert_float" not in converted:
+            self.fail("conversion adapter is missing convert_int / convert_float")
+            return False
+        self.pass_("amc adapter generates integer and float conversions")
+
+        conv_source = os.path.join(build, "convert_check.cpp")
+        with open(conv_source, "w") as handle:
+            handle.write(
+                '#include "convert.hpp"\n'
+                'struct V1 { int a; float b; };\n'
+                'struct V2 { long a; double b; };\n'
+                'int main() {\n'
+                '    V1 x{7, 1.5f}; V2 y{};\n'
+                '    const auto *e = abix_adapter::find("amc_map::MapConv",'
+                ' "amc_map::MapConv");\n'
+                '    if (!e) return 1;\n'
+                '    e->apply(&x, &y);\n'
+                '    return (y.a == 7 && y.b == 1.5) ? 0 : 2;\n'
+                '}\n')
+        conv_binary = os.path.join(build, "convert_check")
+        compiled = self.run(["clang++", "-std=c++17", f"-I{build}",
+                             conv_source, "-o", conv_binary])
+        if compiled.returncode != 0 or self.run([conv_binary]).returncode != 0:
+            self.fail("generated conversion adapter failed to compile or convert")
+            return False
+        self.pass_("generated conversion adapter widens int and float correctly")
+
+        # Typed specialization over the C++ projection.
+        typed_header = os.path.join(build, "typed.hpp")
+        if self.run([self.bin_path("amc"), "adapter", v1, v2,
+                     "--typed", "-o", typed_header]).returncode != 0:
+            self.fail("amc adapter --typed failed")
+            return False
+        with open(typed_header) as handle:
+            typed_text = handle.read()
+        if "::abix::adapter<" not in typed_text or "ABIX_ADAPTER_TYPED" not in typed_text:
+            self.fail("typed adapter is missing the abix::adapter specialization")
+            return False
+        self.pass_("amc adapter --typed emits an abix::adapter specialization")
+
+        projection = os.path.join(build, "projection")
+        if self.run([self.bin_path("amc"), "generate", v1, "-l", "cpp",
+                     "-o", projection]).returncode != 0:
+            self.fail("could not generate the C++ projection for the typed adapter")
+            return False
+        typed_source = os.path.join(build, "typed_check.cpp")
+        with open(typed_source, "w") as handle:
+            handle.write(
+                '#define ABIX_ADAPTER_TYPED 1\n'
+                '#include "projection/amc_generated.hpp"\n'
+                '#include "typed.hpp"\n'
+                'struct V1 { int value; };\n'
+                'struct V2 { int value; int added; };\n'
+                'int main() {\n'
+                '    V1 a{42}; V2 b{9, 9};\n'
+                '    using ad = abix::adapter<amc_generated::amc_map_MapRecord_ABIX,\n'
+                '                             amc_generated::amc_map_MapRecord_ABIX>;\n'
+                '    if (!ad::apply(&b, &a)) return 1;\n'
+                '    return (b.value == 42 && b.added == 0) ? 0 : 2;\n'
+                '}\n')
+        typed_binary = os.path.join(build, "typed_check")
+        compiled = self.run(["clang++", "-std=c++17", f"-I{SOURCE_ROOT}", f"-I{build}",
+                             typed_source, "-o", typed_binary])
+        if compiled.returncode != 0 or self.run([typed_binary]).returncode != 0:
+            self.fail("typed adapter failed to compile or apply")
+            return False
+        self.pass_("typed abix::adapter specialization applies the mapping")
+        return True
+
+    def step35_abi_shim(self) -> bool:
+        """Step 35: `amc adapter --shim` builds a loadable shim library."""
+        if not (self.has_binary("clang++") and self.has_binary("clang")):
+            info("clang++/clang not found, skipping the ABI shim test")
+            return True
+        build = os.path.join(self.build_dir, "shim")
+        os.makedirs(build, exist_ok=True)
+        fixtures = os.path.join(SOURCE_ROOT, "amc/tests/fixtures")
+        for name in ("map_v1", "map_v2"):
+            config = os.path.join(fixtures, f"{name}.abic.toml")
+            if self.run([self.bin_path("amc"), "build", "-c", config,
+                         "-B", build]).returncode != 0:
+                self.fail(f"amc build {name} failed for the shim test")
+                return False
+        v1 = os.path.join(build, "build", "map_v1.abix")
+        v2 = os.path.join(build, "build", "map_v2.abix")
+
+        shim_cpp = os.path.join(build, "shim.cpp")
+        if self.run([self.bin_path("amc"), "adapter", v1, v2, "--shim",
+                     "-o", shim_cpp]).returncode != 0:
+            self.fail("amc adapter --shim did not generate a source file")
+            return False
+        with open(shim_cpp) as handle:
+            text = handle.read()
+        if "abix_adapter_apply" not in text or "#pragma once" in text:
+            self.fail("shim source is not a translation unit exposing a C ABI")
+            return False
+        self.pass_("amc adapter --shim emits a C ABI translation unit")
+
+        library = os.path.join(build, "libabix_shim.so")
+        compiled = self.run(["clang++", "-std=c++17", "-shared", "-fPIC",
+                             f"-I{SOURCE_ROOT}", shim_cpp, "-o", library])
+        if compiled.returncode != 0:
+            self.fail("shim library failed to compile")
+            return False
+
+        host_source = os.path.join(build, "host.c")
+        with open(host_source, "w") as handle:
+            handle.write(
+                '#include <dlfcn.h>\n'
+                'struct V1 { int value; };\n'
+                'struct V2 { int value; int added; };\n'
+                'typedef int (*count_fn)(void);\n'
+                'typedef int (*apply_fn)(const char*, const char*, const void*, void*);\n'
+                'int main(void) {\n'
+                '    void *h = dlopen("./libabix_shim.so", RTLD_NOW);\n'
+                '    if (!h) return 1;\n'
+                '    count_fn count = (count_fn)dlsym(h, "abix_adapter_count");\n'
+                '    apply_fn apply = (apply_fn)dlsym(h, "abix_adapter_apply");\n'
+                '    if (!count || !apply || count() != 1) return 2;\n'
+                '    struct V1 a = {42}; struct V2 b = {9, 9};\n'
+                '    if (!apply("amc_map::MapRecord", "amc_map::MapRecord", &a, &b)) return 3;\n'
+                '    return (b.value == 42 && b.added == 0) ? 0 : 4;\n'
+                '}\n')
+        host = os.path.join(build, "host")
+        if self.run(["clang", host_source, "-o", host, "-ldl"]).returncode != 0:
+            self.fail("shim host failed to compile")
+            return False
+        if self.run([host], cwd=build).returncode != 0:
+            self.fail("shim library did not apply the mapping across the C ABI")
+            return False
+        self.pass_("shim library applies the mapping across the C ABI")
+        return True
+
+    def step36_abi_check_header(self) -> bool:
+        """Step 36: the generated clangd-visible ABI check header."""
+        check_header = os.path.join(self.gen_separate, "amc_abi_check.hpp")
+        if not os.path.isfile(check_header):
+            self.fail("amc generate did not emit amc_abi_check.hpp")
+            return False
+        with open(check_header) as handle:
+            text = handle.read()
+        if ("ABIX ABI check" not in text
+                or "sizeof(AmcTestFoo)" not in text
+                or "offsetof(AmcTestFoo, y)" not in text
+                or "field width mismatch for AmcTestFoo::x" not in text):
+            self.fail("ABI check header is missing the type/field/width assertions")
+            return False
+        self.pass_("amc generate emits a clangd-visible ABI check header")
+
+        if not self.has_binary("clang++"):
+            info("clang++ not found, skipping the ABI check compile test")
+            return True
+
+        check_dir = os.path.join(self.build_dir, "abi-check")
+        os.makedirs(check_dir, exist_ok=True)
+        include = ["-I" + SOURCE_ROOT, "-I" + self.gen_separate,
+                   "-I" + self.fixtures_dir]
+
+        # A native declaration that matches the contract must compile cleanly.
+        ok_source = os.path.join(check_dir, "abi_check_ok.cpp")
+        with open(ok_source, "w") as handle:
+            handle.write('#include "amc_test_types.hpp"\n'
+                         '#include "amc_abi_check.hpp"\n'
+                         'int main() { return 0; }\n')
+        compiled = self.run(["clang++", "-std=c++17"] + include
+                            + [ok_source, "-o", os.path.join(check_dir, "abi_check_ok")])
+        if compiled.returncode != 0:
+            self.fail("a matching native declaration failed the ABI check header")
+            return False
+        self.pass_("the ABI check header accepts a matching native declaration")
+
+        # A drifted declaration (extra field) must be rejected at compile time,
+        # which is exactly what clangd surfaces while editing.
+        drift_header = os.path.join(check_dir, "abi_check_drift.hpp")
+        with open(drift_header, "w") as handle:
+            handle.write('#pragma once\n#include <cstdint>\n'
+                         'struct AmcTestFoo { int32_t x; double y; int32_t z; };\n'
+                         'struct AmcTestBar { int32_t a; double b; int32_t c; };\n'
+                         'enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n')
+        drift_source = os.path.join(check_dir, "abi_check_drift.cpp")
+        with open(drift_source, "w") as handle:
+            handle.write('#include "abi_check_drift.hpp"\n'
+                         '#include "amc_abi_check.hpp"\n'
+                         'int main() { return 0; }\n')
+        drifted = self.run(["clang++", "-std=c++17"] + include
+                           + [drift_source, "-o", os.path.join(check_dir, "abi_check_drift")])
+        if drifted.returncode == 0 or "ABIX ABI check: size mismatch for AmcTestFoo" not in drifted.stderr:
+            self.fail("a drifted native layout was not rejected by the ABI check header")
+            return False
+        self.pass_("the ABI check header rejects a drifted native layout")
+
+        # A field widened to a larger type moves neither the following offsets
+        # nor the total size, so only the width assertion can catch it -- this
+        # is the part of the LayoutHash comparison the offset checks miss.
+        width_header = os.path.join(check_dir, "abi_check_width.hpp")
+        with open(width_header, "w") as handle:
+            handle.write('#pragma once\n#include <cstdint>\n'
+                         'struct AmcTestFoo { long x; double y; };\n'
+                         'struct AmcTestBar { int32_t a; double b; int32_t c; };\n'
+                         'enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n')
+        width_source = os.path.join(check_dir, "abi_check_width.cpp")
+        with open(width_source, "w") as handle:
+            handle.write('#include "abi_check_width.hpp"\n'
+                         '#include "amc_abi_check.hpp"\n'
+                         'int main() { return 0; }\n')
+        widened = self.run(["clang++", "-std=c++17"] + include
+                           + [width_source, "-o", os.path.join(check_dir, "abi_check_width")])
+        if (widened.returncode == 0
+                or "ABIX ABI check: field width mismatch for AmcTestFoo::x" not in widened.stderr
+                or "ABIX ABI check: size mismatch for AmcTestFoo" in widened.stderr):
+            self.fail("a widened field was not rejected by the field-width assertion")
+            return False
+        self.pass_("the ABI check header rejects a widened field by width")
+        return True
+
+    def step37_mcp_knowledge_base(self) -> bool:
+        """Step 37: amc-mcp indexes multiple artifacts as a knowledge base."""
+        mcp = self.bin_path("amc-mcp")
+        if not os.path.isfile(mcp):
+            info("amc-mcp not built, skipping the knowledge-base test")
+            return True
+        first = os.path.join(self.gen_separate, "test.abix")
+        kb = os.path.join(self.build_dir, "kb")
+        if self.run([self.bin_path("amc"), "build", "-c", self.fixture_path("amc_test.abic.toml"),
+                     "-B", kb]).returncode != 0:
+            self.fail("amc build failed for the knowledge-base test")
+            return False
+        second = os.path.join(kb, "build", "amc_test.abix")
+        if not (os.path.isfile(first) and os.path.isfile(second)):
+            self.fail("knowledge-base artifacts were not produced")
+            return False
+
+        requests = [
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": {"name": "abix.list_modules", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "abix.search_type", "arguments": {"name": "AmcTestFoo"}}},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+             "params": {"name": "abix.find_compatible", "arguments": {"name": "AmcTestFoo"}}},
+        ]
+        payload = "\n".join(json.dumps(request) for request in requests) + "\n"
+        session = self.run([mcp, first, second], input=payload)
+        if session.returncode != 0:
+            self.fail("amc-mcp exited non-zero for the knowledge-base test")
+            return False
+        responses = {}
+        for line in session.stdout.splitlines():
+            try:
+                document = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(document, dict) and "id" in document:
+                responses[document["id"]] = document
+
+        modules = responses.get(1, {}).get("result", {}).get("structuredContent", {})
+        if modules.get("module_count") != 2:
+            self.fail("abix.list_modules did not report both indexed modules")
+            return False
+        search = responses.get(2, {}).get("result", {}).get("structuredContent", {})
+        groups = {group.get("name"): group for group in search.get("groups", [])}
+        foo = groups.get("AmcTestFoo")
+        if search.get("group_count", 0) < 1 or foo is None or not foo.get("consistent"):
+            self.fail("abix.search_type did not find a consistent AmcTestFoo group")
+            return False
+        compatible = responses.get(3, {}).get("result", {}).get("structuredContent", {})
+        if not compatible.get("found") or not compatible.get("compatible"):
+            self.fail("abix.find_compatible did not confirm knowledge-base compatibility")
+            return False
+        self.pass_("amc-mcp indexes multiple artifacts and answers cross-module queries")
+        return True
+
+    def step38_lldb_plugin(self) -> bool:
+        """Step 38: the native C++ LLDB plugin linked against libabix-*."""
+        plugin = self.bin_path("libabix_lldb.so")
+        if not os.path.isfile(plugin):
+            info("the native LLDB plugin was not built, skipping")
+            return True
+        if not (self.has_binary("clang++") and self.has_binary("lldb")):
+            info("clang++/lldb not found, skipping the native LLDB plugin test")
+            return True
+
+        consumer_src = os.path.join(SCRIPT_DIR, "strip_consumer.cpp")
+        binary = os.path.join(self.build_dir, "lldb_plugin_consumer")
+        compiled = self.run([
+            "clang++", "-std=c++17",
+            f"-I{SOURCE_ROOT}", f"-I{self.gen_separate}",
+            consumer_src, "-o", binary,
+        ])
+        if compiled.returncode != 0:
+            self.fail("native LLDB plugin consumer failed to compile")
+            return False
+
+        abix = os.path.join(self.gen_separate, "test.abix")
+        session = self.run([
+            shutil.which("lldb"), "-b",
+            "-o", f"plugin load {plugin}",
+            "-o", "abix info",
+            "-o", "abix type AmcTestFoo",
+            "-o", f"abix verify {abix}",
+            "-o", "quit",
+            binary,
+        ])
+        output = session.stdout
+        if "abix info:" not in output or "AmcTestFoo" not in output:
+            self.fail("the native LLDB plugin did not answer info/type")
+            return False
+        if "compatible=true" not in output:
+            self.fail("the native LLDB plugin did not confirm compatibility")
+            return False
+        self.pass_("the native C++ LLDB plugin answers info/type/verify")
+        return True
+
+
     # ==================================================================
     # Main runner
     # ==================================================================
@@ -1479,6 +1991,30 @@ int main() {
 
         print()
         self.step30_source_origin()
+
+        print()
+        self.step31_abi_diagnostics()
+
+        print()
+        self.step32_go_to_definition()
+
+        print()
+        self.step33_lldb_cast()
+
+        print()
+        self.step34_abi_adapter()
+
+        print()
+        self.step35_abi_shim()
+
+        print()
+        self.step36_abi_check_header()
+
+        print()
+        self.step37_mcp_knowledge_base()
+
+        print()
+        self.step38_lldb_plugin()
 
         print()
         print(f"=== Results: {self.passed} passed, {self.failed} failed ===")
