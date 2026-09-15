@@ -1,352 +1,310 @@
 #include "amc_json.h"
 
-#include <cmath>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <sstream>
+#include <string>
 
 namespace amc {
 namespace {
 
-void escape_into(std::string &out, std::string_view value) {
-    for (unsigned char c : value) {
-        switch (c) {
-            case '"':  out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            default:
-                if (c < 0x20) {
-                    char buffer[8];
-                    std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
-                    out += buffer;
-                } else {
-                    out += static_cast<char>(c);
+json_object *new_string(const std::string &value) {
+    json_string_t string{const_cast<char *>(value.data()), {}};
+    json_string_info_update(&string);
+    return json_create_string(&string);
+}
+
+bool valid_input(std::string_view text, std::string &error) {
+    bool in_string = false;
+    bool escaped = false;
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (!in_string) {
+            if (c == '/' && i + 1 < text.size() && text[i + 1] == '/') {
+                i += 2;
+                while (i < text.size() && text[i] != '\n' && text[i] != '\r')
+                    ++i;
+                continue;
+            }
+            if (c == '/' && i + 1 < text.size() && text[i + 1] == '*') {
+                i += 2;
+                while (i + 1 < text.size() && !(text[i] == '*' && text[i + 1] == '/'))
+                    ++i;
+                if (i + 1 >= text.size()) {
+                    error = "unterminated JSON comment";
+                    return false;
                 }
+                ++i;
+                continue;
+            }
+            if (c == '"') in_string = true;
+            continue;
+        }
+        if (escaped) {
+            if (c == '\r' && i + 1 < text.size() && text[i + 1] == '\n') ++i;
+            escaped = false;
+        } else if (c == '\\') {
+            escaped = true;
+        } else if (c == '"') {
+            in_string = false;
+        } else if (c == '\n' || c == '\r') {
+            error = "raw newline in JSON string";
+            return false;
         }
     }
-}
-
-void append_utf8(std::string &out, uint32_t code) {
-    if (code < 0x80) {
-        out += static_cast<char>(code);
-    } else if (code < 0x800) {
-        out += static_cast<char>(0xC0 | (code >> 6));
-        out += static_cast<char>(0x80 | (code & 0x3F));
-    } else if (code < 0x10000) {
-        out += static_cast<char>(0xE0 | (code >> 12));
-        out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (code & 0x3F));
-    } else {
-        out += static_cast<char>(0xF0 | (code >> 18));
-        out += static_cast<char>(0x80 | ((code >> 12) & 0x3F));
-        out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (code & 0x3F));
-    }
-}
-
-struct Parser {
-    std::string_view text;
-    size_t pos = 0;
-    std::string error;
-    int depth = 0;
-
-    bool fail(const std::string &message) {
-        if (error.empty()) error = message + " at offset " + std::to_string(pos);
+    if (in_string) {
+        error = "unterminated JSON string";
         return false;
     }
-
-    void skip_ws() {
-        while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\t' || text[pos] == '\n' || text[pos] == '\r'))
-            ++pos;
-    }
-
-    bool consume(std::string_view token) {
-        if (text.compare(pos, token.size(), token) != 0) return fail("invalid literal");
-        pos += token.size();
-        return true;
-    }
-
-    bool parse_hex4(uint32_t &value) {
-        if (pos + 4 > text.size()) return fail("truncated \\u escape");
-        value = 0;
-        for (int i = 0; i < 4; ++i) {
-            const char c = text[pos++];
-            value <<= 4;
-            if (c >= '0' && c <= '9')
-                value |= static_cast<uint32_t>(c - '0');
-            else if (c >= 'a' && c <= 'f')
-                value |= static_cast<uint32_t>(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F')
-                value |= static_cast<uint32_t>(c - 'A' + 10);
-            else
-                return fail("invalid hex digit in \\u escape");
-        }
-        return true;
-    }
-
-    bool parse_string(std::string &out) {
-        if (pos >= text.size() || text[pos] != '"') return fail("expected string");
-        ++pos;
-        out.clear();
-        while (pos < text.size()) {
-            const unsigned char c = static_cast<unsigned char>(text[pos++]);
-            if (c == '"') return true;
-            if (c == '\\') {
-                if (pos >= text.size()) return fail("truncated escape");
-                const char e = text[pos++];
-                switch (e) {
-                    case '"':  out += '"'; break;
-                    case '\\': out += '\\'; break;
-                    case '/':  out += '/'; break;
-                    case 'b':  out += '\b'; break;
-                    case 'f':  out += '\f'; break;
-                    case 'n':  out += '\n'; break;
-                    case 'r':  out += '\r'; break;
-                    case 't':  out += '\t'; break;
-                    case 'u':  {
-                        uint32_t code = 0;
-                        if (!parse_hex4(code)) return false;
-                        if (code >= 0xD800
-                            && code <= 0xDBFF
-                            && pos + 2 <= text.size()
-                            && text[pos] == '\\'
-                            && text[pos + 1] == 'u') {
-                            pos += 2;
-                            uint32_t low = 0;
-                            if (!parse_hex4(low)) return false;
-                            code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
-                        }
-                        append_utf8(out, code);
-                        break;
-                    }
-                    default: return fail("invalid escape");
-                }
-            } else {
-                out += static_cast<char>(c);
-            }
-        }
-        return fail("unterminated string");
-    }
-
-    bool parse_number(Json &out) {
-        const size_t begin = pos;
-        if (pos < text.size() && text[pos] == '-') ++pos;
-        while (pos < text.size() && text[pos] >= '0' && text[pos] <= '9')
-            ++pos;
-        if (pos < text.size() && text[pos] == '.') {
-            ++pos;
-            while (pos < text.size() && text[pos] >= '0' && text[pos] <= '9')
-                ++pos;
-        }
-        if (pos < text.size() && (text[pos] == 'e' || text[pos] == 'E')) {
-            ++pos;
-            if (pos < text.size() && (text[pos] == '+' || text[pos] == '-')) ++pos;
-            while (pos < text.size() && text[pos] >= '0' && text[pos] <= '9')
-                ++pos;
-        }
-        if (pos == begin) return fail("invalid number");
-        const std::string slice(text.substr(begin, pos - begin));
-        char *end = nullptr;
-        const double value = std::strtod(slice.c_str(), &end);
-        if (end == nullptr || *end != '\0') return fail("invalid number");
-        out = Json(value);
-        return true;
-    }
-
-    bool parse_array(Json &out) {
-        ++pos;   // '['
-        out = Json::array();
-        skip_ws();
-        if (pos < text.size() && text[pos] == ']') {
-            ++pos;
-            return true;
-        }
-        while (true) {
-            Json element;
-            if (!parse_value(element)) return false;
-            out.push_back(std::move(element));
-            skip_ws();
-            if (pos >= text.size()) return fail("unterminated array");
-            if (text[pos] == ',') {
-                ++pos;
-                skip_ws();
-                continue;
-            }
-            if (text[pos] == ']') {
-                ++pos;
-                return true;
-            }
-            return fail("expected ',' or ']'");
-        }
-    }
-
-    bool parse_object(Json &out) {
-        ++pos;   // '{'
-        out = Json::object();
-        skip_ws();
-        if (pos < text.size() && text[pos] == '}') {
-            ++pos;
-            return true;
-        }
-        while (true) {
-            skip_ws();
-            std::string key;
-            if (!parse_string(key)) return false;
-            skip_ws();
-            if (pos >= text.size() || text[pos] != ':') return fail("expected ':'");
-            ++pos;
-            Json value;
-            if (!parse_value(value)) return false;
-            out.set(std::move(key), std::move(value));
-            skip_ws();
-            if (pos >= text.size()) return fail("unterminated object");
-            if (text[pos] == ',') {
-                ++pos;
-                continue;
-            }
-            if (text[pos] == '}') {
-                ++pos;
-                return true;
-            }
-            return fail("expected ',' or '}'");
-        }
-    }
-
-    bool parse_value(Json &out) {
-        if (++depth > 128) return fail("nesting too deep");
-        skip_ws();
-        if (pos >= text.size()) return fail("unexpected end of input");
-        const char c = text[pos];
-        bool ok = false;
-        if (c == '{')
-            ok = parse_object(out);
-        else if (c == '[')
-            ok = parse_array(out);
-        else if (c == '"') {
-            std::string s;
-            ok = parse_string(s);
-            if (ok) out = Json(std::move(s));
-        } else if (c == 't') {
-            ok = consume("true");
-            if (ok) out = Json(true);
-        } else if (c == 'f') {
-            ok = consume("false");
-            if (ok) out = Json(false);
-        } else if (c == 'n') {
-            ok = consume("null");
-            if (ok) out = Json();
-        } else if (c == '-' || (c >= '0' && c <= '9'))
-            ok = parse_number(out);
-        else
-            ok = fail("unexpected character");
-        --depth;
-        return ok;
-    }
-};
+    return true;
+}
 
 }   // namespace
 
-Json &Json::set(std::string key, Json value) {
-    type_ = Type::object;
-    for (auto &member : object_) {
-        if (member.first == key) {
-            member.second = std::move(value);
-            return *this;
+Json::Owner::~Owner() {
+    if (pooled)
+        pjson_memory_free(&memory);
+    else if (root)
+        json_del_object(root);
+}
+
+Json::Json()
+    : owner_(std::make_shared<Owner>())
+    , node_(json_create_null()) {
+    owner_->root = node_;
+}
+Json::Json(bool value)
+    : owner_(std::make_shared<Owner>())
+    , node_(json_create_bool(value)) {
+    owner_->root = node_;
+}
+Json::Json(double value)
+    : owner_(std::make_shared<Owner>())
+    , node_(json_create_double(value)) {
+    owner_->root = node_;
+}
+Json::Json(int value)
+    : owner_(std::make_shared<Owner>())
+    , node_(json_create_lint(value)) {
+    owner_->root = node_;
+}
+Json::Json(long long value)
+    : owner_(std::make_shared<Owner>())
+    , node_(json_create_lint(value)) {
+    owner_->root = node_;
+}
+Json::Json(unsigned value)
+    : owner_(std::make_shared<Owner>())
+    , node_(json_create_lhex(value)) {
+    owner_->root = node_;
+}
+Json::Json(const char *value)
+    : Json(std::string(value ? value : "")) {}
+Json::Json(std::string value)
+    : owner_(std::make_shared<Owner>())
+    , node_(new_string(value)) {
+    owner_->root = node_;
+}
+
+Json::Json(std::shared_ptr<Owner> owner, json_object *node)
+    : owner_(std::move(owner))
+    , node_(node) {}
+
+Json Json::from_owned(json_object *node) {
+    auto owner = std::make_shared<Owner>();
+    owner->root = node;
+    return Json(std::move(owner), node);
+}
+
+Json Json::from_pooled(std::shared_ptr<Owner> owner, json_object *node) { return Json(std::move(owner), node); }
+
+json_object *Json::clone_node(const Json &value) { return value.node_ ? json_deepcopy(value.node_) : nullptr; }
+
+Json::Json(const Json &other)
+    : Json(from_owned(clone_node(other))) {}
+
+Json::Json(Json &&other) noexcept
+    : owner_(std::move(other.owner_))
+    , node_(other.node_)
+    , items_cache_(std::move(other.items_cache_))
+    , cache_valid_(other.cache_valid_) {
+    other.node_ = nullptr;
+    other.cache_valid_ = false;
+}
+
+Json &Json::operator=(const Json &other) {
+    if (this != &other) {
+        Json copy(other);
+        *this = std::move(copy);
+    }
+    return *this;
+}
+
+Json &Json::operator=(Json &&other) noexcept {
+    if (this != &other) {
+        owner_ = std::move(other.owner_);
+        node_ = other.node_;
+        items_cache_ = std::move(other.items_cache_);
+        cache_valid_ = other.cache_valid_;
+        other.node_ = nullptr;
+        other.cache_valid_ = false;
+    }
+    return *this;
+}
+
+Json Json::object() { return from_owned(json_create_object()); }
+Json Json::array() { return from_owned(json_create_array()); }
+
+Json::Type Json::type() const {
+    if (!node_) return Type::null;
+    switch (node_->ikey.type) {
+        case JSON_BOOL:   return Type::boolean;
+        case JSON_INT:
+        case JSON_HEX:
+        case JSON_LINT:
+        case JSON_LHEX:
+        case JSON_DOUBLE: return Type::number;
+        case JSON_STRING: return Type::string;
+        case JSON_ARRAY:  return Type::array;
+        case JSON_OBJECT: return Type::object;
+        default:          return Type::null;
+    }
+}
+
+bool Json::is_null() const { return type() == Type::null; }
+bool Json::is_object() const { return type() == Type::object; }
+bool Json::is_array() const { return type() == Type::array; }
+
+void Json::replace_root(json_object *node) {
+    auto owner = std::make_shared<Owner>();
+    owner->root = node;
+    owner_ = std::move(owner);
+    node_ = node;
+    invalidate_cache();
+}
+
+void Json::invalidate_cache() const {
+    items_cache_.clear();
+    cache_valid_ = false;
+}
+
+void Json::populate_cache() const {
+    if (cache_valid_ || !node_ || !is_array()) return;
+    json_items_t items{};
+    if (json_get_items(node_, &items) == 0) {
+        items_cache_.reserve(items.count);
+        for (uint32_t i = 0; i < items.count; ++i) {
+            json_object *copy = json_deepcopy(items.items[i].json);
+            if (copy) items_cache_.emplace_back(from_owned(copy));
         }
     }
-    object_.emplace_back(std::move(key), std::move(value));
+    json_free_items(&items);
+    cache_valid_ = true;
+}
+
+Json &Json::set(std::string key, Json value) {
+    if (!node_ || !is_object()) {
+        json_object *replacement = json_create_object();
+        if (!replacement) return *this;
+        replace_root(replacement);
+    } else if (owner_->pooled) {
+        json_object *copy = json_deepcopy(node_);
+        if (!copy) return *this;
+        replace_root(copy);
+    }
+    json_object *child = clone_node(value);
+    if (!child) return *this;
+    json_string_t jkey{const_cast<char *>(key.data()), {}};
+    json_string_info_update(&jkey);
+    if (json_set_key(child, &jkey) < 0 || json_replace_item_in_object(node_, child) < 0) json_del_object(child);
+    invalidate_cache();
     return *this;
 }
 
 const Json *Json::find(std::string_view key) const {
-    for (const auto &member : object_)
-        if (member.first == key) return &member.second;
-    return nullptr;
+    if (!node_ || !is_object()) return nullptr;
+    std::string owned_key(key);
+    json_object *found = json_get_object_item(node_, owned_key.c_str(), nullptr);
+    if (!found) return nullptr;
+    items_cache_.clear();
+    json_object *copy = json_deepcopy(found);
+    if (!copy) return nullptr;
+    items_cache_.emplace_back(from_owned(copy));
+    cache_valid_ = true;
+    return &items_cache_.front();
 }
 
 void Json::push_back(Json value) {
-    type_ = Type::array;
-    array_.push_back(std::move(value));
+    if (!node_ || !is_array()) {
+        json_object *replacement = json_create_array();
+        if (!replacement) return;
+        replace_root(replacement);
+    } else if (owner_->pooled) {
+        json_object *copy = json_deepcopy(node_);
+        if (!copy) return;
+        replace_root(copy);
+    }
+    json_object *child = clone_node(value);
+    if (child && json_add_item_to_array(node_, child) < 0) json_del_object(child);
+    invalidate_cache();
 }
 
-void Json::dump_to(std::string &out, unsigned indent, unsigned depth) const {
-    const auto newline = [&](unsigned level) {
-        if (indent == 0) return;
-        out += '\n';
-        out.append(static_cast<size_t>(level) * indent, ' ');
-    };
-    switch (type_) {
-        case Type::null:    out += "null"; break;
-        case Type::boolean: out += boolean_ ? "true" : "false"; break;
-        case Type::number:
-            if (std::isfinite(number_) && number_ == std::floor(number_) && std::fabs(number_) < 1e15) {
-                out += std::to_string(static_cast<long long>(number_));
-            } else {
-                std::ostringstream stream;
-                stream << number_;
-                out += stream.str();
-            }
-            break;
-        case Type::string:
-            out += '"';
-            escape_into(out, string_);
-            out += '"';
-            break;
-        case Type::array:
-            out += '[';
-            for (size_t i = 0; i < array_.size(); ++i) {
-                if (i) out += ',';
-                newline(depth + 1);
-                array_[i].dump_to(out, indent, depth + 1);
-            }
-            if (!array_.empty()) newline(depth);
-            out += ']';
-            break;
-        case Type::object:
-            out += '{';
-            for (size_t i = 0; i < object_.size(); ++i) {
-                if (i) out += ',';
-                newline(depth + 1);
-                out += '"';
-                escape_into(out, object_[i].first);
-                out += indent == 0 ? "\":" : "\": ";
-                object_[i].second.dump_to(out, indent, depth + 1);
-            }
-            if (!object_.empty()) newline(depth);
-            out += '}';
-            break;
-    }
+const Json::Array &Json::items() const {
+    populate_cache();
+    return items_cache_;
+}
+
+bool Json::as_bool(bool fallback) const {
+    if (!node_ || node_->ikey.type != JSON_BOOL) return fallback;
+    return json_get_bool_value(node_);
+}
+
+double Json::as_number(double fallback) const {
+    if (!node_) return fallback;
+    double result = 0;
+    return json_get_number_value(node_, JSON_DOUBLE, &result) < 0 ? fallback : result;
+}
+
+std::string Json::as_string(std::string fallback) const {
+    json_string_t value{};
+    if (!node_ || !json_get_string_value(node_, &value)) return fallback;
+    return value.str ? std::string(value.str, value.info.len) : fallback;
 }
 
 std::string Json::dump() const {
-    std::string out;
-    dump_to(out, 0, 0);
-    return out;
+    if (!node_) return "null";
+    size_t length = 0;
+    char *printed = json_print_unformat(node_, json_item_total_get(node_), &length, nullptr);
+    if (!printed) return {};
+    std::string result(printed, length);
+    json_memory_free(printed);
+    return result;
 }
 
 std::string Json::dump_pretty(unsigned indent) const {
-    std::string out;
-    dump_to(out, indent, 0);
-    return out;
+    if (!node_) return "null";
+    size_t length = 0;
+    (void)indent;
+    char *printed = json_print_format(node_, json_item_total_get(node_), &length, nullptr);
+    if (!printed) return {};
+    std::string result(printed, length);
+    json_memory_free(printed);
+    return result;
 }
 
 bool parse_json(std::string_view text, Json &value, std::string &error) {
-    Parser parser;
-    parser.text = text;
-    if (!parser.parse_value(value)) {
-        error = parser.error;
+    error.clear();
+    if (!valid_input(text, error)) return false;
+    std::string input(text);
+    auto owner = std::make_shared<Json::Owner>();
+    pjson_memory_init(&owner->memory);
+    json_object *root = json_fast_parse_str(input.data(), input.size(), &owner->memory);
+    if (!root) {
+        pjson_memory_free(&owner->memory);
+        error = "invalid JSON";
         return false;
     }
-    parser.skip_ws();
-    if (parser.pos != text.size()) {
-        error = "trailing characters at offset " + std::to_string(parser.pos);
-        return false;
-    }
+    owner->root = root;
+    owner->pooled = true;
+    value = Json::from_pooled(std::move(owner), root);
     return true;
 }
 

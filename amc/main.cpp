@@ -1,3 +1,4 @@
+#include "amc_adapter.h"
 #include "amc_context.h"
 #include "amc_core.h"
 #include "amc_elf.h"
@@ -266,6 +267,7 @@ void print_usage() {
         << "  amc context <file>.abix [--format llm|json] [--no-names] [-o <file>]\n"
         << "  amc query <file>.abix --type|--function <name> [--layout] [--format text|json]\n"
         << "  amc query <file>.abix --compatible <other.abix> [--format text|json]\n"
+        << "  amc adapter <source.abix> <target.abix> [-o <file>] [--typed] [--shim]\n"
         << "  amc publish <file.abix|binary> [--root <dir>] [--build-id <hex>]\n"
         << "  amc fetch <binary>|--build-id <hex> [--root <dir>] [-o <file>]\n"
         << "  amc metadata <file>.abix [--format bin|meta|json] [-o <file>]\n"
@@ -545,6 +547,66 @@ int main(int argc, char **argv) {
         if (!file) return fail(amc::ErrorCategory::io, "metadata", "cannot open output", output.string());
         file << rendered;
         if (!file) return fail(amc::ErrorCategory::io, "metadata", "failed to write output", output.string());
+        return 0;
+    }
+
+    if (command == "adapter") {
+        fs::path source_path, target_path, output;
+        amc::AdapterOptions options;
+        for (int i = 2; i < arg_count; ++i) {
+            const std::string argument = args[i];
+            if ((argument == "-o" || argument == "--output") && i + 1 < arg_count) {
+                output = args[++i];
+            } else if (argument.rfind("-o=", 0) == 0) {
+                output = argument.substr(3);
+            } else if (argument.rfind("--output=", 0) == 0) {
+                output = argument.substr(std::string("--output=").size());
+            } else if (argument == "--typed") {
+                options.typed = true;
+            } else if (argument == "--shim") {
+                options.shim = true;
+            } else if (argument == "--typed-namespace" && i + 1 < arg_count) {
+                options.typed = true;
+                options.typed_namespace = args[++i];
+            } else if (argument.rfind("--typed-namespace=", 0) == 0) {
+                options.typed = true;
+                options.typed_namespace = argument.substr(std::string("--typed-namespace=").size());
+            } else if (source_path.empty()) {
+                source_path = argument;
+            } else if (target_path.empty()) {
+                target_path = argument;
+            } else {
+                return usage_error("adapter accepts <source.abix> <target.abix>");
+            }
+        }
+        if (source_path.empty() || target_path.empty())
+            return usage_error("adapter requires <source.abix> <target.abix> [-o <file>]");
+
+        amc::AbiModule source, target, report;
+        std::string error;
+        if (!amc::load_module_source(source_path.string(), source, error))
+            return fail(read_error_category(error), "read_abix", error, source_path.string());
+        if (!amc::load_module_source(target_path.string(), target, error))
+            return fail(read_error_category(error), "read_abix", error, target_path.string());
+        if (!amc::build_compatibility(source, target, report, error))
+            return fail(amc::ErrorCategory::compatibility, "build_compatibility", error);
+        const std::string text = amc::generate_adapter(source, target, report, options, error);
+        if (!error.empty()) return fail(amc::ErrorCategory::compatibility, "adapter", error, source_path.string());
+        if (output.empty()) {
+            std::cout << text;
+            return 0;
+        }
+        std::error_code ec;
+        if (!output.parent_path().empty()) {
+            fs::create_directories(output.parent_path(), ec);
+            if (ec)
+                return fail(
+                    amc::ErrorCategory::io, "adapter", "cannot create output directory", output.string(), ec.message());
+        }
+        std::ofstream file(output, std::ios::binary);
+        if (!file) return fail(amc::ErrorCategory::io, "adapter", "cannot open output", output.string());
+        file << text;
+        if (!file) return fail(amc::ErrorCategory::io, "adapter", "failed to write output", output.string());
         return 0;
     }
 

@@ -190,8 +190,25 @@ if(AMC_BUILD)
       amc/core/amc_core.cpp      # .abix v4 read/write + hashing + canonical form
       amc/core/amc_error.cpp
       amc/core/amc_elf.cpp
-      amc/core/amc_json.cpp)
-    target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
+      amc/core/amc_json.cpp
+      amc/core/ljson/json.c
+      amc/core/ljson/jnum.c
+      amc/core/ljson/grisu2.c
+      amc/core/ljson/dragonbox.c)
+    target_include_directories(libabix-format PUBLIC
+      ${CMAKE_CURRENT_SOURCE_DIR}/amc/core
+      ${CMAKE_CURRENT_SOURCE_DIR}/amc/core/ljson)
+    target_compile_definitions(libabix-format PRIVATE
+      JSON_PARSE_SKIP_COMMENT=1
+      JSON_PARSE_LAST_COMMA=1
+      JSON_PARSE_SPECIAL_CHAR=1
+      JSON_PARSE_SPECIAL_QUOTES=0
+      JSON_PARSE_HEX_NUM=0
+      JSON_PARSE_SPECIAL_NUM=0
+      JSON_PARSE_SPECIAL_DOUBLE=0
+      JSON_PARSE_SINGLE_VALUE=1
+      JSON_PARSE_FINISHED_CHAR=0
+      JSON_ERROR_PRINT_ENABLE=0)
 
     add_library(libabix-abi STATIC amc/core/amc_verify.cpp)
     target_link_libraries(libabix-abi PUBLIC libabix-format)
@@ -204,9 +221,15 @@ if(AMC_BUILD)
     target_link_libraries(libabix-metadata PUBLIC libabix-abi)
 
     add_library(libabix-tools STATIC
+      amc/core/amc_adapter.cpp
       amc/core/amc_lua.cpp
       amc/core/amc_symbol_store.cpp)
     target_link_libraries(libabix-tools PUBLIC libabix-metadata)
+
+    # The libabix-* objects are linked into the LLDB plugin, which is a shared
+    # object, so they must be position independent.
+    set_target_properties(libabix-format libabix-abi libabix-metadata libabix-tools
+      PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     # Header-only runtime registry/binding layer; consumers link it for the
     # `abix/` include root.
@@ -235,6 +258,24 @@ if(AMC_BUILD)
     add_executable(amc-mcp amc/mcp/amc_mcp.cpp)
     target_include_directories(amc-mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     target_link_libraries(amc-mcp PRIVATE amc-core)
+
+    # ABIX LLDB C++ plugin (AI-P2): a native `abix` command linked against the
+    # shared libabix-* libraries. Loaded into a debugger with `plugin load`.
+    find_path(ABIX_LLDB_INCLUDE_DIR NAMES lldb/API/LLDB.h)
+    find_library(ABIX_LLDB_LIBRARY NAMES lldb)
+    if(ABIX_LLDB_INCLUDE_DIR AND ABIX_LLDB_LIBRARY)
+      add_library(abix-lldb MODULE tools/lldb_abix.cpp)
+      target_include_directories(abix-lldb PRIVATE
+        ${ABIX_LLDB_INCLUDE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
+      target_link_libraries(abix-lldb PRIVATE amc-core ${ABIX_LLDB_LIBRARY})
+      set_target_properties(abix-lldb PROPERTIES
+        OUTPUT_NAME abix_lldb
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+      message(STATUS "ABIX LLDB plugin: ${ABIX_LLDB_LIBRARY}")
+    else()
+      message(STATUS "LLDB not found: the native ABIX LLDB plugin will not be built")
+    endif()
     add_executable(amc-core-test amc/tests/core_test.cpp)
     target_include_directories(amc-core-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     target_link_libraries(amc-core-test PRIVATE amc-core)

@@ -3,16 +3,13 @@
 
 #include <string>
 #include <string_view>
+#include <memory>
 #include <utility>
 #include <vector>
 
-namespace amc {
+#include "ljson/json.h"
 
-// Minimal JSON value + parser/serializer.
-//
-// ABIX's tooling deliberately avoids a heavy JSON dependency: the AMC CLI and
-// the MCP server only need to parse small request objects and emit structured
-// responses. This is a complete, self-contained implementation for that use.
+namespace amc {
 
 class Json {
 public:
@@ -29,44 +26,27 @@ public:
         object
     };
 
-    Json() = default;
-    Json(bool value)
-        : type_(Type::boolean)
-        , boolean_(value) {}
-    Json(double value)
-        : type_(Type::number)
-        , number_(value) {}
-    Json(int value)
-        : type_(Type::number)
-        , number_(value) {}
-    Json(long long value)
-        : type_(Type::number)
-        , number_(static_cast<double>(value)) {}
-    Json(unsigned value)
-        : type_(Type::number)
-        , number_(value) {}
-    Json(const char *value)
-        : type_(Type::string)
-        , string_(value) {}
-    Json(std::string value)
-        : type_(Type::string)
-        , string_(std::move(value)) {}
+    Json();
+    Json(bool value);
+    Json(double value);
+    Json(int value);
+    Json(long long value);
+    Json(unsigned value);
+    Json(const char *value);
+    Json(std::string value);
+    Json(const Json &other);
+    Json(Json &&other) noexcept;
+    Json &operator=(const Json &other);
+    Json &operator=(Json &&other) noexcept;
+    ~Json() = default;
 
-    static Json object() {
-        Json value;
-        value.type_ = Type::object;
-        return value;
-    }
-    static Json array() {
-        Json value;
-        value.type_ = Type::array;
-        return value;
-    }
+    static Json object();
+    static Json array();
 
-    Type type() const { return type_; }
-    bool is_null() const { return type_ == Type::null; }
-    bool is_object() const { return type_ == Type::object; }
-    bool is_array() const { return type_ == Type::array; }
+    Type type() const;
+    bool is_null() const;
+    bool is_object() const;
+    bool is_array() const;
 
     // Object access.
     Json &set(std::string key, Json value);
@@ -74,26 +54,36 @@ public:
 
     // Array access.
     void push_back(Json value);
-    const Array &items() const { return array_; }
+    const Array &items() const;
 
-    bool as_bool(bool fallback = false) const { return type_ == Type::boolean ? boolean_ : fallback; }
-    double as_number(double fallback = 0) const { return type_ == Type::number ? number_ : fallback; }
-    std::string as_string(std::string fallback = {}) const {
-        return type_ == Type::string ? string_ : std::move(fallback);
-    }
+    bool as_bool(bool fallback = false) const;
+    double as_number(double fallback = 0) const;
+    std::string as_string(std::string fallback = {}) const;
 
     std::string dump() const;
     std::string dump_pretty(unsigned indent = 2) const;
 
 private:
-    void dump_to(std::string &out, unsigned indent, unsigned depth) const;
+    friend bool parse_json(std::string_view text, Json &value, std::string &error);
+    struct Owner {
+        json_object *root = nullptr;
+        json_mem_t memory{};
+        bool pooled = false;
+        ~Owner();
+    };
 
-    Type type_ = Type::null;
-    bool boolean_ = false;
-    double number_ = 0;
-    std::string string_;
-    Array array_;
-    Object object_;
+    Json(std::shared_ptr<Owner> owner, json_object *node);
+    static Json from_owned(json_object *node);
+    static Json from_pooled(std::shared_ptr<Owner> owner, json_object *node);
+    static json_object *clone_node(const Json &value);
+    void replace_root(json_object *node);
+    void invalidate_cache() const;
+    void populate_cache() const;
+
+    std::shared_ptr<Owner> owner_;
+    json_object *node_ = nullptr;
+    mutable Array items_cache_;
+    mutable bool cache_valid_ = false;
 };
 
 bool parse_json(std::string_view text, Json &value, std::string &error);
