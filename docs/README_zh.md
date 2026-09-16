@@ -44,6 +44,7 @@
 |------|------|
 | [amc_zh.md](amc_zh.md) | AMC 工具链和 CLI |
 | [MCP_zh.md](MCP_zh.md) | MCP 服务器和 ABIX 工具目录 |
+| [troi_zh.md](troi_zh.md) | AMC/MCP Agent 工作流的 TROI token 效率度量 |
 | [elf-inspection_zh.md](elf-inspection_zh.md) | 在 ELF 二进制文件中检查 ABIX 元数据节区 |
 
 ## 项目

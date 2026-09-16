@@ -2,6 +2,8 @@
 
 > This document records the benchmark scope, method, and conclusions that can be checked against the current source tree. Throughput values are platform-specific observations, not cross-machine guarantees.
 
+Agent-efficiency benchmarking (TROI) is a separate concern and is documented in [troi.md](troi.md).
+
 ## 1. Scope and Overview
 
 - ABIX targets **read-mostly** workloads: many readers execute short read-side critical sections while a small number of writers perform `retire()` and `synchronize()`.
