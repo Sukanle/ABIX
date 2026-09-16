@@ -18,13 +18,84 @@ uint32_t read_u32(const uint8_t *data, size_t offset) {
     return value;
 }
 
+bool in_bounds(uint64_t offset, uint64_t length, size_t size) { return offset <= size && length <= size - offset; }
+
 constexpr uint32_t kNoteTypeGnuBuildId = 3;
 constexpr size_t kNoteHeaderSize = 12;
 constexpr size_t kNoteAlign = 4;
 
+// Mach-O load command constants (mirrors amc_elf.cpp).
+constexpr uint32_t kMachMagic64 = 0xFEEDFACFu;
+constexpr size_t kMachHeader64Size = 32;
+constexpr size_t kMachHeader32Size = 28;
+constexpr size_t kMachNcmdsOffset = 16;
+constexpr size_t kMachSizeofcmdsOffset = 20;
+constexpr uint32_t kLcUuid = 0x1B;
+constexpr size_t kLcUuidSize = 24;
+
 size_t align4(size_t value) { return (value + kNoteAlign - 1) & ~(kNoteAlign - 1); }
 
 }   // namespace
+
+bool read_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error) {
+    switch (detect_binary_format(data, size)) {
+        case BinaryFormat::elf: return read_gnu_build_id(data, size, build_id, error);
+        case BinaryFormat::macho: return read_macho_uuid(data, size, build_id, error);
+        case BinaryFormat::unknown:
+            error = "not a supported binary (expected ELF or Mach-O)";
+            build_id.clear();
+            return false;
+    }
+    error = "not a supported binary (expected ELF or Mach-O)";
+    build_id.clear();
+    return false;
+}
+
+bool read_macho_uuid(const uint8_t *data, size_t size, std::vector<uint8_t> &uuid, std::string &error) {
+    error.clear();
+    uuid.clear();
+    if (!is_macho(data, size)) {
+        error = "not a Mach-O file";
+        return false;
+    }
+    const bool is64 = read_u32(data, 0) == kMachMagic64;
+    const size_t header_size = is64 ? kMachHeader64Size : kMachHeader32Size;
+    if (size < header_size) {
+        error = "truncated Mach-O header";
+        return false;
+    }
+    const uint32_t command_count = read_u32(data, kMachNcmdsOffset);
+    const uint32_t commands_size = read_u32(data, kMachSizeofcmdsOffset);
+    if (!in_bounds(header_size, commands_size, size)) {
+        error = "Mach-O load commands are out of bounds";
+        return false;
+    }
+    const size_t commands_end = header_size + commands_size;
+    size_t cursor = header_size;
+    for (uint32_t command = 0; command < command_count; ++command) {
+        if (cursor + 8 > commands_end) {
+            error = "truncated Mach-O load command";
+            return false;
+        }
+        const uint32_t cmd = read_u32(data, cursor);
+        const uint32_t cmdsize = read_u32(data, cursor + 4);
+        if (cmdsize < 8 || cursor + cmdsize > commands_end) {
+            error = "malformed Mach-O load command";
+            return false;
+        }
+        if (cmd == kLcUuid) {
+            if (cmdsize < kLcUuidSize) {
+                error = "malformed Mach-O LC_UUID command";
+                return false;
+            }
+            uuid.assign(data + cursor + 8, data + cursor + 8 + 16);
+            return true;
+        }
+        cursor += cmdsize;
+    }
+    error = "no Mach-O LC_UUID load command found";
+    return false;
+}
 
 bool read_gnu_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error) {
     error.clear();

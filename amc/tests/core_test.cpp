@@ -217,6 +217,38 @@ int main() {
         check(!amc::read_elf_sections(header, sizeof(header), sections, error), "truncated ELF is rejected");
     }
 
+    // --- Mach-O section reader --------------------------------------------
+    {
+        const char text[] = "not a macho";
+        const auto *bytes = reinterpret_cast<const uint8_t *>(text);
+        std::vector<uint8_t> content;
+        std::string error;
+        check(!amc::is_macho(bytes, sizeof(text) - 1), "non-macho input is rejected");
+        check(!amc::find_macho_section(bytes, sizeof(text) - 1, "__abix_metadata", content, error),
+            "find_macho_section fails on non-macho input");
+        check(!amc::is_binary(bytes, sizeof(text) - 1), "unrecognized input is not a supported binary");
+
+        // 64-bit Mach-O magic (little-endian) with a truncated header.
+        const unsigned char header[4] = {0xcf, 0xfa, 0xed, 0xfe};
+        std::vector<amc::BinarySection> sections;
+        check(amc::is_macho(header, sizeof(header)), "Mach-O magic detected");
+        check(amc::is_binary(header, sizeof(header)), "Mach-O is a supported binary");
+        check(amc::detect_binary_format(header, sizeof(header)) == amc::BinaryFormat::macho, "Mach-O format detected");
+        check(!amc::read_macho_sections(header, sizeof(header), sections, error), "truncated Mach-O is rejected");
+
+        check(amc::native_section_name(amc::BinaryFormat::macho, ".abix.metadata") == "__abix_metadata",
+            "canonical metadata name maps to the Mach-O spelling");
+        check(amc::native_section_name(amc::BinaryFormat::macho, ".abix.names") == "__abix_names",
+            "canonical names section maps to the Mach-O spelling");
+        check(amc::native_section_name(amc::BinaryFormat::elf, ".abix.metadata") == ".abix.metadata",
+            "ELF canonical section name is unchanged");
+
+        // `find_binary_section` must report an unsupported container clearly.
+        check(!amc::find_binary_section(bytes, sizeof(text) - 1, ".abix.metadata", content, error),
+            "find_binary_section rejects an unsupported container");
+        check(contains(error, "not a supported binary"), "unsupported container error is descriptive");
+    }
+
     // --- query engine -----------------------------------------------------
     {
         amc::AbiModule m;

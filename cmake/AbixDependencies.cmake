@@ -28,6 +28,7 @@
 #   Catch2     — Catch2 v3 (or later) testing framework
 #   benchmark  — Google Benchmark
 #   fmt        — fmtlib output formatting library
+#   tomlplusplus — toml++ configuration parser (AMC .abic.toml frontend)
 #
 # ---------------------------------------------------------------------------
 # Variables set after inclusion / function call
@@ -37,6 +38,7 @@
 #   ABIX_Catch2_FOUND     TRUE if Catch2 v3 (or later) was found.
 #   ABIX_benchmark_FOUND  TRUE if Google Benchmark was found.
 #   ABIX_FMT_FOUND        TRUE if fmtlib was found.
+#   ABIX_tomlplusplus_FOUND TRUE if toml++ was found.
 #
 #   LLVM_DIR              Path to LLVMConfig.cmake directory detected by
 #                           find_package(CONFIG); set via -DLLVM_DIR=... to
@@ -64,7 +66,7 @@ macro(abix_find_dependencies)
   cmake_parse_arguments(_abix "" "" "COMPONENTS;REQUIRED" ${ARGN})
 
   # If no COMPONENTS specified, default to all known dependencies.
-  set(_abix_all_deps LLVM Catch2 benchmark fmt)
+  set(_abix_all_deps LLVM Catch2 benchmark fmt tomlplusplus)
   if(NOT _abix_COMPONENTS)
     set(_abix_COMPONENTS ${_abix_all_deps})
   endif()
@@ -137,6 +139,33 @@ macro(abix_find_dependencies)
   endif()
 
   # --------------------------------------------------------------------------
+  # toml++  (AMC .abic.toml configuration parser)
+  # --------------------------------------------------------------------------
+  if(tomlplusplus IN_LIST _abix_COMPONENTS)
+    list(FIND _abix_REQUIRED tomlplusplus _abix_toml_req)
+    if(_abix_toml_req GREATER -1)
+      set(_abix_toml_quiet "")
+    else()
+      set(_abix_toml_quiet "QUIET")
+    endif()
+
+    find_package(tomlplusplus CONFIG ${_abix_toml_quiet})
+
+    if(tomlplusplus_FOUND)
+      set(ABIX_tomlplusplus_FOUND TRUE)
+      message(STATUS "toml++ ${tomlplusplus_VERSION} found")
+    else()
+      set(ABIX_tomlplusplus_FOUND FALSE)
+      if(_abix_toml_req GREATER -1)
+        message(FATAL_ERROR "toml++ not found — required by the project configuration.  "
+                            "Install: brew install tomlplusplus")
+      else()
+        message(STATUS "toml++ not found — install via: brew install tomlplusplus")
+      endif()
+    endif()
+  endif()
+
+  # --------------------------------------------------------------------------
   # Catch2  (testing framework)
   # --------------------------------------------------------------------------
   if(Catch2 IN_LIST _abix_COMPONENTS)
@@ -200,6 +229,8 @@ macro(abix_find_dependencies)
   unset(_abix_llvm_quiet)
   unset(_abix_fmt_req)
   unset(_abix_fmt_quiet)
+  unset(_abix_toml_req)
+  unset(_abix_toml_quiet)
   unset(_abix_catch2_req)
   unset(_abix_catch2_quiet)
   unset(_abix_bench_req)

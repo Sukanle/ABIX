@@ -164,9 +164,10 @@ MetadataID metadata_content_id(const uint8_t *data, size_t size);
 bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std::string &error);
 bool module_from_region(const std::vector<uint8_t> &region, AbiModule &module, std::string &error);
 
-// Loads an AbiModule from either a standalone `.abix` artifact or an ELF
-// binary that embeds a `.abix.metadata` region. This lets every consumer
-// (CLI, MCP server) accept `foo.abix` and `libfoo.so` interchangeably.
+// Loads an AbiModule from either a standalone `.abix` artifact or an ELF /
+// Mach-O binary that embeds a `.abix.metadata` region. This lets every consumer
+// (CLI, MCP server) accept `foo.abix`, `libfoo.so` and `foo.dylib`
+// interchangeably.
 bool load_module_source(const std::string &path, AbiModule &module, std::string &error);
 
 std::string metadata_header_to_json(const MetadataHeader &header);

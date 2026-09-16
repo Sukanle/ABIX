@@ -441,10 +441,10 @@ int main(int argc, char **argv) {
             std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
             std::vector<uint8_t> region;
             std::string error;
-            // A raw region starts with the manifest; an ELF binary embeds it
-            // in the `.abix.metadata` section.
-            if (from_elf_flag || amc::is_elf(bytes.data(), bytes.size())) {
-                if (!amc::find_elf_section(bytes.data(), bytes.size(), ".abix.metadata", region, error))
+            // A raw region starts with the manifest; an ELF/Mach-O binary
+            // embeds it in the `.abix.metadata` section.
+            if (from_elf_flag || amc::is_binary(bytes.data(), bytes.size())) {
+                if (!amc::find_binary_section(bytes.data(), bytes.size(), ".abix.metadata", region, error))
                     return fail(amc::ErrorCategory::format, "metadata", error, input.string());
             } else {
                 region = std::move(bytes);
@@ -482,7 +482,7 @@ int main(int argc, char **argv) {
             std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
             std::vector<uint8_t> region;
             std::string error;
-            if (!amc::find_elf_section(bytes.data(), bytes.size(), ".abix.metadata", region, error))
+            if (!amc::find_binary_section(bytes.data(), bytes.size(), ".abix.metadata", region, error))
                 return fail(amc::ErrorCategory::format, "metadata", error, input.string());
             amc::MetadataHeader header;
             if (!amc::read_metadata_header(region, header, error))
@@ -714,12 +714,12 @@ int main(int argc, char **argv) {
             std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
             std::string error, key, meta, suffix;
             std::vector<uint8_t> artifact;
-            if (amc::is_elf(bytes.data(), bytes.size())) {
+            if (amc::is_binary(bytes.data(), bytes.size())) {
                 std::vector<uint8_t> build_id;
-                if (!amc::read_gnu_build_id(bytes.data(), bytes.size(), build_id, error))
+                if (!amc::read_build_id(bytes.data(), bytes.size(), build_id, error))
                     return fail(amc::ErrorCategory::format, "publish", error, input.string());
                 key = amc::hex_encode(build_id.data(), build_id.size());
-                if (!amc::find_elf_section(bytes.data(), bytes.size(), ".abix.metadata", artifact, error))
+                if (!amc::find_binary_section(bytes.data(), bytes.size(), ".abix.metadata", artifact, error))
                     return fail(amc::ErrorCategory::format, "publish", error, input.string());
                 amc::MetadataHeader header;
                 if (!amc::read_metadata_header(artifact, header, error))
@@ -774,12 +774,12 @@ int main(int argc, char **argv) {
             std::ifstream file(input, std::ios::binary);
             if (!file) return fail(amc::ErrorCategory::io, "fetch", "cannot open input", input.string());
             std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-            if (!amc::is_elf(bytes.data(), bytes.size()))
-                return fail(amc::ErrorCategory::format, "fetch", "input is not an ELF binary", input.string(),
+            if (!amc::is_binary(bytes.data(), bytes.size()))
+                return fail(amc::ErrorCategory::format, "fetch", "input is not an ELF or Mach-O binary", input.string(),
                     "pass --build-id to look up by id directly");
             std::vector<uint8_t> build_id;
             std::string error;
-            if (!amc::read_gnu_build_id(bytes.data(), bytes.size(), build_id, error))
+            if (!amc::read_build_id(bytes.data(), bytes.size(), build_id, error))
                 return fail(amc::ErrorCategory::format, "fetch", error, input.string());
             key = amc::hex_encode(build_id.data(), build_id.size());
         }

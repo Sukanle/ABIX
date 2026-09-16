@@ -617,9 +617,14 @@ static int backend(const char *input, const char *output) {
     // `used` is required: without it the compiler is free to drop this
     // unreferenced variable entirely, which would silently make the names
     // un-strippable because they were never emitted.
+    //
+    // Mach-O section names are limited to 16 bytes and require an explicit
+    // segment, so macOS uses "__DATA,__abix_names" instead of the ELF spelling.
     if (!m.types.empty()) {
         o.print(
-            "#if defined(__GNUC__) || defined(__clang__)\n"
+            "#if defined(__APPLE__)\n"
+            "__attribute__((used, section(\"__DATA,__abix_names\")))\n"
+            "#elif defined(__GNUC__) || defined(__clang__)\n"
             "__attribute__((used, section(\".abix.names\")))\n"
             "#endif\n"
             "inline constexpr const char *amc_type_names[] = {{\n");
@@ -630,9 +635,9 @@ static int backend(const char *input, const char *output) {
 
     // ABIX Metadata Region (AI-PM): the self-describing, pointer-free image of
     // this module (manifest + desc + hash + names). It lives in its own section
-    // so an offline tool can locate the whole region through the ELF section
-    // table without loading the program. The C++ descriptors above are its
-    // runtime projection and remain the hot path.
+    // so an offline tool can locate the whole region through the container's
+    // section table (ELF or Mach-O) without loading the program. The C++
+    // descriptors above are its runtime projection and remain the hot path.
     {
         amc::MetadataOptions metadata_options;
         std::vector<uint8_t> region;
@@ -643,7 +648,9 @@ static int backend(const char *input, const char *output) {
         }
         o.print(
             "\n// ABIX Metadata Region: manifest + desc + hash + names (offset-based).\n"
-            "#if defined(__GNUC__) || defined(__clang__)\n"
+            "#if defined(__APPLE__)\n"
+            "__attribute__((used, section(\"__DATA,__abix_metadata\"), aligned(8)))\n"
+            "#elif defined(__GNUC__) || defined(__clang__)\n"
             "__attribute__((used, section(\".abix.metadata\"), aligned(8)))\n"
             "#endif\n"
             "inline constexpr unsigned char amc_metadata_region[{}] = {{\n",

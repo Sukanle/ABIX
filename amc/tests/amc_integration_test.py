@@ -84,12 +84,28 @@ class TestRunner:
         return shutil.which(name) is not None
 
     def section_names(self, path: str):
-        """Return readelf section listing text, or None if no reader exists."""
+        """Return a section listing using canonical ABIX section names.
+
+        Linux uses readelf. macOS is Mach-O, so otool is used and the native
+        `__abix_*` section names are rewritten to the canonical `.abix.*`
+        spelling so callers stay container-agnostic.
+        """
+        if sys.platform == "darwin" and shutil.which("otool"):
+            result = self.run(["otool", "-l", path])
+            if result.returncode != 0:
+                return None
+            return (result.stdout
+                    .replace("__abix_names", ".abix.names")
+                    .replace("__abix_metadata", ".abix.metadata"))
         tool = shutil.which("readelf") or shutil.which("llvm-readelf")
         if tool is None:
             return None
         result = self.run([tool, "-S", path])
         return result.stdout if result.returncode == 0 else None
+
+    def section_strip_cmd(self, stripper: str, path: str, canonical: str) -> list[str]:
+        """Build the ELF command that removes `canonical` from `path`."""
+        return [stripper, "--remove-section=" + canonical, path]
 
     def stripper(self):
         """Return the first available strip tool, or None."""
@@ -745,7 +761,12 @@ class TestRunner:
         if stripper is None:
             info("strip tool not found, skipping section removal")
             return True
-        if self.run([stripper, "--remove-section=.abix.names", binary]).returncode != 0:
+        if sys.platform == "darwin":
+            # Mach-O `strip` removes symbols, not sections; there is no direct
+            # equivalent of `--remove-section` for macOS binaries.
+            info("Mach-O has no direct section strip, skipping section removal")
+            return True
+        if self.run(self.section_strip_cmd(stripper, binary, ".abix.names")).returncode != 0:
             self.fail("strip --remove-section=.abix.names failed")
             return False
         if ".abix.names" in (self.section_names(binary) or ""):

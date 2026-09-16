@@ -181,13 +181,13 @@ void run_info(lldb::SBDebugger &debugger, lldb::SBCommandReturnObject &result) {
         result.SetError(("abix info: cannot read '" + path + "'").c_str());
         return;
     }
-    if (!amc::is_elf(image.data(), image.size())) {
-        result.SetError("abix info: target is not an ELF binary");
+    if (!amc::is_binary(image.data(), image.size())) {
+        result.SetError("abix info: target is not an ELF or Mach-O binary");
         return;
     }
     std::vector<uint8_t> region;
     std::string error;
-    if (!amc::find_elf_section(image.data(), image.size(), ".abix.metadata", region, error)) {
+    if (!amc::find_binary_section(image.data(), image.size(), ".abix.metadata", region, error)) {
         result.SetError(("abix info: no embedded metadata region (" + error + ")").c_str());
         return;
     }
@@ -357,9 +357,9 @@ void run_source(lldb::SBDebugger &debugger, const std::string &name, lldb::SBCom
     // back to the plan's chain: BuildID -> symbol server -> debug `.abix`,
     // which carries the optional Source Origin section.
     std::vector<uint8_t> image;
-    if (read_file(path, image) && amc::is_elf(image.data(), image.size())) {
+    if (read_file(path, image) && amc::is_binary(image.data(), image.size())) {
         std::vector<uint8_t> build_id;
-        if (amc::read_gnu_build_id(image.data(), image.size(), build_id, error)) {
+        if (amc::read_build_id(image.data(), image.size(), build_id, error)) {
             const std::string key = amc::hex_encode(build_id.data(), build_id.size());
             std::vector<uint8_t> artifact;
             std::string stored_path;

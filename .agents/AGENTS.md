@@ -86,7 +86,7 @@ genuine ABI concept. Language-specific behaviour belongs in a
 
 ```text
 abix/    ABI model + runtime (header-only registry, descriptors, adapter)
-amc/     AMC: core/ (ELF reader, metadata, adapter, symbol store, query, verify),
+amc/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
@@ -100,7 +100,7 @@ docs/    specification and design
 | Subsystem | Location | Responsibility |
 |-----------|----------|----------------|
 | ABI model | `abix/` | `TypeDescriptor`, `FieldDescriptor`, `RuntimeRegistry`, `TypeTraits`, adapter dispatch |
-| ELF reader | `amc/core/amc_elf.h` | Minimal ELF64 section reader (`is_elf`, `find_elf_section`, `read_elf_sections`) |
+| ELF/Mach-O reader | `amc/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
 | Metadata Region | `amc/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
 | ABI adapter | `amc/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
 | Symbol store | `amc/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |

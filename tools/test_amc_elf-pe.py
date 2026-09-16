@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Test script for standalone ELF/PE metadata section verification.
+Test script for standalone ELF/Mach-O metadata section verification.
 
 Workflow:
   1. amc build    → .abix + .abix.meta
-  2. amc generate → amc_generated.hpp (with __attribute__((section(".abix.metadata"))))
-  3. clang++      → ELF binary with .abix.metadata and .abix.names sections
-  4. readelf/objdump/amc metadata --from-elf → verify sections
+  2. amc generate → amc_generated.hpp (with a platform section attribute)
+  3. clang++      → native binary with the ABIX metadata/names sections
+                    (ELF: ".abix.metadata"  Mach-O: "__DATA,__abix_metadata")
+  4. readelf/otool + amc metadata --from-elf → verify sections
 
 Usage:
   python3 tools/test_amc_elf-pe.py
@@ -33,6 +34,12 @@ FIXTURE_CONFIG = FIXTURE_DIR / "amc_test.abic.toml"
 # Expected section names
 SECTION_METADATA = ".abix.metadata"
 SECTION_NAMES = ".abix.names"
+
+# macOS is Mach-O: section names are limited to 16 bytes and require a
+# segment, so the canonical names above map to these native spellings.
+IS_MACOS = sys.platform == "darwin"
+NATIVE_METADATA = "__abix_metadata"
+NATIVE_NAMES = "__abix_names"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -162,16 +169,34 @@ def test_compile_elf(header, workdir):
         return binary, result
 
     if binary.exists():
-        result.ok(f"compiled ELF binary ({file_size(binary)} bytes)")
+        result.ok(f"compiled native binary ({file_size(binary)} bytes)")
     else:
-        result.fail("compiled ELF binary", "file not found")
+        result.fail("compiled native binary", "file not found")
 
     return binary, result
 
 
 def test_readelf_sections(binary, workdir):
-    """Test: readelf shows .abix.metadata and .abix.names sections."""
+    """Test: the binary exposes the ABIX metadata and names sections."""
     result = TestResult()
+
+    if IS_MACOS:
+        if not shutil.which("otool"):
+            result.ok("otool not found, skipping Mach-O section inspection")
+            return result
+        rc, stdout, stderr = run(["otool", "-l", str(binary)], check=False)
+        if rc != 0:
+            result.fail("otool -l", stderr.strip())
+            return result
+        if NATIVE_METADATA in stdout:
+            result.ok(f"otool: {NATIVE_METADATA} section found")
+        else:
+            result.fail("otool", f"{NATIVE_METADATA} section not found")
+        if NATIVE_NAMES in stdout:
+            result.ok(f"otool: {NATIVE_NAMES} section found")
+        else:
+            result.fail("otool", f"{NATIVE_NAMES} section not found")
+        return result
 
     rc, stdout, stderr = run(["readelf", "-S", str(binary)], check=False)
     if rc != 0:
@@ -204,8 +229,26 @@ def test_readelf_sections(binary, workdir):
 
 
 def test_objdump_metadata(binary, workdir):
-    """Test: objdump can dump .abix.metadata content."""
+    """Test: the metadata section content can be dumped."""
     result = TestResult()
+
+    if IS_MACOS:
+        if not shutil.which("otool"):
+            result.ok("otool not found, skipping section content dump")
+            return result
+        rc, stdout, stderr = run(["otool", "-s", "__DATA", NATIVE_METADATA, str(binary)], check=False)
+        if rc != 0:
+            result.fail("otool -s __DATA __abix_metadata", stderr.strip())
+            return result
+        if "58494241" in stdout:   # little-endian word for the "ABIX" magic
+            result.ok("otool: .abix.metadata contains ABIX magic")
+        else:
+            result.fail("otool", "ABIX magic not found in section content")
+        if "Contents of" in stdout:
+            result.ok("otool: section content dumped successfully")
+        else:
+            result.fail("otool", "no section content in output")
+        return result
 
     rc, stdout, stderr = run([
         "objdump", "-s", "-j", SECTION_METADATA, str(binary)
@@ -229,13 +272,32 @@ def test_objdump_metadata(binary, workdir):
 
 
 def test_objdump_names(binary, workdir):
-    """Test: objdump can dump .abix.names content.
+    """Test: the names section content can be dumped.
 
     .abix.names contains an array of const char* pointers (not the strings
     themselves — those live in .rodata).  We verify the section exists, is
     non-empty, and has a reasonable size (>= 8 bytes per pointer × type count).
     """
     result = TestResult()
+
+    if IS_MACOS:
+        if not shutil.which("otool"):
+            result.ok("otool not found, skipping section content dump")
+            return result
+        rc, stdout, stderr = run(["otool", "-s", "__DATA", NATIVE_NAMES, str(binary)], check=False)
+        if rc != 0:
+            result.fail("otool -s __DATA __abix_names", stderr.strip())
+            return result
+        if "Contents of" in stdout:
+            result.ok("otool: .abix.names content dumped successfully")
+        else:
+            result.fail("otool", "no section content in output")
+        data_lines = [l for l in stdout.splitlines() if "\t" in l]
+        if data_lines:
+            result.ok(f"otool: .abix.names has {len(data_lines)} data line(s) (pointer array)")
+        else:
+            result.fail("otool", ".abix.names appears empty")
+        return result
 
     rc, stdout, stderr = run([
         "objdump", "-s", "-j", SECTION_NAMES, str(binary)
@@ -262,7 +324,7 @@ def test_objdump_names(binary, workdir):
 
 
 def test_amc_metadata_from_elf(binary, workdir):
-    """Test: amc metadata --from-elf reads metadata from compiled ELF."""
+    """Test: amc metadata --from-elf reads metadata from the compiled binary."""
     result = TestResult()
 
     # JSON output
@@ -380,11 +442,13 @@ def test_non_elf_rejection(workdir):
     ], check=False)
 
     if rc != 0:
-        # Expected: should fail on non-ELF input
-        if "not an ELF" in stderr or "not an ELF" in stdout or rc == 1:
-            result.ok("amc metadata --from-elf rejects non-ELF input")
+        # Expected: should fail on non-binary input
+        if ("not an ELF" in stderr or "not an ELF" in stdout
+                or "not a supported binary" in stderr or "not a supported binary" in stdout
+                or rc == 1):
+            result.ok("amc metadata --from-elf rejects non-binary input")
         else:
-            result.ok(f"amc metadata --from-elf fails on non-ELF (rc={rc})")
+            result.ok(f"amc metadata --from-elf fails on non-binary (rc={rc})")
     else:
         # If it succeeds, check if output indicates error
         try:
@@ -467,7 +531,7 @@ def main():
             return total.summary()
 
         # Phase 3: compile ELF
-        print("\n[Phase 3] Compile ELF binary")
+        print("\n[Phase 3] Compile native binary")
         binary, r = test_compile_elf(header, workdir)
         total.passed += r.passed
         total.failed += r.failed

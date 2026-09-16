@@ -593,9 +593,9 @@ bool load_module_source(const std::string &path, AbiModule &module, std::string 
         return false;
     }
     const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-    if (is_elf(bytes.data(), bytes.size())) {
+    if (is_binary(bytes.data(), bytes.size())) {
         std::vector<uint8_t> region;
-        if (!find_elf_section(bytes.data(), bytes.size(), ".abix.metadata", region, error)) return false;
+        if (!find_binary_section(bytes.data(), bytes.size(), ".abix.metadata", region, error)) return false;
         return module_from_region(region, module, error);
     }
     return read_abix(path, module, error);

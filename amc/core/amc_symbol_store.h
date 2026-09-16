@@ -16,11 +16,18 @@ namespace amc {
 //   {root}/{build_id[0:2]}/{build_id[2:]}.{abix,abixmeta}.meta  sidecar
 //
 // For a compiled binary the BuildID is the GNU build id from
-// `.note.gnu.build-id`, giving the plan's lookup chain
-// `Binary -> BuildID -> .abix`.
+// `.note.gnu.build-id` (ELF) or the LC_UUID load command (Mach-O), giving the
+// plan's lookup chain `Binary -> BuildID -> .abix`.
+
+// Reads the container-appropriate build id: the GNU build id note for ELF,
+// the LC_UUID command for Mach-O.
+bool read_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error);
 
 // Reads the GNU build id from `.note.gnu.build-id`.
 bool read_gnu_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error);
+
+// Reads the UUID from the Mach-O LC_UUID load command.
+bool read_macho_uuid(const uint8_t *data, size_t size, std::vector<uint8_t> &uuid, std::string &error);
 
 std::string hex_encode(const uint8_t *data, size_t size);
 bool hex_decode(std::string_view hex, std::vector<uint8_t> &bytes);

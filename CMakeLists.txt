@@ -179,6 +179,11 @@ if(AMC_BUILD)
       message(WARNING "Could not detect Clang resource dir; AMC frontend may fail to find built-in headers")
     endif()
 
+    if(NOT ABIX_tomlplusplus_FOUND)
+      message(FATAL_ERROR "toml++ not found — required to build AMC (amc, amc-cpp).  "
+                          "Install: brew install tomlplusplus")
+    endif()
+
     # ------------------------------------------------------------------
     # libabix-* — the shared ABIX libraries (plan AI-PS).
     #
@@ -198,6 +203,9 @@ if(AMC_BUILD)
     target_include_directories(libabix-format PUBLIC
       ${CMAKE_CURRENT_SOURCE_DIR}/amc/core
       ${CMAKE_CURRENT_SOURCE_DIR}/amc/core/ljson)
+    # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep
+    # the rest of the project on C++17 and compile only these files as C23.
+    set_target_properties(libabix-format PROPERTIES C_STANDARD 23 C_STANDARD_REQUIRED ON)
     target_compile_definitions(libabix-format PRIVATE
       JSON_PARSE_SKIP_COMMENT=1
       JSON_PARSE_LAST_COMMA=1
@@ -248,10 +256,10 @@ if(AMC_BUILD)
       ${CLANG_INCLUDE_DIRS})
     target_compile_definitions(amc-cpp PRIVATE
       ABIX_CLANG_RESOURCE_DIR="${ABIX_CLANG_RESOURCE_DIR}")
-    target_link_libraries(amc-cpp PRIVATE amc-core clang-cpp LLVM fmt::fmt)
+    target_link_libraries(amc-cpp PRIVATE amc-core clang-cpp LLVM fmt::fmt tomlplusplus::tomlplusplus)
     add_executable(amc amc/main.cpp)
     target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc)
-    target_link_libraries(amc PRIVATE amc-core)
+    target_link_libraries(amc PRIVATE amc-core tomlplusplus::tomlplusplus)
     add_executable(amc-dump amc/dump/amc_dump.cpp)
     target_include_directories(amc-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/core)
     target_link_libraries(amc-dump PRIVATE amc-core)
