@@ -53,6 +53,56 @@ std::string hash_hex(amc::Hash128 value) {
     return out;
 }
 
+// Human-readable renderings of the numeric target/function enums, so an LLM
+// reading the JSON does not have to interpret raw numbers.
+std::string arch_name(uint32_t value) {
+    switch (value) {
+        case 0:  return "x86_64";
+        case 1:  return "aarch64";
+        case 2:  return "riscv64";
+        default: return "unknown";
+    }
+}
+
+std::string os_name(uint32_t value) {
+    switch (value) {
+        case 0:  return "linux";
+        case 1:  return "windows";
+        case 2:  return "macos";
+        default: return "unknown";
+    }
+}
+
+std::string compiler_name(uint32_t value) {
+    switch (value) {
+        case 0:  return "gcc";
+        case 1:  return "clang";
+        case 2:  return "msvc";
+        default: return "unknown";
+    }
+}
+
+std::string target_calling_convention_name(uint32_t value) {
+    switch (value) {
+        case 0:  return "sysv_abi";
+        case 1:  return "ms_abi";
+        case 2:  return "aapcs";
+        default: return "unknown";
+    }
+}
+
+std::string function_calling_convention_name(uint32_t value) {
+    switch (value) {
+        case 0:  return "unspecified";
+        case 1:  return "c";
+        case 2:  return "stdcall";
+        case 3:  return "fastcall";
+        case 4:  return "thiscall";
+        case 5:  return "aarch64_sve";
+        default: return "unknown";
+    }
+}
+
 std::string arg_string(const amc::Json &args, const char *key) {
     const amc::Json *value = args.find(key);
     return value != nullptr ? value->as_string() : std::string();
@@ -99,6 +149,10 @@ amc::Json tool_get_module(const amc::Json &args, std::string &error) {
     target.set("abi", static_cast<long long>(module.target_abi));
     target.set("compiler", static_cast<long long>(module.compiler));
     target.set("calling_convention", static_cast<long long>(module.calling_convention));
+    target.set("arch_name", arch_name(module.arch));
+    target.set("os_name", os_name(module.os));
+    target.set("compiler_name", compiler_name(module.compiler));
+    target.set("calling_convention_name", target_calling_convention_name(module.calling_convention));
     result.set("target", std::move(target));
     result.set("abi_hash", hash_hex(amc::abi_hash(module)));
     amc::Json counts = amc::Json::object();
@@ -256,6 +310,7 @@ amc::Json tool_find_compatible(const amc::Json &args, std::string &error) {
         result.set("found", true);
         result.set("candidate_count", candidate_count);
         result.set("compatible", all_compatible && candidate_count > 0);
+        if (candidate_count == 0) result.set("reason", "no other indexed module declares '" + needle + "'");
         result.set("source", type_summary(source));
         result.set("candidates", std::move(candidates));
         return result;
@@ -305,6 +360,7 @@ amc::Json tool_list_functions(const amc::Json &args, std::string &error) {
         item.set("signature", hash_hex(function.signature));
         item.set("return_type_name", result_type != nullptr ? result_type->name : std::string());
         item.set("calling_convention", static_cast<long long>(function.calling_convention));
+        item.set("calling_convention_name", function_calling_convention_name(function.calling_convention));
         item.set("flags", static_cast<long long>(function.flags));
         item.set("parameter_count", static_cast<long long>(function.parameters.size()));
         functions.push_back(std::move(item));
@@ -496,8 +552,28 @@ amc::Json property(const char *type, const char *description) {
     return value;
 }
 
-amc::Json make_tool(
-    const char *name, const char *description, amc::Json properties, std::vector<std::string> required) {
+// JSON Schema "anyOf": at least one of "name" or "id" must be present.
+amc::Json name_or_id_any_of() {
+    amc::Json by_name = amc::Json::object();
+    {
+        amc::Json required = amc::Json::array();
+        required.push_back(amc::Json("name"));
+        by_name.set("required", std::move(required));
+    }
+    amc::Json by_id = amc::Json::object();
+    {
+        amc::Json required = amc::Json::array();
+        required.push_back(amc::Json("id"));
+        by_id.set("required", std::move(required));
+    }
+    amc::Json any_of = amc::Json::array();
+    any_of.push_back(std::move(by_name));
+    any_of.push_back(std::move(by_id));
+    return any_of;
+}
+
+amc::Json make_tool(const char *name, const char *description, amc::Json properties, std::vector<std::string> required,
+    amc::Json any_of = amc::Json()) {
     amc::Json schema = amc::Json::object();
     schema.set("type", "object");
     schema.set("properties", std::move(properties));
@@ -505,6 +581,7 @@ amc::Json make_tool(
     for (auto &entry : required)
         required_json.push_back(amc::Json(std::move(entry)));
     schema.set("required", std::move(required_json));
+    if (any_of.is_array()) schema.set("anyOf", std::move(any_of));
 
     amc::Json tool = amc::Json::object();
     tool.set("name", name);
@@ -535,8 +612,9 @@ amc::Json tools_catalogue() {
         props.set("id", property("string", "TypeID as 0x<32 hex>"));
         props.set("layout", property("boolean", "Include the physical field layout"));
         props.set("module", module_prop);
-        tools.push_back(make_tool("abix.get_type",
-            "Resolve one type by name or TypeID; optionally include field offsets.", std::move(props), {}));
+        tools.push_back(
+            make_tool("abix.get_type", "Resolve one type by name or TypeID; optionally include field offsets.",
+                std::move(props), {}, name_or_id_any_of()));
     }
     {
         amc::Json props = amc::Json::object();
@@ -572,7 +650,7 @@ amc::Json tools_catalogue() {
         props.set("id", property("string", "TypeID as 0x<32 hex>"));
         tools.push_back(make_tool("abix.search_type",
             "Find matching types across the indexed modules, grouped by name, flagging ABI disagreement.",
-            std::move(props), {}));
+            std::move(props), {}, name_or_id_any_of()));
     }
     {
         amc::Json props = amc::Json::object();
@@ -585,16 +663,17 @@ amc::Json tools_catalogue() {
         props.set("name", property("string", "Type name or 0x TypeID"));
         props.set("id", property("string", "TypeID as 0x<32 hex>"));
         props.set("module", module_prop);
-        tools.push_back(make_tool("abix.get_layout",
-            "Memory layout of one type: size, align, LayoutHash and field offsets.", std::move(props), {}));
+        tools.push_back(
+            make_tool("abix.get_layout", "Memory layout of one type: size, align, LayoutHash and field offsets.",
+                std::move(props), {}, name_or_id_any_of()));
     }
     {
         amc::Json props = amc::Json::object();
         props.set("name", property("string", "Type name or Owner::Type"));
         props.set("id", property("string", "TypeID as 0x<32 hex>"));
         props.set("module", module_prop);
-        tools.push_back(make_tool(
-            "abix.resolve_type", "Resolve a name or partial TypeID to matching type ids.", std::move(props), {}));
+        tools.push_back(make_tool("abix.resolve_type", "Resolve a name or partial TypeID to matching type ids.",
+            std::move(props), {}, name_or_id_any_of()));
     }
     {
         amc::Json props = amc::Json::object();
@@ -660,18 +739,18 @@ void handle_request(const amc::Json &request) {
     }
 
     if (method == "initialize") {
-        std::string protocol = "2024-11-05";
+        std::string protocol = "2025-06-18";   // preferred supported version
         if (const amc::Json *params = request.find("params")) {
             if (const amc::Json *requested = params->find("protocolVersion")) {
                 const std::string value = requested->as_string();
-                if (!value.empty()) protocol = value;
+                if (value == "2024-11-05" || value == "2025-06-18") protocol = value;
             }
         }
         amc::Json capabilities = amc::Json::object();
         capabilities.set("tools", amc::Json::object());
         amc::Json server = amc::Json::object();
         server.set("name", "amc-mcp");
-        server.set("version", "0.1.0");
+        server.set("version", "1.0.0");
         amc::Json result = amc::Json::object();
         result.set("protocolVersion", protocol);
         result.set("capabilities", std::move(capabilities));

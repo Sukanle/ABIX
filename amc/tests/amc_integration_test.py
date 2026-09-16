@@ -1881,6 +1881,224 @@ int main() {
         self.pass_("the native C++ LLDB plugin answers info/type/verify")
         return True
 
+    def step39_mcp_protocol(self) -> bool:
+        """Step 39: frozen MCP protocol — version negotiation, tool schemas,
+        target/function name fields, TypeID resolution, notifications, the CLI
+        surface and cross-module consistency flags."""
+        mcp = self.bin_path("amc-mcp")
+        if not os.path.isfile(mcp):
+            info("amc-mcp not built, skipping the MCP protocol test")
+            return True
+        abix = os.path.join(self.gen_separate, "test.abix")
+
+        problems: list[str] = []
+
+        def require(condition: bool, message: str) -> None:
+            if not condition:
+                problems.append(message)
+
+        def parse_documents(output: str) -> tuple[list, dict]:
+            documents = []
+            for line in output.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    document = json.loads(line)
+                except ValueError:
+                    continue
+                documents.append(document)
+            responses = {
+                document["id"]: document
+                for document in documents
+                if isinstance(document, dict) and document.get("id") is not None
+            }
+            return documents, responses
+
+        # --- session 1: negotiation, tool schemas, target/function names ---
+        requests = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2025-06-18"}},
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize",
+             "params": {"protocolVersion": "2024-11-05"}},
+            {"jsonrpc": "2.0", "id": 3, "method": "initialize",
+             "params": {"protocolVersion": "9999-99-99"}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+             "params": {"name": "abix.get_module", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+             "params": {"name": "abix.list_types", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+             "params": {"name": "abix.get_type", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 8, "method": "tools/call",
+             "params": {"name": "abix.get_layout", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+             "params": {"name": "abix.list_functions", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 10, "method": "tools/call",
+             "params": {"name": "abix.find_compatible",
+                        "arguments": {"name": "AmcTestFoo"}}},
+        ]
+        lines = [json.dumps(request) for request in requests]
+        lines.append('{"jsonrpc": "2.0", "id": 30, "method": "tools/list"')  # malformed
+        lines.append(json.dumps({"jsonrpc": "2.0",
+                                 "method": "notifications/initialized"}))
+        session = self.run([mcp, abix], input="\n".join(lines) + "\n")
+        if session.returncode != 0:
+            self.fail("amc-mcp exited non-zero for the protocol session")
+            return False
+        documents, responses = parse_documents(session.stdout)
+
+        init = responses.get(1, {}).get("result", {})
+        require(init.get("protocolVersion") == "2025-06-18",
+                "initialize did not echo the supported 2025-06-18 protocol version")
+        require(init.get("serverInfo") == {"name": "amc-mcp", "version": "1.0.0"},
+                "initialize did not report serverInfo name=amc-mcp version=1.0.0")
+        require(responses.get(2, {}).get("result", {}).get("protocolVersion") == "2024-11-05",
+                "initialize did not echo the supported 2024-11-05 protocol version")
+        require(responses.get(3, {}).get("result", {}).get("protocolVersion") == "2025-06-18",
+                "initialize did not fall back to 2025-06-18 for an unknown protocol version")
+
+        tools = responses.get(4, {}).get("result", {}).get("tools", [])
+        schemas = {tool.get("name"): tool.get("inputSchema", {})
+                   for tool in tools if isinstance(tool, dict)}
+        name_or_id = [{"required": ["name"]}, {"required": ["id"]}]
+        for tool_name in ("abix.get_type", "abix.get_layout",
+                          "abix.resolve_type", "abix.search_type"):
+            require(schemas.get(tool_name, {}).get("anyOf") == name_or_id,
+                    f"{tool_name} schema does not accept name-or-id via anyOf")
+        require(schemas.get("abix.get_function", {}).get("required") == ["name"],
+                "abix.get_function schema does not require 'name'")
+
+        target = (responses.get(5, {}).get("result", {})
+                  .get("structuredContent", {}).get("target", {}))
+        require(target.get("arch") == 0 and target.get("arch_name") == "x86_64",
+                "abix.get_module target does not name arch 0 as x86_64")
+        require(target.get("os") == 0 and target.get("os_name") == "linux",
+                "abix.get_module target does not name os 0 as linux")
+        require(target.get("compiler") == 1 and target.get("compiler_name") == "clang",
+                "abix.get_module target does not name compiler 1 as clang")
+        require(target.get("calling_convention") == 0
+                and target.get("calling_convention_name") == "sysv_abi",
+                "abix.get_module target does not name calling convention 0 as sysv_abi")
+        require("abi_name" not in target,
+                "abix.get_module target exposes an abi_name field that must not exist")
+
+        require(responses.get(7, {}).get("result", {}).get("isError") is True,
+                "abix.get_type with empty arguments did not report isError")
+        require(responses.get(8, {}).get("result", {}).get("isError") is True,
+                "abix.get_layout with empty arguments did not report isError")
+
+        functions = (responses.get(9, {}).get("result", {})
+                     .get("structuredContent", {}).get("functions", []))
+        require(len(functions) >= 1, "abix.list_functions returned no functions")
+        require(all(isinstance(item, dict)
+                    and isinstance(item.get("calling_convention_name"), str)
+                    for item in functions),
+                "abix.list_functions items are missing calling_convention_name")
+
+        compatible = (responses.get(10, {}).get("result", {})
+                      .get("structuredContent", {}))
+        require(isinstance(compatible.get("reason"), str),
+                "abix.find_compatible on a single-module server did not report a reason")
+
+        error_codes = [document.get("error", {}).get("code") for document in documents
+                       if isinstance(document, dict) and "error" in document]
+        require(-32700 in error_codes,
+                "malformed JSON did not produce a -32700 parse error response")
+        require(len(documents) == 11,
+                "a notification produced a response line (expected none)")
+        for identifier in range(1, 11):
+            require(identifier in responses, f"no response for request id {identifier}")
+
+        types = (responses.get(6, {}).get("result", {})
+                 .get("structuredContent", {}).get("types", []))
+        full_id = ""
+        if types and isinstance(types[0], dict):
+            candidate = types[0].get("id")
+            if isinstance(candidate, str) and len(candidate) >= 34 \
+                    and candidate.startswith("0x"):
+                full_id = candidate
+        require(bool(full_id), "abix.list_types did not expose a reusable full TypeID")
+
+        # --- session 2: full and partial TypeID resolution ---
+        partial_id = full_id[:-4]
+        id_requests = [
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": {"name": "abix.get_type", "arguments": {"id": full_id}}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "abix.resolve_type", "arguments": {"id": partial_id}}},
+        ]
+        id_session = self.run([mcp, abix],
+                              input="\n".join(json.dumps(r) for r in id_requests) + "\n")
+        if id_session.returncode != 0:
+            self.fail("amc-mcp exited non-zero for the TypeID session")
+            return False
+        _, id_responses = parse_documents(id_session.stdout)
+        require(id_responses.get(1, {}).get("result", {}).get("structuredContent", {})
+                .get("match_count", 0) >= 1,
+                "abix.get_type did not resolve a full TypeID")
+        require(id_responses.get(2, {}).get("result", {}).get("structuredContent", {})
+                .get("match_count", 0) >= 1,
+                "abix.resolve_type did not resolve a partial TypeID")
+
+        # --- CLI surface ---
+        listed = self.run([mcp, "--list-tools"])
+        require(listed.returncode == 0 and self.grep(listed.stdout, "abix.get_module"),
+                "amc-mcp --list-tools did not exit 0 with abix.get_module listed")
+        indexed = self.run(
+            [mcp, "--index", abix],
+            input=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                              "params": {"name": "abix.list_modules", "arguments": {}}})
+            + "\n")
+        _, index_responses = parse_documents(indexed.stdout)
+        require(indexed.returncode == 0
+                and index_responses.get(1, {}).get("result", {})
+                .get("structuredContent", {}).get("module_count") == 1,
+                "amc-mcp --index did not index exactly one module")
+        bogus = self.run([mcp, "--bogus"])
+        require(bogus.returncode == 2, "amc-mcp --bogus did not exit with code 2")
+
+        # --- cross-module search: map_v1 and map_v2 disagree on MapRecord ---
+        map_build = os.path.join(self.build_dir, "mcp-protocol-map")
+        for name in ("map_v1", "map_v2"):
+            config = self.fixture_path(f"{name}.abic.toml")
+            if self.run([self.bin_path("amc"), "build", "-c", config,
+                         "-B", map_build]).returncode != 0:
+                self.fail(f"amc build {name} failed for the cross-module protocol test")
+                return False
+        v1 = os.path.join(map_build, "build", "map_v1.abix")
+        v2 = os.path.join(map_build, "build", "map_v2.abix")
+        if not (os.path.isfile(v1) and os.path.isfile(v2)):
+            self.fail("cross-module artifacts were not produced")
+            return False
+        search_session = self.run(
+            [mcp, v1, v2],
+            input=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                              "params": {"name": "abix.search_type",
+                                         "arguments": {"name": "MapRecord"}}})
+            + "\n")
+        if search_session.returncode != 0:
+            self.fail("amc-mcp exited non-zero for the cross-module search")
+            return False
+        _, search_responses = parse_documents(search_session.stdout)
+        groups = (search_responses.get(1, {}).get("result", {})
+                  .get("structuredContent", {}).get("groups", []))
+        map_groups = [group for group in groups
+                      if isinstance(group, dict)
+                      and isinstance(group.get("name"), str)
+                      and group.get("name").endswith("MapRecord")]
+        require(len(map_groups) >= 1,
+                "abix.search_type did not return a MapRecord group")
+        require(any(group.get("consistent") is False for group in map_groups),
+                "abix.search_type did not flag the MapRecord group as inconsistent")
+
+        if problems:
+            for message in problems:
+                self.fail(message)
+            return False
+        self.pass_("amc-mcp honours the frozen MCP protocol and CLI surface")
+        return True
+
 
     # ==================================================================
     # Main runner
@@ -2015,6 +2233,9 @@ int main() {
 
         print()
         self.step38_lldb_plugin()
+
+        print()
+        self.step39_mcp_protocol()
 
         print()
         print(f"=== Results: {self.passed} passed, {self.failed} failed ===")

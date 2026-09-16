@@ -1,6 +1,7 @@
 #include "amc_query.h"
 #include "amc_error.h"
 
+#include <algorithm>
 #include <cctype>
 #include <iomanip>
 #include <map>
@@ -67,6 +68,30 @@ std::vector<size_t> query_type_indices(const AbiModule &module, std::string_view
     std::vector<size_t> partial;
     for (size_t i = 0; i < module.types.size(); ++i)
         if (module.types[i].name.find(needle) != std::string::npos) partial.push_back(i);
+    if (!partial.empty()) return partial;
+
+    // Partial TypeID fallback: "0x" + 1..31 hex digits, matched as a prefix of
+    // the canonical 32-char lowercase hex body rendered by hash_string().
+    std::string prefix(needle);
+    if (prefix.rfind("0x", 0) == 0 || prefix.rfind("0X", 0) == 0) prefix = prefix.substr(2);
+    if (!prefix.empty() && prefix.size() < 32) {
+        bool all_hex = true;
+        for (char c : prefix)
+            if (!is_hex_digit(c)) {
+                all_hex = false;
+                break;
+            }
+        if (all_hex) {
+            std::transform(prefix.begin(), prefix.end(), prefix.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            std::vector<size_t> prefix_matches;
+            for (size_t i = 0; i < module.types.size(); ++i) {
+                const std::string body = hash_string(module.types[i].id).substr(2);
+                if (body.compare(0, prefix.size(), prefix) == 0) prefix_matches.push_back(i);
+            }
+            return prefix_matches;
+        }
+    }
     return partial;
 }
 
