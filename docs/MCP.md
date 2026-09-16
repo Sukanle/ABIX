@@ -31,6 +31,11 @@ machine/AI-agent-facing ABI information gateway.
 `amc-mcp` implements MCP JSON-RPC over stdio (newline-delimited), supporting
 `initialize` / `ping` / `tools/list` / `tools/call`; notifications produce no
 response, unknown methods return `-32601`, and parse failures return `-32700`.
+Two MCP protocol versions are supported, `2024-11-05` and `2025-06-18`, with
+`2025-06-18` the preferred newest. On `initialize` the server echoes the
+client's requested `protocolVersion` when that version is supported, and
+otherwise negotiates down to the preferred newest supported version;
+`serverInfo` always reports `{"name": "amc-mcp", "version": "1.0.0"}`.
 The exposed tools are:
 
 | Tool | Parameters | Description |
@@ -58,6 +63,50 @@ amc-mcp path/to/module.abix        # use a module as default data source
 amc-mcp --list-tools               # print the tool catalogue
 ```
 
+### Human-readable Names in `abix.get_module`
+
+The `target` object returned by `abix.get_module` pairs each numeric code with
+a human-readable name:
+
+```json
+{
+  "arch": 0,
+  "arch_name": "x86_64",
+  "os": 0,
+  "os_name": "linux",
+  "compiler": 0,
+  "compiler_name": "gcc",
+  "calling_convention": 0,
+  "calling_convention_name": "sysv_abi"
+}
+```
+
+The encodings are: `arch` (0=x86_64, 1=aarch64, 2=riscv64, ...), `os`
+(0=linux, 1=windows, 2=macos, ...), `compiler` (0=gcc, 1=clang, 2=msvc, ...)
+and `calling_convention` (0=sysv_abi, 1=ms_abi, 2=aapcs, ...). `target.abi`
+stays numeric only: there is no documented encoding for it, so no name field
+exists for it.
+
+These `*_name` fields are diagnostic only. They never participate in ABI
+identity or compatibility, which remain decided by TypeID / LayoutHash /
+ABIHash.
+
+### `abix.list_functions`: Calling Convention Names
+
+Each function item also carries `calling_convention_name` next to the numeric
+`calling_convention`, using the per-function AMC numbering: 0=unspecified,
+1=c, 2=stdcall, 3=fastcall, 4=thiscall, 5=aarch64_sve.
+
+### Type Lookup Parameters
+
+`abix.get_type`, `abix.get_layout`, `abix.resolve_type` and `abix.search_type`
+formally require one of `name` or `id` in their input schemas (JSON Schema
+`anyOf`), so a call must pass exactly one of the two.
+
+For `abix.resolve_type` and `abix.search_type`, `id` accepts a partial TypeID
+prefix such as `0x18da104f` as well as a full TypeID, and `name` accepts a
+full name or a name substring.
+
 ### Multi-module ABI Knowledge Base
 
 `amc-mcp` can index multiple artifacts (`.abix` or binaries with embedded
@@ -77,7 +126,9 @@ After indexing:
   share one TypeID and LayoutHash. This directly answers "find all types that
   implement the same ABI";
 * `abix.find_compatible "Foo"` (without `other`) uses the default module as
-  source and checks compatibility against every other indexed module.
+  source and checks compatibility against every other indexed module; when no
+  other indexed module declares the requested type, the result reports a
+  `reason` field saying so.
 
 Single-module usage is unchanged: giving one path makes that module the default
 data source.
@@ -213,7 +264,8 @@ ABIX directly provides already-parsed results:
 ```
 
 What is returned is ABI fact after AMC semantic normalization, not an inference
-the AI derives by analyzing the C++ AST.
+the AI derives by analyzing the C++ AST. The [TROI](troi.md) metric measures
+this token-efficiency benefit for AMC and MCP agent workflows.
 
 ## ABIX as the Agent's "ABI API"
 

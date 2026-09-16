@@ -30,7 +30,10 @@ ABI 信息入口。
 
 `amc-mcp` 在 stdio 上实现 MCP JSON-RPC（newline-delimited），支持
 `initialize` / `ping` / `tools/list` / `tools/call`；notification 不产生响应，未知 method
-返回 `-32601`，解析失败返回 `-32700`。当前暴露的工具：
+返回 `-32601`，解析失败返回 `-32700`。服务端支持 `2024-11-05` 与 `2025-06-18` 两个
+MCP protocol version，并优先采用较新的 `2025-06-18`：`initialize` 时若支持客户端请求的
+`protocolVersion` 则原样回显，否则向下协商到所支持的最新优先版本；`serverInfo`
+固定返回 `{"name": "amc-mcp", "version": "1.0.0"}`。当前暴露的工具：
 
 | 工具 | 参数 | 说明 |
 |------|------|------|
@@ -56,6 +59,46 @@ amc-mcp path/to/module.abix        # 以某个 module 作为默认数据源
 amc-mcp --list-tools               # 打印工具目录
 ```
 
+### `abix.get_module` 中的可读名称
+
+`abix.get_module` 返回的 `target` 对象在数值编码之外附带可读名称：
+
+```json
+{
+  "arch": 0,
+  "arch_name": "x86_64",
+  "os": 0,
+  "os_name": "linux",
+  "compiler": 0,
+  "compiler_name": "gcc",
+  "calling_convention": 0,
+  "calling_convention_name": "sysv_abi"
+}
+```
+
+编码约定：`arch`（0=x86_64、1=aarch64、2=riscv64、…）、`os`（0=linux、1=windows、
+2=macos、…）、`compiler`（0=gcc、1=clang、2=msvc、…）、`calling_convention`
+（0=sysv_abi、1=ms_abi、2=aapcs、…）。`target.abi` 仍只有数值：该字段没有文档化的
+编码，因此不存在对应的名称字段。
+
+这些 `*_name` 字段仅用于诊断展示，绝不参与 ABI identity 与兼容性判定；后者仍由
+TypeID / LayoutHash / ABIHash 决定。
+
+### `abix.list_functions`：calling convention 名称
+
+每个函数条目在数值 `calling_convention` 之外新增 `calling_convention_name`，
+采用 AMC 的函数级编号：0=unspecified、1=c、2=stdcall、3=fastcall、4=thiscall、
+5=aarch64_sve。
+
+### 类型查询参数
+
+`abix.get_type`、`abix.get_layout`、`abix.resolve_type` 与 `abix.search_type`
+在 input schema 中正式要求 `name` 与 `id` 二选一（JSON Schema `anyOf`），调用时
+必须且只能给出其中一个。
+
+其中 `abix.resolve_type` 与 `abix.search_type` 的 `id` 接受部分 TypeID 前缀
+（例如 `0x18da104f`），完整 TypeID 同样有效；`name` 则接受完整名称或名称子串。
+
 ### 多模块 ABI 知识库
 
 `amc-mcp` 可一次索引多个 artifact（`.abix` 或带内嵌 Metadata Region 的二进制），
@@ -73,7 +116,8 @@ amc-mcp --index libfoo.abix --index plugin.so # 等价写法
   `consistent`——该名字的所有出现是否共享同一个 TypeID 与 LayoutHash。这直接回答
   "找出所有实现相同 ABI 的类型"；
 * `abix.find_compatible "Foo"`（不带 `other`）以默认模块为源，对整库中其它模块的
-  同名类型逐一判定兼容性并汇总。
+  同名类型逐一判定兼容性并汇总；若没有任何其它已索引模块声明所请求的类型，结果会
+  携带 `reason` 字段说明这一点。
 
 单模块调用方式不变：只给一个路径时，该模块即默认数据源。
 
@@ -207,7 +251,8 @@ ABIX 直接给出已经解析好的结果：
 ```
 
 返回的是经过 AMC 语义归一化后的 ABI 事实，而不是让 AI 自行分析 C++ AST
-得到的推断。
+得到的推断。这一 token 效率收益由 [TROI](troi_zh.md) 指标度量，它面向
+AMC 与 MCP 的 Agent 工作流。
 
 ## ABIX 作为 Agent 的 "ABI API"
 
