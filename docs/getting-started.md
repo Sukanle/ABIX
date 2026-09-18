@@ -1,5 +1,25 @@
 # Getting Started
 
+<p align="center">
+  <a href="getting-started_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [1. Requirements](#1-requirements)
+- [2. Build](#2-build)
+- [3. Describe an ABI](#3-describe-an-abi)
+- [4. Inspect and query](#4-inspect-and-query)
+- [5. Compare and verify](#5-compare-and-verify)
+- [6. Generate](#6-generate)
+- [7. Metadata Region and symbol server](#7-metadata-region-and-symbol-server)
+- [8. AI agent integration](#8-ai-agent-integration)
+- [Next steps](#next-steps)
+
+</details>
+
 This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI,
 and shows the core operations: inspect, query, diff, verify and generate.
 

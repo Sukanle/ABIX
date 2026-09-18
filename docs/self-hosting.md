@@ -1,5 +1,19 @@
 # Self-Hosting
 
+<p align="center">
+  <a href="self-hosting_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [What self-hosting means here](#what-self-hosting-means-here)
+- [Bootstrap artifacts](#bootstrap-artifacts)
+- [Why it matters](#why-it-matters)
+
+</details>
+
 ABIX 1.0 is self-hosting for its own public ABI: it describes its public ABI
 with its own model, and uses that description to build and verify later
 versions.

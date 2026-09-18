@@ -1,5 +1,25 @@
 # 在 ELF 与 Mach-O 二进制文件中检查 ABIX 元数据
 
+<p align="center">
+  中文 · <a href="elf-inspection.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [元数据如何进入二进制文件](#元数据如何进入二进制文件)
+- [节区布局](#节区布局)
+- [使用 readelf / objdump（ELF）](#使用-readelf-objdumpelf)
+- [使用 otool（macOS）](#使用-otoolmacos)
+- [使用 AMC CLI](#使用-amc-cli)
+- [Strip 操作](#strip-操作)
+- [自动化测试](#自动化测试)
+- [支持的格式](#支持的格式)
+- [限制](#限制)
+
+</details>
+
 AMC 通过自定义节区将 ABI 元数据嵌入编译后的二进制文件。本文档说明如何使用标准工具（ELF 上的 `readelf`/`objdump`，Mach-O 上的 `otool`）和 AMC CLI 定位、检查和验证这些节区。
 
 ## 元数据如何进入二进制文件

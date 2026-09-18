@@ -1,7 +1,22 @@
 # 路线图
 
-> 英文权威版本见 [`../ROADMAP.md`](../.agents/ROADMAP.md)。本文件为中文版。
+<p align="center">
+  中文 · <a href="roadmap.md">English</a>
+</p>
 
+<details>
+
+<summary>目录</summary>
+
+- [方向](#方向)
+- [近期](#近期)
+- [AI-native ABI 工具链](#ai-native-abi-工具链)
+- [研究 / 实验](#研究-实验)
+- [明确不在范围内](#明确不在范围内)
+
+</details>
+
+> 英文权威版本见 [`../ROADMAP.md`](../.agents/ROADMAP.md)。本文件为中文版。
 
 路线图优先考虑互操作性与真实使用，而不是增加运行时特性。
 

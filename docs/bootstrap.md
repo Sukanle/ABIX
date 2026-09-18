@@ -1,5 +1,26 @@
 # Bootstrap and Runtime
 
+<p align="center">
+  <a href="bootstrap_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [The problem](#the-problem)
+- [Four-phase route](#four-phase-route)
+- [Type and hash model](#type-and-hash-model)
+- [`.abix` artifact](#abix-artifact)
+- [Bootstrap kernel](#bootstrap-kernel)
+- [Runtime dependency and state model](#runtime-dependency-and-state-model)
+- [Map model](#map-model)
+- [Self-hosting closure](#self-hosting-closure)
+- [Milestones](#milestones)
+- [Key design decisions](#key-design-decisions)
+
+</details>
+
 ABIX is intended to describe its own internal types — `Registry`, `TypeInfo`,
 RCU/EBR state and the rest — with the same cross-ABI model it provides to
 users. Describing that machinery recursively raises a chicken-and-egg problem.

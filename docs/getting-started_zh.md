@@ -1,5 +1,25 @@
 # 快速上手
 
+<p align="center">
+  中文 · <a href="getting-started.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [1. 依赖](#1-依赖)
+- [2. 构建](#2-构建)
+- [3. 描述一个 ABI](#3-描述一个-abi)
+- [4. 查看与查询](#4-查看与查询)
+- [5. 对比与校验](#5-对比与校验)
+- [6. 代码生成](#6-代码生成)
+- [7. Metadata Region 与 symbol server](#7-metadata-region-与-symbol-server)
+- [8. AI Agent 集成](#8-ai-agent-集成)
+- [下一步](#下一步)
+
+</details>
+
 本文用一个小的 C++ ABI 走完 ABIX 的核心流程：构建、inspect、query、diff、verify、
 generate。
 

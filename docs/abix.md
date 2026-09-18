@@ -1,5 +1,29 @@
 # .abix — Canonical ABI Artifact
 
+<p align="center">
+  <a href="abix_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Positioning](#positioning)
+- [Core Responsibilities](#core-responsibilities)
+- [Format: Binary](#format-binary)
+- [Overall Structure](#overall-structure)
+- [Section Details](#section-details)
+- [Type / Layout / Function / Symbol Separation](#type-layout-function-symbol-separation)
+- [Hash System](#hash-system)
+- [Three Consumption Modes](#three-consumption-modes)
+- [Relationship with .abic](#relationship-with-abic)
+- [Projection System](#projection-system)
+- [Differences from Traditional Approaches](#differences-from-traditional-approaches)
+- [Core Concepts](#core-concepts)
+- [Complete File Relationship](#complete-file-relationship)
+
+</details>
+
 ## Positioning
 
 `.abix` is the core artifact of the ABIX system: a language-agnostic, compiler-agnostic, C++ ABI-agnostic normalized ABI metadata container.

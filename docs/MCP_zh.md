@@ -1,5 +1,25 @@
 # ABIX MCP：ABI Metadata 作为 AI Agent 的 ABI 信息入口
 
+<p align="center">
+  中文 · <a href="MCP.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [定位](#定位)
+- [`amc-mcp` 原型](#amc-mcp-原型)
+- [对 `amc dump` 的简化](#对-amc-dump-的简化)
+- [MCP 集成](#mcp-集成)
+- [Token 成本](#token-成本)
+- [ABIX 作为 Agent 的 "ABI API"](#abix-作为-agent-的-abi-api)
+- [外部 `.abix`](#外部-abix)
+- [`.abix` 作为 ABI Knowledge Base](#abix-作为-abi-knowledge-base)
+- [三层统一入口](#三层统一入口)
+
+</details>
+
 ## 定位
 
 独立的 ABIX Metadata Region + 外部 `.abix` 为 AMC 提供了面向机器/AI Agent 的

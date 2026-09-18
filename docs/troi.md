@@ -1,5 +1,26 @@
 # TROI: Token Return on Investment
 
+<p align="center">
+  <a href="troi_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Definition](#definition)
+- [Why: the agent information-acquisition cost](#why-the-agent-information-acquisition-cost)
+- [Formula](#formula)
+- [Token Compression Ratio (TCR)](#token-compression-ratio-tcr)
+- [Metric family: the Agent Efficiency Benchmark](#metric-family-the-agent-efficiency-benchmark)
+- [What TROI is not](#what-troi-is-not)
+- [Status](#status)
+- [Current measurement: abix_token_cost.py](#current-measurement-abix_token_costpy)
+- [Planned: amc agent benchmark](#planned-amc-agent-benchmark)
+- [Relation to ABIX/AMC positioning](#relation-to-abixamc-positioning)
+
+</details>
+
 > TROI is a documentation concept for talking about the token efficiency of
 > AI-agent workflows that consume structured ABI knowledge through AMC/MCP.
 > Every number in this document is an illustrative example, not a measurement.

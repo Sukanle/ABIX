@@ -1,6 +1,48 @@
-# ABIX
+<p align="center">
+  <img src="assets/abix-wordmark.svg" alt="ABIX" width="320">
+</p>
 
-> **Native ABI as a first-class, verifiable object.**
+<p align="center">
+  <strong>Native ABI as a first-class, verifiable object.</strong><br>
+  <sub>An ABI semantic layer for describing, identifying, verifying and evolving native binary interfaces.</sub>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
+  <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
+  <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
+  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
+</p>
+
+<p align="center">
+  <a href="README_ZH.md">中文</a> · English
+</p>
+
+<details>
+<summary>Contents</summary>
+
+- [Why ABIX?](#why-abix)
+- [A Small Example](#a-small-example)
+- [Native, Not a VM](#native-not-a-vm)
+- [The ABIX Model](#the-abix-model)
+- [ABIX IR](#abix-ir)
+- [AMC](#amc)
+- [Self-Hosting](#self-hosting)
+- [Architecture](#architecture)
+- [What ABIX Is Not](#what-abix-is-not)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Documentation](#documentation)
+- [Current Status](#current-status)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Community](#community)
+- [License](#license)
+
+</details>
+
+---
 
 ABIX is an **ABI semantic layer** for describing, identifying, verifying and
 evolving native binary interfaces. It makes ABI information explicit and

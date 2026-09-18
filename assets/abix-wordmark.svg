@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" role="img" aria-label="ABIX">
+  <style>
+    svg { --fg:#0b0f14; --accent:#2f6feb; --muted:#57606a; }
+    @media (prefers-color-scheme: dark) {
+      svg { --fg:#e6edf3; --accent:#58a6ff; --muted:#8b949e; }
+    }
+    .word { font-family: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-weight: 700; font-size: 92px; letter-spacing: 2px; fill: var(--fg);
+            text-anchor: middle; }
+    .mark { fill: none; stroke: var(--accent); stroke-width: 10;
+            stroke-linecap: round; stroke-linejoin: round; }
+    .sub  { font-family: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-weight: 500; font-size: 20px; letter-spacing: 7px; fill: var(--muted);
+            text-anchor: middle; }
+  </style>
+  <text class="word" x="321" y="112">ABIX</text>
+  <text class="sub" x="323.5" y="144">ABI SEMANTIC LAYER</text>
+</svg>

@@ -1,5 +1,25 @@
 # ABIX Benchmark & Performance Analysis
 
+<p align="center">
+  <a href="benchmark_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [1. Scope and Overview](#1-scope-and-overview)
+- [2. What Is Measured](#2-what-is-measured)
+- [3. Workload Semantics](#3-workload-semantics)
+- [4. Measurement Environment and Reproduction](#4-measurement-environment-and-reproduction)
+- [5. Analysis Method](#5-analysis-method)
+- [6. Configuration Guidance](#6-configuration-guidance)
+- [7. Limitations](#7-limitations)
+- [8. Full Benchmark Suite](#8-full-benchmark-suite)
+- [9. References](#9-references)
+
+</details>
+
 > This document records the benchmark scope, method, and conclusions that can be checked against the current source tree. Throughput values are platform-specific observations, not cross-machine guarantees.
 
 Agent-efficiency benchmarking (TROI) is a separate concern and is documented in [troi.md](troi.md).

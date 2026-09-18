@@ -1,6 +1,48 @@
-# ABIX
+<p align="center">
+  <img src="assets/abix-wordmark.svg" alt="ABIX" width="320">
+</p>
 
-> **把原生 ABI 变成一等、可验证的对象。**
+<p align="center">
+  <strong>把原生 ABI 变成一等、可验证的对象。</strong><br>
+  <sub>用于描述、标识、校验并演进原生二进制接口的 ABI 语义层。</sub>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
+  <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
+  <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
+  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
+</p>
+
+<p align="center">
+  中文 · <a href="README.md">English</a>
+</p>
+
+<details>
+<summary>目录</summary>
+
+- [为什么需要 ABIX？](#为什么需要-abix)
+- [一个小例子](#一个小例子)
+- [原生执行，而不是 VM](#原生执行而不是-vm)
+- [ABIX 模型](#abix-模型)
+- [ABIX IR](#abix-ir)
+- [AMC](#amc)
+- [自举（Self-Hosting）](#自举self-hosting)
+- [架构](#架构)
+- [ABIX 不是什么](#abix-不是什么)
+- [项目结构](#项目结构)
+- [快速上手](#快速上手)
+- [文档](#文档)
+- [当前状态](#当前状态)
+- [路线图](#路线图)
+- [参与贡献](#参与贡献)
+- [社区](#社区)
+- [许可证](#许可证)
+
+</details>
+
+---
 
 ABIX 是一个 **ABI 语义层**：用于描述、标识、校验并演进原生二进制接口。它让 ABI
 信息变得显式、机器可读，且不依赖某个具体编译器或语言实现。
@@ -335,7 +377,7 @@ cmake --build build/Release --parallel
 
 * [运行时概览](docs/runtime_zh.md)
 * [API 参考](docs/api_zh.md)
-* [性能与基准](docs/benchmark_ZH.md)
+* [性能与基准](docs/benchmark_zh.md)
 
 ### AMC 工具链
 

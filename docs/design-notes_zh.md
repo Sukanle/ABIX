@@ -1,5 +1,18 @@
 # 设计说明
 
+<p align="center">
+  中文 · <a href="design-notes.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [设计原则](#设计原则)
+- [发展历程](#发展历程)
+
+</details>
+
 ABIX 面向跨 DLL / 共享库边界的类型安全函数调用，用稳定函数表、编译期签名哈希与版本令牌替代
 `GetProcAddress` / `dlsym` 的手工字符串加裸指针解析。围绕这一核心长出两个子系统：双轨反射库
 MICS 与 ABI 元数据编译器 AMC，"ABI 真相"收敛到语言无关的 `.abix` 产物。
@@ -394,7 +407,7 @@ CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh
   排除系统噪声再下结论。正式 benchmark 记中位数、p90 与变异系数，而非单次值。
 
 卸载与回收的稳定态开销被压到接近直接调用。该阶段沉淀了读多写少并发回收的调优指引，以及
-"batch 不是架构常量、必须在目标平台重测"的规范。见 [`benchmark_ZH.md`](benchmark_ZH.md)。
+"batch 不是架构常量、必须在目标平台重测"的规范。见 [`benchmark_zh.md`](benchmark_zh.md)。
 
 ### 阶段七 · 工程质量体系
 

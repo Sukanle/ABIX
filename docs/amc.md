@@ -1,5 +1,20 @@
 # AMC — ABI Meta Compiler
 
+<p align="center">
+  <a href="amc_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Configuration](#configuration)
+- [Commands](#commands)
+- [Structured errors](#structured-errors)
+- [Other tools](#other-tools)
+
+</details>
+
 AMC is the ABIX toolchain entry point. It extracts ABI information from a
 language AST, projects it into ABIX IR, and provides inspection, comparison,
 verification, generation and distribution tooling.

@@ -1,5 +1,19 @@
 # 自举（Self-Hosting）
 
+<p align="center">
+  中文 · <a href="self-hosting.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [自举的含义](#自举的含义)
+- [Bootstrap artifact](#bootstrap-artifact)
+- [为什么重要](#为什么重要)
+
+</details>
+
 ABIX 1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公开 ABI，并用该描述构建与
 校验后续版本。
 

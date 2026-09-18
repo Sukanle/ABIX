@@ -1,5 +1,20 @@
 # ABI 身份与兼容性
 
+<p align="center">
+  中文 · <a href="compatibility.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [四种身份](#四种身份)
+- [兼容性分类](#兼容性分类)
+- [加载期跨 Module 校验](#加载期跨-module-校验)
+- [Source Origin](#source-origin)
+
+</details>
+
 ABIX 把经常被混用的几种身份区分开来，使"是不是同一个类型"和"这个二进制能不能安全使用"
 成为精确的问题。
 

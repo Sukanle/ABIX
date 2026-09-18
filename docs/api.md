@@ -1,5 +1,30 @@
 # ABIX API Reference
 
+<p align="center">
+  <a href="api_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Architecture Overview](#architecture-overview)
+- [ABI Metadata Runtime and AMC](#abi-metadata-runtime-and-amc)
+- [1. `config.h` — Platform Detection & Core Enums](#1-configh-platform-detection-core-enums)
+- [2. `type.h` — Core Types](#2-typeh-core-types)
+- [3. `register.h` — Registration Macros](#3-registerh-registration-macros)
+- [4. `obj_dll.h` — DLL Module Wrapper](#4-obj_dllh-dll-module-wrapper)
+- [5. `fn_dll.h` — Typed Function Handles](#5-fn_dllh-typed-function-handles)
+- [6. `fn_sig.h` — Compile-time Signature Hashing](#6-fn_sigh-compile-time-signature-hashing)
+- [7. `type_sig.h` — Type Signature Hashing](#7-type_sigh-type-signature-hashing)
+- [8. `search.h` — Table Search Functions](#8-searchh-table-search-functions)
+- [9. `function.h` — Cross-Boundary Closure](#9-functionh-cross-boundary-closure)
+- [10. Smart Pointers (`dll_ptr/`)](#10-smart-pointers-dll_ptr)
+- [11. `refl.h` — Dynamic mics Integration](#11-reflh-dynamic-mics-integration)
+- [12. Complete Usage Example](#12-complete-usage-example)
+
+</details>
+
 This document covers the ABIX cross-DLL function calling library (`abix/`).
 
 ## Architecture Overview
@@ -16,7 +41,6 @@ flowchart TB
     D["Invocation Layer<br/>C++ Wrapper"]
 
     A --> B --> C --> D
-
 
     A --- A1["Registration Macros<br/>SKL_ABIX_DEFINE_TABLE<br/>SKL_ABIX_ENTRY"]
 

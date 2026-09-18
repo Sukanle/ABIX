@@ -1,5 +1,25 @@
 # .abic — ABI Configuration
 
+<p align="center">
+  中文 · <a href="abic.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [定位](#定位)
+- [核心职责](#核心职责)
+- [格式：TOML](#格式toml)
+- [完整示例](#完整示例)
+- [配置节详解](#配置节详解)
+- [运行模式](#运行模式)
+- [与 .abix 的关系](#与-abix-的关系)
+- [最小示例](#最小示例)
+- [设计原则](#设计原则)
+
+</details>
+
 ## 定位
 
 `.abic` 是**声明式 ABI 配置文件**，描述"如何构建 ABI"的意图与策略，而非 ABI 事实本身。

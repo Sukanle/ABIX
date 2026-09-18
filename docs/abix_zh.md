@@ -1,5 +1,29 @@
 # .abix — Canonical ABI Artifact
 
+<p align="center">
+  中文 · <a href="abix.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [定位](#定位)
+- [核心职责](#核心职责)
+- [格式：Binary](#格式binary)
+- [整体结构](#整体结构)
+- [各节详解](#各节详解)
+- [Type / Layout / Function / Symbol 分离](#type-layout-function-symbol-分离)
+- [Hash 体系](#hash-体系)
+- [三种消费方式](#三种消费方式)
+- [与 .abic 的关系](#与-abic-的关系)
+- [投影体系](#投影体系)
+- [与传统方案的区别](#与传统方案的区别)
+- [核心理念](#核心理念)
+- [完整文件关系](#完整文件关系)
+
+</details>
+
 ## 定位
 
 `.abix` 是 ABIX 体系的核心产物：与具体语言、编译器、C++ ABI 无关的规范化 ABI 元数据容器。

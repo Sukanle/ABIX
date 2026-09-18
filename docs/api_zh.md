@@ -1,5 +1,30 @@
 # ABIX API 参考文档
 
+<p align="center">
+  中文 · <a href="api.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [架构概览](#架构概览)
+- [ABI 元数据运行时与 AMC](#abi-元数据运行时与-amc)
+- [1. `config.h` — 平台检测与核心枚举](#1-configh-平台检测与核心枚举)
+- [2. `type.h` — 核心类型](#2-typeh-核心类型)
+- [3. `register.h` — 注册宏](#3-registerh-注册宏)
+- [4. `obj_dll.h` — DLL 模块包装器](#4-obj_dllh-dll-模块包装器)
+- [5. `fn_dll.h` — 类型化函数句柄](#5-fn_dllh-类型化函数句柄)
+- [6. `fn_sig.h` — 编译期签名哈希](#6-fn_sigh-编译期签名哈希)
+- [7. `type_sig.h` — 类型签名哈希](#7-type_sigh-类型签名哈希)
+- [8. `search.h` — 表查找函数](#8-searchh-表查找函数)
+- [9. `function.h` — 跨边界闭包](#9-functionh-跨边界闭包)
+- [10. 智能指针（`dll_ptr/`）](#10-智能指针dll_ptr)
+- [11. `refl.h` — 动态反射集成](#11-reflh-动态反射集成)
+- [12. 完整使用示例](#12-完整使用示例)
+
+</details>
+
 本文档涵盖 ABIX 跨 DLL 函数调用库（`abix/`）。
 
 ## 架构概览
@@ -16,7 +41,6 @@ flowchart TB
     D["调用封装层<br/>C++ Wrapper"]
 
     A --> B --> C --> D
-
 
     A --- A1["注册宏<br/>SKL_ABIX_DEFINE_TABLE<br/>SKL_ABIX_ENTRY"]
 

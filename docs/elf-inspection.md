@@ -1,5 +1,25 @@
 # Inspecting ABIX Metadata in ELF and Mach-O Binaries
 
+<p align="center">
+  <a href="elf-inspection_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [How Metadata Gets Into the Binary](#how-metadata-gets-into-the-binary)
+- [Section Layout](#section-layout)
+- [Using readelf / objdump (ELF)](#using-readelf-objdump-elf)
+- [Using otool (macOS)](#using-otool-macos)
+- [Using AMC CLI](#using-amc-cli)
+- [Stripping](#stripping)
+- [Automated Testing](#automated-testing)
+- [Supported formats](#supported-formats)
+- [Limitations](#limitations)
+
+</details>
+
 AMC embeds ABI metadata into compiled binaries via custom sections. This
 document explains how to locate, inspect and verify those sections using
 standard tools (`readelf`/`objdump` on ELF, `otool` on Mach-O) and the AMC CLI.

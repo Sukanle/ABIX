@@ -1,5 +1,18 @@
 # Design Notes
 
+<p align="center">
+  <a href="design-notes_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Design Principles](#design-principles)
+- [Development History](#development-history)
+
+</details>
+
 ABIX addresses type-safe function calls across DLL and shared-library boundaries. A stable
 function table, compile-time signature hashing and version tokens replace the manual,
 string-and-pointer resolution performed with `GetProcAddress` and `dlsym`. Two subsystems

@@ -1,5 +1,26 @@
 # TROI:Token 投资回报率
 
+<p align="center">
+  中文 · <a href="troi.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [定义](#定义)
+- [为什么: `Agent` 的信息获取成本](#为什么-agent-的信息获取成本)
+- [计算公式](#计算公式)
+- [`Token` 压缩比(`TCR`)](#token-压缩比tcr)
+- [指标家族: `Agent Efficiency Benchmark`](#指标家族-agent-efficiency-benchmark)
+- [`TROI` 不是什么](#troi-不是什么)
+- [现状](#现状)
+- [当前测量手段: `abix_token_cost.py`](#当前测量手段-abix_token_costpy)
+- [规划:amc agent benchmark](#规划amc-agent-benchmark)
+- [与 ABIX/AMC 定位的关系](#与-abixamc-定位的关系)
+
+</details>
+
 > TROI 是一个文档概念，用于讨论 AI Agent 在通过 AMC/MCP 获得结构化 ABI
 > 知识时，每个 token 能完成多少工作。本文中的所有数字都是说明性示例，
 > 不是实测结果。尚未实现的能力均标注为"规划中"或"提案"。

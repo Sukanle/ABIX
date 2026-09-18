@@ -1,5 +1,25 @@
 # .abic — ABI Configuration
 
+<p align="center">
+  <a href="abic_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Positioning](#positioning)
+- [Core Responsibilities](#core-responsibilities)
+- [Format: TOML](#format-toml)
+- [Complete Example](#complete-example)
+- [Configuration Section Details](#configuration-section-details)
+- [Runtime Modes](#runtime-modes)
+- [Relationship with .abix](#relationship-with-abix)
+- [Minimal Example](#minimal-example)
+- [Design Principles](#design-principles)
+
+</details>
+
 ## Positioning
 
 `.abic` is a **declarative ABI configuration file** that describes the intent and strategy for "how to build ABI", rather than the ABI facts themselves.

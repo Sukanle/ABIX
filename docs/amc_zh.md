@@ -1,5 +1,20 @@
 # AMC — ABI Meta Compiler
 
+<p align="center">
+  中文 · <a href="amc.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [配置](#配置)
+- [命令](#命令)
+- [结构化错误](#结构化错误)
+- [其他工具](#其他工具)
+
+</details>
+
 AMC 是 ABIX 工具链入口：从语言 AST 提取 ABI、投影为 ABIX IR，并提供查看、比较、
 校验、生成与分发工具。
 

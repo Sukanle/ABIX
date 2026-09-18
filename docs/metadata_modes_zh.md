@@ -1,5 +1,33 @@
 # ABIX Metadata Image 设计
 
+<p align="center">
+  中文 · <a href="metadata_modes.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [核心目标](#核心目标)
+- [四种 ID 的明确区分](#四种-id-的明确区分)
+- ["Name 不是 ABI 数据"](#name-不是-abi-数据)
+- [三档 Metadata 模式](#三档-metadata-模式)
+- [独立 Metadata Region](#独立-metadata-region)
+- [Metadata Header / Manifest](#metadata-header-manifest)
+- [Metadata Region 四段结构](#metadata-region-四段结构)
+- [Runtime Descriptor 与 `.abix` Record 分离](#runtime-descriptor-与-abix-record-分离)
+- [Linker GC 与 Metadata 裁剪](#linker-gc-与-metadata-裁剪)
+- [`.abix` 与 `.abix.meta` 的职责划分](#abix-与-abixmeta-的职责划分)
+- [ABIX Symbol Server](#abix-symbol-server)
+- [最终架构](#最终架构)
+- [七条设计原则](#七条设计原则)
+- [操作指南](#操作指南)
+- [设计边界](#设计边界)
+- [附录：与 DWARF 的对比](#附录与-dwarf-的对比)
+- [ABIX 工具链集成：LLDB 与 clangd](#abix-工具链集成lldb-与-clangd)
+
+</details>
+
 ## 核心目标
 
 ABIX Metadata 最初面对的问题是：Runtime Descriptor 为了保存完整调试信息，导致每个类型携带 `name`、字段信息、裸指针等大量静态数据，使最终 `.data.rel.ro` / `.rdata` 膨胀。

@@ -1,5 +1,25 @@
 # ABIX MCP: ABI Metadata as the AI Agent's ABI Information Gateway
 
+<p align="center">
+  <a href="MCP_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Positioning](#positioning)
+- [`amc-mcp` Prototype](#amc-mcp-prototype)
+- [Simplifying `amc dump`](#simplifying-amc-dump)
+- [MCP Integration](#mcp-integration)
+- [Token Cost](#token-cost)
+- [ABIX as the Agent's "ABI API"](#abix-as-the-agents-abi-api)
+- [External `.abix`](#external-abix)
+- [`.abix` as an ABI Knowledge Base](#abix-as-an-abi-knowledge-base)
+- [Three-layer Unified Entry Point](#three-layer-unified-entry-point)
+
+</details>
+
 ## Positioning
 
 Standalone ABIX Metadata Region + external `.abix` files provide AMC with a

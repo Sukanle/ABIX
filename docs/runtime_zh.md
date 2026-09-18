@@ -1,5 +1,23 @@
 # 运行时概览
 
+<p align="center">
+  中文 · <a href="runtime.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [职责](#职责)
+- [注册表](#注册表)
+- [Metadata 三种模式](#metadata-三种模式)
+- [DLL 函数表](#dll-函数表)
+- [快速开始](#快速开始)
+- [API 参考](#api-参考)
+- [性能](#性能)
+
+</details>
+
 ABIX 运行时消费 ABI metadata，并保持执行路径为原生调用，不会解释兼容调用。
 
 ## 职责
@@ -88,4 +106,4 @@ if (mul.valid()) {
 ## 性能
 
 绑定与 metadata 投影发生在初始化阶段；边界开销与查找基准见
-[`benchmark_ZH.md`](benchmark_ZH.md)。
+[`benchmark_zh.md`](benchmark_zh.md)。

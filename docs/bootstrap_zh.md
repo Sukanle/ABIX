@@ -1,5 +1,26 @@
 # 自举与运行时
 
+<p align="center">
+  中文 · <a href="bootstrap.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [核心问题](#核心问题)
+- [四阶段路线](#四阶段路线)
+- [类型与哈希模型](#类型与哈希模型)
+- [`.abix` artifact](#abix-artifact)
+- [Bootstrap 内核](#bootstrap-内核)
+- [运行时依赖与状态模型](#运行时依赖与状态模型)
+- [Map 模型](#map-模型)
+- [自举闭环](#自举闭环)
+- [里程碑](#里程碑)
+- [关键设计决策](#关键设计决策)
+
+</details>
+
 ABIX 希望用自身提供的跨 ABI 模型描述自己的内部类型——`Registry`、`TypeInfo`、
 RCU/EBR 状态等。递归地描述这套机制会陷入鸡生蛋问题。自举路线通过把工作拆成四个
 阶段，并在最底层放置一个极小的、手工维护的内核来解决它。

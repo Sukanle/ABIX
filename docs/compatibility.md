@@ -1,5 +1,20 @@
 # ABI Identity & Compatibility
 
+<p align="center">
+  <a href="compatibility_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Four identities](#four-identities)
+- [Compatibility kinds](#compatibility-kinds)
+- [Load-time cross-module validation](#load-time-cross-module-validation)
+- [Source origin](#source-origin)
+
+</details>
+
 ABIX separates identities that are often conflated. Keeping them distinct makes
 "is this the same type?" and "can I safely use this binary?" precise questions.
 

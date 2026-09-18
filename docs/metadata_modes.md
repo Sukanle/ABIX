@@ -1,5 +1,27 @@
 # ABIX Metadata Three-Level Modes: Embedded Readable / Full Hash / Stripped File
 
+<p align="center">
+  <a href="metadata_modes_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Design Background](#design-background)
+- [Core Concept](#core-concept)
+- [Three Modes Overview](#three-modes-overview)
+- [Debug Mode: Embedded Readable](#debug-mode-embedded-readable)
+- [Release Mode: Full Hash](#release-mode-full-hash)
+- [RelWithDebInfo: Stripped File](#relwithdebinfo-stripped-file)
+- [Section Separation Mechanism](#section-separation-mechanism)
+- [ABIX Symbol Server](#abix-symbol-server)
+- [Quantitative Savings](#quantitative-savings)
+- [Operation Guide](#operation-guide)
+- [Design Boundaries](#design-boundaries)
+
+</details>
+
 ## Design Background
 
 ABIX runtime type metadata needs to make a trade-off between **diagnostic capability** and **production binary size**.

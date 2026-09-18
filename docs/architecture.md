@@ -1,5 +1,22 @@
 # Architecture
 
+<p align="center">
+  <a href="architecture_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Layers](#layers)
+- [One source of ABI truth](#one-source-of-abi-truth)
+- [Identity](#identity)
+- [Metadata modes](#metadata-modes)
+- [Execution model](#execution-model)
+- [Repository layout](#repository-layout)
+
+</details>
+
 > The authoritative design map and invariants live in
 > [`../ARCHITECTURE.md`](../.agents/ARCHITECTURE.md).
 

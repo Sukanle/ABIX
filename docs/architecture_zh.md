@@ -1,5 +1,22 @@
 # 架构
 
+<p align="center">
+  中文 · <a href="architecture.md">English</a>
+</p>
+
+<details>
+
+<summary>目录</summary>
+
+- [分层](#分层)
+- [唯一 ABI 事实来源](#唯一-abi-事实来源)
+- [身份](#身份)
+- [Metadata 三种模式](#metadata-三种模式)
+- [执行模型](#执行模型)
+- [仓库结构](#仓库结构)
+
+</details>
+
 > 设计地图与不变量以 [`../ARCHITECTURE.md`](../.agents/ARCHITECTURE.md) 为权威。
 
 ABIX 把 ABI 变成显式、机器可读的对象，并在整个工具链与运行时中保持**唯一 ABI 事实来源**。
