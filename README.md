@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
-  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
+  <img src="https://img.shields.io/badge/status-2.0-orange.svg" alt="Status: 2.0">
 </p>
 
 <p align="center">
@@ -191,7 +191,7 @@ Rust or C with a new universal runtime type system.
 
 Type identity is a 128-bit `TypeID`; layout identity is a separate
 `LayoutHash`; the module-level artifact identity is the `ABIHash`. See
-[ABI identity & compatibility](docs/compatibility.md).
+[ABI identity & compatibility](docs/architecture/compatibility.md).
 
 ---
 
@@ -213,9 +213,9 @@ graph TD
 The IR focuses on ABI semantics rather than source-level detail. Its serialized
 form is the `.abix` artifact:
 
-* [`docs/abix.md`](docs/abix.md) — the canonical `.abix` artifact
-* [`docs/abic.md`](docs/abic.md) — the `.abic.toml` build configuration
-* [`docs/metadata_modes.md`](docs/metadata_modes.md) — the three metadata modes
+* [`docs/abix/abix.md`](docs/abix/abix.md) — the canonical `.abix` artifact
+* [`docs/abix/abic.md`](docs/abix/abic.md) — the `.abic.toml` build configuration
+* [`docs/abix/metadata_modes.md`](docs/abix/metadata_modes.md) — the three metadata modes
 
 ---
 
@@ -250,7 +250,7 @@ amc verify -c package.abic.toml -B build
 
 AMC is an extensible toolchain, not a language-specific compiler: frontends
 extract ABI from a language AST, ABIX IR stays the common representation.
-See [`docs/amc.md`](docs/amc.md).
+See [`docs/amc/amc.md`](docs/amc/amc.md).
 
 ---
 
@@ -271,7 +271,7 @@ graph TD
 This separates the **stable bootstrap ABI** from **internal implementation**
 (runtime internals, data structures, synchronization, caches) so the
 implementation can evolve while its external contract stays explicit. See
-[`docs/self-hosting.md`](docs/self-hosting.md).
+[`docs/getting-started/self-hosting.md`](docs/getting-started/self-hosting.md).
 
 ---
 
@@ -314,6 +314,45 @@ shares exactly one `.abix` / Metadata Region parser.
 
 ABIX works alongside existing compiler, linker, debugger, build-system and
 language ecosystems rather than replacing them.
+
+---
+
+## Competitive Landscape
+
+ABIX has no single one-to-one competitor. The problems it solves are
+scattered across ABI analysis (libabigail), package management (Conan,
+vcpkg), FFI (bindgen), component models (COM, Wasm Component Model),
+RPC/IDL (gRPC/Protobuf), and build systems (CMake/Bazel). ABIX unifies
+these native binary lifecycle capabilities onto a single ABI/IR.
+
+| What others solve       | What ABIX adds                             |
+|-------------------------|--------------------------------------------|
+| ABI analysis / diff     | ABI IR / contract / verification           |
+| Package / build         | ABI metadata as first-class object         |
+| Source-oriented FFI     | Binary-oriented binding                    |
+| Wire-level contracts    | Native binary boundary semantics           |
+
+For a detailed analysis see [docs/development/competitors.md](docs/development/competitors.md).
+
+---
+
+## Ecosystem
+
+ABIX is designed as an open foundation for native binary interoperability.
+
+AMC provides tooling around ABIX, while higher-level applications can be built independently across areas such as:
+
+* ABI governance and CI
+* Cross-language interoperability
+* Native plugin systems
+* Package and binary management
+* IDE and LSP integration
+* AI-assisted development
+* Robotics and runtime systems
+
+The project aims to support both community-driven and commercial adoption while keeping the core ABI technology broadly reusable and interoperable.
+
+For details see [docs/ecosystem/ecosystem.md](docs/ecosystem/ecosystem.md). For project sustainability, see [docs/ecosystem/sustainability.md](docs/ecosystem/sustainability.md).
 
 ---
 
@@ -366,7 +405,7 @@ cmake --build build/Release --parallel
 ```
 
 For the first complete walkthrough see
-[`docs/getting-started.md`](docs/getting-started.md).
+[`docs/getting-started/getting-started.md`](docs/getting-started/getting-started.md).
 
 ---
 
@@ -374,42 +413,42 @@ For the first complete walkthrough see
 
 ### Start Here
 
-* [Getting Started](docs/getting-started.md)
+* [Getting Started](docs/getting-started/getting-started.md)
 * [Architecture](.agents/ARCHITECTURE.md)
 * [ABIX Specification](.agents/ABI-SPEC.md)
-* [`.abix` — Canonical ABI Artifact](docs/abix.md)
+* [`.abix` — Canonical ABI Artifact](docs/abix/abix.md)
 
 ### Core Concepts
 
-* [ABI Identity & Compatibility](docs/compatibility.md)
-* [`.abic` — ABI Configuration](docs/abic.md)
-* [Metadata Modes](docs/metadata_modes.md)
-* [Self-Hosting](docs/self-hosting.md)
+* [ABI Identity & Compatibility](docs/architecture/compatibility.md)
+* [`.abic` — ABI Configuration](docs/abix/abic.md)
+* [Metadata Modes](docs/abix/metadata_modes.md)
+* [Self-Hosting](docs/getting-started/self-hosting.md)
 
 ### Runtime
 
-* [Runtime Overview](docs/runtime.md)
-* [API Reference](docs/api.md)
-* [Performance & Benchmarks](docs/benchmark.md)
+* [Runtime Overview](docs/architecture/runtime.md)
+* [API Reference](docs/abix/api.md)
+* [Performance & Benchmarks](docs/benchmark/benchmark.md)
 
 ### AMC Toolchain
 
-* [AMC](docs/amc.md)
+* [AMC](docs/amc/amc.md)
 * [Language Plugins](.agents/LANGUAGE-PLUGIN.md)
-* [MCP: ABI Metadata for AI agents](docs/MCP.md)
+* [MCP: ABI Metadata for AI agents](docs/ai/MCP.md)
 
 ### Project
 
 * [Roadmap](.agents/ROADMAP.md)
 * [Contributing](CONTRIBUTING.md)
 * [Agent Instructions](.agents/AGENTS.md)
-* [Design Notes](docs/design-notes.md)
+* [Design Notes](docs/development/design-notes.md)
 
 ---
 
 ## Current Status
 
-**ABIX 1.0** — the initial stable ABI model and bootstrap ABI. The project is
+**ABIX 2.0** — the toolchain release: ABI inspection, diff, compatibility classification, adapter generation, metadata modes and ELF / Mach-O inspection. The project is
 under active development; the C++ implementation is the *first* implementation
 of the model, not a limitation of it.
 

@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
-  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
+  <img src="https://img.shields.io/badge/status-2.0-orange.svg" alt="Status: 2.0">
 </p>
 
 <p align="center">
@@ -184,7 +184,7 @@ graph TD
 C++ / Rust / C。
 
 类型身份是 128 位 `TypeID`；布局身份是独立的 `LayoutHash`；模块级 artifact 身份是
-`ABIHash`。详见 [ABI 身份与兼容性](docs/compatibility_zh.md)。
+`ABIHash`。详见 [ABI 身份与兼容性](docs/architecture/compatibility_zh.md)。
 
 ---
 
@@ -204,9 +204,9 @@ graph TD
 
 IR 关注 ABI 语义，而非源码级实现细节。其序列化形式即 `.abix`：
 
-* [`docs/abix_zh.md`](docs/abix_zh.md) — 规范化的 `.abix` artifact
-* [`docs/abic_zh.md`](docs/abic_zh.md) — `.abic.toml` 构建配置
-* [`docs/metadata_modes_zh.md`](docs/metadata_modes_zh.md) — 三种 metadata 模式
+* [`docs/abix/abix_zh.md`](docs/abix/abix_zh.md) — 规范化的 `.abix` artifact
+* [`docs/abix/abic_zh.md`](docs/abix/abic_zh.md) — `.abic.toml` 构建配置
+* [`docs/abix/metadata_modes_zh.md`](docs/abix/metadata_modes_zh.md) — 三种 metadata 模式
 
 ---
 
@@ -240,7 +240,7 @@ amc verify -c package.abic.toml -B build
 ```
 
 AMC 是可扩展工具链而非语言专用编译器：前端从语言 AST 提取 ABI，ABIX IR 始终是
-统一表示。详见 [`docs/amc_zh.md`](docs/amc_zh.md)。
+统一表示。详见 [`docs/amc/amc_zh.md`](docs/amc/amc_zh.md)。
 
 ---
 
@@ -260,7 +260,7 @@ graph TD
 
 这把**稳定的 bootstrap ABI** 与**内部实现**（运行时内部结构、数据结构、同步、缓存）
 分离开，使实现可以演进，而对外契约始终显式、可验证。详见
-[`docs/self-hosting_zh.md`](docs/self-hosting_zh.md)。
+[`docs/getting-started/self-hosting_zh.md`](docs/getting-started/self-hosting_zh.md)。
 
 ---
 
@@ -302,6 +302,41 @@ graph TD
 | 纯反射系统       | ABI 身份与兼容性是一等公民                    |
 
 ABIX 与既有编译器、链接器、调试器、构建系统和语言生态并存，而不是取代它们。
+
+---
+
+## 竞品分析
+
+ABIX 没有单一的一对一竞品。它要解决的问题分散在 ABI 分析（libabigail）、包管理（Conan、vcpkg）、FFI（bindgen）、组件模型（COM、Wasm Component Model）、RPC/IDL（gRPC/Protobuf）和构建系统（CMake/Bazel）等不同项目中。ABIX 的价值在于把这些分散的原生二进制生命周期能力统一到一个 ABI/IR 上。
+
+| 别人解决什么         | ABIX 增加什么                          |
+|---------------------|---------------------------------------|
+| ABI 分析 / diff     | ABI IR / contract / verification      |
+| 包管理 / 构建       | ABI metadata 作为一等公民              |
+| 源码导向的 FFI      | 二进制导向的绑定                        |
+| 线级协议            | 原生二进制边界语义                      |
+
+详细分析见 [docs/development/competitors_zh.md](docs/development/competitors_zh.md)。
+
+---
+
+## 生态
+
+ABIX 被设计为原生二进制互操作的开放基础层。
+
+AMC 围绕 ABIX 提供工具链，更高层次的应用可以独立构建，覆盖：
+
+* ABI 治理与 CI
+* 跨语言互操作
+* 原生插件系统
+* 包与二进制管理
+* IDE 与 LSP 集成
+* AI 辅助开发
+* Robotics 与运行时系统
+
+项目致力于支持社区驱动和商业采用，同时保持核心 ABI 技术广泛可复用和可互操作。
+
+详见 [docs/ecosystem/ecosystem_zh.md](docs/ecosystem/ecosystem_zh.md)。项目可持续性见 [docs/ecosystem/sustainability_zh.md](docs/ecosystem/sustainability_zh.md)。
 
 ---
 
@@ -353,7 +388,7 @@ cmake --build build/Release --parallel
 ./build/Release/bin/amc context build/demo/build/amc_test.abix --format llm
 ```
 
-完整走查见 [`docs/getting-started_zh.md`](docs/getting-started_zh.md)。
+完整走查见 [`docs/getting-started/getting-started_zh.md`](docs/getting-started/getting-started_zh.md)。
 
 ---
 
@@ -361,42 +396,42 @@ cmake --build build/Release --parallel
 
 ### 从这里开始
 
-* [快速上手](docs/getting-started_zh.md)
+* [快速上手](docs/getting-started/getting-started_zh.md)
 * [架构](.agents/ARCHITECTURE.md)
 * [ABIX 规范](.agents/ABI-SPEC.md)
-* [`.abix` — 规范化 ABI Artifact](docs/abix_zh.md)
+* [`.abix` — 规范化 ABI Artifact](docs/abix/abix_zh.md)
 
 ### 核心概念
 
-* [ABI 身份与兼容性](docs/compatibility_zh.md)
-* [`.abic` — ABI 配置](docs/abic_zh.md)
-* [Metadata 三种模式](docs/metadata_modes_zh.md)
-* [自举](docs/self-hosting_zh.md)
+* [ABI 身份与兼容性](docs/architecture/compatibility_zh.md)
+* [`.abic` — ABI 配置](docs/abix/abic_zh.md)
+* [Metadata 三种模式](docs/abix/metadata_modes_zh.md)
+* [自举](docs/getting-started/self-hosting_zh.md)
 
 ### 运行时
 
-* [运行时概览](docs/runtime_zh.md)
-* [API 参考](docs/api_zh.md)
-* [性能与基准](docs/benchmark_zh.md)
+* [运行时概览](docs/architecture/runtime_zh.md)
+* [API 参考](docs/abix/api_zh.md)
+* [性能与基准](docs/benchmark/benchmark_zh.md)
 
 ### AMC 工具链
 
-* [AMC](docs/amc_zh.md)
+* [AMC](docs/amc/amc_zh.md)
 * [语言插件](.agents/LANGUAGE-PLUGIN.md)
-* [MCP：面向 AI Agent 的 ABI Metadata](docs/MCP.md)
+* [MCP：面向 AI Agent 的 ABI Metadata](docs/ai/MCP_zh.md)
 
 ### 项目
 
-* [路线图](docs/roadmap_zh.md)
+* [路线图](docs/development/roadmap_zh.md)
 * [参与贡献](CONTRIBUTING.md)
 * [Agent 行为准则](.agents/AGENTS.md)
-* [设计笔记](docs/design-notes_zh.md)
+* [设计笔记](docs/development/design-notes_zh.md)
 
 ---
 
 ## 当前状态
 
-**ABIX 1.0** — 初始稳定的 ABI 模型与 bootstrap ABI。项目仍在积极开发中；C++ 实现
+**ABIX 2.0** — 工具链版本：ABI 检查、diff、兼容性分类、adapter 生成、metadata 模式与 ELF / Mach-O 检查。项目仍在积极开发中；C++ 实现
 是 ABIX 模型的**第一个**实现，而不是模型的限制。
 
 当前重点：
@@ -424,7 +459,7 @@ graph LR
 ```
 
 路线图优先考虑互操作性与真实使用，而不是增加运行时特性。见
-[`docs/roadmap_zh.md`](docs/roadmap_zh.md)。
+[`docs/development/roadmap_zh.md`](docs/development/roadmap_zh.md)。
 
 ---
 
