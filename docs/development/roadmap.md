@@ -8,10 +8,12 @@
 
 <summary>Contents</summary>
 
+- [Version Roadmap](#version-roadmap)
 - [Direction](#direction)
 - [Near-term](#near-term)
 - [AI-native ABI toolchain](#ai-native-abi-toolchain)
 - [Research / experimental](#research--experimental)
+- [Release History](#release-history)
 - [Explicitly out of scope](#explicitly-out-of-scope)
 
 </details>
@@ -21,6 +23,46 @@
 
 The roadmap prioritises interoperability and real-world usage over adding
 runtime features.
+
+## Version Roadmap
+
+ABIX releases are project stages, not feature lists. Each major version marks a
+phase, so the version number itself carries the product story.
+
+```text
+ABIX 1.0 — Foundation    the ABI foundation exists
+ABIX 2.0 — Toolchain     ABIX is usable in real engineering
+ABIX 3.0 — Ecosystem     others build on top of ABIX
+```
+
+### ABIX 1.0 — Foundation (released)
+
+* ABI specification, metadata format, core runtime.
+* Bootstrap and self-hosting: ABIX describes and verifies its own public ABI.
+* ABI stability: the external contract stays explicit while internals evolve.
+
+### ABIX 2.0 — Toolchain (current)
+
+* Complete core ABI workflow: inspection, diff, compatibility classification.
+* ABI adapter generation and the metadata modes (Debug / Release /
+  RelWithDebInfo).
+* ELF / Mach-O binary inspection.
+* Build-system and CI integration, runtime stability, benchmark baseline.
+
+### ABIX 3.0 — Ecosystem (future)
+
+Target areas, not hard commitments:
+
+* Cross-language bindings (Rust, Zig).
+* AI / Agent integration (MCP, TROI).
+* LSP, plugin ecosystem, package management, application areas.
+
+### Version independence
+
+The ABIX specification version, the AMC toolchain version, and application
+versions are independent dimensions. Toolchain features (Rust, AI, Agent, LSP)
+never require a format version change by themselves. See
+[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §14.1.
 
 ## Direction
 
@@ -67,6 +109,14 @@ Current and planned work:
 * Runtime materialization of the metadata image.
 * ABI adaptation / shimming.
 * Dynamic-language boundary layers with differential semantic verification.
+
+## Release History
+
+ABIX uses standard SemVer tags from `v1.0.0` onward. The project stage is named
+in the release title (for example, `ABIX 2.0.0 — Toolchain`).
+
+* `v1.0.0` — Foundation
+* `v2.0.0` — Toolchain
 
 ## Explicitly out of scope
 

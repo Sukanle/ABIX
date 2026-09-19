@@ -5,8 +5,8 @@
 > implementation is considered incorrect unless the specification is
 > intentionally being changed (see [Precedence](#0-precedence)).
 
-Byte-level encoding lives in [`docs/abix.md`](../docs/abix.md); the build
-configuration in [`docs/abic.md`](../docs/abic.md).
+Byte-level encoding lives in [`docs/abix.md`](../docs/abix/abix.md); the build
+configuration in [`docs/abic.md`](../docs/abix/abic.md).
 
 ## 0. Precedence
 
@@ -178,6 +178,80 @@ must be an explicit decision.
 * The Metadata Region manifest carries major/minor version and a hash algorithm
   id/version.
 * `TypeID`/`LayoutHash` are independent of the container version.
+
+### 14.1 Version Independence
+
+ABIX distinguishes between the version of the `.abix` representation, the
+semantic ABI specification, and the AMC toolchain.
+
+These version dimensions serve different purposes and MUST NOT be implicitly
+coupled.
+
+| Version | Scope | Purpose |
+|---------|-------|---------|
+| Format Version | `.abix` representation | Defines how ABIX data is encoded and interpreted at the format level |
+| Specification Revision / Profile | ABI semantic model | Defines ABI semantics, compatibility rules, and required interpretation |
+| AMC Toolchain Version | AMC implementation | Defines available CLI tools, generators, integrations, MCP/Agent capabilities, and other tooling features |
+
+#### Format Version
+
+The Format Version governs the compatibility contract of the `.abix`
+representation.
+
+A Format Version MAY change when a change to the ABIX representation cannot be
+handled by the existing compatibility rules or extension mechanism.
+
+The addition of an optional extension MUST NOT, by itself, require a Format
+Version change.
+
+A Format Version change does not imply that the AMC toolchain itself has
+introduced new functionality.
+
+#### Specification Revision / Profile
+
+The ABI specification defines the semantics of the information represented by
+ABIX, including type identity, layout semantics, compatibility rules, and
+other normative behavior.
+
+A semantic change MAY require a new specification revision or profile even when
+the underlying `.abix` binary representation remains unchanged.
+
+Implementations SHOULD explicitly identify the specification revision or
+profile required to interpret normative ABI semantics.
+
+#### AMC Toolchain Version
+
+AMC versions describe the functionality of the AMC implementation.
+
+Toolchain features such as:
+
+* Rust or Zig binding generation
+* LSP integration
+* MCP tools
+* Agent workflows
+* package management
+* additional inspection or generation capabilities
+
+do not require a Format Version change unless they introduce or depend on an
+incompatible change to the ABIX representation or its normative semantics.
+
+For example:
+
+```text
+ABIX Format 2.x
+    │
+    ├── AMC 2.x
+    └── AMC 3.x
+          ├── Rust bindings
+          ├── MCP
+          └── Agent
+```
+
+AMC 3.x MAY consume ABIX files produced by AMC 2.x when the required Format
+Version and Specification Revision/Profile are supported.
+
+Compatibility is defined by the reader's supported versions and capabilities;
+it MUST NOT be assumed to be bidirectional.
 
 ## 15. Extension Rules
 

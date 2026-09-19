@@ -4,10 +4,12 @@
 > as current work.** Do not implement a future item just because it appears
 > here. See [`AGENTS.md`](AGENTS.md) §13 (scope discipline).
 
-## Current — ABIX 1.0
+## Current — ABIX 2.0 (Toolchain)
 
 Established and maintained:
 
+* ABI inspection, diff, compatibility classification and adapter generation;
+* three metadata modes (Debug / Release / RelWithDebInfo) and ELF / Mach-O binary inspection;
 * an explicit ABI semantic model and the `.abix` canonical artifact;
 * self-hosting: ABIX describes and verifies its own public ABI;
 * a stable bootstrap ABI separated from internal implementation;
@@ -52,7 +54,7 @@ Established and maintained:
 
 ABIX is also developed as an AI-native ABI toolchain: an explicit ABI model is
 exactly the durable, machine-readable interface AI coding agents need. See
-[`docs/plan.md`](../docs/plan.md) for the detailed plan.
+[`docs/development/roadmap.md`](../docs/development/roadmap.md) for the detailed plan.
 
 Delivered so far: `amc context --format llm`, unified `abix.error/1` JSON
 errors, `amc verify`, the Metadata Region, `amc query`, the `amc-mcp` server,
