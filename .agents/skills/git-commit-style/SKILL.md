@@ -48,8 +48,9 @@ Use lowercase English types, compatible with Conventional Commits.
 
 ## Language and Separator
 
-- Both the subject line and body must use **Simplified Chinese**.
+- Both the subject line and body must use **English**.
 - Separate the short description from the detailed body with an **em dash (—)** surrounded by a single space on each side.
+- Historical commits may use Simplified Chinese; do not rewrite them only to change the language.
 
 ## Style Rules
 
@@ -91,7 +92,7 @@ fix(ElaAppBar): fix WM_GETMINMAXINFO DPI multi-screen scaling error
 
 1. Type is correct and matches the nature of the change.
 2. Scope is included when the change is limited to a single component; omitted when cross-cutting.
-3. Short description is in Chinese, concise, and starts with a verb or noun describing the change.
+3. Short description is in English, concise, and starts with a verb or noun describing the change.
 4. Em dash separator is present when a body exists.
 5. Body uses `-` bullet points for each logical change detail.
 6. No emojis or non-standard decorations.
