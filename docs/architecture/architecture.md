@@ -1,0 +1,141 @@
+# Architecture
+
+<p align="center">
+  <a href="architecture_zh.md">中文</a> · English
+</p>
+
+<details>
+
+<summary>Contents</summary>
+
+- [Layers](#layers)
+- [One source of ABI truth](#one-source-of-abi-truth)
+- [Identity](#identity)
+- [Metadata modes](#metadata-modes)
+- [Execution model](#execution-model)
+- [Repository layout](#repository-layout)
+
+</details>
+
+> The authoritative design map and invariants live in
+> [`../../ARCHITECTURE.md`](../../.agents/ARCHITECTURE.md).
+
+ABIX turns the ABI into an explicit, machine-readable object and keeps a single
+source of ABI truth across the toolchain and the runtime.
+
+## Layers
+
+```mermaid
+graph TD
+    LE["Language Ecosystem<br/>C / C++ / Rust / Zig / ..."] --> AMC
+    AMC["AMC<br/>ABI Toolchain / Driver"] --> IR
+    IR["ABIX IR<br/>ABI Semantic Representation"] --> ART[".abix<br/>ABI Artifact"]
+    IR --> RT["ABIX Runtime<br/>Native Binding"]
+    ART --> CI["CI / Package / Tools"]
+    RT --> NB["Native Binary"]
+```
+
+* **ABIX IR** — the language-independent ABI model: types, fields, functions,
+  parameters, symbols, hashes, compatibility and mapping records.
+* **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../abix/abix.md).
+* **AMC** — extracts ABI from a language AST, projects/compares modules and
+  generates native code. See [`amc.md`](../amc/amc.md).
+* **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation.
+  See [`runtime.md`](runtime.md).
+
+## Runtime Interaction
+
+The following sequence shows how a typical inspect/diff operation flows through
+the system layers:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant AMC
+    participant ABIX
+    participant Binary
+    participant Runtime
+
+    User->>AMC: inspect / diff / generate
+    AMC->>ABIX: parse / query metadata
+    ABIX->>Binary: inspect ABI data
+    Binary-->>ABIX: ABI metadata
+    ABIX-->>AMC: structured ABI information
+    AMC-->>User: result
+```
+
+This diagram only shows "who talks to whom"; implementation details live in
+the specialized documents for each layer.
+
+## One source of ABI truth
+
+> The runtime may use a **projection** of the ABI model, but must not
+> independently redefine ABI semantics.
+
+The same model drives every consumer. The toolchain is split into libraries so
+that each consumer links only what it needs while sharing exactly one parser:
+
+| Library | Responsibility |
+|---------|----------------|
+| `libabix-format` | `.abix` v4 read/write, hashing, canonical form, ELF reader |
+| `libabix-abi` | `TypeID`/`LayoutHash` comparison, compatibility diff |
+| `libabix-metadata` | Metadata Region serialize/parse/materialize, context, query |
+| `libabix-tools` | Lua contract generation, symbol store |
+| `libabix-runtime` | header-only registry / binding layer |
+
+`amc-core` is an aggregate over these for the executables.
+
+## Identity
+
+ABIX separates four identities that are frequently conflated:
+
+| ID | Meaning | Use |
+|----|---------|-----|
+| **TypeID** | semantic type identity | "is this the same type?" |
+| **LayoutHash** | physical layout identity | "is the memory layout compatible?" |
+| **BuildID** | binary build identity | locate the matching artifact |
+| **MetadataID** | metadata content identity | dedup / integrity |
+
+Lookup chain: `Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`.
+See [`compatibility.md`](compatibility.md).
+
+## Metadata modes
+
+ABIX metadata has three consumption modes, from richest to most compact:
+
+```mermaid
+graph TD
+    A[".abix (full artifact)"] -->|projection| B["Metadata Region (embedded, pointer-free, mmap-able)"]
+    B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
+```
+
+* The **Region** is offset-based and relocation-free; it can be shipped as a
+  file, embedded in an ELF section, or mmap'd by an offline parser.
+* The **Runtime Descriptor** is a one-time materialization of the Region at
+  initialization; after that the hot path is close to a static ABI.
+
+See [`metadata_modes.md`](../abix/metadata_modes.md).
+
+## Execution model
+
+ABIX is **not** a VM, RPC framework or universal object runtime. For a
+compatible native function, ABIX establishes the relationship and then executes
+through the native ABI:
+
+```mermaid
+graph LR
+    A[discover] --> B[verify] --> C[identify] --> D[bind] --> E[adapt] --> F["native call"]
+```
+
+## Repository layout
+
+```text
+ABIX
+├── abix/      ABI model + runtime (header-only registry)
+├── amc/        AMC toolchain: core/, cpp/ frontend+backend, dump/, mcp/
+├── test/       runtime + unit tests (Catch2)
+├── bench/      benchmarks
+├── aue/        experimental Lua boundary layer + conformance runner
+├── tools/      helper scripts (MCP demo, token cost, LLDB command)
+└── docs/       specification and design
+```

@@ -1,23 +1,37 @@
 #include "../core/amc_core.h"
+#include "../core/amc_metadata.h"
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/Basic/SourceManager.h>
+#include <clang/Options/OptionUtils.h>
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/JSONCompilationDatabase.h>
 #include <clang/Tooling/Tooling.h>
+#include <llvm/Support/Path.h>
 #include <toml++/toml.h>
-#include <fstream>
-#include <cctype>
 #include <iostream>
+
+#include <stdio.h>
+#include <string.h>
 #include <memory>
 #include <set>
-#include <sstream>
 #include <unordered_map>
 #include <filesystem>
 #include <string_view>
+#include <unistd.h>
 
-using namespace clang;
-using namespace clang::tooling;
+#include <fmt/color.h>
+#include <fmt/os.h>
+
+// Clang resource directory (e.g. /opt/homebrew/opt/llvm/lib/clang/22),
+// detected at build time via `clang -print-resource-dir` and injected
+// as a compile definition.  Used to locate built-in headers (stdarg.h,
+// stddef.h, etc.) and the Brew LLVM's libc++ installation.
+#ifndef ABIX_CLANG_RESOURCE_DIR
+#  define ABIX_CLANG_RESOURCE_DIR ""
+#endif
+static const char * const kClangResourceDir = ABIX_CLANG_RESOURCE_DIR;
 
 namespace {
 struct Config {
@@ -36,26 +50,26 @@ bool config_load(const std::string &path, Config &c, std::string &e) {
             e = "MVP supports exactly one [[import]]";
             return false;
         }
-        auto tab = (*imp)[0].as_table();
+        auto *tab = (*imp)[0].as_table();
         if (!tab || tab->get("language")->value_or(std::string{}) != "cpp") {
             e = "only cpp import is supported";
             return false;
         }
         c.db = (*tab)["compile_commands"].value_or("");
-        auto files = (*tab)["files"].as_array();
-        auto symbols = (*tab)["symbols"].as_array();
-        auto flags = (*tab)["flags"].as_array();
+        auto *files = (*tab)["files"].as_array();
+        auto *symbols = (*tab)["symbols"].as_array();
+        auto *flags = (*tab)["flags"].as_array();
         if (flags)
-            for (auto &&v : *flags) c.flags.push_back(v.value_or(""));
+            for (auto &&v : *flags)
+                c.flags.push_back(v.value_or(""));
         if (files)
             for (auto &&v : *files)
                 c.files.push_back(v.value_or(""));
         if (symbols)
             for (auto &&v : *symbols)
                 c.symbols.push_back(v.value_or(""));
-        if (auto ex = t["export"].as_array(); ex && !ex->empty()) {
-            if (auto et = (*ex)[0].as_table()) c.output = (*et)["output"].value_or("");
-        }
+        if (auto *ex = t["export"].as_array(); ex && !ex->empty())
+            if (auto *et = (*ex)[0].as_table()) c.output = (*et)["output"].value_or("");
         if ((c.db.empty() && c.flags.empty()) || c.files.empty() || c.symbols.empty()) {
             e = "cpp import requires compile_commands or flags, files and symbols";
             return false;
@@ -67,53 +81,67 @@ bool config_load(const std::string &path, Config &c, std::string &e) {
     }
 }
 
-class Extractor : public RecursiveASTVisitor<Extractor> {
+class Extractor : public clang::RecursiveASTVisitor<Extractor> {
 public:
-    Extractor(ASTContext &c, const std::set<std::string> &wanted, amc::AbiModule &m)
+    Extractor(clang::ASTContext &c, const std::set<std::string> &wanted, amc::AbiModule &m)
         : ctx(c)
         , wanted(wanted)
         , module(m) {}
-    bool VisitRecordDecl(RecordDecl *d) {
-        auto *cxx = dyn_cast<CXXRecordDecl>(d);
-        if (!cxx || d->isImplicit() || !d->isThisDeclarationADefinition() ||
-            (!selected(d) && !has_selected_member(cxx))) return true;
+    bool VisitRecordDecl(clang::RecordDecl *d) {
+        auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(d);
+        if (!cxx
+            || d->isImplicit()
+            || !d->isThisDeclarationADefinition()
+            || (!selected(d) && !has_selected_member(cxx)))
+            return true;
         add_record(cxx);
         return true;
     }
-    bool VisitEnumDecl(EnumDecl *d) {
+    bool VisitEnumDecl(clang::EnumDecl *d) {
         if (d->isCompleteDefinition() && selected(d)) add_enum(d);
         return true;
     }
-    bool VisitTypedefNameDecl(TypedefNameDecl *d) {
+    bool VisitTypedefNameDecl(clang::TypedefNameDecl *d) {
         if (selected(d)) add_alias(d);
         return true;
     }
-    bool VisitDecl(Decl *d) {
-        if (auto *fn = dyn_cast<FunctionDecl>(d)) {
+    bool VisitDecl(clang::Decl *d) {
+        if (auto *fn = llvm::dyn_cast<clang::FunctionDecl>(d))
             if (selected(fn)) add_function(fn);
-        }
         return true;
     }
 
 private:
-    ASTContext &ctx;
+    clang::ASTContext &ctx;
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
     std::unordered_map<std::string, amc::Hash128> ids;
-    std::string name(const NamedDecl *d) const { return d->getQualifiedNameAsString(); }
-    void add_namespaces(const NamedDecl *d) {
+    std::string name(const clang::NamedDecl *d) const { return d->getQualifiedNameAsString(); }
+    void record_source(amc::Hash128 type_id, clang::SourceLocation location) {
+        if (location.isInvalid()) return;
+        const auto presumed = ctx.getSourceManager().getPresumedLoc(location);
+        if (presumed.isInvalid()) return;
+        amc::SourceOrigin origin;
+        origin.type_id = type_id;
+        origin.file = presumed.getFilename() != nullptr ? presumed.getFilename() : "";
+        origin.line = presumed.getLine();
+        origin.column = presumed.getColumn();
+        module.sources.push_back(std::move(origin));
+    }
+    void add_namespaces(const clang::NamedDecl *d) {
         const auto *context = d->getDeclContext();
         std::vector<std::string> names;
-        while (context && !isa<TranslationUnitDecl>(context)) {
-            if (const auto *named = dyn_cast<NamespaceDecl>(context)) {
+        while (context && !llvm::isa<clang::TranslationUnitDecl>(context)) {
+            if (const auto *named = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
                 if (!named->isAnonymousNamespace()) names.push_back(named->getQualifiedNameAsString());
             }
             context = context->getParent();
         }
-        for (auto it = names.rbegin(); it != names.rend(); ++it) {
-            if (ids.count(*it) != 0) continue;
+        // for (auto it = names.rbegin(); it != names.rend(); ++it) {
+        for (auto &e : names) {
+            if (ids.count(e)) continue;
             amc::Type t;
-            t.name = *it;
+            t.name = e;
             t.kind = amc::TypeKind::namespace_type;
             t.id = amc::hash_text(t.name, 0x54595045);
             t.size = t.align = 1;
@@ -121,17 +149,17 @@ private:
             module.types.push_back(std::move(t));
         }
     }
-    bool selected(const NamedDecl *d) const {
+    bool selected(const clang::NamedDecl *d) const {
         auto n = name(d);
         return wanted.count(n) || wanted.count(d->getNameAsString());
     }
-    bool has_selected_member(const CXXRecordDecl *d) const {
+    bool has_selected_member(const clang::CXXRecordDecl *d) const {
         const auto prefix = name(d) + "::";
         for (const auto &symbol : wanted)
             if (symbol.compare(0, prefix.size(), prefix) == 0) return true;
         return false;
     }
-    amc::Hash128 add_type(QualType qt) {
+    amc::Hash128 add_type(clang::QualType qt) {
         qt = qt.getCanonicalType();
         auto s = qt.getAsString();
         auto it = ids.find(s);
@@ -149,7 +177,7 @@ private:
         // but walking its primary template can expose dependent AST nodes.
         // Record the specialization as an opaque ABI type here; its concrete
         // fields are still available when Clang presents a complete record.
-        if (qt->getAs<TemplateSpecializationType>()) {
+        if (qt->getAs<clang::TemplateSpecializationType>()) {
             amc::Type t;
             t.name = s;
             t.kind = amc::TypeKind::record;
@@ -162,14 +190,14 @@ private:
         }
         if (const auto *record = qt->getAsCXXRecordDecl()) {
             const auto record_key = qt.getAsString();
-            add_record(const_cast<CXXRecordDecl *>(record));
+            add_record(const_cast<clang::CXXRecordDecl *>(record));
             auto found = ids.find(record_key);
             if (found != ids.end()) return found->second;
             found = ids.find(name(record));
             if (found != ids.end()) return found->second;
-            return add_type(ctx.getCanonicalTagType(const_cast<CXXRecordDecl *>(record)));
+            return add_type(ctx.getCanonicalTagType(const_cast<clang::CXXRecordDecl *>(record)));
         }
-        if (const auto *enumeration = qt->getAs<EnumType>()) {
+        if (const auto *enumeration = qt->getAs<clang::EnumType>()) {
             add_enum(enumeration->getDecl());
             auto found = ids.find(name(enumeration->getDecl()));
             if (found != ids.end()) return found->second;
@@ -181,13 +209,13 @@ private:
         t.size = uint32_t(ctx.getTypeSize(qt) / 8);
         t.align = uint32_t(ctx.getTypeAlign(qt) / 8);
         t.kind = amc::TypeKind::primitive;
-        if (const auto *p = qt->getAs<PointerType>()) {
+        if (const auto *p = qt->getAs<clang::PointerType>()) {
             t.kind = amc::TypeKind::pointer;
             t.name = p->getPointeeType().getAsString() + "*";
             t.size = ctx.getTypeSize(qt) / 8;
             t.align = ctx.getTypeAlign(qt) / 8;
         }
-        if (const auto *a = dyn_cast<ConstantArrayType>(qt.getTypePtr())) {
+        if (const auto *a = llvm::dyn_cast<clang::ConstantArrayType>(qt.getTypePtr())) {
             t.kind = amc::TypeKind::array;
             t.array_count = uint32_t(a->getSize().getZExtValue());
         }
@@ -195,28 +223,27 @@ private:
         module.types.push_back(t);
         return t.id;
     }
-    static uint32_t access_flags(AccessSpecifier access) {
+    static uint32_t access_flags(clang::AccessSpecifier access) {
         switch (access) {
-            case AS_public: return amc::visibility_flags(amc::Visibility::public_);
-            case AS_protected: return amc::visibility_flags(amc::Visibility::protected_);
-            case AS_private: return amc::visibility_flags(amc::Visibility::private_);
-            case AS_none: return amc::visibility_flags(amc::Visibility::none);
+            case clang::AS_public:    return amc::visibility_flags(amc::Visibility::public_);
+            case clang::AS_protected: return amc::visibility_flags(amc::Visibility::protected_);
+            case clang::AS_private:   return amc::visibility_flags(amc::Visibility::private_);
+            case clang::AS_none:      return amc::visibility_flags(amc::Visibility::none);
         }
         return 0;
     }
-    static uint32_t calling_convention(FunctionDecl *d) {
-        const auto *prototype = d->getType()->getAs<FunctionProtoType>();
+    static uint32_t calling_convention(clang::FunctionDecl *d) {
+        const auto *prototype = d->getType()->getAs<clang::FunctionProtoType>();
         if (!prototype) return 0;
         switch (prototype->getCallConv()) {
-            case CC_C: return 1;
-            case CC_X86StdCall: return 2;
-            case CC_X86FastCall: return 3;
-            case CC_X86ThisCall: return 4;
-            default:
-                return d->hasAttr<AArch64SVEPcsAttr>() ? 5 : 0;
+            case clang::CC_C:           return 1;
+            case clang::CC_X86StdCall:  return 2;
+            case clang::CC_X86FastCall: return 3;
+            case clang::CC_X86ThisCall: return 4;
+            default:                    return d->hasAttr<clang::AArch64SVEPcsAttr>() ? 5 : 0;
         }
     }
-    void add_record(CXXRecordDecl *d) {
+    void add_record(clang::CXXRecordDecl *d) {
         const auto record_name = name(d);
         if (ids.count(record_name) != 0) return;
         if (d->isDependentContext() || ctx.getCanonicalTagType(d)->isDependentType()) return;
@@ -233,6 +260,7 @@ private:
         t.field_begin = uint32_t(module.fields.size());
         ids[t.name] = t.id;
         module.types.push_back(t);
+        record_source(t.id, d->getLocation());
         const auto record_index = module.types.size() - 1;
         for (const auto &base : d->bases()) {
             amc::Field x;
@@ -246,9 +274,21 @@ private:
             // Anonymous implementation fields have no stable ABI name and
             // cannot participate in name-based compatibility or Map IR.
             if (f->getName().empty()) continue;
+            const std::string fname = f->getNameAsString();
+            // Skip if a field with the same name already exists in this type.
+            // (libc++ std::string has both __long and __short inside an
+            // anonymous union, each with fields named __data_, __size_, etc.)
+            bool dup = false;
+            for (uint32_t j = module.types[record_index].field_begin; j < module.fields.size(); ++j) {
+                if (module.fields[j].name == fname) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (dup) continue;
             amc::Field x;
             x.owner_type = t.id;
-            x.name = f->getNameAsString();
+            x.name = std::move(fname);
             x.type_id = add_type(f->getType());
             const uint64_t bit_offset = l.getFieldOffset(f->getFieldIndex());
             x.offset = uint32_t(bit_offset / 8);
@@ -265,10 +305,9 @@ private:
         std::vector<amc::Field> layout_fields;
         for (uint32_t i = 0; i < module.types[record_index].field_count; ++i)
             layout_fields.push_back(module.fields[module.types[record_index].field_begin + i]);
-        module.types[record_index].layout_hash =
-            amc::layout_hash(module.types[record_index], layout_fields);
+        module.types[record_index].layout_hash = amc::layout_hash(module.types[record_index], layout_fields);
     }
-    void add_enum(EnumDecl *d) {
+    void add_enum(clang::EnumDecl *d) {
         add_namespaces(d);
         if (ids.count(name(d)) != 0) return;
         amc::Type t;
@@ -279,8 +318,9 @@ private:
         t.align = uint32_t(ctx.getTypeAlign(d->getIntegerType()) / 8);
         ids[t.name] = t.id;
         module.types.push_back(t);
+        record_source(t.id, d->getLocation());
     }
-    void add_alias(TypedefNameDecl *d) {
+    void add_alias(clang::TypedefNameDecl *d) {
         add_namespaces(d);
         const auto alias_name = name(d);
         if (ids.count(alias_name) != 0) return;
@@ -295,14 +335,15 @@ private:
         t.field_begin = uint32_t(module.fields.size());
         t.field_count = 1;
         module.types.push_back(t);
+        record_source(t.id, d->getLocation());
         module.fields.push_back({t.id, "underlying", underlying, 0, 0});
     }
-    void add_function(FunctionDecl *d) {
+    void add_function(clang::FunctionDecl *d) {
         amc::Function f;
-        if (const auto *method = dyn_cast<CXXMethodDecl>(d)) {
+        if (const auto *method = llvm::dyn_cast<clang::CXXMethodDecl>(d)) {
             if (const auto *owner = method->getParent()) {
                 f.owner_type = amc::hash_text(name(owner), 0x54595045);
-                if (ids.count(name(owner)) == 0) add_record(const_cast<CXXRecordDecl *>(owner));
+                if (ids.count(name(owner)) == 0) add_record(const_cast<clang::CXXRecordDecl *>(owner));
             }
         }
         f.name = name(d);
@@ -319,12 +360,12 @@ private:
         module.functions.push_back(std::move(f));
     }
 };
-class Consumer : public ASTConsumer {
+class Consumer : public clang::ASTConsumer {
 public:
     Consumer(const std::set<std::string> &w, amc::AbiModule &m)
         : wanted(w)
         , module(m) {}
-    void HandleTranslationUnit(ASTContext &c) override {
+    void HandleTranslationUnit(clang::ASTContext &c) override {
         Extractor x(c, wanted, module);
         x.TraverseDecl(c.getTranslationUnitDecl());
     }
@@ -333,12 +374,12 @@ private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
 };
-class Action : public ASTFrontendAction {
+class Action : public clang::ASTFrontendAction {
 public:
     Action(const std::set<std::string> &w, amc::AbiModule &m)
         : wanted(w)
         , module(m) {}
-    std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &, StringRef) override {
+    std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &, clang::StringRef) override {
         return std::make_unique<Consumer>(wanted, module);
     }
 
@@ -346,12 +387,12 @@ private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
 };
-class Factory : public FrontendActionFactory {
+class Factory : public clang::tooling::FrontendActionFactory {
 public:
     Factory(const std::set<std::string> &w, amc::AbiModule &m)
         : wanted(w)
         , module(m) {}
-    std::unique_ptr<FrontendAction> create() override { return std::make_unique<Action>(wanted, module); }
+    std::unique_ptr<clang::FrontendAction> create() override { return std::make_unique<Action>(wanted, module); }
 
 private:
     const std::set<std::string> &wanted;
@@ -366,200 +407,396 @@ static std::string cpp_name(std::string s) {
     return s;
 }
 
+static bool is_cpp_identifier(const std::string &s) {
+    if (s.empty()) return false;
+    if (!(std::isalpha(static_cast<unsigned char>(s[0])) || s[0] == '_')) return false;
+    for (const char c : s)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) return false;
+    return true;
+}
+
+// A name that can be pasted into a generated `sizeof`/`offsetof` check: a C++
+// identifier, optionally qualified with `::`. This deliberately rejects the
+// mangled names AMC gives to implicit/unnamed types (`struct Foo *`, anonymous
+// enums) so the ABI check header never emits uncompilable code.
+static bool is_cpp_qualified_name(const std::string &s) {
+    if (s.empty() || s == "void") return false;
+    size_t i = 0;
+    while (i < s.size()) {
+        if (!(std::isalpha(static_cast<unsigned char>(s[i])) || s[i] == '_')) return false;
+        while (i < s.size() && (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '_'))
+            ++i;
+        if (i == s.size()) return true;
+        if (s.compare(i, 2, "::") != 0) return false;
+        i += 2;
+        if (i == s.size()) return false;   // trailing `::`
+    }
+    return true;
+}
+
 static std::string cpp_string(const std::string &value) {
     std::string result = "\"";
     for (const char c : value) {
         if (c == '\\' || c == '"') result += '\\';
-        if (c == '\n') result += "\\n";
-        else if (c == '\r') result += "\\r";
-        else if (c == '\t') result += "\\t";
-        else result += c;
+        if (c == '\n')
+            result += "\\n";
+        else if (c == '\r')
+            result += "\\r";
+        else if (c == '\t')
+            result += "\\t";
+        else
+            result += c;
     }
     result += '"';
     return result;
 }
 
-static std::string hex_u64(uint64_t value) {
-    std::ostringstream output;
-    output << "0x" << std::hex << value << "ULL";
-    return output.str();
-}
+static std::string hex_u64(uint64_t value) { return fmt::format("0x{:x}ULL", value); }
 
 static int backend(const char *input, const char *output) {
     amc::AbiModule m;
     std::string e;
     if (!amc::read_abix(input, m, e)) {
-        std::cerr << e << "\n";
+        fmt::print(stderr, "{}\n", e);
         return 1;
     }
-    std::ofstream o(output);
-    if (!o) {
-        std::cerr << "cannot open output: " << output << "\n";
-        return 1;
-    }
-    o << "#pragma once\n"
-         "#include <abix/runtime_registry.h>\n"
-         "#include <cstddef>\n"
-         "#include <cstdint>\n"
-         "#include <cstring>\n"
-         "namespace amc_generated {\n"
-         "using TypeId = ::skl::abix::model::TypeId;\n"
-         "using LayoutInfo = ::skl::abix::runtime::LayoutInfo;\n"
-         "using FieldInfo = ::skl::abix::runtime::FieldDescriptor;\n"
-         "using ParameterInfo = ::skl::abix::runtime::ParameterDescriptor;\n"
-         "using FunctionInfo = ::skl::abix::runtime::FunctionDescriptor;\n"
-         "using SymbolInfo = ::skl::abix::runtime::SymbolDescriptor;\n"
-         "using ModuleInfo = ::skl::abix::runtime::ModuleDescriptor;\n"
-         "enum class MapOpcode : std::uint8_t { copy_field, convert_int, convert_float, add_default, skip_field };\n"
-         "struct MapOperation { MapOpcode opcode; std::uint32_t source_field; std::uint32_t target_field; std::uint32_t source_offset; std::uint32_t target_offset; std::uint32_t byte_count; TypeId auxiliary; };\n"
-         "template <typename Source, typename Target> struct MapPrivate;\n"
-         "template <typename T> struct TypeTraits;\n";
+    auto o = fmt::output_file(output);
+    o.print(
+        "#pragma once\n"
+        "#include <abix/runtime_registry.h>\n"
+        "#include <stddef.h>\n"
+        "#include <stdint.h>\n"
+        "#include <string.h>\n"
+        "namespace amc_generated {{\n"
+        "using TypeId = ::skl::abix::model::TypeId;\n"
+        "using LayoutInfo = ::skl::abix::runtime::LayoutInfo;\n"
+        "using FieldInfo = ::skl::abix::runtime::FieldDescriptor;\n"
+        "using ParameterInfo = ::skl::abix::runtime::ParameterDescriptor;\n"
+        "using FunctionInfo = ::skl::abix::runtime::FunctionDescriptor;\n"
+        "using SymbolInfo = ::skl::abix::runtime::SymbolDescriptor;\n"
+        "using ModuleInfo = ::skl::abix::runtime::ModuleDescriptor;\n"
+        "enum class MapOpcode : uint8_t {{ \n"
+        "    copy_field,\n"
+        "    convert_int,\n"
+        "    convert_float,\n"
+        "    add_default,\n"
+        "    skip_field,\n"
+        "}};\n"
+        "struct MapOperation {{\n"
+        "    MapOpcode opcode;\n"
+        "    uint32_t source_field;\n"
+        "    uint32_t target_field;\n"
+        "    uint32_t source_offset;\n"
+        "    uint32_t target_offset;\n"
+        "    uint32_t byte_count;\n"
+        "    TypeId auxiliary;\n"
+        "}};\n"
+        "template <typename Source, typename Target> struct MapPrivate;\n"
+        "template <typename T> struct TypeTraits;\n");
 
     for (const auto &type : m.types) {
-        const std::string id = cpp_name(type.name) + "_ABIX";
-        o << "struct " << id << " {\n"
-          << "  static constexpr TypeId type_id{" << hex_u64(type.id.lo) << ", "
-          << hex_u64(type.id.hi) << "};\n"
-          << "  static constexpr std::uint64_t type_id_lo = " << hex_u64(type.id.lo) << ";\n"
-          << "  static constexpr std::uint64_t type_id_hi = " << hex_u64(type.id.hi) << ";\n"
-          << "  static constexpr LayoutInfo layout{" << type.size << ", " << type.align << ", "
-          << type.field_count << "};\n"
-          << "  static constexpr std::size_t size = " << type.size << ";\n"
-          << "  static constexpr std::size_t align = " << type.align << ";\n"
-          ;
+        const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+        o.print("struct {} {{\n", id);
+        o.print("    static constexpr TypeId type_id {{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
+        o.print("    static constexpr uint64_t type_id_lo = {};\n", hex_u64(type.id.lo));
+        o.print("    static constexpr uint64_t type_id_hi = {};\n", hex_u64(type.id.hi));
+        o.print("    static constexpr LayoutInfo layout {{{}, {}, {}}};\n", type.size, type.align, type.field_count);
+        o.print("    static constexpr size_t size = {};\n", type.size);
+        o.print("    static constexpr size_t align = {};\n", type.align);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = m.fields[type.field_begin + i];
-            o << "  static constexpr std::size_t " << cpp_name(field.name)
-              << "_offset = " << field.offset << ";\n";
+            o.print("    static constexpr size_t {}_offset = {};\n", cpp_name(field.name), field.offset);
         }
-        o << "};\n"
-          << "template <> struct TypeTraits<" << id << "> {\n"
-          << "  static constexpr TypeId type_id{" << hex_u64(type.id.lo) << ", "
-          << hex_u64(type.id.hi) << "};\n"
-          << "  static constexpr LayoutInfo layout{" << type.size << ", " << type.align << ", "
-          << type.field_count << "};\n"
-          << "  static constexpr std::size_t size = " << type.size << ";\n"
-          << "  static constexpr std::size_t align = " << type.align << ";\n"
-          << "};\n";
-        o << "inline constexpr FieldInfo " << id << "_fields["
-          << (type.field_count == 0 ? 1 : type.field_count) << "] = {\n";
+        o.print("}};\n");
+        o.print("template <> struct TypeTraits<{}> {{\n", id);
+        o.print("    static constexpr TypeId type_id {{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));
+        o.print("    static constexpr LayoutInfo layout {{{}, {}, {}}};\n", type.size, type.align, type.field_count);
+        o.print("    static constexpr size_t size = {};\n", type.size);
+        o.print("    static constexpr size_t align = {};\n", type.align);
+        o.print("}};\n");
+        o.print("inline constexpr FieldInfo {}_fields[{}] = {{\n", id, type.field_count == 0 ? 1 : type.field_count);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = m.fields[type.field_begin + i];
-            o << "  {" << cpp_string(field.name) << ", {" << hex_u64(field.type_id.lo) << ", "
-              << hex_u64(field.type_id.hi) << "}, " << field.offset << ", " << field.flags << "},\n";
+            o.print("    {{{{{}, {}}}, {}, {}}},\n", hex_u64(field.type_id.lo), hex_u64(field.type_id.hi), field.offset,
+                field.flags);
         }
-        o << "};\n";
+        o.print("}};\n");
     }
 
     for (size_t i = 0; i < m.functions.size(); ++i) {
         const auto &function = m.functions[i];
-        o << "inline constexpr ParameterInfo amc_function_" << i << "_parameters["
-          << (function.parameters.empty() ? 1 : function.parameters.size()) << "] = {\n";
+        const auto param_count = function.parameters.empty() ? 1 : function.parameters.size();
+        o.print("inline constexpr ParameterInfo amc_function_{}_parameters[{}] = {{\n", i, param_count);
         for (const auto &parameter : function.parameters)
-            o << "  {" << cpp_string(parameter.name) << ", {" << hex_u64(parameter.type_id.lo) << ", "
-              << hex_u64(parameter.type_id.hi) << "}, " << parameter.flags << "},\n";
-        o << "};\n"
-          << "inline constexpr FunctionInfo amc_function_" << i << "{" << cpp_string(function.name)
-          << ", {" << hex_u64(function.signature.lo) << ", " << hex_u64(function.signature.hi)
-          << "}, {" << hex_u64(function.return_type.lo) << ", " << hex_u64(function.return_type.hi)
-          << "}, amc_function_" << i << "_parameters, " << function.parameters.size() << ", "
-          << function.calling_convention << ", " << function.flags << "};\n";
+            o.print("    {{{{{}, {}}}, {}}},\n", hex_u64(parameter.type_id.lo), hex_u64(parameter.type_id.hi),
+                parameter.flags);
+        o.print("}};\n");
+        o.print(
+            "inline constexpr FunctionInfo amc_function_{} {{amc_function_{}_parameters, {{{}, {}}},"
+            " {{{}, {}}}, {}, {}, {}}};\n",
+            i, i, hex_u64(function.signature.lo), hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
+            hex_u64(function.return_type.hi), function.parameters.size(), function.calling_convention, function.flags);
     }
 
-    o << "inline constexpr ::skl::abix::runtime::TypeDescriptor amc_types["
-      << (m.types.empty() ? 1 : m.types.size()) << "] = {\n";
-    for (const auto &type : m.types) {
-        const std::string id = cpp_name(type.name) + "_ABIX";
-        o << "  {" << cpp_string(type.name) << ", {" << hex_u64(type.id.lo) << ", "
-          << hex_u64(type.id.hi) << "}, {" << hex_u64(type.layout_hash.lo) << ", "
-          << hex_u64(type.layout_hash.hi) << "}, " << type.flags << ", " << type.size << ", "
-          << type.align << ", " << id << "_fields, " << type.field_count << "},\n";
+    {
+        const auto type_count = m.types.empty() ? 1 : m.types.size();
+        o.print("inline constexpr ::skl::abix::runtime::TypeDescriptor amc_types[{}] = {{\n", type_count);
+        for (const auto &type : m.types) {
+            const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+            o.print("    {{{}_fields, {{{}, {}}}, {{{}, {}}}, {}, {}, {}, {}}},\n", id, hex_u64(type.id.lo),
+                hex_u64(type.id.hi), hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi), type.flags, type.size,
+                type.align, type.field_count);
+        }
+        o.print("}};\n");
     }
-    o << "};\n"
-      << "inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions["
-      << (m.functions.empty() ? 1 : m.functions.size()) << "] = {\n";
-    for (size_t i = 0; i < m.functions.size(); ++i) {
-        const auto &function = m.functions[i];
-        o << "  {" << cpp_string(function.name) << ", {" << hex_u64(function.signature.lo) << ", "
-          << hex_u64(function.signature.hi) << "}, {" << hex_u64(function.return_type.lo) << ", "
-          << hex_u64(function.return_type.hi) << "}, amc_function_" << i << "_parameters, "
-          << function.parameters.size() << ", " << function.calling_convention << ", "
-          << function.flags << "},\n";
-    }
-    o << "};\n";
 
-    o << "inline constexpr SymbolInfo amc_symbols["
-      << (m.symbols.empty() ? 1 : m.symbols.size()) << "] = {\n";
-    for (const auto &symbol : m.symbols)
-        o << "  {" << cpp_string(symbol.name) << ", " << static_cast<uint32_t>(symbol.kind)
-          << ", " << symbol.target_index << "},\n";
-    o << "};\n"
-      << "inline constexpr ModuleInfo amc_module{" << cpp_string(m.package_name) << ", "
-      << cpp_string(m.package_version) << ", amc_types, " << m.types.size() << ", amc_functions, "
-      << m.functions.size() << ", amc_symbols, " << m.symbols.size() << "};\n";
+    // Canonical TypeDesc / TypeLayout arrays — the one ABI truth.
+    // These are imported directly by RuntimeRegistry instead of being
+    // reconstructed from the runtime projection (amc_types[]).
+    {
+        const auto type_count = m.types.empty() ? 1 : m.types.size();
+        o.print("inline constexpr ::skl::abix::model::TypeDesc amc_canonical_types[{}] = {{\n", type_count);
+        for (size_t i = 0; i < m.types.size(); ++i) {
+            const auto &type = m.types[i];
+            // name_offset = 0 (names live in .abix.names section for
+            // diagnostic use only — stripped from the runtime registry).
+            o.print("    {{{{{}, {}}}, {}, {}, {}}},\n", hex_u64(type.id.lo), hex_u64(type.id.hi), type.flags, 0U,
+                static_cast<uint32_t>(i));
+        }
+        if (m.types.empty()) {
+            o.print("    {{{{{}, {}}}, {}, {}, {}}},\n", "0ULL", "0ULL", 0U, 0U, 0U);
+        }
+        o.print("}};\n");
+
+        o.print("inline constexpr ::skl::abix::model::TypeLayout amc_canonical_layouts[{}] = {{\n", type_count);
+        for (const auto &type : m.types) {
+            o.print("    {{{}, {}, {}, {}, {{{}, {}}}}},\n", type.size, type.align, type.field_begin, type.field_count,
+                hex_u64(type.layout_hash.lo), hex_u64(type.layout_hash.hi));
+        }
+        if (m.types.empty()) {
+            o.print("    {{{}, {}, {}, {}, {{{}, {}}}}},\n", 0U, 0U, 0U, 0U, "0ULL", "0ULL");
+        }
+        o.print("}};\n");
+    }
+
+    {
+        const auto func_count = m.functions.empty() ? 1 : m.functions.size();
+        o.print("inline constexpr ::skl::abix::runtime::FunctionDescriptor amc_functions[{}] = {{\n", func_count);
+        for (size_t i = 0; i < m.functions.size(); ++i) {
+            const auto &function = m.functions[i];
+            o.print("    {{amc_function_{}_parameters, {{{}, {}}}, {{{}, {}}}, {}, {}, {}}},\n", i,
+                hex_u64(function.signature.lo), hex_u64(function.signature.hi), hex_u64(function.return_type.lo),
+                hex_u64(function.return_type.hi), function.parameters.size(), function.calling_convention,
+                function.flags);
+        }
+        o.print("}};\n");
+    }
+
+    {
+        const auto sym_count = m.symbols.empty() ? 1 : m.symbols.size();
+        o.print("inline constexpr SymbolInfo amc_symbols[{}] = {{\n", sym_count);
+        for (const auto &symbol : m.symbols)
+            o.print("    {{{}, {}}},\n", static_cast<uint32_t>(symbol.kind), symbol.target_index);
+        o.print("}};\n");
+    }
+
+    // Struct layout: name, version, types, canonical_types, canonical_layouts,
+    // type_count, function_count, functions, symbols, symbol_count.
+    o.print(
+        "inline constexpr ModuleInfo amc_module{{{}, {}, amc_types, amc_canonical_types, amc_canonical_layouts, {}, "
+        "{}, amc_functions, amc_symbols, {}}};\n",
+        cpp_string(m.package_name), cpp_string(m.package_version), m.types.size(), m.functions.size(),
+        m.symbols.size());
+
+    // .abix.names section: type/field/function names for diagnostic use only.
+    // This section is NOT referenced by any runtime code and can be safely
+    // stripped via: strip --remove-section=.abix.names <binary>
+    // External tools (amc-dump, ABIX symbol server) read this section from
+    // the binary or from a companion .abix file archived at build time.
+    //
+    // `used` is required: without it the compiler is free to drop this
+    // unreferenced variable entirely, which would silently make the names
+    // un-strippable because they were never emitted.
+    //
+    // Mach-O section names are limited to 16 bytes and require an explicit
+    // segment, so macOS uses "__DATA,__abix_names" instead of the ELF spelling.
+    if (!m.types.empty()) {
+        o.print(
+            "#if defined(__APPLE__)\n"
+            "__attribute__((used, section(\"__DATA,__abix_names\")))\n"
+            "#elif defined(__GNUC__) || defined(__clang__)\n"
+            "__attribute__((used, section(\".abix.names\")))\n"
+            "#endif\n"
+            "inline constexpr const char *amc_type_names[] = {{\n");
+        for (const auto &type : m.types)
+            o.print("    {},\n", cpp_string(type.name));
+        o.print("}};\n");
+    }
+
+    // ABIX Metadata Region (AI-PM): the self-describing, pointer-free image of
+    // this module (manifest + desc + hash + names). It lives in its own section
+    // so an offline tool can locate the whole region through the container's
+    // section table (ELF or Mach-O) without loading the program. The C++
+    // descriptors above are its runtime projection and remain the hot path.
+    {
+        amc::MetadataOptions metadata_options;
+        std::vector<uint8_t> region;
+        std::string metadata_error;
+        if (!amc::build_metadata_region(m, metadata_options, region, metadata_error)) {
+            fmt::print(stderr, "{}\n", metadata_error);
+            return 1;
+        }
+        o.print(
+            "\n// ABIX Metadata Region: manifest + desc + hash + names (offset-based).\n"
+            "#if defined(__APPLE__)\n"
+            "__attribute__((used, section(\"__DATA,__abix_metadata\"), aligned(8)))\n"
+            "#elif defined(__GNUC__) || defined(__clang__)\n"
+            "__attribute__((used, section(\".abix.metadata\"), aligned(8)))\n"
+            "#endif\n"
+            "inline constexpr unsigned char amc_metadata_region[{}] = {{\n",
+            region.size());
+        for (size_t i = 0; i < region.size(); ++i) {
+            if (i % 12 == 0) o.print("    ");
+            o.print("0x{:02x},", region[i]);
+            if (i % 12 == 11 || i + 1 == region.size()) o.print("\n");
+        }
+        o.print("}};\n");
+        o.print("inline constexpr size_t amc_metadata_region_size = {};\n", region.size());
+    }
+
     for (size_t i = 0; i < m.maps.size(); ++i) {
         const auto &map = m.maps[i];
-        o << "inline constexpr MapOperation amc_map_" << i << "_operations["
-          << (map.operations.empty() ? 1 : map.operations.size()) << "] = {\n";
-        for (const auto &operation : map.operations)
-            o << "  {MapOpcode::" << (operation.opcode == amc::MapOpcode::copy_field ? "copy_field" :
-                                      operation.opcode == amc::MapOpcode::convert_int ? "convert_int" :
-                                      operation.opcode == amc::MapOpcode::convert_float ? "convert_float" :
-                                      operation.opcode == amc::MapOpcode::add_default ? "add_default" : "skip_field")
-              << ", " << operation.source_field << ", " << operation.target_field << ", "
-              << operation.source_offset << ", " << operation.target_offset << ", " << operation.byte_count << ", {"
-              << hex_u64(operation.auxiliary.lo) << ", " << hex_u64(operation.auxiliary.hi) << "}},\n";
-        o << "};\n"
-          << "template <> struct MapPrivate<" << cpp_name(map.source_name) << "_ABIX, "
-          << cpp_name(map.target_name) << "_ABIX> {\n"
-          << "  static constexpr const MapOperation *operations = amc_map_" << i << "_operations;\n"
-          << "  static constexpr std::size_t operation_count = " << map.operations.size() << ";\n"
-          << "  static bool apply(void *target, const void *source) noexcept {\n"
-          << "    if (!target || !source) return false;\n";
+        const auto op_count = map.operations.empty() ? 1 : map.operations.size();
+        o.print("inline constexpr MapOperation amc_map_{}_operations[{}] = {{\n", i, op_count);
+        for (const auto &operation : map.operations) {
+            const char *opname = operation.opcode == amc::MapOpcode::copy_field    ? "copy_field"
+                               : operation.opcode == amc::MapOpcode::convert_int   ? "convert_int"
+                               : operation.opcode == amc::MapOpcode::convert_float ? "convert_float"
+                               : operation.opcode == amc::MapOpcode::add_default   ? "add_default"
+                                                                                   : "skip_field";
+            o.print("    {{MapOpcode::{}, {}, {}, {}, {}, {}, {{{}, {}}}}},\n", opname, operation.source_field,
+                operation.target_field, operation.source_offset, operation.target_offset, operation.byte_count,
+                hex_u64(operation.auxiliary.lo), hex_u64(operation.auxiliary.hi));
+        }
+        o.print(
+            "}};\n"
+            "template <> struct MapPrivate<{}_ABIX, {}_ABIX> {{\n"
+            "  static constexpr const MapOperation *operations = amc_map_{}_operations;\n"
+            "  static constexpr size_t operation_count = {};\n"
+            "  static bool apply(void *target, const void *source) noexcept {{\n"
+            "    if (!target || !source) return false;\n",
+            cpp_name(map.source_name), cpp_name(map.target_name), i, map.operations.size());
         for (const auto &operation : map.operations) {
             switch (operation.opcode) {
-            case amc::MapOpcode::copy_field:
-                o << "    std::memcpy(static_cast<char *>(target) + " << operation.target_offset
-                  << ", static_cast<const char *>(source) + " << operation.source_offset << ", "
-                  << operation.byte_count << ");\n";
-                break;
-            case amc::MapOpcode::add_default:
-                o << "    std::memset(static_cast<char *>(target) + " << operation.target_offset
-                  << ", 0, " << operation.byte_count << ");\n";
-                break;
-            case amc::MapOpcode::skip_field:
-                break;
-            case amc::MapOpcode::convert_int:
-            case amc::MapOpcode::convert_float:
-                o << "    return false;  // conversion requires an explicit native converter\n";
-                break;
+                case amc::MapOpcode::copy_field:
+                    o.print(
+                        "    memcpy(static_cast<char *>(target) + {}, static_cast<const char *>(source) + {}, "
+                        "{});\n",
+                        operation.target_offset, operation.source_offset, operation.byte_count);
+                    break;
+                case amc::MapOpcode::add_default:
+                    o.print("    memset(static_cast<char *>(target) + {}, 0, {});\n", operation.target_offset,
+                        operation.byte_count);
+                    break;
+                case amc::MapOpcode::skip_field: break;
+                case amc::MapOpcode::convert_int:
+                case amc::MapOpcode::convert_float:
+                    o.print("    return false;  // conversion requires an explicit native converter\n");
+                    break;
             }
         }
-        o << "    return true;\n"
-          << "  }\n"
-          << "};\n";
+        o.print(
+            "    return true;\n"
+            "}}\n"
+            "}};\n");
     }
-    o << "}  // namespace amc_generated\n"
-         "#ifdef AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n"
-         "namespace skl::abix::runtime {\n";
+
+    o.print(
+        "}}  // namespace amc_generated\n"
+        "#ifdef AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n"
+        "namespace skl::abix::runtime {{\n");
     for (const auto &type : m.types) {
-        // Native traits are an opt-in convenience projection.  A record
-        // discovered while walking a layout may be a library template primary
-        // (Clang does not consistently retain that fact on every visited
-        // CXXRecordDecl), for which `TypeTraits<::std::vector>` is ill-formed.
-        // Only emit a specialization when the spelling denotes a concrete,
-        // non-standard-library C++ type.
-        if (type.kind != amc::TypeKind::record ||
-            (type.flags & amc::type_template_primary) != 0 ||
-            type.name.find('<') != std::string::npos ||
-            type.name.rfind("std::", 0) == 0) continue;
-        const std::string id = cpp_name(type.name) + "_ABIX";
-        o << "template <> struct TypeTraits<::" << type.name << "> {\n"
-          << "  static constexpr ::skl::abix::model::TypeId type_id = ::amc_generated::"
-          << id << "::type_id;\n};\n";
+        if (type.kind != amc::TypeKind::record
+            || (type.flags & amc::type_template_primary) != 0
+            || type.name.find('<') != std::string::npos
+            || type.name.rfind("std::", 0) == 0)
+            continue;
+        const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+        o.print(
+            "template <> struct TypeTraits<::{}> {{\n"
+            "  static constexpr ::skl::abix::model::TypeId type_id = ::amc_generated::{}::type_id;\n"
+            "}};\n",
+            type.name, id);
     }
-    o << "}  // namespace skl::abix::runtime\n"
-         "#endif  // AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n";
+    o.print(
+        "}}  // namespace skl::abix::runtime\n"
+        "#endif  // AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS\n");
+
+    // ABI check header (AI-P2 clangd integration): compile-time ABI assertions
+    // that the editor surfaces as ordinary diagnostics while a source file is
+    // edited. clangd exposes no stable out-of-tree plugin API, so instead of a
+    // plugin this header turns "the struct changed but the contract did not"
+    // into a static_assert failure at the point of inclusion. It is a separate
+    // file: a translation unit includes it *after* the native declarations it
+    // names, so it never affects consumers that only want the projection.
+    {
+        std::string check_path(output);
+        const auto slash = check_path.find_last_of('/');
+        check_path = slash == std::string::npos ? std::string("amc_abi_check.hpp")
+                                                : check_path.substr(0, slash + 1) + "amc_abi_check.hpp";
+        auto check = fmt::output_file(check_path);
+        // Field width lookup for the per-field `sizeof` assertion below. AMC
+        // already recorded the field's type size, so the check is derived from
+        // the artifact rather than recomputed here.
+        const auto field_type_size = [&](amc::Hash128 field_type) -> uint32_t {
+            for (const auto &candidate : m.types)
+                if (candidate.id == field_type) return candidate.size;
+            return 0;
+        };
+
+        check.print(
+            "#pragma once\n"
+            "// Generated by `amc generate -l cpp` (AI-P2 clangd integration).\n"
+            "// Include this header AFTER the native C++ declarations it names. Every\n"
+            "// static_assert below is a live ABI diagnostic: clangd and the compiler\n"
+            "// report it while editing, before the mismatch reaches a running binary.\n"
+            "// A mismatch means the native layout drifted from the ABIX contract.\n"
+            "//\n"
+            "// Coverage: overall size/alignment, each field's offset, and each\n"
+            "// field's width. The width assertion catches a field whose type changed\n"
+            "// to another type of a different size, which can move neither the\n"
+            "// following offsets nor the total size. Bit-fields are skipped because\n"
+            "// `offsetof`/`sizeof` are not defined for them.\n"
+            "#include \"amc_generated.hpp\"\n"
+            "#include <cstddef>\n\n");
+        for (const auto &type : m.types) {
+            if (!is_cpp_qualified_name(type.name)) continue;
+            const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
+            check.print(
+                "static_assert(sizeof({0}) == ::amc_generated::{1}::size, "
+                "\"ABIX ABI check: size mismatch for {0}\");\n",
+                type.name, id);
+            check.print(
+                "static_assert(alignof({0}) == ::amc_generated::{1}::align, "
+                "\"ABIX ABI check: align mismatch for {0}\");\n",
+                type.name, id);
+            for (uint32_t i = 0; i < type.field_count; ++i) {
+                const auto &field = m.fields[type.field_begin + i];
+                if (!is_cpp_identifier(field.name)) continue;
+                if ((field.flags & amc::field_bitfield) != 0) continue;
+                check.print(
+                    "static_assert(offsetof({0}, {2}) == ::amc_generated::{1}::{2}_offset, "
+                    "\"ABIX ABI check: offset mismatch for {0}::{2}\");\n",
+                    type.name, id, field.name);
+                const uint32_t width = field_type_size(field.type_id);
+                if (width == 0) continue;
+                check.print(
+                    "static_assert(sizeof(static_cast<{0} *>(nullptr)->{2}) == {3}, "
+                    "\"ABIX ABI check: field width mismatch for {0}::{2}\");\n",
+                    type.name, id, field.name, width);
+            }
+        }
+    }
     return 0;
 }
 
@@ -572,61 +809,246 @@ static std::string json_value(const std::string &line, const char *key) {
     return end == std::string::npos ? std::string{} : line.substr(start, end - start);
 }
 
+#if defined(__APPLE__)
+// Derive the Homebrew LLVM installation prefix from the known resource-dir.
+//   kClangResourceDir  →  /opt/homebrew/opt/llvm/lib/clang/22
+//   brew_prefix        →  /opt/homebrew/opt/llvm
+//
+// Returns the empty string when the prefix cannot be derived.
+// On non-macOS platforms this always returns empty.
+static std::string brew_llvm_prefix() {
+    if (!kClangResourceDir[0]) return {};
+    llvm::SmallString<128> pfx(kClangResourceDir);
+    llvm::sys::path::remove_filename(pfx);
+    llvm::sys::path::remove_filename(pfx);
+    llvm::sys::path::remove_filename(pfx);
+    llvm::SmallString<128> sanity(pfx);
+    llvm::sys::path::append(sanity, "include", "c++", "v1");
+    return access(sanity.c_str(), F_OK) == 0 ? pfx.c_str() : std::string{};
+}
+#endif
+
+#if defined(__APPLE__)
+// Detect the macOS SDK path and append flags that mirror what the Clang
+// driver would normally set when invoked from the command line.
+//
+// When loaded as a library (no config file is read), Clang does not
+// automatically know its resource directory or the active SDK sysroot.
+// This function fills those gaps.
+//
+// Include order (required by libc++ <cstddef>):
+//   1. libc++ headers  (Brew LLVM: -cxx-isystem via -nostdinc++)
+//   2. Clang built-ins (via -resource-dir + -isystem)
+//   3. System headers  (via -isysroot)
+//
+// The most important design rule is that **all three sets of headers must
+// come from the same LLVM distribution**.  On macOS the default Xcode SDK
+// ships its own libc++ at <sdk>/usr/include/c++/v1, but that version may
+// be incompatible with the Homebrew LLVM's Clang built-in headers (e.g.
+// std::string internal layout differs, leading to duplicate member errors).
+//
+// We therefore:
+//   a. Derive the Homebrew LLVM prefix from the resource-dir known at
+//      build time (kClangResourceDir);
+//   b. Use -nostdinc++ to suppress the default C++ standard library search
+//      (which would otherwise pick up the SDK's libc++);
+//   c. Use -cxx-isystem to re-add only the Homebrew LLVM's own libc++.
+//
+// All three values are derived automatically: the resource directory is
+// detected at build time via `clang -print-resource-dir` and injected through
+// the ABIX_CLANG_RESOURCE_DIR compile definition; the SDK path is looked up
+// at runtime from the SDKROOT environment variable or via xcrun.
+static void append_macos_sysroot(std::vector<std::string> &flags) {
+    // ----- 1. Detect SDK path -------------------------------------------
+    auto detect_sdk = []() -> std::string {
+        if (const char *sdk = std::getenv("SDKROOT")) return sdk;
+        FILE *fp = popen("xcrun --sdk macosx --show-sdk-path 2>/dev/null", "r");
+        if (!fp) return {};
+        char buf[4'096] = {0};
+        std::string result;
+        if (std::fgets(buf, sizeof(buf), fp)) result = buf;
+        pclose(fp);
+        while (!result.empty() && std::isspace(static_cast<unsigned char>(result.back())))
+            result.pop_back();
+        return result;
+    };
+
+    // ----- 2. Check for existing configuration ----------------------------
+    // If the user (or the .abic.toml) already provides explicit sysroot or
+    // a valid -isystem, don't override their choices.
+    for (size_t i = 0; i < flags.size(); ++i) {
+        const auto &f = flags[i];
+        if (f == "-isysroot" || f.find("--sysroot") == 0) return;
+        if (f == "-isystem" && i + 1 < flags.size()) {
+            if (access(flags[i + 1].c_str(), F_OK) == 0) return;
+        }
+    }
+
+    // ----- 3. Derive Homebrew LLVM prefix --------------------------------
+    const std::string brew_prefix = brew_llvm_prefix();
+    const bool have_brew_libcxx = !brew_prefix.empty();
+
+    // ----- 4. macOS SDK setup --------------------------------------------
+    //
+    // Include order (all from the same LLVM distribution):
+    //   1. libc++ headers   (Homebrew LLVM via -isystem)
+    //   2. Clang built-ins  (<resource>/include via -isystem)
+    //   3. System headers   (-isysroot)
+    //
+    // IMPORTANT: We use `-isystem` (NOT `-cxx-isystem`) for brew libc++.
+    // In Clang's header search, `-isystem` paths are searched *before*
+    // `-cxx-isystem` paths.  If we used `-cxx-isystem`, the resource-dir's
+    // `-isystem` path would win over libc++, and `<cstddef>` would fail
+    // because it finds Clang's `<stddef.h>` instead of libc++'s wrapper.
+    // ---------------------------------------------------------------------
+    {
+        std::string sdk = detect_sdk();
+        if (!sdk.empty()) {
+            // (a) libc++ – from Brew LLVM (compatible with our resource-dir)
+            if (have_brew_libcxx) {
+                llvm::SmallString<128> brew_libcxx(brew_prefix);
+                llvm::sys::path::append(brew_libcxx, "include", "c++", "v1");
+                flags.push_back("-nostdinc++");
+                flags.push_back("-isystem");
+                flags.push_back(brew_libcxx.c_str());
+            }
+
+            // (b) Clang built-in headers (stdarg.h, stddef.h, etc.)
+            if (kClangResourceDir[0]) {
+                flags.push_back("-resource-dir");
+                flags.push_back(kClangResourceDir);
+                llvm::SmallString<128> res_inc(kClangResourceDir);
+                llvm::sys::path::append(res_inc, "include");
+                if (access(res_inc.c_str(), F_OK) == 0) {
+                    flags.push_back("-isystem");
+                    flags.push_back(res_inc.c_str());
+                }
+            }
+
+            // (c) SDK sysroot – system C headers, frameworks, etc.
+            flags.push_back("-isysroot");
+            flags.push_back(std::move(sdk));
+        }
+    }
+
+    // ----- 5. Fallback (no SDK) ------------------------------------------
+    // If no SDK is available, at least set the resource directory and
+    // libc++ from the Brew LLVM prefix, so basic analysis still works.
+    if (!flags.empty() && std::find(flags.begin(), flags.end(), "-resource-dir") == flags.end()) {
+        // (a) libc++ from Brew LLVM (must use -isystem, not -cxx-isystem,
+        //     because -cxx-isystem has lower priority than -isystem and
+        //     would lose to the resource-dir's built-in headers below)
+        if (have_brew_libcxx) {
+            llvm::SmallString<128> brew_libcxx(brew_prefix);
+            llvm::sys::path::append(brew_libcxx, "include", "c++", "v1");
+            flags.push_back("-nostdinc++");
+            flags.push_back("-isystem");
+            flags.push_back(brew_libcxx.c_str());
+        }
+
+        // (b) Clang built-in headers
+        if (kClangResourceDir[0]) {
+            flags.push_back("-resource-dir");
+            flags.push_back(kClangResourceDir);
+            llvm::SmallString<128> res_inc(kClangResourceDir);
+            llvm::sys::path::append(res_inc, "include");
+            if (access(res_inc.c_str(), F_OK) == 0) {
+                flags.push_back("-isystem");
+                flags.push_back(res_inc.c_str());
+            }
+        }
+    }
+}
+#endif
+
 static int run_frontend(const char *config_path, const char *output_path) {
     Config c;
     std::string e;
-    if (!config_load(config_path, c, e)) { std::cerr << e << "\n"; return 1; }
+    if (!config_load(config_path, c, e)) {
+        fmt::print(stderr, "{}\n", e);
+        return EXIT_FAILURE;
+    }
     std::filesystem::path base = std::filesystem::absolute(config_path).parent_path();
     if (!c.db.empty() && std::filesystem::path(c.db).is_relative()) c.db = (base / c.db).string();
-    for (auto &f : c.files) if (std::filesystem::path(f).is_relative()) f = (base / f).string();
+    for (auto &f : c.files)
+        if (std::filesystem::path(f).is_relative()) f = (base / f).string();
+#if defined(__APPLE__)
+    append_macos_sysroot(c.flags);
+#endif
     std::string db_error;
-    std::unique_ptr<CompilationDatabase> db;
-    if (!c.db.empty()) db = JSONCompilationDatabase::loadFromFile(c.db, db_error, JSONCommandLineSyntax::AutoDetect);
-    else db = std::make_unique<FixedCompilationDatabase>(base.string(), c.flags);
-    if (!db) { std::cerr << db_error << "\n"; return 1; }
+    std::unique_ptr<clang::tooling::CompilationDatabase> db;
+    if (!c.db.empty())
+        db = clang::tooling::JSONCompilationDatabase::loadFromFile(
+            c.db, db_error, clang::tooling::JSONCommandLineSyntax::AutoDetect);
+    else
+        db = std::make_unique<clang::tooling::FixedCompilationDatabase>(base.string(), c.flags);
+    if (!db) {
+        fmt::print(stderr, "{}\n", db_error);
+        return EXIT_FAILURE;
+    }
     std::set<std::string> wanted(c.symbols.begin(), c.symbols.end());
     amc::AbiModule module;
     module.package_name = "cpp";
     Factory factory(wanted, module);
-    ClangTool tool(*db, c.files);
-    if (tool.run(&factory) != 0) { std::cerr << "clang analysis failed\n"; return 1; }
-    if (!amc::write_abix(module, output_path, e)) { std::cerr << e << "\n"; return 1; }
-    return 0;
+    clang::tooling::ClangTool tool(*db, c.files);
+    if (tool.run(&factory) != 0) {
+        fmt::print(stderr, "clang analysis failed\n");
+        return EXIT_FAILURE;
+    }
+    if (!amc::write_abix(module, output_path, e)) {
+        fmt::print(stderr, "{}\n", e);
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }
 
 static int ipc() {
     std::string line, capability, input, output;
     bool initialized = false;
     while (std::getline(std::cin, line)) {
-        if (line.find("\"type\":\"INIT\"") != std::string::npos) {
-            initialized = line.find("\"protocol\":1") != std::string::npos;
-            std::cout << "{\"type\":\"READY\",\"protocol\":1}\n" << std::flush;
-        } else if (line.find("\"type\":\"QUERY_CAPABILITIES\"") != std::string::npos) {
+        if (line.find(R"("type":"INIT")") != std::string::npos) {
+            initialized = line.find(R"("protocol":1)") != std::string::npos;
+            fmt::println(R"({{"type":"READY","protocol":1}})");
+            std::fflush(stdout);
+        } else if (line.find(R"("type":"QUERY_CAPABILITIES")") != std::string::npos) {
             if (!initialized) return 2;
-            std::cout << "{\"type\":\"CAPABILITIES\",\"language\":\"cpp\",\"capabilities\":[\"frontend\",\"backend\"]}\n" << std::flush;
-        } else if (line.find("\"type\":\"ANALYZE\"") != std::string::npos) {
+            fmt::println(R"({{"type":"CAPABILITIES","language":"cpp","capabilities":["frontend","backend"]}})");
+            std::fflush(stdout);
+        } else if (line.find(R"("type":"ANALYZE")") != std::string::npos) {
             capability = json_value(line, "capability");
-            input = json_value(line, "input"); output = json_value(line, "output");
-            int result = capability == "frontend" ? run_frontend(input.c_str(), output.c_str()) :
-                         capability == "backend" ? backend(input.c_str(), output.c_str()) : 2;
-            if (result == 0)
-                std::cout << "{\"type\":\"ABI_MODULE\",\"path\":\"" << output << "\"}\n";
-            std::cout << "{\"type\":\"ANALYZE_RESULT\",\"status\":" << result << "}\n" << std::flush;
+            input = json_value(line, "input");
+            output = json_value(line, "output");
+            int result = capability == "frontend" ? run_frontend(input.c_str(), output.c_str())
+                       : capability == "backend"  ? backend(input.c_str(), output.c_str())
+                                                  : 2;
+            if (result == 0) fmt::println(R"({{"type":"ABI_MODULE","path":"{}"}})", output);
+            fmt::println(R"({{"type":"ANALYZE_RESULT","status":{}}})", result);
+            std::fflush(stdout);
             if (result != 0) return result;
-        } else if (line.find("\"type\":\"DONE\"") != std::string::npos) return 0;
+        } else if (line.find(R"("type":"DONE")") != std::string::npos)
+            return 0;
     }
     return 2;
 }
 
 int main(int argc, char **argv) {
+#ifdef __APPLE__
+    if (!kClangResourceDir[0]) {
+        fmt::print(stderr,
+            "warning: ABIX_CLANG_RESOURCE_DIR not set at build time; "
+            "built-in headers (stdarg.h, etc.) may not be found.\n");
+    }
+#endif
+
     if (argc == 2 && std::string(argv[1]) == "--ipc") return ipc();
     if (argc != 4) {
-        std::cerr << "usage: amc-cpp frontend <config.abic.toml> <output.abix> | backend <input.abix> <output.hpp>\n";
+        fmt::print(
+            stderr, "usage: amc-cpp frontend <config.abic.toml> <output.abix> | backend <input.abix> <output.hpp>\n");
         return 2;
     }
     if (std::string(argv[1]) == "backend") return backend(argv[2], argv[3]);
     if (std::string(argv[1]) != "frontend") {
-        std::cerr << "unknown capability\n";
+        fmt::print(stderr, "unknown capability\n");
         return 2;
     }
     return run_frontend(argv[2], argv[3]);
