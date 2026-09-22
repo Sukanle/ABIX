@@ -64,6 +64,58 @@ void json_string(std::ostream &output, const std::string &value) { output << '"'
 
 void indent(std::ostream &output, unsigned depth) { output << std::string(depth * 2, ' '); }
 
+const char *primitive_kind_name(uint32_t kind) {
+    switch (static_cast<amc::PrimitiveAbiKind>(kind & 0xffu)) {
+        case amc::PrimitiveAbiKind::none:           return "none";
+        case amc::PrimitiveAbiKind::void_:          return "void";
+        case amc::PrimitiveAbiKind::bool_:          return "bool";
+        case amc::PrimitiveAbiKind::char_signed:    return "char_signed";
+        case amc::PrimitiveAbiKind::char_unsigned:  return "char_unsigned";
+        case amc::PrimitiveAbiKind::schar:          return "schar";
+        case amc::PrimitiveAbiKind::uchar:          return "uchar";
+        case amc::PrimitiveAbiKind::char8:          return "char8";
+        case amc::PrimitiveAbiKind::char16:         return "char16";
+        case amc::PrimitiveAbiKind::char32:         return "char32";
+        case amc::PrimitiveAbiKind::wchar_signed:   return "wchar_signed";
+        case amc::PrimitiveAbiKind::wchar_unsigned: return "wchar_unsigned";
+        case amc::PrimitiveAbiKind::sint:           return "sint";
+        case amc::PrimitiveAbiKind::uint:           return "uint";
+        case amc::PrimitiveAbiKind::floating:       return "floating";
+    }
+    return "unknown";
+}
+
+const char *float_format_name(uint32_t format) {
+    switch (static_cast<amc::FloatFormat>((format & amc::primitive_format_mask) >> amc::primitive_format_shift)) {
+        case amc::FloatFormat::none:              return "none";
+        case amc::FloatFormat::ieee16:            return "ieee16";
+        case amc::FloatFormat::bfloat16:          return "bfloat16";
+        case amc::FloatFormat::ieee32:            return "ieee32";
+        case amc::FloatFormat::ieee64:            return "ieee64";
+        case amc::FloatFormat::ieee128:           return "ieee128";
+        case amc::FloatFormat::x87_80:            return "x87_80";
+        case amc::FloatFormat::ppc_double_double: return "ppc_double_double";
+    }
+    return "unknown";
+}
+
+// Decodes the packed primitive ABI descriptor into its stable fields. Only
+// meaningful when `type.kind == primitive`; emitted as a nested object so the
+// kind/width/signedness/format stay visible without re-deriving the shifts.
+void write_json_primitive_abi(const amc::Type &type, std::ostream &output) {
+    const uint32_t width = (type.primitive_abi & amc::primitive_width_mask) >> amc::primitive_width_shift;
+    output << "{\"kind\": ";
+    json_string(output, primitive_kind_name(type.primitive_abi));
+    output
+        << ", \"width\": "
+        << width
+        << ", \"signed\": "
+        << ((type.primitive_abi & amc::primitive_signed_bit) != 0 ? "true" : "false")
+        << ", \"float_format\": ";
+    json_string(output, float_format_name(type.primitive_abi));
+    output << "}";
+}
+
 const char *map_opcode_name(amc::MapOpcode opcode) {
     switch (opcode) {
         case amc::MapOpcode::copy_field:    return "copy_field";
@@ -186,8 +238,12 @@ void write_json(const amc::AbiModule &module, std::ostream &output) {
             << type.field_count
             << ", \"array_count\": "
             << type.array_count
-            << "}"
-            << (i + 1 == module.types.size() ? "\n" : ",\n");
+            << ", \"primitive_abi\": ";
+        if (type.kind == amc::TypeKind::primitive)
+            write_json_primitive_abi(type, output);
+        else
+            output << "null";
+        output << "}" << (i + 1 == module.types.size() ? "\n" : ",\n");
     }
     indent(output, 1);
     output << "],\n";
@@ -362,6 +418,19 @@ void write_text(const amc::AbiModule &module, std::ostream &output) {
             << "+"
             << type.field_count;
         if (type.array_count) output << " array_count=" << type.array_count;
+        if (type.kind == amc::TypeKind::primitive) {
+            const uint32_t width = (type.primitive_abi & amc::primitive_width_mask) >> amc::primitive_width_shift;
+            output
+                << " primitive_abi={kind="
+                << primitive_kind_name(type.primitive_abi)
+                << " width="
+                << width
+                << " signed="
+                << ((type.primitive_abi & amc::primitive_signed_bit) != 0 ? "true" : "false")
+                << " float_format="
+                << float_format_name(type.primitive_abi)
+                << "}";
+        }
         output << '\n';
     }
     output << "fields (" << module.fields.size() << "):\n";
