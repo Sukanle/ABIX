@@ -27,29 +27,35 @@
 ABIX 的发布是项目阶段，而不是功能清单。每个大版本代表一个阶段，版本号本身承载产品叙事。
 
 ```text
-ABIX 1.0 — Foundation    建立 ABI 基础
-ABIX 2.0 — Toolchain     ABIX 可用于真实工程
-ABIX 3.0 — Ecosystem     其他项目建立在 ABIX 之上
+ABIX 1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于真实工程
+ABIX 2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
+ABIX 3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
-### ABIX 1.0 — Foundation（已发布）
+### ABIX 1.0 — Foundation, self-hosting and toolchain（当前/已发布）
 
 * ABI 规范、metadata 格式、核心运行时。
 * 引导与自举：ABIX 用自身描述并校验其公开 ABI。
 * ABI 稳定性：外部契约保持显式，内部实现可演进。
-
-### ABIX 2.0 — Toolchain（当前）
-
 * 完整核心 ABI 工作流：检查、diff、兼容性分类。
 * ABI adapter 生成与 metadata 模式（Debug / Release / RelWithDebInfo）。
 * ELF / Mach-O 二进制检查。
 * 构建系统与 CI 集成、运行时稳定性、benchmark 基线。
 
+### ABIX 2.0 — Cross-language（下一阶段）
+
+主线：ABIX IR 作为跨语言的统一 ABI 表示。
+
+* language plugin API 与 producer/consumer 协议。
+* 在 C++ 之外的第二语言原型 — 先 Rust，再 Zig。
+* 基于 ABI 归一化 primitive 身份的跨语言类型投影
+  （例如 C `double` → Rust `core::ffi::c_double`）。
+* 跨语言绑定与 C++ ↔ Rust 互操作 demo。
+
 ### ABIX 3.0 — Ecosystem（未来）
 
 目标方向，而非硬性承诺：
 
-* 跨语言绑定（Rust、Zig）。
 * AI / Agent 集成（MCP、TROI）。
 * LSP、插件生态、包管理、应用领域。
 
@@ -74,7 +80,7 @@ graph LR
 
 * **规范** — 强化 ABIX IR 与 `.abix` 规范，保持模型语言无关。
 * **AMC 易用性** — 更清晰的诊断、更好的错误信息、面向编辑器与 CI 的输出。
-* **语言 / 工具链集成** — 在 C++ 之外扩展前端，ABIX IR 始终是统一表示。
+* **语言 / 工具链集成** — 在 C++ 之外扩展前端（Rust、Zig），ABIX IR 始终是统一表示。
 * **ABI 兼容性分析** — diff、兼容性分类与自动 adapter 生成。
 * **文档与示例** — 快速上手材料与真实 case study。
 * **外部验证** — 在真实项目中采用 ABIX 并反馈结果。
@@ -101,10 +107,9 @@ ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI 
 
 ## 发布历史
 
-ABIX 自 `v1.0.0` 起使用标准 SemVer tag。项目阶段在 release 标题中命名（例如 `ABIX 2.0.0 — Toolchain`）。
+ABIX 自 `v1.0.0` 起使用标准 SemVer tag。项目阶段在 release 标题中命名（例如 `ABIX 1.0.0 — Foundation, self-hosting and toolchain`）。
 
-* `v1.0.0` — Foundation
-* `v2.0.0` — Toolchain
+* `v1.0.0` — Foundation, self-hosting and toolchain
 
 ## 明确不在范围内
 

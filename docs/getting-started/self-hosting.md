@@ -24,7 +24,7 @@ graph TD
     A["ABIX 1.0"] --> B["Describe itself"]
     B --> C["Verify / Bind"]
     C --> D["Build next ABI"]
-    D --> E["ABIX 2.x"]
+    D --> E["ABIX 1.x"]
     E --> F["describes itself"]
 ```
 

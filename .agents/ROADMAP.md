@@ -4,7 +4,7 @@
 > as current work.** Do not implement a future item just because it appears
 > here. See [`AGENTS.md`](AGENTS.md) §13 (scope discipline).
 
-## Current — ABIX 2.0 (Toolchain)
+## Current — ABIX 1.0 (Foundation, self-hosting and toolchain)
 
 Established and maintained:
 
@@ -25,7 +25,20 @@ Established and maintained:
 * LLDB C++ plugin (`libabix_lldb.so`) and Python helper;
 * ELF metadata section test script (`tools/test_amc_elf-pe.py`).
 
-## Next
+## Next — ABIX 2.0 (Cross-language)
+
+The next stage is **cross-language support**: ABIX IR becomes the common ABI
+representation that other language frontends feed into and project out of.
+
+### Main line — language plugins and cross-language bindings
+
+* language plugin API and producer/consumer protocol
+  ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md));
+* a second language prototype beyond C++ — **Rust**, then **Zig**;
+* cross-language type projection (for example C ABI scalars projected to
+  Rust `core::ffi::c_*` aliases) built on the ABI-normalised primitive
+  identity;
+* cross-language bindings and a C++ ↔ Rust interoperability demo.
 
 ### P0 — stabilize and validate
 
@@ -38,8 +51,6 @@ Established and maintained:
 
 ### P1 — broaden the toolchain
 
-* language plugin API and a second language prototype
-  ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md));
 * build-system / package-manager integration;
 * deeper debugger integration (for example LLDB go-to-definition via Source
   Origin) — LLDB C++ plugin delivered, Python helper delivered.

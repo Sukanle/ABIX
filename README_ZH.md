@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
-  <img src="https://img.shields.io/badge/status-2.0-orange.svg" alt="Status: 2.0">
+  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
 </p>
 
 <p align="center">
@@ -254,7 +254,7 @@ graph TD
     A[ABIX 1.0] --> B[描述自身]
     B --> C[校验 / 绑定]
     C --> D[构建下一个 ABI]
-    D --> E[ABIX 2.x]
+    D --> E[ABIX 1.x]
     E -->|描述自身| E
 ```
 
@@ -431,8 +431,8 @@ cmake --build build/Release --parallel
 
 ## 当前状态
 
-**ABIX 2.0** — 工具链版本：ABI 检查、diff、兼容性分类、adapter 生成、metadata 模式与 ELF / Mach-O 检查。项目仍在积极开发中；C++ 实现
-是 ABIX 模型的**第一个**实现，而不是模型的限制。
+**ABIX 1.0** — 基础、自举与工具链版本：ABI 检查、diff、兼容性分类、adapter 生成、metadata 模式与 ELF / Mach-O 检查。项目仍在积极开发中；C++ 实现
+是 ABIX 模型的**第一个**实现，而不是模型的限制。下一阶段 **ABIX 2.0** 为**跨语言支持**（先 Rust，再 Zig）。
 
 当前重点：
 

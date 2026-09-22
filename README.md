@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
-  <img src="https://img.shields.io/badge/status-2.0-orange.svg" alt="Status: 2.0">
+  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
 </p>
 
 <p align="center">
@@ -264,7 +264,7 @@ graph TD
     A[ABIX 1.0] --> B[Describe itself]
     B --> C[Verify / Bind]
     C --> D[Build next ABI]
-    D --> E[ABIX 2.x]
+    D --> E[ABIX 1.x]
     E -->|describes itself| E
 ```
 
@@ -448,9 +448,10 @@ For the first complete walkthrough see
 
 ## Current Status
 
-**ABIX 2.0** — the toolchain release: ABI inspection, diff, compatibility classification, adapter generation, metadata modes and ELF / Mach-O inspection. The project is
+**ABIX 1.0** — the foundation, self-hosting and toolchain release: ABI inspection, diff, compatibility classification, adapter generation, metadata modes and ELF / Mach-O inspection. The project is
 under active development; the C++ implementation is the *first* implementation
-of the model, not a limitation of it.
+of the model, not a limitation of it. The next stage, **ABIX 2.0**, is
+**cross-language support** (Rust, then Zig).
 
 Current focus:
 

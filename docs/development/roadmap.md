@@ -30,30 +30,36 @@ ABIX releases are project stages, not feature lists. Each major version marks a
 phase, so the version number itself carries the product story.
 
 ```text
-ABIX 1.0 — Foundation    the ABI foundation exists
-ABIX 2.0 — Toolchain     ABIX is usable in real engineering
-ABIX 3.0 — Ecosystem     others build on top of ABIX
+ABIX 1.0 — Foundation + Toolchain    the ABI foundation exists and ABIX is usable in real engineering
+ABIX 2.0 — Cross-language            Rust / Zig frontends and cross-language bindings
+ABIX 3.0 — Ecosystem                 others build on top of ABIX
 ```
 
-### ABIX 1.0 — Foundation (released)
+### ABIX 1.0 — Foundation, self-hosting and toolchain (current/released)
 
 * ABI specification, metadata format, core runtime.
 * Bootstrap and self-hosting: ABIX describes and verifies its own public ABI.
 * ABI stability: the external contract stays explicit while internals evolve.
-
-### ABIX 2.0 — Toolchain (current)
-
 * Complete core ABI workflow: inspection, diff, compatibility classification.
 * ABI adapter generation and the metadata modes (Debug / Release /
   RelWithDebInfo).
 * ELF / Mach-O binary inspection.
 * Build-system and CI integration, runtime stability, benchmark baseline.
 
+### ABIX 2.0 — Cross-language (next)
+
+The main line: ABIX IR as the common ABI representation across languages.
+
+* language plugin API and producer/consumer protocol.
+* a second language prototype beyond C++ — Rust, then Zig.
+* cross-language type projection on the ABI-normalised primitive identity
+  (for example C `double` → Rust `core::ffi::c_double`).
+* cross-language bindings and a C++ ↔ Rust interoperability demo.
+
 ### ABIX 3.0 — Ecosystem (future)
 
 Target areas, not hard commitments:
 
-* Cross-language bindings (Rust, Zig).
 * AI / Agent integration (MCP, TROI).
 * LSP, plugin ecosystem, package management, application areas.
 
@@ -83,8 +89,8 @@ graph LR
   language-agnostic.
 * **AMC usability** — clearer diagnostics, better error messages, editor/ and
   CI-friendly output.
-* **Language / toolchain integration** — expand frontends beyond C++; ABIX IR
-  stays the common representation.
+* **Language / toolchain integration** — expand frontends beyond C++ (Rust,
+  Zig); ABIX IR stays the common representation.
 * **ABI compatibility analysis** — diff, compatibility classification and
   automatic adapter generation.
 * **Documentation and examples** — quick-start material and real case studies.
@@ -113,10 +119,10 @@ Current and planned work:
 ## Release History
 
 ABIX uses standard SemVer tags from `v1.0.0` onward. The project stage is named
-in the release title (for example, `ABIX 2.0.0 — Toolchain`).
+in the release title (for example, `ABIX 1.0.0 — Foundation, self-hosting and
+toolchain`).
 
-* `v1.0.0` — Foundation
-* `v2.0.0` — Toolchain
+* `v1.0.0` — Foundation, self-hosting and toolchain
 
 ## Explicitly out of scope
 
