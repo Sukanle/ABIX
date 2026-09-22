@@ -114,6 +114,7 @@ AI 和 Agent 集成。
 | 文档 | English | 描述 |
 |------|---------|------|
 | [design-notes_zh.md](development/design-notes_zh.md) | [design-notes.md](development/design-notes.md) | 设计原则和项目历史 |
+| [type-model_zh.md](development/type-model_zh.md) | [type-model.md](development/type-model.md) | ABI 事实与源语言类型的边界，以及逐 target 生成模型 |
 | [competitors_zh.md](development/competitors_zh.md) | [competitors.md](development/competitors.md) | 竞品分析 |
 | [roadmap_zh.md](development/roadmap_zh.md) | [roadmap.md](development/roadmap.md) | 范围与排期 |
 

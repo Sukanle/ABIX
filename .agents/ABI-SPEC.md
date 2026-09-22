@@ -149,6 +149,15 @@ A module records `arch`, `os`, `target_abi`, `compiler` and the module-level
 compatible; tooling must report target differences rather than silently
 comparing them.
 
+A module describes **one** target, and target differences are resolved by
+generating one artifact per target (a cross-compiled `.abix`), rather than by
+putting unresolved, target-independent types into a single portable artifact.
+The core model therefore stores the concrete ABI fact (width, alignment,
+floating-point format) for that target. Source-language identity — how a
+language spelled the type (`c_long`, `i32`) — is not an ABIX core type; it may be
+retained as optional provenance that never participates in identity. See
+[`docs/development/type-model.md`](../docs/development/type-model.md).
+
 ## 11. Canonical Representation
 
 * The canonical form is deterministic: the same inputs produce byte-identical
