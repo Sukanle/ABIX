@@ -15,7 +15,7 @@ constexpr uint16_t kHashAlgorithm = 0;
 constexpr uint32_t kHeaderSize = 20;
 constexpr uint32_t kDirectoryEntrySize = 24;
 constexpr uint32_t kIdentityEntrySize = 52;
-constexpr uint32_t kTypeEntrySize = 68;
+constexpr uint32_t kTypeEntrySize = 72;
 constexpr uint32_t kFieldEntrySize = 48;
 constexpr uint32_t kFunctionEntrySize = 72;
 constexpr uint32_t kParameterEntrySize = 28;
@@ -208,6 +208,7 @@ std::vector<uint8_t> canonical_bytes(const AbiModule &module) {
         canonical_u32(bytes, type.size);
         canonical_u32(bytes, type.align);
         canonical_u32(bytes, type.array_count);
+        canonical_u32(bytes, type.primitive_abi);
         canonical_u32(bytes, type.field_count);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = module.fields[type.field_begin + i];
@@ -330,7 +331,8 @@ const Type *find_type_by_id(const AbiModule &module, Hash128 id) {
 bool scalar_kind(const AbiModule &module, Hash128 id, bool &floating) {
     const auto *type = find_type_by_id(module, id);
     if (!type || type->kind != TypeKind::primitive) return false;
-    floating = type->name.find("float") != std::string::npos || type->name.find("double") != std::string::npos;
+    const auto abi_kind = static_cast<PrimitiveAbiKind>(type->primitive_abi & 0xffu);
+    floating = abi_kind == PrimitiveAbiKind::floating;
     return true;
 }
 }   // namespace
@@ -341,7 +343,11 @@ bool build_compatibility(const AbiModule &source, const AbiModule &target, AbiMo
     result.compatibility.clear();
     result.maps.clear();
     for (const auto &from : source.types) {
+        // Nominal types are paired by name; primitives fall back to their
+        // (ABI-normalised) TypeID so that differently-spelled but ABI-equal
+        // scalar types still line up across modules/languages.
         const auto *to = find_type_by_name(target, from.name);
+        if (!to) to = find_type_by_id(target, from.id);
         if (!to) continue;
         CompatibilityRecord compatibility{from.id, to->id, CompatibilityKind::incompatible, UINT32_MAX, 0};
         if (from.id == to->id && effective_layout_hash(source, from) == effective_layout_hash(target, *to)) {
@@ -720,6 +726,7 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         put_u32(type_table.bytes, type.field_begin);
         put_u32(type_table.bytes, type.field_count);
         put_u32(type_table.bytes, type.array_count);
+        put_u32(type_table.bytes, type.primitive_abi);
     }
     sections.push_back(std::move(type_table));
     SectionData field_table{fields, static_cast<uint32_t>(module.fields.size()), kFieldEntrySize, section_required, {}};
@@ -1032,6 +1039,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             || !read_u32(bytes, type_offset, type.field_begin, error)
             || !read_u32(bytes, type_offset, type.field_count, error)
             || !read_u32(bytes, type_offset, type.array_count, error)
+            || !read_u32(bytes, type_offset, type.primitive_abi, error)
             || !valid_type_kind(kind)
             || !read_string(name_offset, name_length, type.name)) {
             if (error.empty()) error = "invalid type kind";

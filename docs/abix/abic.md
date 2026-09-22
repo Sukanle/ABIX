@@ -176,6 +176,22 @@ Rust i32       → i32
 Zig i32        → i32
 ```
 
+Normalization applies to primitive identity: a primitive's `TypeID` is derived
+from an ABI descriptor (kind, size, align, signedness, floating-point format),
+not from its spelling. `long`/`long long` (LP64) therefore share one `TypeID`,
+and `long double` is distinguished by *format*, not width — x86 x87 80-bit and
+IEEE binary128 are different types even though both occupy 16 bytes.
+
+Character types stay distinct: `char`, `signed char`, `unsigned char`,
+`char8_t`, `char16_t`, `char32_t` and `wchar_t` are separate ABI kinds. Plain
+`char` and `wchar_t` carry their target-defined signedness, so the same spelling
+can be a different type across targets (e.g. `char` is unsigned on aarch64/riscv
+but signed on x86/macOS).
+
+When projecting a C-ABI scalar to a target language, use that language's C-ABI
+alias (for Rust, `core::ffi::c_*` such as `c_double`/`c_int`) rather than a
+fixed-width type, since the alias encodes the target's C ABI.
+
 ### `[compatibility]`
 
 | Field | Type | Description |

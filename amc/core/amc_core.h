@@ -28,6 +28,59 @@ enum class TypeKind : uint32_t {
 // a concrete native C++ type that can receive a TypeTraits specialization.
 constexpr uint32_t type_template_primary = 1u << 0;
 
+// Runtime ABI kind for primitive types, independent of the source spelling.
+// It captures how the type behaves at the binary boundary: signed/unsigned
+// integers by width, floating-point by IEEE/format semantics, and the distinct
+// ABI kinds for bool/char/wchar and friends. Two spellings that share an ABI
+// (`long`/`long long`, a C `double` and a Rust `f64`) map to the same code.
+// Character kinds are split by signedness because C/C++ `char` and `wchar_t`
+// have an implementation-defined signedness that is part of the ABI: a
+// signed vs unsigned `char` on the same target are different types, and the
+// same spelling can differ across targets (aarch64/riscv `char` is unsigned,
+// x86/macOS `char` is signed). `char8_t`/`char16_t`/`char32_t` are always
+// unsigned and need no split.
+enum class PrimitiveAbiKind : uint32_t {
+    none = 0,
+    void_,
+    bool_,
+    char_signed,
+    char_unsigned,
+    schar,
+    uchar,
+    char8,
+    char16,
+    char32,
+    wchar_signed,
+    wchar_unsigned,
+    sint,
+    uint,
+    floating
+};
+
+constexpr uint32_t primitive_width_shift = 8;
+constexpr uint32_t primitive_width_mask = 0xffu << primitive_width_shift;
+constexpr uint32_t primitive_format_shift = 16;
+constexpr uint32_t primitive_format_mask = 0xffu << primitive_format_shift;
+constexpr uint32_t primitive_signed_bit = 1u << 24;
+
+// Floating-point format codes stored in `primitive_format`.
+enum class FloatFormat : uint32_t {
+    none = 0,
+    ieee16,
+    bfloat16,
+    ieee32,
+    ieee64,
+    ieee128,
+    x87_80,
+    ppc_double_double
+};
+
+inline uint32_t primitive_abi(uint32_t width, PrimitiveAbiKind kind, FloatFormat format = FloatFormat::none,
+    bool is_signed = false) {
+    return static_cast<uint32_t>(kind) | (width << primitive_width_shift)
+           | (static_cast<uint32_t>(format) << primitive_format_shift) | (is_signed ? primitive_signed_bit : 0);
+}
+
 // Field flags are part of the AMC semantic ABI, not Clang implementation details.
 constexpr uint32_t field_bitfield = 1u << 0;
 constexpr uint32_t field_base = 1u << 1;
@@ -51,6 +104,10 @@ struct Type {
     uint32_t size = 0, align = 0, flags = 0;
     uint32_t field_begin = 0, field_count = 0;
     uint32_t array_count = 0;
+    // Primitive ABI kind for `TypeKind::primitive` (0 = none); see
+    // `PrimitiveAbiKind` / `primitive_abi`. Kept out of `flags` so it stays a
+    // first-class ABI fact rather than a bitmask.
+    uint32_t primitive_abi = 0;
 };
 struct Field {
     Hash128 owner_type{};
