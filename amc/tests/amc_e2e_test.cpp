@@ -62,11 +62,52 @@ amc::Hash128 make_type_id(const char *name) {
     return amc::hash_text(name, 0x54595045);
 }
 
+// A descriptor tag for a primitive, mirroring the frontend's spelling-free
+// identity: integers by width + signedness, floats by format, and the distinct
+// ABI kinds for bool/char. ABI-equal spellings collapse onto one TypeID.
+amc::Hash128 make_primitive_id(std::string_view key) {
+    return amc::hash_text(std::string("prim:") + std::string(key), 0x54595045);
+}
+
+// Derive the frontend key + packed primitive_abi from a spelling so the
+// fixtures exercise the same normalisation the frontend performs.
+struct PrimitiveSpec {
+    std::string key;
+    uint32_t abi;
+};
+PrimitiveSpec primitive_spec(const std::string &name, uint32_t sz) {
+    using amc::PrimitiveAbiKind;
+    using amc::FloatFormat;
+    const bool is_float = name == "float" || name == "double" || name == "f32" || name == "f64";
+    const bool is_unsigned = name.find("unsigned") != std::string::npos
+                             || name == "u8" || name == "u32" || name == "u64";
+    if (name == "bool") return {"bool", amc::primitive_abi(sz, PrimitiveAbiKind::bool_)};
+    if (name == "signed char")
+        return {"schar", amc::primitive_abi(sz, PrimitiveAbiKind::schar, FloatFormat::none, true)};
+    if (name == "unsigned char") return {"uchar", amc::primitive_abi(sz, PrimitiveAbiKind::uchar)};
+    if (name == "char") {
+        // Plain `char` is signed here (x86/macOS), mirroring the frontend's
+        // target-defined signedness handling.
+        return {"char_s", amc::primitive_abi(sz, PrimitiveAbiKind::char_signed, FloatFormat::none, true)};
+    }
+    if (is_float) {
+        const auto format = sz == 4 ? FloatFormat::ieee32 : FloatFormat::ieee64;
+        const char *fmt_tag = sz == 4 ? "ieee32" : "ieee64";
+        return {std::string("f") + fmt_tag,
+            amc::primitive_abi(sz, PrimitiveAbiKind::floating, format)};
+    }
+    return {std::string(is_unsigned ? "u" : "i") + std::to_string(sz),
+        amc::primitive_abi(sz, is_unsigned ? PrimitiveAbiKind::uint : PrimitiveAbiKind::sint,
+            FloatFormat::none, !is_unsigned)};
+}
+
 amc::Type make_primitive(const char *name, uint32_t sz, uint32_t al) {
     amc::Type t;
     t.name = name;
     t.kind = amc::TypeKind::primitive;
-    t.id = make_type_id(name);
+    const auto spec = primitive_spec(name, sz);
+    t.id = make_primitive_id(spec.key);
+    t.primitive_abi = spec.abi;
     t.size = sz;
     t.align = al;
     return t;
@@ -444,12 +485,17 @@ void test_abix_roundtrip_full_module(TestResult &r) {
 
     auto i32 = make_primitive("int", 4, 4);
     auto f64 = make_primitive("double", 8, 8);
+    // `unsigned char` keeps a nominal (spelling-based) identity here to stay
+    // distinct from a distinct-width scalar in this aggregate fixture.
     auto u8 = make_primitive("unsigned char", 1, 1);
+    u8.id = make_type_id("unsigned char");
     auto ptr = make_primitive("Foo*", 8, 8);
     ptr.kind = amc::TypeKind::pointer;
+    ptr.id = make_type_id("Foo*");
     auto arr = make_primitive("int[4]", 16, 4);
     arr.kind = amc::TypeKind::array;
     arr.array_count = 4;
+    arr.id = make_type_id("int[4]");
     auto color = make_enum_type("Color", 4, 4);
     auto foo = make_record("Foo", 16, 8, 0, 2);
     auto bar = make_record("Bar", 24, 8, 2, 3);
@@ -589,7 +635,7 @@ void test_abix_v4_section_directory(TestResult &r) {
         AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(13), "section count");
         AMC_CHECK(r, read_le_u32(bytes, 16), uint32_t(20), "directory follows header");
         const uint32_t expected_ids[] = {1, 2, 13, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-        const uint32_t expected_sizes[] = {0, 52, 12, 68, 48, 72, 28, 16, 16, 32, 44, 60, 40};
+        const uint32_t expected_sizes[] = {0, 52, 12, 72, 48, 72, 28, 16, 16, 32, 44, 60, 40};
         for (size_t i = 0; i < 13; ++i) {
             const size_t entry = 20 + i * 24;
             AMC_CHECK(r, read_le_u32(bytes, entry), expected_ids[i], "section id");
@@ -622,15 +668,17 @@ void test_compatibility_and_map_ir(TestResult &r) {
     std::cerr << "[compatibility_and_map_ir]\n";
     amc::AbiModule source, target, report;
     source.package_name = target.package_name = "compat";
-    const auto source_i32 = make_primitive("source_i32", 4, 4);
-    const auto target_i64 = make_primitive("target_i64", 8, 8);
+    // A source `int` (signed) maps to a target `unsigned int`: genuinely
+    // different scalar ABIs, so the field needs a convert operation.
+    const auto source_i32 = make_primitive("int", 4, 4);
+    const auto target_u32 = make_primitive("unsigned int", 4, 4);
     source.types.push_back(source_i32);
     source.fields.push_back(make_field("value", source_i32.id, 0));
     source.types.push_back(make_record("Thing", 4, 4, 0, 1));
-    target.types.push_back(target_i64);
-    target.fields.push_back(make_field("value", target_i64.id, 0));
-    target.fields.push_back(make_field("added", target_i64.id, 8));
-    target.types.push_back(make_record("Thing", 16, 8, 0, 2));
+    target.types.push_back(target_u32);
+    target.fields.push_back(make_field("value", target_u32.id, 0));
+    target.fields.push_back(make_field("added", target_u32.id, 4));
+    target.types.push_back(make_record("Thing", 8, 4, 0, 2));
     std::string error;
     AMC_TEST(r, amc::build_compatibility(source, target, report, error), "build compatibility report");
     AMC_CHECK(r, report.compatibility.size(), size_t(1), "one matching type");
@@ -653,6 +701,89 @@ void test_compatibility_and_map_ir(TestResult &r) {
     AMC_CHECK(r, loaded.compatibility.size(), size_t(1), "compatibility round-trip");
     AMC_CHECK(r, loaded.maps.size(), size_t(1), "map round-trip");
     cleanup(path);
+}
+
+void test_primitive_identity_is_abi_based(TestResult &r) {
+    std::cerr << "[primitive_identity_is_abi_based]\n";
+    // ABI-equal spellings collapse onto one TypeID ...
+    const auto lang = make_primitive("long", 8, 8);
+    const auto long_long = make_primitive("long long", 8, 8);
+    AMC_CHECK(r, lang.id.lo, long_long.id.lo, "long/long long share a TypeID (lo)");
+    AMC_CHECK(r, lang.id.hi, long_long.id.hi, "long/long long share a TypeID (hi)");
+
+    const auto c_double = make_primitive("double", 8, 8);
+    const auto rust_f64 = make_primitive("f64", 8, 8);
+    AMC_CHECK(r, c_double.id.lo, rust_f64.id.lo, "C double / Rust f64 share a TypeID");
+
+    // ... while genuinely different ABI kinds stay distinct.
+    const auto int32 = make_primitive("int", 4, 4);
+    const auto int32_named = make_primitive("int32_t", 4, 4);
+    AMC_CHECK(r, int32.id.lo, int32_named.id.lo, "int/int32_t share a TypeID across spellings");
+    const auto float32 = make_primitive("float", 4, 4);
+    AMC_TEST(r, !(int32.id == float32.id), "int and float are different primitives");
+    const auto u32 = make_primitive("unsigned int", 4, 4);
+    AMC_TEST(r, !(int32.id == u32.id), "signed and unsigned are different primitives");
+    const auto char_kind = make_primitive("char", 1, 1);
+    const auto bool_kind = make_primitive("bool", 1, 1);
+    AMC_TEST(r, !(char_kind.id == bool_kind.id), "char and bool are different primitives");
+
+    // Character signedness is part of the ABI and must not be merged.
+    const auto schar_kind = make_primitive("signed char", 1, 1);
+    const auto uchar_kind = make_primitive("unsigned char", 1, 1);
+    AMC_TEST(r, !(schar_kind.id == uchar_kind.id), "signed/unsigned char are different primitives");
+    AMC_TEST(r, !(char_kind.id == schar_kind.id), "plain char and signed char are different kinds");
+    AMC_CHECK(r, char_kind.primitive_abi & amc::primitive_signed_bit, amc::primitive_signed_bit,
+              "plain char records its target signedness");
+
+    // Float identity follows the *format*: on a target where `double` is 32-bit
+    // IEEE (e.g. AVR) it collapses with `float`, while on a normal target the
+    // 64-bit `double` stays distinct. The recorded size/format tell the
+    // projector which target alias (`c_float` / `c_double`) to emit.
+    const auto avr_double = make_primitive("double", 4, 4);
+    const auto avr_float = make_primitive("float", 4, 4);
+    AMC_CHECK(r, avr_double.id.lo, avr_float.id.lo, "AVR double and float share an ABI (same format)");
+    AMC_TEST(r, !(avr_double.id == c_double.id), "AVR double and x86 double are different ABIs");
+    AMC_CHECK(r, avr_double.size, uint32_t(4), "AVR double records its 4-byte width");
+    AMC_CHECK(r, c_double.size, uint32_t(8), "x86 double records its 8-byte width");
+
+    // A module holding both spellings is still valid: they dedup to one record
+    // per ABI, so there is no duplicate-TypeId violation.
+    amc::AbiModule module;
+    module.package_name = "prim";
+    module.types = {lang, long_long, c_double, rust_f64};
+    std::string error;
+    const auto seen = [&](uint32_t a, uint32_t b) {
+        return module.types[a].id == module.types[b].id;
+    };
+    AMC_TEST(r, seen(0, 1), "first pair dedups by ABI");
+    AMC_TEST(r, seen(2, 3), "second pair dedups by ABI");
+}
+
+void test_compatibility_matches_primitives_by_abi(TestResult &r) {
+    std::cerr << "[compatibility_matches_primitives_by_abi]\n";
+    amc::AbiModule source, target, report;
+    source.package_name = "src";
+    target.package_name = "dst";
+    // Source spells the scalar `double`; target spells it `f64`. Matching by
+    // TypeID means the record is seen as identical rather than skipped.
+    const auto source_v = make_primitive("double", 8, 8);
+    const auto target_v = make_primitive("f64", 8, 8);
+    auto source_record = make_record("Thing", 8, 8, 0, 1);
+    auto target_record = make_record("Thing", 8, 8, 0, 1);
+    source.types = {source_record, source_v};
+    source.fields = {make_field("value", source_v.id, 0)};
+    target.types = {target_record, target_v};
+    target.fields = {make_field("value", target_v.id, 0)};
+    std::string error;
+    AMC_TEST(r, amc::build_compatibility(source, target, report, error), "build cross-spelling report");
+    const amc::CompatibilityRecord *record = nullptr;
+    for (const auto &entry : report.compatibility)
+        if (entry.source_type == source_record.id) record = &entry;
+    AMC_TEST(r, record != nullptr, "record matched across spellings");
+    if (record != nullptr) {
+        AMC_CHECK(r, uint32_t(record->kind), uint32_t(amc::CompatibilityKind::identical),
+                  "ABI-equal scalar yields identical record");
+    }
 }
 
 void test_abix_v4_rejects_invalid_references(TestResult &r) {
@@ -1077,9 +1208,11 @@ void test_pointer_and_array_types(TestResult &r) {
     auto i32 = make_primitive("int", 4, 4);
     auto ptr = make_primitive("Foo*", 8, 8);
     ptr.kind = amc::TypeKind::pointer;
+    ptr.id = make_type_id("Foo*");
     auto arr = make_primitive("int[4]", 16, 4);
     arr.kind = amc::TypeKind::array;
     arr.array_count = 4;
+    arr.id = make_type_id("int[4]");
     m.types = {i32, ptr, arr};
 
     std::string e;
@@ -1243,6 +1376,8 @@ int main() {
     test_abix_write_cannot_open(r);
     test_abix_v4_section_directory(r);
     test_compatibility_and_map_ir(r);
+    test_primitive_identity_is_abi_based(r);
+    test_compatibility_matches_primitives_by_abi(r);
     test_abix_v4_rejects_invalid_references(r);
     test_validate_v2_model_invariants(r);
 

@@ -70,6 +70,27 @@ Module
 * A zero `TypeID` is invalid.
 * Two distinct types must not share a `TypeID` within one module.
 
+The derivation of a `TypeID` depends on how much of the type's semantics is
+determined by its ABI:
+
+* **Scalar / primitive types** are identified by an **ABI descriptor**:
+  kind, size, alignment, and — where they change the ABI — signedness
+  (integers, and the implementation-defined `char` / `wchar_t`) or
+  floating-point format (IEEE binary16/32/64/128, x87 80-bit, PowerPC
+  double-double, ...). The source spelling is excluded, so `int` / `int32_t`,
+  `long` / `long long` (LP64), and a 64-bit C `double` / Rust `f64` on the same
+  target share one `TypeID`. `bool`, and each character type — `char`,
+  `signed char`, `unsigned char`, `char8_t`, `char16_t`, `char32_t`,
+  `wchar_t` — is a distinct ABI kind; plain `char` and `wchar_t` carry their
+  target-defined signedness, so a signed and an unsigned `char` never merge.
+* **Nominal types** (`record`, `enumeration`, `alias`, `namespace_type`) are
+  identified by their canonical qualified name. Two distinct nominal types must
+  not be merged merely because their layouts happen to match; physical
+  equivalence is expressed through `LayoutHash` (§5) instead.
+
+A primitive and a nominal type may still be ABI-compatible; that is decided by
+`LayoutHash` and the compatibility rules (§12), never by the spelling.
+
 ## 5. Layout Identity (LayoutHash)
 
 * `LayoutHash` is a 128-bit value identifying the **physical layout** of a type.
@@ -78,6 +99,11 @@ Module
 * Two types with the same `TypeID` and the same `LayoutHash` are layout
   compatible.
 * Same `TypeID`, different `LayoutHash` is an **ABI conflict**.
+* `LayoutHash` must be **independent of the source spelling**: two ABI-equal
+  types declared under different names must hash to the same layout. In
+  particular, a primitive's layout is a function of its ABI descriptor (§4), not
+  of its name, so a C `double` and a Rust `f64` of the same target share a
+  `LayoutHash`.
 * A concrete type with size or alignment zero is invalid.
 
 ## 6. Function ABI
@@ -129,6 +155,10 @@ comparing them.
   output.
 * Hashing domains and canonical encoding are part of this specification;
   changing them invalidates every existing artifact.
+* Primitive `TypeID` values are derived from ABI descriptors (§4) and are
+  deliberately spelling-independent. Introducing the descriptor form changes
+  the `TypeID` of every primitive, so all artifacts produced before this
+  revision are invalid and must be regenerated.
 * `ABIHash` is the module-level artifact identity, computed over the canonical
   content (identity, types, functions, maps). It excludes diagnostic-only data.
 * `SignatureHash` identifies a function signature.
@@ -137,7 +167,9 @@ comparing them.
 
 ## 12. Compatibility Rules
 
-Comparing a source ABI to a target ABI classifies each type:
+Comparing a source ABI to a target ABI classifies each type. A source type is
+paired with a target type by canonical name for nominal types, falling back to
+`TypeID` for primitives (so ABI-equal scalars line up across spellings).
 
 ### Compatible
 

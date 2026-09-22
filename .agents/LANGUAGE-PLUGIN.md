@@ -71,6 +71,18 @@ See [`ABI-SPEC.md`](ABI-SPEC.md) §3–§8.
 The mapping must describe the **ABI**, not the source spelling: two source types
 with the same ABI must produce the same identity.
 
+For scalar/primitive types this is enforced by the core model: the `TypeID` is
+the hash of an ABI descriptor (kind, size, align, signedness, floating-point
+format), not of the spelling. A frontend must supply that descriptor rather than
+inventing a name-based identity, so `long`/`long long` (LP64) and a C `double` /
+a Rust `f64` of the same target collapse onto a single `TypeID`. Character kinds
+are split by signedness: plain `char` and `wchar_t` must record their
+target-defined signedness so a signed and an unsigned `char` never merge. When projecting
+*a C-ABI scalar to a target language*, emit the target's C-ABI alias
+(for Rust, `core::ffi::c_*` such as `c_double`/`c_int`/`c_float`) rather than a
+fixed-width `f64`/`i32`, because the alias is what encodes the target's C ABI;
+use fixed-width spellings only when the contract explicitly fixes the width.
+
 ## 6. Generics / Templates
 
 * A template **primary** is recorded as a type with the

@@ -1,6 +1,7 @@
 #include "../core/amc_core.h"
 #include "../core/amc_metadata.h"
 #include <clang/AST/ASTConsumer.h>
+#include <clang/AST/ASTContext.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/Basic/SourceManager.h>
@@ -8,6 +9,7 @@
 #include <clang/Tooling/CompilationDatabase.h>
 #include <clang/Tooling/JSONCompilationDatabase.h>
 #include <clang/Tooling/Tooling.h>
+#include <llvm/ADT/APFloat.h>
 #include <llvm/Support/Path.h>
 #include <toml++/toml.h>
 #include <iostream>
@@ -34,6 +36,114 @@
 static const char * const kClangResourceDir = ABIX_CLANG_RESOURCE_DIR;
 
 namespace {
+// Stable, language-independent name for a floating-point format. Two float
+// types only share an identity when they share an actual IEEE/format semantic
+// (e.g. x87 80-bit must never merge with binary128, and a target where
+// `long double` is just `double` must merge with it).
+const char *float_semantics_tag(const llvm::fltSemantics &semantics) {
+    using llvm::APFloatBase;
+    if (&semantics == &APFloatBase::IEEEhalf()) return "ieee16";
+    if (&semantics == &APFloatBase::BFloat()) return "bfloat16";
+    if (&semantics == &APFloatBase::IEEEsingle()) return "ieee32";
+    if (&semantics == &APFloatBase::IEEEdouble()) return "ieee64";
+    if (&semantics == &APFloatBase::IEEEquad()) return "ieee128";
+    if (&semantics == &APFloatBase::x87DoubleExtended()) return "x87_80";
+    if (&semantics == &APFloatBase::PPCDoubleDouble()) return "ppc_double_double";
+    return "unknown";
+}
+
+amc::FloatFormat float_format_code(const llvm::fltSemantics &semantics) {
+    using llvm::APFloatBase;
+    if (&semantics == &APFloatBase::IEEEhalf()) return amc::FloatFormat::ieee16;
+    if (&semantics == &APFloatBase::BFloat()) return amc::FloatFormat::bfloat16;
+    if (&semantics == &APFloatBase::IEEEsingle()) return amc::FloatFormat::ieee32;
+    if (&semantics == &APFloatBase::IEEEdouble()) return amc::FloatFormat::ieee64;
+    if (&semantics == &APFloatBase::IEEEquad()) return amc::FloatFormat::ieee128;
+    if (&semantics == &APFloatBase::x87DoubleExtended()) return amc::FloatFormat::x87_80;
+    if (&semantics == &APFloatBase::PPCDoubleDouble()) return amc::FloatFormat::ppc_double_double;
+    return amc::FloatFormat::none;
+}
+
+// Pick the ABI kind that matches the observed signedness of a type whose C
+// spelling does not fix it (`char`, `wchar_t`).
+amc::PrimitiveAbiKind signedness_kind(bool is_signed, amc::PrimitiveAbiKind signed_kind,
+    amc::PrimitiveAbiKind unsigned_kind) {
+    return is_signed ? signed_kind : unsigned_kind;
+}
+
+// ABI descriptor for a primitive scalar type.
+//
+// Identity is the *abstract C ABI kind* — the width and format are recorded as
+// properties, not baked into the name. This is what makes a target like AVR
+// work: there `double` is 32-bit, and the IR still says `double` (an abstract
+// kind) with `size == 4`, so a Rust backend can emit `core::ffi::c_double`
+// (which is `f32` on AVR) instead of a hard-coded `f64`. Two spellings that
+// share an ABI (`long`/`long long` on LP64) collapse onto one kind, and the
+// measured width/format disambiguates the rest (x87 80-bit vs binary128).
+//
+// Returns an empty string when the type is not a scalar builtin (pointer,
+// array, record, ...), meaning the caller keeps the spelling-based identity.
+// `abi` is filled with the packed `PrimitiveAbiKind` + width + format.
+std::string primitive_abi_key(clang::ASTContext &ctx, clang::QualType qt, uint32_t &abi) {
+    const auto *bt = qt->getAs<clang::BuiltinType>();
+    if (bt == nullptr) return {};
+    const uint32_t bytes = uint32_t(ctx.getTypeSize(qt) / 8);
+    const bool is_signed = bt->isSignedInteger();
+    switch (bt->getKind()) {
+        case clang::BuiltinType::Void:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::void_);
+            return "prim:void";
+        case clang::BuiltinType::Bool:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::bool_);
+            return "prim:bool";
+        case clang::BuiltinType::Char_S:
+        case clang::BuiltinType::Char_U:
+            // Plain `char`: signedness is target-defined, so the kind encodes
+            // the *actual* signedness, not the spelling.
+            abi = amc::primitive_abi(bytes, signedness_kind(is_signed, amc::PrimitiveAbiKind::char_signed,
+                amc::PrimitiveAbiKind::char_unsigned));
+            return is_signed ? "prim:char_s" : "prim:char_u";
+        case clang::BuiltinType::SChar:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::schar, amc::FloatFormat::none, true);
+            return "prim:schar";
+        case clang::BuiltinType::UChar:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::uchar);
+            return "prim:uchar";
+        case clang::BuiltinType::Char8:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::char8);
+            return "prim:char8";
+        case clang::BuiltinType::Char16:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::char16);
+            return "prim:char16";
+        case clang::BuiltinType::Char32:
+            abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::char32);
+            return "prim:char32";
+        case clang::BuiltinType::WChar_S:
+        case clang::BuiltinType::WChar_U:
+            abi = amc::primitive_abi(bytes, signedness_kind(is_signed, amc::PrimitiveAbiKind::wchar_signed,
+                amc::PrimitiveAbiKind::wchar_unsigned));
+            return std::string("prim:wchar") + (is_signed ? "_s" : "_u");
+        default: break;
+    }
+    if (bt->isInteger()) {
+        // Integer width *is* ABI: `int` and `long` differ, so the key carries
+        // width and signedness. `long`/`long long` still collapse because they
+        // share both.
+        abi = amc::primitive_abi(bytes, is_signed ? amc::PrimitiveAbiKind::sint : amc::PrimitiveAbiKind::uint,
+            amc::FloatFormat::none, is_signed);
+        return std::string(is_signed ? "prim:i" : "prim:u") + std::to_string(bytes);
+    }
+    if (bt->isFloatingPoint()) {
+        // Floats are identified by format, not spelling: a target where
+        // `double` is 32-bit IEEE collapses it with `float` (same ABI), while
+        // x87 80-bit and IEEE binary128 stay distinct despite equal size.
+        const auto format = float_format_code(ctx.getFloatTypeSemantics(qt));
+        abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::floating, format);
+        return std::string("prim:f") + float_semantics_tag(ctx.getFloatTypeSemantics(qt));
+    }
+    return {};
+}
+
 struct Config {
     std::string db, output;
     std::vector<std::string> flags, files, symbols;
@@ -116,6 +226,9 @@ private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
     std::unordered_map<std::string, amc::Hash128> ids;
+    // Dedup keyed by ABI descriptor, so spellings that share an ABI (e.g.
+    // `long` / `long long`) collapse onto one type record with one TypeID.
+    std::unordered_map<std::string, amc::Hash128> primitive_ids;
     std::string name(const clang::NamedDecl *d) const { return d->getQualifiedNameAsString(); }
     void record_source(amc::Hash128 type_id, clang::SourceLocation location) {
         if (location.isInvalid()) return;
@@ -205,10 +318,28 @@ private:
         }
         amc::Type t;
         t.name = s;
-        t.id = amc::hash_text(s, 0x54595045);
         t.size = uint32_t(ctx.getTypeSize(qt) / 8);
         t.align = uint32_t(ctx.getTypeAlign(qt) / 8);
         t.kind = amc::TypeKind::primitive;
+        // Primitives are identified by their ABI descriptor, not their spelling,
+        // so that ABI-equal types (long/long long, ...) share one TypeID and the
+        // abstract C kind (double, long double) is preserved for target-dependent
+        // projection (e.g. AVR `double == f32`). Non-scalar types keep the
+        // spelling-based identity.
+        uint32_t abi = 0;
+        const std::string abi_key = primitive_abi_key(ctx, qt, abi);
+        t.primitive_abi = abi;
+        if (!abi_key.empty()) {
+            t.id = amc::hash_text(abi_key, 0x54595045);
+            const auto seen = primitive_ids.find(abi_key);
+            if (seen != primitive_ids.end()) {
+                ids.emplace(s, seen->second);
+                return seen->second;
+            }
+            primitive_ids.emplace(abi_key, t.id);
+        } else {
+            t.id = amc::hash_text(s, 0x54595045);
+        }
         if (const auto *p = qt->getAs<clang::PointerType>()) {
             t.kind = amc::TypeKind::pointer;
             t.name = p->getPointeeType().getAsString() + "*";
