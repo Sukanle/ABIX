@@ -134,21 +134,21 @@ static void BM_MediumFunction_FnPtr_NoInline(benchmark::State &state) {
 }
 BENCHMARK(BM_MediumFunction_FnPtr_NoInline);
 
-static skl::abix::dll_object *g_math_lib = nullptr;
-static skl::abix::dll_object *g_hotcache_lib = nullptr;
-static skl::abix::dll_func<int(int, int)> g_add;
-static skl::abix::dll_func<int(int)> g_e_0000;
+static skl::abix::dll::Object *g_math_lib = nullptr;
+static skl::abix::dll::Object *g_hotcache_lib = nullptr;
+static skl::abix::dll::Function<int(int, int)> g_add;
+static skl::abix::dll::Function<int(int)> g_e_0000;
 
 static void setup_call_bench() {
     if (!g_math_lib) {
-        g_math_lib = new skl::abix::dll_object();
+        g_math_lib = new skl::abix::dll::Object();
         g_math_lib->load(dll_path("math_dll").c_str());
-        g_add = skl::abix::dll_func<int(int, int)>(*g_math_lib, "add");
+        g_add = skl::abix::dll::Function<int(int, int)>(*g_math_lib, "add");
     }
     if (!g_hotcache_lib) {
-        g_hotcache_lib = new skl::abix::dll_object();
+        g_hotcache_lib = new skl::abix::dll::Object();
         g_hotcache_lib->load(dll_path("hotcache_dll").c_str());
-        g_e_0000 = skl::abix::dll_func<int(int)>(*g_hotcache_lib, "e_0000");
+        g_e_0000 = skl::abix::dll::Function<int(int)>(*g_hotcache_lib, "e_0000");
     }
 }
 

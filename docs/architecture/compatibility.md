@@ -1,4 +1,4 @@
-# ABI Identity & Compatibility
+# ABI Identity & Compat
 
 <p align="center">
   <a href="compatibility_zh.md">中文</a> · English
@@ -10,7 +10,7 @@
 
 - [Four identities](#four-identities)
 - [ABI diff flow](#abi-diff-flow)
-- [Compatibility kinds](#compatibility-kinds)
+- [Compat kinds](#compatibility-kinds)
 - [Load-time cross-module validation](#load-time-cross-module-validation)
 - [Source origin](#source-origin)
 
@@ -69,7 +69,7 @@ sequenceDiagram
 
 The diff result classifies each type into one of the compatibility kinds below.
 
-## Compatibility kinds
+## Compat kinds
 
 `amc compatibility` and `amc query --compatible` classify each type:
 
@@ -86,7 +86,7 @@ explicit decision.
 
 ## Load-time cross-module validation
 
-When a `RuntimeRegistry` registers modules, the same TypeID must resolve to the
+When a `runtime::Registry` registers modules, the same TypeID must resolve to the
 same LayoutHash:
 
 ```mermaid

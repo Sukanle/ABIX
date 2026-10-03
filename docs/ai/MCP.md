@@ -324,7 +324,7 @@ abix.find_compatible()     → find compatible types
 abix.resolve_type()        → resolve type by name/ID
 ```
 
-### Example: Cross-artifact Type Compatibility Query
+### Example: Cross-artifact Type Compat Query
 
 ```
 libA.Foo

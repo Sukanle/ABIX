@@ -13,9 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 extern "C" void process(int value) { (void)value; }
 extern "C" int process_int(int value) { return value * 2; }
 
-SKL_ABIX_DEFINE_TABLE(SKL_ABIX_ENTRY("process", process), SKL_ABIX_ENTRY("process_int", process_int), )
+// clang-format off
+SKL_ABIX_DEFINE_TABLE(
+    SKL_ABIX_ENTRY("process", process),
+    SKL_ABIX_ENTRY("process_int", process_int),
+)
+// clang-format on

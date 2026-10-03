@@ -61,7 +61,7 @@ graph LR
 
 ```mermaid
 graph LR
-    A[Library Update] --> B[ABIX Diff] --> C[Compatibility Check] --> D[Migration / Rebuild]
+    A[Library Update] --> B[ABIX Diff] --> C[Compat Check] --> D[Migration / Rebuild]
 ```
 
 ABIX does not replace existing tools. It provides a common ABI

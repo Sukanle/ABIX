@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
-  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
+  <img src="https://img.shields.io/badge/status-0.1.0-orange.svg" alt="Status: 0.1.0 (unstable)">
 </p>
 
 <p align="center">
@@ -246,15 +246,15 @@ AMC 是可扩展工具链而非语言专用编译器：前端从语言 AST 提�
 
 ## 自举（Self-Hosting）
 
-ABIX 1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公开 ABI，并用它构建和
+ABIX 0.1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公开 ABI，并用它构建和
 校验下一个版本。
 
 ```mermaid
 graph TD
-    A[ABIX 1.0] --> B[描述自身]
+    A[ABIX 0.1.0] --> B[描述自身]
     B --> C[校验 / 绑定]
     C --> D[构建下一个 ABI]
-    D --> E[ABIX 1.x]
+    D --> E[ABIX 0.1.x]
     E -->|描述自身| E
 ```
 
@@ -344,11 +344,18 @@ AMC 围绕 ABIX 提供工具链，更高层次的应用可以独立构建，覆�
 
 ```text
 ABIX
-├── ABIX IR            abix/            ABI 模型 + 运行时
+├── ABIX IR            ABIX/            纯头文件 ABI 模型 + 运行时
+│   ├── Model/         ABI.h Bootstrap.h Map.h Compat.h
+│   ├── Metadata/      Registry.h Descriptor.h
+│   ├── Runtime/       Registry.h Type.h TypeSig.h Search.h Function.h
+│   ├── DLL/           Object.h Function.h FnSig.h Export.h *Ptr.h
+│   ├── RCU/           Config.h Domain.h
+│   ├── Bridge/        Adapter.h Refl.h MICS.h
+│   └── Util/          Config.h Log.h Atomic.h Hash.h Mem.h Timeout.h
 ├── AMC                amc/             ABI 工具链
 ├── .abix              serialized ABI artifact
 ├── 测试 / 基准         test/ bench/
-├── Aue（实验性）       aue/             Lua 边界层 + 一致性测试
+├── Aue（实验性）       Aue/             Lua 边界层 + 一致性测试
 └── docs/              规范、设计、运行时、AMC、基准
 ```
 
@@ -431,8 +438,8 @@ cmake --build build/Release --parallel
 
 ## 当前状态
 
-**ABIX 1.0** — 基础、自举与工具链版本：ABI 检查、diff、兼容性分类、adapter 生成、metadata 模式与 ELF / Mach-O 检查。项目仍在积极开发中；C++ 实现
-是 ABIX 模型的**第一个**实现，而不是模型的限制。下一阶段 **ABIX 2.0** 为**跨语言支持**（先 Rust，再 Zig）。
+**ABIX 0.1.0** — 非稳定、pre-1.0 的基础预览：ABI 检查、diff、兼容性分类、adapter 生成、metadata 模式与 ELF / Mach-O 检查。项目仍在积极开发中；C++ 实现
+是 ABIX 模型的**第一个**实现，而不是模型的限制。下一阶段 **ABIX 0.2.0** 为**跨语言支持**（先 Rust，再 Zig）。
 
 当前重点：
 

@@ -1,17 +1,17 @@
-#include "../core/amc_adapter.h"
-#include "../core/amc_context.h"
-#include "../core/amc_core.h"
-#include "../core/amc_elf.h"
-#include "../core/amc_error.h"
-#include "../core/amc_json.h"
-#include "../core/amc_lua.h"
-#include "../core/amc_materialize.h"
-#include "../core/amc_metadata.h"
-#include "../core/amc_query.h"
-#include "../core/amc_symbol_store.h"
-#include "../core/amc_verify.h"
+#include "AMC/Core/Adapter.h"
+#include "AMC/Core/Context.h"
+#include "AMC/Core/Core.h"
+#include "AMC/Core/ELF.h"
+#include "AMC/Core/Error.h"
+#include "AMC/Core/Json.h"
+#include "AMC/Core/Lua.h"
+#include "AMC/Core/Materialize.h"
+#include "AMC/Core/Metadata.h"
+#include "AMC/Core/Query.h"
+#include "AMC/Core/Symbol.h"
+#include "AMC/Core/Verify.h"
 
-#include "abix/runtime_registry.h"
+#include "ABIX/Runtime/Registry.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -419,7 +419,7 @@ int main() {
         std::string error;
         const std::string contract = amc::generate_lua_contract(m, error);
         check(error.empty(), "lua generation succeeds");
-        check(contains(contract, "#include \"aue/aue.h\""), "lua contract includes aue");
+        check(contains(contract, "#include \"Aue/Aue.h\""), "lua contract includes Aue");
         check(contains(contract, "aue::Contract"), "lua contract type");
         check(contains(contract, "\"add\", 2, counter_add"), "lua entry name/arity/symbol");
         check(contains(contract, "\"counter\""), "lua module name");
@@ -502,7 +502,7 @@ int main() {
         amc::AdapterOptions typed_options;
         typed_options.typed = true;
         const std::string typed = amc::generate_adapter(v1, v2, report, typed_options, error);
-        check(contains(typed, "::abix::adapter<"), "typed adapter specialization");
+        check(contains(typed, "::skl::abix::bridge::Adapter<"), "typed adapter specialization");
         check(contains(typed, "amc_generated::MapRecord_ABIX"), "typed adapter projection type");
         check(contains(typed, "ABIX_ADAPTER_TYPED"), "typed adapter is guarded");
 
@@ -543,11 +543,11 @@ int main() {
         amc::MaterializedModule materialized;
         check(materialized.build_from_region(region, error), "materialize region");
         check(materialized.descriptor.type_count == 1, "materialized type count");
-        const skl::abix::model::Hash128 runtime_id{m.types[0].id.lo, m.types[0].id.hi};
+        const skl::abix::Hash128 runtime_id{m.types[0].id.lo, m.types[0].id.hi};
         check(materialized.descriptor.types[0].type_id == runtime_id, "materialized type id");
 
-        skl::abix::runtime::RuntimeRegistry<8> registry;
-        check(registry.register_module(materialized.descriptor) == skl::abix::runtime::RuntimeRegisterStatus::ok,
+        skl::abix::runtime::Registry<8> registry;
+        check(registry.register_module(materialized.descriptor) == skl::abix::runtime::RegisterStatus::ok,
             "register materialized module");
         const auto *entry = registry.find_by_id(runtime_id);
         check(entry != nullptr, "materialized type is registered");

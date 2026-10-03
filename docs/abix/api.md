@@ -10,22 +10,22 @@
 
 - [Architecture Overview](#architecture-overview)
 - [ABI Metadata Runtime and AMC](#abi-metadata-runtime-and-amc)
-- [1. `config.h` — Platform Detection & Core Enums](#1-configh-platform-detection-core-enums)
-- [2. `type.h` — Core Types](#2-typeh-core-types)
-- [3. `register.h` — Registration Macros](#3-registerh-registration-macros)
-- [4. `obj_dll.h` — DLL Module Wrapper](#4-obj_dllh-dll-module-wrapper)
-- [5. `fn_dll.h` — Typed Function Handles](#5-fn_dllh-typed-function-handles)
-- [6. `fn_sig.h` — Compile-time Signature Hashing](#6-fn_sigh-compile-time-signature-hashing)
-- [7. `type_sig.h` — Type Signature Hashing](#7-type_sigh-type-signature-hashing)
-- [8. `search.h` — Table Search Functions](#8-searchh-table-search-functions)
-- [9. `function.h` — Cross-Boundary Closure](#9-functionh-cross-boundary-closure)
-- [10. Smart Pointers (`dll_ptr/`)](#10-smart-pointers-dll_ptr)
-- [11. `refl.h` — Dynamic mics Integration](#11-reflh-dynamic-mics-integration)
+- [1. `ABIX/Util/Config.h` — Platform Detection & Core Enums](#1-abixutilconfigh--platform-detection--core-enums)
+- [2. `ABIX/Runtime/Type.h` — Core Types](#2-abixruntimetypeh--core-types)
+- [3. `ABIX/DLL/Export.h` — Registration Macros](#3-abixdllexporth--registration-macros)
+- [4. `ABIX/DLL/Object.h` — DLL Module Wrapper](#4-abixdllobjecth--dll-module-wrapper)
+- [5. `ABIX/DLL/Function.h` — Typed Function Handles](#5-abixdllfunctionh--typed-function-handles)
+- [6. `ABIX/DLL/FnSig.h` — Compile-time Signature Hashing](#6-abixdllfnsigh--compile-time-signature-hashing)
+- [7. `ABIX/Runtime/TypeSig.h` — Type Signature Hashing](#7-abixruntimetypesigh--type-signature-hashing)
+- [8. `ABIX/Runtime/Search.h` — Table Search Functions](#8-abixruntimesearchh--table-search-functions)
+- [9. `ABIX/Runtime/Function.h` — Cross-Boundary Closure](#9-abixruntimefunctionh--cross-boundary-closure)
+- [10. Smart Pointers (`ABIX/DLL/DLLPtr.h`)](#10-smart-pointers-abixdlldllptrh)
+- [11. `ABIX/Bridge/Refl.h` — Dynamic mics Integration](#11-abixbridgereflh--dynamic-mics-integration)
 - [12. Complete Usage Example](#12-complete-usage-example)
 
 </details>
 
-This document covers the ABIX cross-DLL function calling library (`abix/`).
+This document covers the ABIX cross-DLL function calling library (`ABIX/`).
 
 ## Architecture Overview
 
@@ -52,15 +52,15 @@ flowchart TB
 
     B --- B3["magic<br/>format_version"]
 
-    C --- C1["dll_object<br/>(Module Wrapper)"]
+    C --- C1["dll::Object<br/>(Module Wrapper)"]
 
     C --- C2["load / unload<br/>reload / ref_count"]
 
     C --- C3["abi_get_table()<br/>ABI Table Export & Symbol Resolution"]
 
-    D --- D1["dll_func&lt;Sig, CC&gt;<br/>Typed Function Handle"]
+    D --- D1["dll::Function&lt;Sig, CC&gt;<br/>Typed Function Handle"]
 
-    D --- D2["function_dll&lt;R(Args...)&gt;<br/>8-byte Closure"]
+    D --- D2["runtime::Function&lt;R(Args...)&gt;<br/>8-byte Closure"]
 
     D --- D3["*_dll_ptr<br/>Smart Pointer System"]
 ```
@@ -98,12 +98,12 @@ artifact identities plus compatibility records and Map operations. Plain
 `amc-dump` reflects every currently defined `.abix` v4 section, including the
 optional compatibility, map, and map-operation sections.
 
-### `runtime::RuntimeRegistry`
+### `runtime::Registry`
 
-Headers: `abix/runtime_descriptor.h`, `abix/runtime_registry.h`.
+Headers: `ABIX/Metadata/Descriptor.h`, `ABIX/Runtime/Registry.h`.
 
 `ModuleDescriptor` is the generated, static view of one metadata module.
-`RuntimeRegistry<Capacity>::register_module()` first validates the entire
+`runtime::Registry<Capacity>::register_module()` first validates the entire
 module, including type references and duplicate IDs, then registers it
 atomically from the caller's perspective. The registry retains canonical
 `model::TypeDesc`/`TypeLayout` views alongside generated descriptors.
@@ -113,13 +113,13 @@ version may carry a different layout and coexists as its own entry.
 
 | API | Result |
 |---|---|
-| `register_module(const ModuleDescriptor&)` | `RuntimeRegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules |
+| `register_module(const ModuleDescriptor&)` | `runtime::RegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules |
 | `register_module(const ModuleDescriptor&, uint32_t version)` | Versioned registration; the same `TypeID` may coexist across versions with different layouts |
-| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `RuntimeRegistryEntry`, or `nullptr`; `find_by_id` returns the newest version |
+| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `runtime::RegistryEntry`, or `nullptr`; `find_by_id` returns the newest version |
 | `find_type(TypeId, uint32_t version)` | Entry for that exact `(TypeID, version)` pair, or `nullptr` |
 | `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | Leading decimal integer of a module version string (`"2.1"` → `2`) |
 | `type_of<T>()` | Entry selected by generated `TypeTraits<T>::type_id` |
-| `canonical()` | Underlying bounded `MetadataRegistry` view |
+| `canonical()` | Underlying bounded `metadata::Registry` view |
 
 `type_of<T>()` is intentionally available only for types whose generated header
 defines `TypeTraits<T>`. Enable those specializations explicitly:
@@ -129,9 +129,9 @@ defines `TypeTraits<T>`. Enable those specializations explicitly:
 #define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
 #include "package_metadata.hpp"
 
-skl::abix::runtime::RuntimeRegistry<128> registry;
+skl::abix::runtime::Registry<128> registry;
 if (registry.register_module(amc_generated::amc_module) ==
-    skl::abix::runtime::RuntimeRegisterStatus::ok) {
+    skl::abix::runtime::RegisterStatus::ok) {
     const auto *metadata = registry.type_of<my::NativeType>();
     // metadata is non-null after successful registration.
 }
@@ -141,7 +141,7 @@ ABIX Runtime and AMC core metadata are covered by reproducible self-description
 tests. This is metadata self-hosting, not C++ compiler-source self-hosting:
 AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 
-## 1. `config.h` — Platform Detection & Core Enums
+## 1. `ABIX/Util/Config.h` — Platform Detection & Core Enums
 
 **Namespace:** `skl::abix`
 
@@ -153,13 +153,11 @@ AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 | `SKL_ABIX_CALL_CDECL` | `__cdecl` or empty | `__cdecl` calling convention attribute |
 | `SKL_ABIX_CALL_STDCALL` | `__stdcall` or empty | `__stdcall` calling convention attribute |
 | `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` or visibility attribute | DLL export attribute |
-| `SKL_ABIX_NAMESPACE_BEGIN` | — | Opens `namespace skl { namespace abix {` |
-| `SKL_ABIX_NAMESPACE_END` | — | Closes `} }` |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | Magic number for control blocks |
 
-## 2. `type.h` — Core Types
+## 2. `ABIX/Runtime/Type.h` — Core Types
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::runtime`
 
 ### Type Aliases
 
@@ -178,10 +176,10 @@ AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 | `SKL_ABIX_TABLE_FORMAT_VERSION` | `1U` | Table format version |
 | `SKL_ABIX_ENTRY_HOT` | `0x1ULL` | Hot entry flag |
 
-### `entry` — Function Table Entry
+### `runtime::Entry` — Function Table Entry
 
 ```cpp
-struct entry {
+struct Entry {
     const char *name;       // Function name (null-terminated C string)
     sig_t sig;              // Compile-time signature hash
     version_t version;      // Version token (0 = unversioned)
@@ -191,28 +189,28 @@ struct entry {
 };
 ```
 
-### `table` — Export Table
+### `runtime::Table` — Export Table
 
 ```cpp
-struct table {
+struct Table {
     uint32_t count;          // Number of entries
     uint32_t magic;          // Must equal SKL_ABIX_TABLE_MAGIC
     uint32_t format_version; // Must equal SKL_ABIX_TABLE_FORMAT_VERSION
     uint32_t reserved;       // Reserved for future use
-    const entry *entries;    // Pointer to entry array (count elements)
+    const Entry *entries;    // Pointer to entry array (count elements)
 };
 ```
 
-### `make_table()`
+### `runtime::make_table()`
 
 ```cpp
 template<size_t N>
-inline const table *make_table(const entry (&arr)[N]) noexcept;
+inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 ```
 
-Creates a static `table` from a compile-time entry array. Used internally by `SKL_ABIX_DEFINE_TABLE`.
+Creates a static `Table` from a compile-time entry array. Used internally by `SKL_ABIX_DEFINE_TABLE`.
 
-## 3. `register.h` — Registration Macros
+## 3. `ABIX/DLL/Export.h` — Registration Macros
 
 **Namespace:** `skl::abix`
 
@@ -235,16 +233,22 @@ Creates a static `table` from a compile-time entry array. Used internally by `SK
 
 ### Memory Allocation
 
+Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
+
 | Function | Description |
 |----------|-------------|
-| `abi_alloc(n)` | Allocate `n` bytes (uses `HeapAlloc` on Windows, `malloc` otherwise) |
-| `abi_free(p)` | Free memory allocated by `abi_alloc` |
+| `mem::alloc(n)` | Allocate `n` bytes (`HeapAlloc` on Windows, `malloc` otherwise) |
+| `mem::zalloc(n)` | Zero-initialised allocation |
+| `mem::alloc_array(count, elem)` | Overflow-checked array allocation |
+| `mem::alloc_aligned(n, align)` | Aligned allocation (pair with `dealloc_aligned`) |
+| `mem::dealloc(p)` | Free memory from `alloc` / `zalloc` / `alloc_array` |
+| `mem::dealloc_aligned(p)` | Free memory from `alloc_aligned` |
 
-## 4. `obj_dll.h` — DLL Module Wrapper
+## 4. `ABIX/DLL/Object.h` — DLL Module Wrapper
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::dll`
 
-### `call_error` Enum
+### `dll::CallError` Enum
 
 | Value | Description |
 |-------|-------------|
@@ -262,12 +266,12 @@ Creates a static `table` from a compile-time entry array. Used internally by `SK
 ### `last_error()`
 
 ```cpp
-inline call_error &last_error() noexcept;
+inline dll::CallError &last_error() noexcept;
 ```
 
 Returns a reference to the thread-local last error code. Thread-safe (each thread has its own error state).
 
-### `dll_object`
+### `dll::Object`
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -276,22 +280,20 @@ Returns a reference to the thread-local last error code. Thread-safe (each threa
 | `force_unload()` | `void` | Unload regardless of ref-count (bypasses RCU, caller must ensure no concurrent readers) |
 | `reload(path)` | `bool` | `force_unload()` + `load(path)` |
 | `is_loaded()` | `bool` | Whether the module is currently loaded and not in the unloading state |
-| `get_table()` | `const table*` | Get the validated export table pointer |
+| `get_table()` | `const runtime::Table*` | Get the validated export table pointer |
 | `module()` | `module_handle` | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX) |
-| `ref_count()` | `uint32_t` | Current number of live handles |
-| `add_ref()` | `void` | Increment reference count |
-| `release_ref()` | `void` | Decrement reference count |
-| `try_enter_read()` | `bool` | Enter RCU read-side critical section with double-checked locking; returns `false` and sets `call_error::unloading` if the module is unloading or zombie |
+| `ref_count()` | `uint32_t` | Number of live `Function` handles (strong refs to the shared Control) |
+| `try_enter_read()` | `bool` | Enter RCU read-side critical section with double-checked locking; returns `false` and sets `dll::CallError::unloading` if the module is unloading or zombie |
 | `exit_read()` | `void` | Exit RCU read-side critical section (decrements active reader count) |
 | `begin_rcu_unload()` | `bool` | Initiate RCU unload: set `_unloading` flag → spin-wait until `_active_readers == 0` or timeout → apply `_timeout_policy`; returns `true` on success |
-| `set_timeout_policy(p)` | `void` | Set the RCU timeout policy (`RCUTimeoutPolicy::Safe` / `ForceUnload` / `ForceLeak`) |
-| `timeout_policy()` | `RCUTimeoutPolicy` | Get the current RCU timeout policy |
+| `set_timeout_policy(p)` | `void` | Set the RCU timeout policy (`rcu::TimeoutPolicy::Safe` / `ForceUnload` / `ForceLeak`) |
+| `timeout_policy()` | `rcu::TimeoutPolicy` | Get the current RCU timeout policy |
 
 **Usage Example:**
 ```cpp
-dll_object lib;
+dll::Object lib;
 if (lib.load("my_plugin.dll")) {
-    const table *t = lib.get_table();
+    const runtime::Table *t = lib.get_table();
     // Use the table...
     lib.unload();  // Only succeeds if no live handles and no active readers
 }
@@ -319,7 +321,7 @@ ABIX implements RCU (Read-Copy-Update) with epoch-based reclamation (EBR) for th
 **Usage Example:**
 ```cpp
 // Thread 1: Reader
-auto add = dll_func<int(int, int)>(lib, "add");
+auto add = dll::Function<int(int, int)>(lib, "add");
 int result = add(2, 3);  // operator() auto-calls try_enter_read/exit_read
 
 // Thread 2: Unloader
@@ -332,18 +334,18 @@ When `ABIX_RCU_TIMEOUT_ENABLE` is `1` (default), `wait_for_readers()` periodical
 
 | Policy | Enum | Behavior |
 |--------|------|----------|
-| **Safe** | `RCUTimeoutPolicy::Safe` | Sets `_zombie = true`, clears `_unloading`. DLL stays loaded but inaccessible. **Never crashes.** (Default) |
-| **ForceUnload** | `RCUTimeoutPolicy::ForceUnload` | Calls `unload_internal()` immediately. Active callers receive dangling pointers — **will crash**. |
-| **ForceLeak** | `RCUTimeoutPolicy::ForceLeak` | Detaches module handle, DLL stays loaded in OS. Requires `#define ABIX_ENABLE_FORCE_LEAK_POLICY`. |
+| **Safe** | `rcu::TimeoutPolicy::Safe` | Sets `_zombie = true`, clears `_unloading`. DLL stays loaded but inaccessible. **Never crashes.** (Default) |
+| **ForceUnload** | `rcu::TimeoutPolicy::ForceUnload` | Calls `unload_internal()` immediately. Active callers receive dangling pointers — **will crash**. |
+| **ForceLeak** | `rcu::TimeoutPolicy::ForceLeak` | Detaches module handle, DLL stays loaded in OS. Requires `#define ABIX_ENABLE_FORCE_LEAK_POLICY`. |
 
 **Zombie lifecycle:**
 ```
 begin_rcu_unload() → timeout → _zombie = true
     ↓
 is_loaded() → false      (new callers rejected)
-try_enter_read() → false  (sets call_error::unloading)
+try_enter_read() → false  (sets dll::CallError::unloading)
 load() → force_unload zombie → load fresh DLL
-~dll_object() → unload_internal() (force cleanup)
+~dll::Object() → unload_internal() (force cleanup)
 ```
 
 ### Timeout Check: Dual-Fuel (Time + Frames)
@@ -354,9 +356,9 @@ ABIX treats wall-clock time and frame count as two orthogonal fuel sources. Both
 - **Frame fuel**: `abix::tick(timestamp)` injects frame counts from the host loop. Optional, zero overhead if unused.
 - **Deadline check**: `wait_for_readers()` checks both `timeout_ms` AND `timeout_frames` every ~1M spin iterations. Whichever deadline arrives first triggers the timeout.
 
-### `RCUTimeoutConfig` (`rcu_config.h`)
+### `rcu::TimeoutConfig` (`ABIX/RCU/Config.h`)
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::rcu`
 
 Runtime configuration for RCU timeout behavior. Replaces the old compile-time-only `ABIX_RCU_TIMEOUT_MS` macro with per-instance settings.
 
@@ -367,7 +369,7 @@ Runtime configuration for RCU timeout behavior. Replaces the old compile-time-on
 
 **Constructor:**
 ```cpp
-constexpr RCUTimeoutConfig(
+constexpr rcu::TimeoutConfig(
     uint64_t ms = ABIX_RCU_TIMEOUT_MS,
     uint64_t frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT
 ) noexcept;
@@ -376,17 +378,17 @@ constexpr RCUTimeoutConfig(
 **Usage patterns:**
 ```cpp
 // Scenario 1: pure defaults (macro values used)
-dll_object lib1;
+dll::Object lib1;
 
 // Scenario 2: explicit timeout, no frames
-dll_object lib2(RCUTimeoutConfig{3000});
+dll::Object lib2(rcu::TimeoutConfig{3000});
 
 // Scenario 3: game engine — both time and frame thresholds
-dll_object lib3(RCUTimeoutConfig{5000, 300});  // 5s or 300 frames, whichever triggers first
+dll::Object lib3(rcu::TimeoutConfig{5000, 300});  // 5s or 300 frames, whichever triggers first
 
 // Scenario 4: runtime config from file
 uint64_t cfg_timeout = app_config.get("plugin_timeout_ms", 5000);
-dll_object lib4(RCUTimeoutConfig{cfg_timeout});
+dll::Object lib4(rcu::TimeoutConfig{cfg_timeout});
 ```
 
 ### Lazy Starvation Guard
@@ -401,9 +403,9 @@ When no RCU unload is in progress, the timeout check only fires inside `wait_for
 
 **`abix::tick()` is always available.** When the starvation guard is enabled, calling `tick()` from the main loop keeps the time baseline current without calling `get_tick_ms()` (a system call) on every `try_enter_read()`. It also feeds the frame counter for frame-based timeout deadlines.
 
-### Logging (`log.h`)
+### Logging (`ABIX/Util/Log.h`)
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::util`
 
 | Type / Function | Description |
 |-----------------|-------------|
@@ -421,11 +423,11 @@ When no RCU unload is in progress, the timeout check only fires inside `wait_for
 | `ABIX_LOG_WARNING(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
 | `ABIX_LOG_ERROR(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR` |
 
-## 5. `fn_dll.h` — Typed Function Handles
+## 5. `ABIX/DLL/Function.h` — Typed Function Handles
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::dll`
 
-### `dll_func_cc<C, Sig>`
+### `dll::FunctionCC<C, Sig>`
 
 The primary template for typed function handles. Template parameters:
 
@@ -438,7 +440,7 @@ The primary template for typed function handles. Template parameters:
 | `valid()` | `bool` | Whether the handle is valid and the library is loaded |
 | `operator bool()` | `bool` | Same as `valid()` |
 | `index()` | `index_t` | Entry index in the table |
-| `library()` | `const dll_object*` | The associated DLL object |
+| `library()` | `const dll::Object*` | The associated DLL object |
 | `handle_id()` | `uint64_t` | Opaque handle ID (stable across reload) |
 | `raw()` | `fn_type` | Raw function pointer |
 | `operator()(Args...)` | `R` | Call the function with type safety |
@@ -446,34 +448,34 @@ The primary template for typed function handles. Template parameters:
 **`operator()` behavior:**
 - Acquires RCU read-side critical section via `try_enter_read()` before calling the DLL function
 - Releases the critical section via `exit_read()` on all exit paths (including error paths)
-- If `try_enter_read()` fails (module is unloading) → sets `call_error::unloading`, returns default `R{}`
-- If library is not loaded → sets `call_error::not_loaded`, returns default `R{}`
-- If index is out of bounds → sets `call_error::table_changed`, returns default `R{}`
-- If entry signature/name/hash changed → sets `call_error::table_changed`, returns default `R{}`
-- If function pointer is null → sets `call_error::invalid`, returns default `R{}`
+- If `try_enter_read()` fails (module is unloading) → sets `dll::CallError::unloading`, returns default `R{}`
+- If library is not loaded → sets `dll::CallError::not_loaded`, returns default `R{}`
+- If index is out of bounds → sets `dll::CallError::table_changed`, returns default `R{}`
+- If entry signature/name/hash changed → sets `dll::CallError::table_changed`, returns default `R{}`
+- If function pointer is null → sets `dll::CallError::invalid`, returns default `R{}`
 
-### `dll_func<Sig, C>`
+### `dll::Function<Sig, C>`
 
-Convenience alias for `dll_func_cc` with default calling convention `Cdecl`:
+Convenience alias for `dll::FunctionCC` with default calling convention `Cdecl`:
 
 ```cpp
 template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
-class dll_func : public dll_func_cc<C, Sig> { ... };
+class dll::Function : public dll::FunctionCC<C, Sig> { ... };
 ```
 
 **Usage Example:**
 ```cpp
-dll_object lib;
+dll::Object lib;
 lib.load("math_dll.dll");
 
 // Resolve with default Cdecl
-auto add = dll_func<int(int, int)>(lib, "add");
+auto add = dll::Function<int(int, int)>(lib, "add");
 
 // Resolve with explicit version
-auto log = dll_func<void(const char*)>(lib, "log", SKL_ABIX_VERSION("1.0"));
+auto log = dll::Function<void(const char*)>(lib, "log", SKL_ABIX_VERSION("1.0"));
 
 // Resolve with stdcall calling convention
-auto proc = dll_func<void(int), SKL_ABIX_CCPICK(Stdcall)>(lib, "process");
+auto proc = dll::Function<void(int), SKL_ABIX_CCPICK(Stdcall)>(lib, "process");
 
 // Call
 int result = add(2, 3);
@@ -482,15 +484,15 @@ if (!add.valid()) {
 }
 ```
 
-## 6. `fn_sig.h` — Compile-time Signature Hashing
+## 6. `ABIX/DLL/FnSig.h` — Compile-time Signature Hashing
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::dll`
 
-### `fn_sig<Sig, C>`
+### `FnSig<Sig, C>`
 
 ```cpp
 template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
-struct fn_sig;
+struct FnSig;
 ```
 
 Compile-time function signature hash generator. The `value` member is a `sig_t` constant.
@@ -499,14 +501,14 @@ Compile-time function signature hash generator. The `value` member is a `sig_t` 
 |--------|------|-------------|
 | `value` | `constexpr sig_t` | Unique FNV-1a hash of the function signature |
 
-### `fn_sig_v<Sig, C>`
+### `FnSigV<Sig, C>`
 
 ```cpp
 template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>
-inline constexpr sig_t fn_sig_v = fn_sig<Sig, C>::value;
+inline constexpr auto FnSigV = FnSig<Sig, C>::value;
 ```
 
-Convenience variable template for `fn_sig::value`.
+Convenience variable template for `FnSig::value`.
 
 ### `type_sig<T>()`
 
@@ -519,27 +521,27 @@ Returns the compile-time type signature hash for type `T`. Strips cv-qualifiers 
 
 **Usage Example:**
 ```cpp
-constexpr sig_t add_sig = fn_sig<int(int, int)>::value;
-constexpr sig_t mul_sig = fn_sig_v<double(double, double)>;
+constexpr sig_t add_sig = FnSig<int(int, int)>::value;
+constexpr sig_t mul_sig = FnSigV<double(double, double)>;
 constexpr sig_t int_sig = type_sig<int>();
 ```
 
-## 7. `type_sig.h` — Type Signature Hashing
+## 7. `ABIX/Runtime/TypeSig.h` — Type Signature Hashing
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix` (+ `skl::abix::runtime::detail`)
 
-### `type_sig_impl<T>`
+### `TypeSigImpl<T>`
 
-Specialized for ABIX smart pointer types and `function_dll`:
+Specialized for ABIX smart pointer types and `runtime::Function`:
 
 | Type | Hash Formula |
 |------|-------------|
-| `unique_dll_ptr<T>` | `mix(cstr64("abix::unique_dll_ptr"), type_hash<T>)` |
-| `ref_dll_ptr<T>` | `mix(cstr64("abix::ref_dll_ptr"), type_hash<T>)` |
-| `view_dll_ptr<T>` | `mix(cstr64("abix::view_dll_ptr"), type_hash<T>)` |
-| `shared_dll_ptr<T>` | `mix(cstr64("abix::shared_dll_ptr"), type_hash<T>)` |
-| `weak_dll_ptr<T>` | `mix(cstr64("abix::weak_dll_ptr"), type_hash<T>)` |
-| `function_dll<R(Args...)>` | Compound hash of return type and all argument types |
+| `dll::UniquePtr<T>` | `mix(cstr64("abix::dll::UniquePtr"), type_hash<T>)` |
+| `dll::RefPtr<T>` | `mix(cstr64("abix::dll::RefPtr"), type_hash<T>)` |
+| `dll::ViewPtr<T>` | `mix(cstr64("abix::dll::ViewPtr"), type_hash<T>)` |
+| `dll::SharedPtr<T>` | `mix(cstr64("abix::dll::SharedPtr"), type_hash<T>)` |
+| `dll::WeakPtr<T>` | `mix(cstr64("abix::dll::WeakPtr"), type_hash<T>)` |
+| `runtime::Function<R(Args...)>` | Compound hash of return type and all argument types |
 | All other types | Delegates to `Utils::type_hash<T>()` |
 
 ### `SKL_ABIX_TYPE_TAG(T, tag)`
@@ -550,11 +552,11 @@ Specialized for ABIX smart pointer types and `function_dll`:
 
 Register a custom type tag for user type `T`, enabling stable cross-compiler type hashing.
 
-## 8. `search.h` — Table Search Functions
+## 8. `ABIX/Runtime/Search.h` — Table Search Functions
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::runtime`
 
-### `lookup_result` Enum
+### `runtime::LookupResult` Enum
 
 | Value | Description |
 |-------|-------------|
@@ -567,7 +569,7 @@ Register a custom type tag for user type `T`, enabling stable cross-compiler typ
 ### `find_index()`
 
 ```cpp
-inline lookup_result find_index(const table &t, const hash_index &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+inline runtime::LookupResult find_index(const runtime::Table &t, const runtime::HashIndex &idx, const char *name, runtime::sig_t sig, version_t ver, index_t &out) noexcept;
 ```
 
 Automatically selects the optimal lookup strategy based on whether `idx` is valid:
@@ -577,7 +579,7 @@ Automatically selects the optimal lookup strategy based on whether `idx` is vali
 ### `find_linear()`
 
 ```cpp
-inline lookup_result find_linear(const table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+inline runtime::LookupResult find_linear(const runtime::Table &t, const char *name, runtime::sig_t sig, version_t ver, index_t &out) noexcept;
 ```
 
 Full table linear scan. Used for small tables (< 64 entries).
@@ -591,7 +593,7 @@ Full table linear scan. Used for small tables (< 64 entries).
 ### `find_hash()`
 
 ```cpp
-inline lookup_result find_hash(const table &t, const hash_index &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept;
+inline runtime::LookupResult find_hash(const runtime::Table &t, const runtime::HashIndex &idx, const char *name, runtime::sig_t sig, version_t ver, index_t &out) noexcept;
 ```
 
 Open-addressing hash index lookup. Used for large tables (≥ 64 entries). O(1) average time.
@@ -599,7 +601,7 @@ Open-addressing hash index lookup. Used for large tables (≥ 64 entries). O(1) 
 ### `lookup_linear()`
 
 ```cpp
-inline const entry *lookup_linear(const table &t, const char *name, name_hash_t nh, sig_t sig) noexcept;
+inline const runtime::Entry *lookup_linear(const runtime::Table &t, const char *name, name_hash_t nh, runtime::sig_t sig) noexcept;
 ```
 
 Direct linear lookup returning the entry pointer (or `nullptr`).
@@ -607,15 +609,15 @@ Direct linear lookup returning the entry pointer (or `nullptr`).
 ### `lookup_hash()`
 
 ```cpp
-inline const entry *lookup_hash(const table &t, const hash_index &idx, const char *name, name_hash_t nh, sig_t sig) noexcept;
+inline const runtime::Entry *lookup_hash(const runtime::Table &t, const runtime::HashIndex &idx, const char *name, name_hash_t nh, runtime::sig_t sig) noexcept;
 ```
 
 Direct hash index lookup returning the entry pointer (or `nullptr`).
 
-### `hash_slot`
+### `runtime::HashSlot`
 
 ```cpp
-struct hash_slot {
+struct HashSlot {
     name_hash_t hash;
     index_t index;
 };
@@ -623,16 +625,16 @@ struct hash_slot {
 
 A single slot in the hash index. Stores only the name hash and entry index — never copies `entry` data.
 
-### `hash_index`
+### `runtime::HashIndex`
 
 ```cpp
-struct hash_index {
-    hash_slot *slots;
+struct runtime::HashIndex {
+    runtime::HashSlot *slots;
     uint32_t capacity;
     uint32_t mask;
 
     bool valid() const noexcept;
-    void build(const table &t) noexcept;
+    void build(const runtime::Table &t) noexcept;
     void destroy() noexcept;
 };
 ```
@@ -641,7 +643,7 @@ Runtime hash index for large tables. Built once at DLL load time.
 
 | Member | Type | Description |
 |--------|------|-------------|
-| `slots` | `hash_slot*` | Open-addressing slot array (power-of-two capacity) |
+| `slots` | `runtime::HashSlot*` | Open-addressing slot array (power-of-two capacity) |
 | `capacity` | `uint32_t` | Total number of slots (always `next_pow2(count * 2)`) |
 | `mask` | `uint32_t` | `capacity - 1` for fast modulo |
 
@@ -654,26 +656,26 @@ Runtime hash index for large tables. Built once at DLL load time.
 **Design notes:**
 - **Load factor ~50%**: `capacity = next_pow2(count * 2)`
 - **Open addressing**: Linear probing `pos = (pos + 1) & mask` on collision
-- **Zero ABI impact**: `hash_index` is runtime-only metadata; `table` and `entry` structs remain unchanged
+- **Zero ABI impact**: `runtime::HashIndex` is runtime-only metadata; `table` and `entry` structs remain unchanged
 - **Built at load time**: No runtime initialization races, no lazy initialization complexity
 
 ### Constants
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `HASH_THRESHOLD` | `64` | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
-| `HASH_SLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots |
+| `SKL_ABIX_HASH_THRESHOLD` | `64` | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
+| `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots |
 
-## 9. `function.h` — Cross-Boundary Closure
+## 9. `ABIX/Runtime/Function.h` — Cross-Boundary Closure
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::runtime`
 
-### `function_dll<R(Args...)>`
+### `runtime::Function<R(Args...)>`
 
-An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Similar to `std::function` but uses a stable ABI with manual memory management via `abi_alloc`/`abi_free`.
+An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Similar to `std::function` but uses a stable ABI with manual memory management via `mem::alloc`/`mem::dealloc`.
 
 **Design:**
-- `sizeof(function_dll<R(Args...)>)` == 8 bytes (always, on 64-bit platforms)
+- `sizeof(runtime::Function<R(Args...)>)` == 8 bytes (always, on 64-bit platforms)
 - Stores a heap-allocated `closure_base` pointer as a `uint64_t` handle
 - Closure contains invoke/destroy/clone function pointers
 - `SKL_ABIX_CLOSURE_MAGIC` validates the closure at call time
@@ -682,11 +684,11 @@ An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Sim
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `function_dll()` | — | Default constructor, empty |
-| `function_dll(F f)` | — | Construct from a callable (lambda, function pointer, etc.) |
-| `function_dll(const&)` | — | Copy constructor (deep copy via clone handler) |
-| `function_dll(&&)` | — | Move constructor |
-| `operator=(rhs)` | `function_dll&` | Copy-and-swap assignment |
+| `runtime::Function()` | — | Default constructor, empty |
+| `runtime::Function(F f)` | — | Construct from a callable (lambda, function pointer, etc.) |
+| `runtime::Function(const&)` | — | Copy constructor (deep copy via clone handler) |
+| `runtime::Function(&&)` | — | Move constructor |
+| `operator=(rhs)` | `runtime::Function&` | Copy-and-swap assignment |
 | `operator()(Args...)` | `R` | Invoke the stored callable |
 | `operator bool()` | `bool` | Whether the closure contains a callable |
 | `empty()` | `bool` | Whether the closure is empty |
@@ -696,24 +698,24 @@ An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Sim
 **Usage Example:**
 ```cpp
 int captured = 100;
-function_dll<void(int)> cb = [captured](int x) {
+runtime::Function<void(int)> cb = [captured](int x) {
     printf("captured=%d, x=%d, sum=%d\n", captured, x, captured + x);
 };
 
 // Pass to DLL
-auto reg = dll_func<void(function_dll<void(int)>)>(lib, "register_callback");
+auto reg = dll::Function<void(runtime::Function<void(int)>)>(lib, "register_callback");
 reg(std::move(cb));
 ```
 
-## 10. Smart Pointers (`dll_ptr/`)
+## 10. Smart Pointers (`ABIX/DLL/DLLPtr.h`)
 
-**Namespace:** `skl::abix`
+**Namespace:** `skl::abix::dll`
 
-### `unique_handle<T>`
+### `dll::UniqueHandle<T>`
 
 ```cpp
 template<typename T>
-struct unique_handle {
+struct dll::UniqueHandle {
     T *ptr;
     void (*destroy)(T *);
 };
@@ -721,89 +723,89 @@ struct unique_handle {
 
 Raw handle pair (pointer + deleter). Used as the return type of `release()` on smart pointers.
 
-### `unique_dll_ptr<T>`
+### `dll::UniquePtr<T>`
 
 Exclusive-ownership smart pointer. Calls the DLL-side deleter on destruction.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `unique_dll_ptr(p, d)` | — | Construct with pointer and deleter function |
+| `dll::UniquePtr(p, d)` | — | Construct with pointer and deleter function |
 | `reset(p, d)` | `void` | Release current and take new ownership |
-| `release()` | `unique_handle<T>*` | Release ownership without destroying |
+| `release()` | `dll::UniqueHandle<T>*` | Release ownership without destroying |
 | `get()` | `T*` | Raw pointer |
 | `operator->()` | `T*` | Pointer access |
 | `operator*()` | `T&` | Dereference |
 | `operator bool()` | `bool` | Whether non-null |
 
-### `fn_deleter<T>`
+### `dll::FnDeleter<T>`
 
 ```cpp
 template<typename T>
-struct fn_deleter {
+struct dll::FnDeleter {
     void (*d)(T *) = nullptr;
     void operator()(T *p) const noexcept;
 };
 ```
 
-Custom deleter for use with `std::unique_ptr<T, fn_deleter<T>>`, wrapping a DLL destroy function.
+Custom deleter for use with `std::unique_ptr<T, dll::FnDeleter<T>>`, wrapping a DLL destroy function.
 
-### `ref_dll_ptr<T>`
+### `dll::RefPtr<T>`
 
 Non-atomic reference-counted shared pointer. Single-thread safe.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `ref_dll_ptr(p, d)` | — | Construct with pointer and deleter |
+| `dll::RefPtr(p, d)` | — | Construct with pointer and deleter |
 | `get()` | `T*` | Raw pointer |
 | `operator->()` | `T*` | Pointer access |
 | `operator*()` | `T&` | Dereference |
 | `use_count()` | `uint32_t` | Current reference count |
 | `view_count()` | `uint32_t` | Current view count |
 | `try_unique()` | `bool` | Whether `use_count() == 1` |
-| `from_unique(uhd)` | `ref_dll_ptr<D>` | Static factory from `unique_handle` |
+| `from_unique(uhd)` | `dll::RefPtr<D>` | Static factory from `dll::UniqueHandle` |
 
-### `view_dll_ptr<T>`
+### `dll::ViewPtr<T>`
 
-Non-owning observer for `ref_dll_ptr<T>`. Does not prevent resource destruction.
+Non-owning observer for `dll::RefPtr<T>`. Does not prevent resource destruction.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `view_dll_ptr()` | — | Default constructor, empty |
-| `view_dll_ptr(const ref_dll_ptr<T>&)` | — | Construct from a `ref_dll_ptr` |
+| `dll::ViewPtr()` | — | Default constructor, empty |
+| `dll::ViewPtr(const dll::RefPtr<T>&)` | — | Construct from a `dll::RefPtr` |
 | `alive()` | `bool` | Whether the referenced resource is still alive |
 | `expired()` | `bool` | Whether the resource has been destroyed |
-| `lock()` | `ref_dll_ptr<T>` | Promote to a `ref_dll_ptr` (if alive) |
+| `lock()` | `dll::RefPtr<T>` | Promote to a `dll::RefPtr` (if alive) |
 | `use_count()` | `uint32_t` | Current ref count of the underlying resource |
 
-### `shared_dll_ptr<T>`
+### `dll::SharedPtr<T>`
 
 Atomic reference-counted shared pointer. Thread-safe.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `shared_dll_ptr(p, d)` | — | Construct with pointer and deleter |
+| `dll::SharedPtr(p, d)` | — | Construct with pointer and deleter |
 | `get()` | `T*` | Raw pointer |
 | `use_count()` | `uint32_t` | Current strong reference count |
 | `weak_count()` | `uint32_t` | Current weak reference count |
 | `try_unique()` | `bool` | Whether `use_count() == 1` |
-| `from_unique(uhd)` | `shared_dll_ptr<D>` | Static factory from `unique_handle` |
+| `from_unique(uhd)` | `dll::SharedPtr<D>` | Static factory from `dll::UniqueHandle` |
 
-### `weak_dll_ptr<T>`
+### `dll::WeakPtr<T>`
 
-Non-owning observer for `shared_dll_ptr<T>`. Does not prevent resource destruction.
+Non-owning observer for `dll::SharedPtr<T>`. Does not prevent resource destruction.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `weak_dll_ptr()` | — | Default constructor, empty |
-| `weak_dll_ptr(const shared_dll_ptr<T>&)` | — | Construct from a `shared_dll_ptr` |
+| `dll::WeakPtr()` | — | Default constructor, empty |
+| `dll::WeakPtr(const dll::SharedPtr<T>&)` | — | Construct from a `dll::SharedPtr` |
 | `alive()` | `bool` | Whether the referenced resource is still alive |
 | `expired()` | `bool` | Whether the resource has been destroyed |
-| `lock()` | `shared_dll_ptr<T>` | Promote to a `shared_dll_ptr` (if alive) |
+| `lock()` | `dll::SharedPtr<T>` | Promote to a `dll::SharedPtr` (if alive) |
 | `use_count()` | `uint32_t` | Current strong count of the underlying resource |
 
-## 11. `refl.h` — Dynamic mics Integration
+## 11. `ABIX/Bridge/Refl.h` — Dynamic mics Integration
 
-**Namespace:** `skl::abix::refl` (mics helpers), `skl::abix` (convenience types)
+**Namespace:** `skl::abix::bridge`
 
 ### Type Aliases
 
@@ -837,10 +839,10 @@ Creates a `FieldAccessor` for a field at a known byte offset within a POD type. 
 
 ```cpp
 template<typename R, typename... Args>
-inline DynamicAny dll_func_call_any(dll_func<R(Args...)> &fn, Args... args);
+inline DynamicAny dll_func_call_any(dll::Function<R(Args...)> &fn, Args... args);
 ```
 
-Wraps a `dll_func` call and returns the result as a `DynamicAny`. For `void` return types, returns an empty `DynamicAny`.
+Wraps a `dll::Function` call and returns the result as a `DynamicAny`. For `void` return types, returns an empty `DynamicAny`.
 
 ### `any_cast_val<T>()`
 
@@ -854,23 +856,23 @@ Casts a `DynamicAny` to `T` by value. Returns `T{}` if the cast fails.
 ### `register_dll_table()`
 
 ```cpp
-inline void register_dll_table(const table *t, const char *dll_name);
+inline void register_dll_table(const runtime::Table *t, const char *dll_name);
 ```
 
 Registers all entries from an ABIX export table into the dynamic mics registry.
 
-### Compile-time mics Helpers (`refl` namespace)
+### Compile-time mics Helpers (`bridge` namespace)
 
 | Symbol | Description |
 |--------|-------------|
-| `fn_entry_tag<Sig, NameHash>` | Tag type pairing a signature hash and name hash |
-| `has_unique_sigs<TypeList>` | Compile-time check: all `fn_entry_tag` entries in the list have unique signatures |
-| `find_by_sig<TypeList, TargetSig>` | Compile-time search: find the index of a `fn_entry_tag` with matching `sig` |
+| `FnEntryTag<SigValue, NameHashValue>` | Tag type pairing a signature hash and name hash |
+| `HasUniqueSigs<TypeList>` | Compile-time check: all `FnEntryTag` entries in the list have unique signatures |
+| `FindBySig<TypeList, TargetSig>` | Compile-time search: find the index of a `FnEntryTag` with matching `sig` |
 
 ## 12. Complete Usage Example
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 using namespace skl::abix;
 
@@ -892,16 +894,16 @@ SKL_ABIX_DEFINE_TABLE(
 // ============================================================
 void host_example() {
     // --- Load the DLL ---
-    dll_object lib;
+    dll::Object lib;
     if (!lib.load("math_dll.dll")) {
         printf("Failed to load: error=%d\n", (int)last_error());
         return;
     }
 
     // --- Resolve typed function handles ---
-    auto add = dll_func<int(int, int)>(lib, "add");
-    auto mul = dll_func<double(double, double)>(lib, "multiply");
-    auto ver = dll_func<const char *()>(lib, "get_version");
+    auto add = dll::Function<int(int, int)>(lib, "add");
+    auto mul = dll::Function<double(double, double)>(lib, "multiply");
+    auto ver = dll::Function<const char *()>(lib, "get_version");
 
     // --- Call with type safety ---
     if (add.valid()) {
@@ -919,7 +921,7 @@ void host_example() {
     }
 
     // --- Signature mismatch detection ---
-    auto bad = dll_func<void(double)>(lib, "add");  // Wrong signature!
+    auto bad = dll::Function<void(double)>(lib, "add");  // Wrong signature!
     if (!bad.valid()) {
         printf("Signature mismatch detected (error=%d)\n", (int)last_error());
     }
@@ -928,31 +930,31 @@ void host_example() {
     // In version_dll.cpp:
     //   SKL_ABIX_ENTRY_FULL("log", log_v1, Cdecl, SKL_ABIX_VERSION("1.0"), 0),
     //   SKL_ABIX_ENTRY_FULL("log", log_v2, Cdecl, SKL_ABIX_VERSION("2.0"), 0),
-    dll_object vlib;
+    dll::Object vlib;
     vlib.load("version_dll.dll");
-    auto log_v1 = dll_func<void(const char *)>(vlib, "log", SKL_ABIX_VERSION("1.0"));
-    auto log_v2 = dll_func<void(const char *, int)>(vlib, "log", SKL_ABIX_VERSION("2.0"));
+    auto log_v1 = dll::Function<void(const char *)>(vlib, "log", SKL_ABIX_VERSION("1.0"));
+    auto log_v2 = dll::Function<void(const char *, int)>(vlib, "log", SKL_ABIX_VERSION("2.0"));
     log_v1("hello from v1 client");
     log_v2("hello from v2 client", 7);
 
     // --- Resource management with smart pointers ---
-    dll_object rlib;
+    dll::Object rlib;
     rlib.load("resource_dll.dll");
-    auto create = dll_func<Resource *(int)>(rlib, "create_resource");
-    auto destroy = dll_func<void(Resource *)>(rlib, "destroy_resource");
+    auto create = dll::Function<Resource *(int)>(rlib, "create_resource");
+    auto destroy = dll::Function<void(Resource *)>(rlib, "destroy_resource");
 
     {
-        unique_dll_ptr<Resource> res(create(42), destroy.raw());
+        dll::UniquePtr<Resource> res(create(42), destroy.raw());
         // Resource automatically destroyed when res goes out of scope
     }
 
     // --- Cross-boundary callback ---
-    dll_object clib;
+    dll::Object clib;
     clib.load("callback_dll.dll");
-    auto reg = dll_func<void(function_dll<void(int)>)>(clib, "register_callback");
+    auto reg = dll::Function<void(runtime::Function<void(int)>)>(clib, "register_callback");
 
     int captured = 100;
-    function_dll<void(int)> cb = [captured](int x) {
+    runtime::Function<void(int)> cb = [captured](int x) {
         printf("Callback: captured=%d, x=%d\n", captured, x);
     };
     reg(std::move(cb));

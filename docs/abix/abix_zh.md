@@ -45,7 +45,7 @@
 |------|------|
 | 记录 ABI 事实 | 类型、布局、字段、函数、符号的真实状态 |
 | 记录 ABI IR | Map 操作的中间表示（语言无关） |
-| 记录兼容性 | LayoutHash / SignatureHash / Compatibility |
+| 记录兼容性 | LayoutHash / SignatureHash / Compat |
 | 支持 mmap | 二进制格式，零反序列化，直接访问 |
 | 支持投影 | 可被 AMC 投影为 C++ / Rust / Zig 等目标代码 |
 
@@ -84,7 +84,7 @@ graph TD
     R --> H["Function Table"]
     R --> I["Parameter Table"]
     R --> J["Symbol Table"]
-    R --> K["Compatibility Table"]
+    R --> K["Compat Table"]
     R --> L["Map Table"]
     R --> M["Map Operation Table"]
     R --> N["Dependency Table"]
@@ -98,7 +98,7 @@ graph TD
 |-----------|------|
 | `Target` 节 | 合并入 `ABI Identity`，职责统一为"此 artifact 的编译环境" |
 | `Hash Table` | 当前 AMC v4 required section，保存 HashDescriptor 与 canonical hash records |
-| `Compatibility Table` 中的 `source/target_layout_hash` | 由 source/target TypeId 查 Type Table → Layout Table 推导 |
+| `Compat Table` 中的 `source/target_layout_hash` | 由 source/target TypeId 查 Type Table → Layout Table 推导 |
 | Type Table 中的 `field_begin` / `field_count` | 通过 `layout_index` 从 Layout Table 获取 |
 | Symbol Table 中的 `target_hash` | 改为 `(target_kind, target_index)` typed index |
 | Parameter Table 中的 `position` | 由数组顺序推导 |
@@ -133,19 +133,19 @@ Section Directory，当前 required sections 的 ID 为：`1 Strings`、`2 Ident
 已实现的 string 引用一律为 `(offset, length)`；Identity record 还携带 package name 和
 package version 的该引用。读者会拒绝错误目录范围、错误 required entry size、越界字符串
 引用、非法 TypeKind/SymbolKind，以及不满足 Core layout/type 引用不变量的 artifact。
-Hash Table 已作为当前 required profile 实现；Compatibility、Map IR、Dependency 和
+Hash Table 已作为当前 required profile 实现；Compat、Map IR、Dependency 和
 目录项为 `{section_id, offset, byte_length, count, entry_size, flags}`。`flags.required`
-要求 reader 认识该 section；未知 optional section 会被安全跳过。Compatibility、Map 和
+要求 reader 认识该 section；未知 optional section 会被安全跳过。Compat、Map 和
 MapOperation 当前是 optional section。Hash Cache sections 仍为后续扩展。
 
-运行时集成使用 `abix/runtime_descriptor.h` 的固定布局 descriptor。MICS Runtime 的
+运行时集成使用 `ABIX/Metadata/Descriptor.h` 的固定布局 descriptor。MICS Runtime 的
 `TypeId` 与 ABIX `model::TypeId` 均为完整 Hash128；跨命名空间转换必须通过显式的
-`abix/mics_bridge.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
+`ABIX/Bridge/MICS.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
 
-`abix/runtime_registry.h` 提供 `RuntimeRegistry<Capacity>` bridge。它接收生成的
+`ABIX/Runtime/Registry.h` 提供 `runtime::Registry<Capacity>` bridge。它接收生成的
 `ModuleDescriptor`，在写入前完成 module 级完整性检查、重复 TypeId 检查和字段/函数类型
 引用检查；失败时不会留下部分注册结果。成功后同时保留 runtime descriptor 指针和
-canonical `MetadataRegistry` entry，可按 Hash128 或名称查询。
+canonical `metadata::Registry` entry，可按 Hash128 或名称查询。
 
 ### Section Directory
 
@@ -316,7 +316,7 @@ Offset  Size  Field             (per record)
 
 **精简**：`target_hash` 改为 `(target_kind, target_index)` typed index。Hash 和 index 同时保存没有必要——index 更快且无碰撞风险。
 
-### Compatibility Table
+### Compat Table
 
 ```
 Offset  Size  Field             (per record)
@@ -727,4 +727,3 @@ graph TD
     E --> H["Static ABI"]
     F --> I["Static ABI"]
 ```
-

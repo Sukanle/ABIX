@@ -39,7 +39,7 @@ def main() -> None:
             "-S", os.path.join(amc_root, "amc/tests/cmake_fixture"),
             "-B", build_dir,
             "-G", "Ninja",
-            f"-DAMC_MODULE_DIR={amc_root}/amc/cmake",
+            f"-DAMC_MODULE_DIR={amc_root}/amc/CMake",
             f"-DAMC_FIXTURE_DIR={amc_root}/amc/tests/fixtures",
             f"-DAMC_EXECUTABLE={amc_bin}/amc",
         ]

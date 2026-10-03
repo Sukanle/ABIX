@@ -174,7 +174,7 @@ retained as optional provenance that never participates in identity. See
 * **Source origin is not ABI identity**: the optional debug `sources` section is
   excluded from `ABIHash`.
 
-## 12. Compatibility Rules
+## 12. Compat Rules
 
 Comparing a source ABI to a target ABI classifies each type. A source type is
 paired with a target type by canonical name for nominal types, falling back to
@@ -291,7 +291,7 @@ ABIX Format 2.x
 AMC 3.x MAY consume ABIX files produced by AMC 2.x when the required Format
 Version and Specification Revision/Profile are supported.
 
-Compatibility is defined by the reader's supported versions and capabilities;
+Compat is defined by the reader's supported versions and capabilities;
 it MUST NOT be assumed to be bidirectional.
 
 ## 15. Extension Rules
@@ -307,7 +307,7 @@ it MUST NOT be assumed to be bidirectional.
 * Reserved fields must be written as zero and ignored on read.
 * A reader must not rely on reserved bits retaining a value across versions.
 
-## 17. Forward / Backward Compatibility
+## 17. Forward / Backward Compat
 
 * **Backward**: a newer reader must read older artifacts by skipping unknown
   optional data and honouring reserved-field rules.

@@ -80,7 +80,7 @@ diff 结果将每个类型分类为下面的兼容性等级。
 
 ## 加载期跨 Module 校验
 
-`RuntimeRegistry` 注册模块时，同一 TypeID 必须解析到同一 LayoutHash：
+`runtime::Registry` 注册模块时，同一 TypeID 必须解析到同一 LayoutHash：
 
 ```mermaid
 graph TD

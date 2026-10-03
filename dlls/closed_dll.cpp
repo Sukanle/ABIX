@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "abix/abix.hpp"    // IWYU pragma: keep
+#include "ABIX/ABIX.h"    // IWYU pragma: keep
 #include "plugin_types.h"   // IWYU pragma: keep
 
 using namespace skl::abix;

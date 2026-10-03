@@ -1,7 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <atomic>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 // --- u32 load baseline ---
 static uint32_t g_raw_load_u32 = 42;
@@ -26,7 +26,7 @@ BENCHMARK(BM_StdAtomic_Load_U32);
 
 static void BM_ABIX_Atomic_Load_U32(benchmark::State &state) {
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::load_acquire(&g_abix_load_u32);
+        uint32_t r = skl::abix::util::load_acquire(&g_abix_load_u32);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -55,7 +55,7 @@ BENCHMARK(BM_StdAtomic_Store_U32);
 
 static void BM_ABIX_Atomic_Store_U32(benchmark::State &state) {
     for (auto _ : state) {
-        skl::abix::atomic::store_release(&g_abix_store_u32, 42U);
+        skl::abix::util::store_release(&g_abix_store_u32, 42U);
         benchmark::DoNotOptimize(g_abix_store_u32);
     }
 }
@@ -86,10 +86,10 @@ BENCHMARK(BM_StdAtomic_Inc_U32);
 
 static void BM_ABIX_Atomic_Inc_U32(benchmark::State &state) {
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::inc_relaxed(&g_abix_inc_u32);
+        uint32_t r = skl::abix::util::inc_relaxed(&g_abix_inc_u32);
         benchmark::DoNotOptimize(r);
     }
-    skl::abix::atomic::store_relaxed(&g_abix_inc_u32, 0U);
+    skl::abix::util::store_relaxed(&g_abix_inc_u32, 0U);
 }
 BENCHMARK(BM_ABIX_Atomic_Inc_U32);
 
@@ -97,7 +97,7 @@ BENCHMARK(BM_ABIX_Atomic_Inc_U32);
 static void BM_Atomic_Load_U32_Acquire(benchmark::State &state) {
     uint32_t v = 42;
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::load_acquire(&v);
+        uint32_t r = skl::abix::util::load_acquire(&v);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -106,7 +106,7 @@ BENCHMARK(BM_Atomic_Load_U32_Acquire);
 static void BM_Atomic_Load_U32_Relaxed(benchmark::State &state) {
     uint32_t v = 42;
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::load_relaxed(&v);
+        uint32_t r = skl::abix::util::load_relaxed(&v);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -116,7 +116,7 @@ BENCHMARK(BM_Atomic_Load_U32_Relaxed);
 static void BM_Atomic_Store_U32_Release(benchmark::State &state) {
     uint32_t v = 0;
     for (auto _ : state) {
-        skl::abix::atomic::store_release(&v, 42U);
+        skl::abix::util::store_release(&v, 42U);
         benchmark::DoNotOptimize(v);
     }
 }
@@ -125,7 +125,7 @@ BENCHMARK(BM_Atomic_Store_U32_Release);
 static void BM_Atomic_Store_U32_Relaxed(benchmark::State &state) {
     uint32_t v = 0;
     for (auto _ : state) {
-        skl::abix::atomic::store_relaxed(&v, 42U);
+        skl::abix::util::store_relaxed(&v, 42U);
         benchmark::DoNotOptimize(v);
     }
 }
@@ -135,29 +135,29 @@ BENCHMARK(BM_Atomic_Store_U32_Relaxed);
 static void BM_Atomic_Inc_U32(benchmark::State &state) {
     uint32_t v = 0;
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::inc_relaxed(&v);
+        auto r = skl::abix::util::inc_relaxed(&v);
         benchmark::DoNotOptimize(r);
     }
-    skl::abix::atomic::store_relaxed(&v, 0U);
+    skl::abix::util::store_relaxed(&v, 0U);
 }
 BENCHMARK(BM_Atomic_Inc_U32);
 
 static void BM_Atomic_Dec_U32(benchmark::State &state) {
     uint32_t v = 100'000'000;
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::dec_relaxed(&v);
+        auto r = skl::abix::util::dec_relaxed(&v);
         benchmark::DoNotOptimize(r);
     }
-    skl::abix::atomic::store_relaxed(&v, 100'000'000U);
+    skl::abix::util::store_relaxed(&v, 100'000'000U);
 }
 BENCHMARK(BM_Atomic_Dec_U32);
 
 static void BM_Atomic_CAS_U32(benchmark::State &state) {
     uint32_t v = 0;
     for (auto _ : state) {
-        bool ok = skl::abix::atomic::cas_relaxed(&v, 0U, 1U);
+        auto ok = skl::abix::util::cas_relaxed(&v, 0U, 1U);
         benchmark::DoNotOptimize(ok);
-        skl::abix::atomic::store_relaxed(&v, 0U);
+        skl::abix::util::store_relaxed(&v, 0U);
     }
 }
 BENCHMARK(BM_Atomic_CAS_U32);
@@ -166,7 +166,7 @@ BENCHMARK(BM_Atomic_CAS_U32);
 static void BM_Atomic_Load_U64_Acquire(benchmark::State &state) {
     uint64_t v = 42;
     for (auto _ : state) {
-        uint64_t r = skl::abix::atomic::load_acquire(&v);
+        auto r = skl::abix::util::load_acquire(&v);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -175,7 +175,7 @@ BENCHMARK(BM_Atomic_Load_U64_Acquire);
 static void BM_Atomic_Store_U64_Release(benchmark::State &state) {
     uint64_t v = 0;
     for (auto _ : state) {
-        skl::abix::atomic::store_release(&v, 42ULL);
+        skl::abix::util::store_release(&v, 42ULL);
         benchmark::DoNotOptimize(v);
     }
 }
@@ -184,10 +184,10 @@ BENCHMARK(BM_Atomic_Store_U64_Release);
 static void BM_Atomic_Inc_AcqRel_U64(benchmark::State &state) {
     uint64_t v = 0;
     for (auto _ : state) {
-        uint64_t r = skl::abix::atomic::inc_acq_rel(&v);
+        auto r = skl::abix::util::inc_acq_rel(&v);
         benchmark::DoNotOptimize(r);
     }
-    skl::abix::atomic::store_release(&v, 0ULL);
+    skl::abix::util::store_release(&v, 0ULL);
 }
 BENCHMARK(BM_Atomic_Inc_AcqRel_U64);
 
@@ -196,7 +196,7 @@ static void BM_Atomic_Load_Pointer_Acquire(benchmark::State &state) {
     int payload = 42;
     void *p = &payload;
     for (auto _ : state) {
-        void *r = skl::abix::atomic::load_acquire(&p);
+        void *r = skl::abix::util::load_acquire(&p);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -206,7 +206,7 @@ static void BM_Atomic_Store_Pointer_Release(benchmark::State &state) {
     int payload = 42;
     void *p = nullptr;
     for (auto _ : state) {
-        skl::abix::atomic::store_release(&p, &payload);
+        skl::abix::util::store_release(&p, &payload);
         benchmark::DoNotOptimize(p);
         p = nullptr;
     }
@@ -216,7 +216,7 @@ BENCHMARK(BM_Atomic_Store_Pointer_Release);
 static void BM_Atomic_IncShared(benchmark::State &state) {
     static uint64_t g_shared_counter = 0;
     for (auto _ : state) {
-        uint64_t r = skl::abix::atomic::inc_acq_rel(&g_shared_counter);
+        auto r = skl::abix::util::inc_acq_rel(&g_shared_counter);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -226,7 +226,7 @@ static void BM_Atomic_PerThread_Inc(benchmark::State &state) {
     static uint32_t g_slots[64] = {};
     int tid = state.thread_index() % 64;
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::inc_relaxed(&g_slots[tid]);
+        auto r = skl::abix::util::inc_relaxed(&g_slots[tid]);
         benchmark::DoNotOptimize(r);
     }
 }
@@ -240,7 +240,7 @@ static void BM_FalseSharing_Adjacent(benchmark::State &state) {
     static uint32_t g_adjacent[64] = {};
     int tid = state.thread_index() % 64;
     for (auto _ : state) {
-        skl::abix::atomic::inc_relaxed(&g_adjacent[tid]);
+        skl::abix::util::inc_relaxed(&g_adjacent[tid]);
     }
 }
 BENCHMARK(BM_FalseSharing_Adjacent)->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
@@ -249,7 +249,7 @@ static void BM_FalseSharing_Padded(benchmark::State &state) {
     static PaddedCounter g_padded[64] = {};
     int tid = state.thread_index() % 64;
     for (auto _ : state) {
-        skl::abix::atomic::inc_relaxed(&g_padded[tid].value);
+        skl::abix::util::inc_relaxed(&g_padded[tid].value);
     }
 }
 BENCHMARK(BM_FalseSharing_Padded)->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);

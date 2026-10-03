@@ -783,11 +783,11 @@ Field: Foo::bar
 - LLDB 传统类型系统关注："这个类型是什么？"
 - ABIX 关注："这个类型能不能安全地作为另一个 ABI 类型使用？"
 
-##### ④ `abix verify` — 运行时 ABI Compatibility Debugger
+##### ④ `abix verify` — 运行时 ABI Compat Debugger
 
 ```
 (lldb) abix verify
-ABIX Compatibility
+ABIX Compat
 
 Host ↔ Plugin
 Functions  128/128 compatible
@@ -863,7 +863,7 @@ clangd → AST → ABIX clangd integration → AMC / libabix-abi → ABI analysi
 
 #### 核心功能
 
-##### ① ABI Compatibility Diagnostics
+##### ① ABI Compat Diagnostics
 
 用户在编辑器中修改类型定义时，实时检测 ABI 是否被破坏：
 

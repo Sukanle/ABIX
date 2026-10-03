@@ -1,5 +1,5 @@
 ---
-applyTo: "{abix/abi_model.h,abix/runtime_descriptor.h,amc/core/amc_core.h,amc/core/amc_core.cpp,amc/core/amc_metadata.h,amc/core/amc_metadata.cpp}"
+applyTo: "{abix/model/abi_model.h,abix/format/runtime_descriptor.h,amc/core/amc_core.h,amc/core/amc_core.cpp,amc/core/amc_metadata.h,amc/core/amc_metadata.cpp}"
 ---
 
 # ABI-semantic instructions

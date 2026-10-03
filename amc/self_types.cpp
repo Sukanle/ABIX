@@ -1,1 +1,1 @@
-#include "core/amc_core.h"
+#include "AMC/Core/Core.h"

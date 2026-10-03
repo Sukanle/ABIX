@@ -30,12 +30,12 @@ ABIX releases are project stages, not feature lists. Each major version marks a
 phase, so the version number itself carries the product story.
 
 ```text
-ABIX 1.0 — Foundation + Toolchain    the ABI foundation exists and ABIX is usable in real engineering
-ABIX 2.0 — Cross-language            Rust / Zig frontends and cross-language bindings
-ABIX 3.0 — Ecosystem                 others build on top of ABIX
+ABIX 0.1.0 — Foundation + Toolchain  the ABI foundation exists and ABIX is usable in real engineering
+ABIX 0.2.0 — Cross-language          Rust / Zig frontends and cross-language bindings
+ABIX 0.3.0 — Ecosystem               others build on top of ABIX
 ```
 
-### ABIX 1.0 — Foundation, self-hosting and toolchain (current/released)
+### ABIX 0.1.0 — Foundation, self-hosting and toolchain (current, pre-1.0/unstable)
 
 * ABI specification, metadata format, core runtime.
 * Bootstrap and self-hosting: ABIX describes and verifies its own public ABI.
@@ -46,7 +46,7 @@ ABIX 3.0 — Ecosystem                 others build on top of ABIX
 * ELF / Mach-O binary inspection.
 * Build-system and CI integration, runtime stability, benchmark baseline.
 
-### ABIX 2.0 — Cross-language (next)
+### ABIX 0.2.0 — Cross-language (next)
 
 The main line: ABIX IR as the common ABI representation across languages.
 
@@ -56,7 +56,7 @@ The main line: ABIX IR as the common ABI representation across languages.
   (for example C `double` → Rust `core::ffi::c_double`).
 * cross-language bindings and a C++ ↔ Rust interoperability demo.
 
-### ABIX 3.0 — Ecosystem (future)
+### ABIX 0.3.0 — Ecosystem (future)
 
 Target areas, not hard commitments:
 
@@ -118,11 +118,11 @@ Current and planned work:
 
 ## Release History
 
-ABIX uses standard SemVer tags from `v1.0.0` onward. The project stage is named
-in the release title (for example, `ABIX 1.0.0 — Foundation, self-hosting and
-toolchain`).
+ABIX uses standard SemVer tags, starting from the unstable `v0.1.0` line. The
+project stage is named in the release title (for example, `ABIX 0.1.0 —
+Foundation, self-hosting and toolchain`).
 
-* `v1.0.0` — Foundation, self-hosting and toolchain
+* `v0.1.0` — Foundation, self-hosting and toolchain (pre-1.0, unstable)
 
 ## Explicitly out of scope
 

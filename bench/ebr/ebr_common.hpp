@@ -5,7 +5,8 @@
 
 #include <benchmark/benchmark.h>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
+#include <type_traits>
 
 #if defined(__APPLE__)
 #  include <mach/mach.h>
@@ -39,13 +40,13 @@ inline bool set_thread_affinity(int cpu_id) {
 // ============================================================
 // Shared domain
 // ============================================================
-inline skl::abix::rcu_domain &domain = skl::abix::rcu_domain::instance();
+inline auto &domain = skl::abix::rcu::Domain::instance();
 
 // ============================================================
 // Layout diagnostics — print rcu_domain cache-line layout
 // ============================================================
 inline void print_rcu_domain_layout() {
-    size_t sz = sizeof(skl::abix::rcu_domain);
+    size_t sz = sizeof(skl::abix::rcu::Domain);
     printf("rcu_domain layout: sizeof=%zu, cache_lines=%zu\n", sz,
         (sz + SKL_ABIX_CACHE_LINE_SIZE - 1) / SKL_ABIX_CACHE_LINE_SIZE);
     printf("  epoch alignas:   %d\n", SKL_ABIX_CACHE_LINE_SIZE);

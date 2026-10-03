@@ -7,7 +7,7 @@
 // When AMC is available the build generates the contract from
 // `counter.abic.toml` and feeds it in (AUE_HAVE_GENERATED_CONTRACT); otherwise
 // a hand-written contract with the same entries is used.
-#include "aue.h"
+#include "Aue.h"
 
 #ifdef AUE_HAVE_GENERATED_CONTRACT
 #  include "counter_contract.hpp"
@@ -48,7 +48,7 @@ const aue::Entry kCounterEntries[] = {
 };
 
 const aue::Contract kCounterContract = {
-    // Kept in sync with `aue/counter.abic.toml`; the generated conformance
+    // Kept in sync with `Aue/counter.abic.toml`; the generated conformance
     // script asserts the runtime contract and the metadata agree on this hash.
     "counter",
     "0x1cfd421d673a1d40eff2cac77295f156",

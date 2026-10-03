@@ -7,7 +7,7 @@
 TEST_CASE("32.rcu_concurrent_stress", "[rcu][stress][concurrent]") {
     log_info("Test 32: RCU concurrent stress — N readers + 1 writer, verify no crash/UAF");
 
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(dll_path("math_dll").c_str()));
     REQUIRE(lib.is_loaded());
 
@@ -21,13 +21,13 @@ TEST_CASE("32.rcu_concurrent_stress", "[rcu][stress][concurrent]") {
     std::thread readers[N_READERS];
 
     for (int i = 0; i < N_READERS; ++i) {
-        readers[i] = std::thread([&, i]() {
+        readers[i] = std::thread([&]() {
             while (!start.load(std::memory_order_acquire)) {}
             int local_reads = 0;
             while (!stop.load(std::memory_order_acquire) && local_reads < ITERATIONS) {
-                const skl::abix::table *t = lib.enter_read();
+                const auto *t = lib.enter_read();
                 if (t) {
-                    if (t->magic != skl::abix::SKL_ABIX_TABLE_MAGIC) assertion_failures.fetch_add(1, std::memory_order_relaxed);
+                    if (t->magic != SKL_ABIX_TABLE_MAGIC) assertion_failures.fetch_add(1, std::memory_order_relaxed);
                     if (t->count <= 0) assertion_failures.fetch_add(1, std::memory_order_relaxed);
                     ++local_reads;
                 } else {
@@ -60,7 +60,7 @@ TEST_CASE("32.rcu_concurrent_stress", "[rcu][stress][concurrent]") {
 TEST_CASE("33.writer_concurrent", "[writer][stress][concurrent]") {
     log_info("Test 33: Writer concurrent — N writers reload simultaneously, verify serialization");
 
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(dll_path("math_dll").c_str()));
     REQUIRE(lib.is_loaded());
 
@@ -88,7 +88,7 @@ TEST_CASE("33.writer_concurrent", "[writer][stress][concurrent]") {
     }
 
     REQUIRE(lib.is_loaded());
-    auto add = skl::abix::dll_func<int(int, int)>(lib, "add");
+    auto add = skl::abix::dll::Function<int(int, int)>(lib, "add");
     REQUIRE(add.valid());
     REQUIRE(add(2, 3) == 5);
     log_info(
@@ -96,7 +96,7 @@ TEST_CASE("33.writer_concurrent", "[writer][stress][concurrent]") {
 }
 
 TEST_CASE("34.arm_weak_memory_stress", "[arm][memory_order][stress]") {
-    #if defined(__arm__) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
+#if defined(__arm__) || defined(__aarch64__) || defined(_M_ARM) || defined(_M_ARM64)
     log_info("Test 34: ARM weak memory ordering — verify acquire/release ordering");
 
     SECTION("34a.store_buffer_pattern") {
@@ -143,12 +143,12 @@ TEST_CASE("34.arm_weak_memory_stress", "[arm][memory_order][stress]") {
             flag = 0;
 
             std::thread t1([&]() {
-                skl::abix::atomic::store_relaxed(&data, 42);
-                skl::abix::atomic::store_release(&flag, 1);
+                skl::abix::util::store_relaxed(&data, 42);
+                skl::abix::util::store_release(&flag, 1);
             });
             std::thread t2([&]() {
-                if (skl::abix::atomic::load_acquire(&flag) == 1) {
-                    uint32_t d = skl::abix::atomic::load_relaxed(&data);
+                if (skl::abix::util::load_acquire(&flag) == 1) {
+                    uint32_t d = skl::abix::util::load_relaxed(&data);
                     if (d != 42) ++bad_reads;
                 }
             });
@@ -171,10 +171,10 @@ TEST_CASE("34.arm_weak_memory_stress", "[arm][memory_order][stress]") {
 
             std::thread t1([&]() {
                 payload = 99;
-                skl::abix::atomic::store_release(&ptr, &payload);
+                skl::abix::util::store_release(&ptr, &payload);
             });
             std::thread t2([&]() {
-                void *p = skl::abix::atomic::load_acquire(&ptr);
+                void *p = skl::abix::util::load_acquire(&ptr);
                 if (p) {
                     uint32_t v = *static_cast<uint32_t *>(p);
                     if (v != 99) ++bad_reads;
@@ -199,13 +199,13 @@ TEST_CASE("34.arm_weak_memory_stress", "[arm][memory_order][stress]") {
 
             std::thread t1([&]() {
                 data = 77;
-                skl::abix::atomic::store_release(&data, 77);
-                skl::abix::atomic::inc_acq_rel(&counter);
+                skl::abix::util::store_release(&data, 77);
+                skl::abix::util::inc_acq_rel(&counter);
             });
             std::thread t2([&]() {
-                uint64_t c = skl::abix::atomic::load_acquire(&counter);
+                uint64_t c = skl::abix::util::load_acquire(&counter);
                 if (c > 0) {
-                    uint32_t d = skl::abix::atomic::load_acquire(&data);
+                    uint32_t d = skl::abix::util::load_acquire(&data);
                     if (d != 77) ++bad_reads;
                 }
             });
@@ -216,7 +216,9 @@ TEST_CASE("34.arm_weak_memory_stress", "[arm][memory_order][stress]") {
         log_info("Atomic inc_acq_rel ordering: %d bad reads / %d iterations", bad_reads, ITER);
     }
 #else
-    log_info("Test 34: ARM weak memory ordering — skipped (non-ARM platform, weak memory ordering test only meaningful on ARM)");
+    log_info(
+        "Test 34: ARM weak memory ordering — skipped (non-ARM platform, weak memory ordering test only meaningful on "
+        "ARM)");
 #endif
 }
 
@@ -224,7 +226,7 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
     log_info("Test 35: TSan race verification — concurrent RCU path should be clean");
 
     SECTION("35a.concurrent_enter_exit") {
-        skl::abix::dll_object lib;
+        skl::abix::dll::Object lib;
         REQUIRE(lib.load(dll_path("math_dll").c_str()));
 
         static constexpr int N = 4;
@@ -235,9 +237,10 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
         for (int i = 0; i < N; ++i) {
             threads[i] = std::thread([&]() {
                 for (int j = 0; j < ITER; ++j) {
-                    const skl::abix::table *t = lib.enter_read();
+                    const auto *t = lib.enter_read();
                     if (t) {
-                        if (t->magic != skl::abix::SKL_ABIX_TABLE_MAGIC) assertion_failures.fetch_add(1, std::memory_order_relaxed);
+                        if (t->magic != SKL_ABIX_TABLE_MAGIC)
+                            assertion_failures.fetch_add(1, std::memory_order_relaxed);
                     }
                     lib.exit_read();
                 }
@@ -251,7 +254,7 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
     }
 
     SECTION("35b.concurrent_reload_and_read") {
-        skl::abix::dll_object lib;
+        skl::abix::dll::Object lib;
         REQUIRE(lib.load(dll_path("math_dll").c_str()));
 
         std::atomic<bool> start{false};
@@ -261,9 +264,9 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
         std::thread reader([&]() {
             while (!start.load(std::memory_order_acquire)) {}
             while (!stop.load(std::memory_order_acquire)) {
-                const skl::abix::table *t = lib.enter_read();
+                const auto *t = lib.enter_read();
                 if (t) {
-                    if (t->magic != skl::abix::SKL_ABIX_TABLE_MAGIC) assertion_failures.fetch_add(1, std::memory_order_relaxed);
+                    if (t->magic != SKL_ABIX_TABLE_MAGIC) assertion_failures.fetch_add(1, std::memory_order_relaxed);
                 }
                 lib.exit_read();
             }
@@ -281,13 +284,13 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
     }
 
     SECTION("35c.concurrent_unload_and_read") {
-        skl::abix::dll_object lib;
+        skl::abix::dll::Object lib;
         REQUIRE(lib.load(dll_path("math_dll").c_str()));
 
         std::atomic<bool> reader_done{false};
         std::atomic<bool> reader_ok{false};
         std::thread reader([&]() {
-            const skl::abix::table *t = lib.enter_read();
+            const auto *t = lib.enter_read();
             reader_ok.store(t != nullptr, std::memory_order_relaxed);
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             lib.exit_read();
@@ -304,7 +307,7 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
     }
 
     SECTION("35d.concurrent_refcount") {
-        skl::abix::dll_object lib;
+        skl::abix::dll::Object lib;
         REQUIRE(lib.load(dll_path("math_dll").c_str()));
 
         static constexpr int N = 4;
@@ -313,8 +316,8 @@ TEST_CASE("35.tsan_race_verification", "[tsan][race][concurrent]") {
         for (int i = 0; i < N; ++i) {
             threads[i] = std::thread([&]() {
                 for (int j = 0; j < 100; ++j) {
-                    lib.add_ref();
-                    lib.release_ref();
+                    auto handle = lib.control();
+                    (void)handle;
                 }
             });
         }

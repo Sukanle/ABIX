@@ -4,7 +4,7 @@
 #include <string>
 #include <cstdio>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 #if defined(_MSC_VER)
 #  define ABIX_NOINLINE __declspec(noinline)

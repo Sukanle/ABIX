@@ -10,7 +10,7 @@ the practical basics; the design context lives in [`docs/`](docs/).
 * **IR design** — sharpen the ABI model and its serialization.
 * **Code generation** — projections, bindings and adapters.
 * **Runtime integration** — registry, binding, dispatch, adaptation.
-* **Compatibility testing** — real-world ABI break cases.
+* **Compat testing** — real-world ABI break cases.
 * **Build-system integration** — CMake/packaging/CI.
 * **Documentation and examples** — especially a first walkthrough for your
   language/toolchain.

@@ -197,7 +197,7 @@ fixed-width type, since the alias encodes the target's C ABI.
 | Field | Type | Description |
 |------|------|------|
 | `enable` | bool | Whether to generate compatibility information |
-| `mode` | enum | Compatibility check mode: `layout_hash` / `type_id` / `strict` |
+| `mode` | enum | Compat check mode: `layout_hash` / `type_id` / `strict` |
 | `max_minor_version` | uint | Maximum compatible minor version number |
 
 ### `[map]`

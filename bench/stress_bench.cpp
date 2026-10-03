@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 inline void busy_wait_ns(uint64_t ns) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -73,7 +73,7 @@ static void report_latency(benchmark::State &state, const LatencyStats &s, const
 }
 
 static void BM_EBR_ReaderScalability(benchmark::State &state) {
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     uint64_t ops = 0;
     for (auto _ : state) {
         dom.enter();
@@ -93,7 +93,7 @@ BENCHMARK(BM_EBR_ReaderScalability)
 
 static void BM_EBR_WriterScalability(benchmark::State &state) {
     const int readers = (int)state.range(0);
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     std::atomic<bool> running{true};
     std::vector<std::thread> workers;
 
@@ -132,7 +132,7 @@ BENCHMARK(BM_EBR_WriterScalability)
 static void BM_EBR_ReadWriteRatio(benchmark::State &state) {
     const int readers = (int)state.range(0);
     const int writers = (int)state.range(1);
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     std::atomic<bool> running{true};
     std::atomic<bool> start{false};
     std::atomic<uint64_t> ready{0};
@@ -218,7 +218,7 @@ BENCHMARK(BM_EBR_ReadWriteRatio)
 
 static void BM_EBR_GracePeriod(benchmark::State &state) {
     const uint64_t reader_ns = (uint64_t)state.range(0);
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     std::atomic<bool> running{true};
     std::atomic<bool> reader_inside{false};
     std::atomic<uint64_t> sync_latency_ns{0};
@@ -256,7 +256,7 @@ BENCHMARK(BM_EBR_GracePeriod)->Arg(10)->Arg(100)->Arg(1'000)->Arg(10'000)->Arg(1
 
 static void BM_EBR_ReclaimBatch(benchmark::State &state) {
     const int batch = (int)state.range(0);
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     for (auto _ : state) {
         for (int i = 0; i < batch; ++i)
             dom.retire(nullptr, [](void *) noexcept {});
@@ -272,7 +272,7 @@ BENCHMARK(BM_EBR_ReclaimBatch)->Arg(1)->Arg(10)->Arg(100)->Arg(1'000)->Arg(10'00
 static void BM_EBR_MixedWorkload(benchmark::State &state) {
     const int readers = (int)state.range(0);
     const int writer_interval = (int)state.range(1);
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     std::atomic<bool> running{true};
     std::atomic<bool> start{false};
     std::atomic<uint64_t> ready{0};
@@ -291,7 +291,7 @@ static void BM_EBR_MixedWorkload(benchmark::State &state) {
             while (running.load(std::memory_order_acquire)) {
                 auto t1 = std::chrono::high_resolution_clock::now();
                 dom.enter();
-                void *p = skl::abix::atomic::load_acquire(&ptr);
+                void *p = skl::abix::util::load_acquire(&ptr);
                 benchmark::DoNotOptimize(p);
                 dom.exit();
                 auto t2 = std::chrono::high_resolution_clock::now();
@@ -344,7 +344,7 @@ BENCHMARK(BM_EBR_MixedWorkload)
 static void BM_EBR_ReadWriteOps(benchmark::State &state) {
     const int readers = (int)state.range(0);
     const int writers = (int)state.range(1);
-    skl::abix::rcu_domain &dom = skl::abix::rcu_domain::instance();
+    auto &dom = skl::abix::rcu::Domain::instance();
     std::atomic<bool> running{true};
     std::atomic<uint64_t> reader_ops{0};
     std::atomic<uint64_t> writer_ops{0};
@@ -395,7 +395,7 @@ BENCHMARK(BM_EBR_ReadWriteOps)
 static void BM_Atomic_Inc_Contention(benchmark::State &state) {
     static uint32_t v = 0;
     for (auto _ : state) {
-        skl::abix::atomic::inc_relaxed(&v);
+        skl::abix::util::inc_relaxed(&v);
     }
 }
 BENCHMARK(BM_Atomic_Inc_Contention)->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
@@ -403,7 +403,7 @@ BENCHMARK(BM_Atomic_Inc_Contention)->Threads(1)->Threads(2)->Threads(4)->Threads
 static void BM_Atomic_Load_Contention(benchmark::State &state) {
     static uint32_t v = 42;
     for (auto _ : state) {
-        uint32_t r = skl::abix::atomic::load_acquire(&v);
+        auto r = skl::abix::util::load_acquire(&v);
         benchmark::DoNotOptimize(r);
     }
 }

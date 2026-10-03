@@ -30,7 +30,7 @@ static void BM_EBR_ProtectedLoad(benchmark::State &state) {
     void *ptr = &payload;
     for (auto _ : state) {
         domain.enter();
-        void *p = skl::abix::atomic::load_acquire(&ptr);
+        void *p = skl::abix::util::load_acquire(&ptr);
         benchmark::DoNotOptimize(p);
         domain.exit();
     }
@@ -46,7 +46,7 @@ static void BM_Atomic_LoadPointer_Raw(benchmark::State &state) {
     int payload = 42;
     void *ptr = &payload;
     for (auto _ : state) {
-        void *p = skl::abix::atomic::load_acquire(&ptr);
+        void *p = skl::abix::util::load_acquire(&ptr);
         benchmark::DoNotOptimize(p);
     }
 }

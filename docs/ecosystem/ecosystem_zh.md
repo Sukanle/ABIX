@@ -59,7 +59,7 @@ graph LR
 
 ```mermaid
 graph LR
-    A[Library Update] --> B[ABIX Diff] --> C[Compatibility Check] --> D[Migration / Rebuild]
+    A[Library Update] --> B[ABIX Diff] --> C[Compat Check] --> D[Migration / Rebuild]
 ```
 
 ABIX 不取代现有工具。它提供一种通用 ABI 表示，供构建系统、包管理器和绑定生成器消费。

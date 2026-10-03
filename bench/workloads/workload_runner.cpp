@@ -1,7 +1,7 @@
 #include "workload_runner.hpp"
 #include "workload.hpp"
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 #include <benchmark/benchmark.h>
 #include <string>
 #include <vector>
@@ -56,7 +56,7 @@ static void register_range_select(const std::string &name, const std::vector<int
 #endif
 
 static void BM_EBR_EnterExit(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     for (auto _ : state) {
         domain.enter();
         domain.exit();
@@ -64,12 +64,12 @@ static void BM_EBR_EnterExit(benchmark::State &state) {
 }
 
 static void BM_EBR_ProtectedLoad(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     int payload = 42;
     void *ptr = &payload;
     for (auto _ : state) {
         domain.enter();
-        void *p = skl::abix::atomic::load_acquire(&ptr);
+        void *p = skl::abix::util::load_acquire(&ptr);
         benchmark::DoNotOptimize(p);
         domain.exit();
     }
@@ -77,7 +77,7 @@ static void BM_EBR_ProtectedLoad(benchmark::State &state) {
 
 #ifdef SKL_ABIX_DEVELOPMENT
 static void BM_EBR_ReaderPhase(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     for (auto _ : state) {
         domain.enter();
         domain.exit();
@@ -85,7 +85,7 @@ static void BM_EBR_ReaderPhase(benchmark::State &state) {
 }
 
 static void BM_EBR_Retire(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     int batch = state.range(0);
     for (auto _ : state) {
         for (int i = 0; i < batch; ++i) {
@@ -99,7 +99,7 @@ static void BM_EBR_Retire(benchmark::State &state) {
 #endif
 
 static void BM_EBR_SyncPhase(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     domain.synchronize();
     for (auto _ : state) {
         domain.synchronize();
@@ -109,7 +109,7 @@ static void BM_EBR_SyncPhase(benchmark::State &state) {
 
 #ifdef SKL_ABIX_DEVELOPMENT
 static void BM_EBR_GracePhase(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     int retire_count = state.range(0);
     domain.synchronize();
     for (auto _ : state) {
@@ -124,7 +124,7 @@ static void BM_EBR_GracePhase(benchmark::State &state) {
 }
 #endif
 
-static uint64_t execute_schedule(const WorkloadSchedule &schedule, skl::abix::rcu_domain &domain, bool is_writer) {
+static uint64_t execute_schedule(const WorkloadSchedule &schedule, skl::abix::rcu::Domain &domain, bool is_writer) {
     uint64_t ops = 0;
     for (size_t i = 0; i < schedule.size; ++i) {
         switch (schedule.data[i]) {
@@ -178,7 +178,7 @@ static void register_workload_profile(const std::string &group_name, const Workl
 
         auto *bm = benchmark::RegisterBenchmark(full.c_str(),
             [schedule, writer_repeats, reader_repeats, thread_ops, synthetic_mixed](benchmark::State &state) {
-                auto &domain = skl::abix::rcu_domain::instance();
+                auto &domain = skl::abix::rcu::Domain::instance();
 
                 // Synthetic mixed: all threads execute the full schedule.
                 // Role-based: only thread 0 (writer) does Retire/Sync.
@@ -257,7 +257,7 @@ static void register_threshold_sweep(const std::string &group_name, const Worklo
 
             auto *bm = benchmark::RegisterBenchmark(
                 full.c_str(), [schedule, repeats, thread_ops, threshold](benchmark::State &state) {
-                    auto &domain = skl::abix::rcu_domain::instance();
+                    auto &domain = skl::abix::rcu::Domain::instance();
                     uint64_t retired_since_sync = 0;
 
                     domain.synchronize();

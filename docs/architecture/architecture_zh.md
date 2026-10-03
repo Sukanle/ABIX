@@ -118,7 +118,7 @@ ABIX
 ├── amc/       AMC 工具链：core/、cpp/ 前后端、dump/、mcp/
 ├── test/      运行时与单元测试（Catch2）
 ├── bench/     基准测试
-├── aue/       实验性 Lua 边界层 + 一致性运行器
+├── Aue/       实验性 Lua 边界层 + 一致性运行器
 ├── tools/     辅助脚本（MCP demo、token 成本、LLDB 命令）
 └── docs/      规范与设计
 ```

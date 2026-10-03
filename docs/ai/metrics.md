@@ -104,7 +104,7 @@ Speedup
 
 Not all metrics are available at the same project maturity.
 
-### Tier 1: Measurable now (ABIX 1.0+)
+### Tier 1: Measurable now (ABIX 0.1.0+)
 
 | Metric | Category |
 |--------|----------|

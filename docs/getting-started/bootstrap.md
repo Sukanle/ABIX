@@ -76,8 +76,8 @@ graph TD
     TypeInfo --> Field
     TypeInfo --> Method
     Layout --> TypeIdHash["TypeId / Hash"]
-    TypeIdHash --> Compatibility
-    Compatibility --> Map
+    TypeIdHash --> Compat
+    Compat --> Map
 ```
 
 ### Phase 1 — Bootstrap kernel
@@ -191,7 +191,7 @@ rather than being implied by the implementation.
 | `Function` | function description: name, signature hash, calling convention, parameters |
 | `Symbol` | exportable symbol: name, `TypeId`/`FunctionId`, visibility |
 | `MapInfo` | ABI mapping description: conversion rules from source type to target type |
-| `Compatibility` | compatibility rule: `TypeId` pair → compatible / incompatible |
+| `Compat` | compatibility rule: `TypeId` pair → compatible / incompatible |
 | `ABI Identity` | unique identity of platform, compiler and calling convention |
 | `Target` | target platform description: arch, OS, ABI convention |
 
@@ -242,24 +242,24 @@ The kernel is a static metadata loader with one entry point, not a registry.
 No `lookup()` / `insert()` / `erase()` API is defined for it.
 
 ```cpp
-namespace abix::bootstrap {
+namespace skl::abix::model {
 
-struct BootstrapRecord {
+struct BootRecord {
     uint64_t type_hash;
     uint32_t size;
     uint32_t align;
     const void* metadata;   // points at generated TypeDesc / TypeLayout
 };
 
-struct BootstrapImage {
-    const BootstrapRecord* records;
+struct BootImage {
+    const BootRecord* records;
     uint32_t count;
 };
 
 // the single entry point
-void abix_bootstrap(const BootstrapImage& image);
+BootStatus abix_bootstrap(const BootImage& image);
 
-} // namespace abix::bootstrap
+} // namespace skl::abix::model
 ```
 
 ### Constraints
@@ -292,20 +292,20 @@ length.
 
 ```cpp
 // static data placed in .rodata
-static const BootstrapRecord self_records[] = {
+static const BootRecord self_records[] = {
     { type_hash<RegistryEntry>, sizeof(RegistryEntry), alignof(RegistryEntry),
       &generated::RegistryEntry_Desc },
     // ...
 };
 
-static const BootstrapImage self_image = {
+static const BootImage self_image = {
     .records = self_records,
     .count   = sizeof(self_records) / sizeof(self_records[0])
 };
 
 void abix_initialize() {
-    abix::bootstrap::abix_bootstrap(self_image);
-    // after bootstrap completes, the BootstrapImage is no longer used
+    abix::model::abix_bootstrap(self_image);
+    // after bootstrap completes, the BootImage is no longer used
 }
 ```
 
@@ -355,7 +355,7 @@ graph TD
 
 ```mermaid
 flowchart TD
-    UNINITIALIZED --> BOOTSTRAP["BOOTSTRAP<br/>← load BootstrapImage"]
+    UNINITIALIZED --> BOOTSTRAP["BOOTSTRAP<br/>← load BootImage"]
     BOOTSTRAP --> SELF_METADATA["SELF_METADATA<br/>← register ABIX internal metadata"]
     SELF_METADATA --> RUNTIME["RUNTIME<br/>← runtime initialization"]
     RUNTIME --> PROMOTE["PROMOTE<br/>← publish to the formal Registry"]
@@ -452,12 +452,12 @@ compiler bootstrap stage 0, it is never required to describe itself. See
 * type, field, function, layout, `Hash128` and symbol metadata;
 * extraction of namespaces, aliases, bitfields, inheritance, access levels,
   template specializations and calling conventions;
-* `RuntimeRegistry` registration, `TypeId` lookup and the canonical registry
+* `runtime::Registry` registration, `TypeId` lookup and the canonical registry
   bridge;
 * compatibility / map IR and the `MapPrivate` constexpr operation plan;
 * a separate provider process and JSON-lines IPC;
 * `amc/self.abic.toml` generates `amc_core.abix` from a clean directory, and
-  the generated C++ descriptors register into `RuntimeRegistry`; lookups for
+  the generated C++ descriptors register into `runtime::Registry`; lookups for
   `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and
   `type_of<amc::CompatibilityRecord>()` resolve.
 
@@ -471,13 +471,13 @@ descriptors do not yet build `amc-cpp` itself.
 
 ### Self-hosting bootstrap
 
-1. `abix/self/abix_self.abic.toml` covers the core type, registry, map,
+1. `ABIX/self.abic.toml` covers the core type, registry, map,
    bootstrap and RCU/EBR types.
 2. AMC generates `build/abix_self.abix` from a clean build directory and emits
    `abix_self_metadata.hpp` for consumers.
 3. The generated `ModuleDescriptor` is attached through
-   `RuntimeRegistry::register_module()`; only two bootstrap kernel wire records
-   remain in `MetadataRegistry::bootstrap_self()` as the TCB.
+   `runtime::Registry::register_module()`; only two bootstrap kernel wire records
+   remain in `metadata::Registry::bootstrap_self()` as the TCB.
 4. Closure consumers verify `type_of<TypeInfo>()`, `type_of<RegistryEntry>()`,
    lookup by `TypeId` and name, the canonical registry bridge, and that
    generated descriptor size/alignment match the native types.
@@ -498,12 +498,12 @@ The ABIX runtime bootstrap milestones are complete.
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
-| M0 — ABI model | `TypeId`, `TypeDesc`, `TypeLayout`, `Field`, `Function`, `Symbol`, `MapInfo`, `Compatibility`, `ABI Identity`, `Target`; `Hash128` with TypeHash ≠ LayoutHash; RCU deliberately absent | Complete |
+| M0 — ABI model | `TypeId`, `TypeDesc`, `TypeLayout`, `Field`, `Function`, `Symbol`, `MapInfo`, `Compat`, `ABI Identity`, `Target`; `Hash128` with TypeHash ≠ LayoutHash; RCU deliberately absent | Complete |
 | M1 — `.abix` v0 | header, type/field/function tables (initial inline sequential serialization); `write_abix` / `read_abix` round-trip; `amc inspect` / `amc validate`; Section Directory with String Table dedup, offset/index references, length, flags and optional sections; ABI Identity, Target, Hash Table and Symbol Table sections | Complete |
-| M2 — Bootstrap kernel | `BootstrapImage`, `BootstrapRecord`, loader; no allocator, registry, RCU or ABIX API; wire format with explicit endianness and padding | Complete |
-| M3 — Runtime registry | type registration, lookup and validation; `Bootstrap → Registry → Type lookup` closed loop; registry self-description (`RegistryEntry` / `BootstrapMetadata`) | Complete |
-| M4 — Type self-hosting | formal `.abic` self-description configuration for ABIX core types; AMC-generated `.abix` metadata for core types, `RegistryEntry` and `TypeDescriptor`; static descriptors registered in `RuntimeRegistry`; verified `RuntimeRegistry::type_of<TypeDesc>()` returns its own metadata | Complete |
-| M5 — Compatibility | hash descriptor, hash domain, algorithm version and runtime key layering; `TypeHash`, `LayoutHash`, `SignatureHash` and compatibility checks | Complete |
+| M2 — Bootstrap kernel | `BootImage`, `BootRecord`, loader; no allocator, registry, RCU or ABIX API; wire format with explicit endianness and padding | Complete |
+| M3 — Runtime registry | type registration, lookup and validation; `Bootstrap → Registry → Type lookup` closed loop; registry self-description (`RegistryEntry` / `metadata::Bootstrap`) | Complete |
+| M4 — Type self-hosting | formal `.abic` self-description configuration for ABIX core types; AMC-generated `.abix` metadata for core types, `RegistryEntry` and `TypeDescriptor`; static descriptors registered in `runtime::Registry`; verified `runtime::Registry::type_of<TypeDesc>()` returns its own metadata | Complete |
+| M5 — Compat | hash descriptor, hash domain, algorithm version and runtime key layering; `TypeHash`, `LayoutHash`, `SignatureHash` and compatibility checks | Complete |
 | M6 — Runtime Map | `MapInfo` and dynamic map runtime conversion | Complete |
 | M7 — RCU / EBR | AMC extraction of `ThreadState`, `Epoch` and `RetiredNode` layout and membership; RCU/EBR types registered in the runtime registry; `ABIX Registry → ABIX RCU → ABIX Registry` initialization loop; lookup and retire proven not to depend on unregistered metadata | Complete |
 | M8 — MapPrivate | generated `MapPrivate<A, B>` static conversion; semantic equivalence with the runtime map (copy/default; conversions require a native converter) | Complete |

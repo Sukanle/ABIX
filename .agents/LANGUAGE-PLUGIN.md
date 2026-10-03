@@ -142,7 +142,7 @@ The C++ reference coverage lives in `amc/tests/`.
 7. Document the mapping in docs/ (and `_zh`).
 ```
 
-## 12. Version Compatibility
+## 12. Version Compat
 
 * A plugin targets a `.abix` format version and the ABIX IR revision.
 * When ABIX IR changes, plugins must be updated in the same change window; the

@@ -34,7 +34,7 @@ and shows the core operations: inspect, query, diff, verify and generate.
 
 Optional but used by parts of the toolchain and tests:
 
-* Lua 5.4 — builds the experimental Aue boundary layer (`aue/`)
+* Lua 5.4 — builds the experimental Aue boundary layer (`Aue/`)
 * `readelf`, `strip`, `lldb`, `clang++` — used by integration tests
 
 ## 2. Build
@@ -145,7 +145,7 @@ drift, because widening the ABI surface must be an explicit decision.
 ## 6. Generate
 
 ```bash
-# native C++17 projection (descriptors for RuntimeRegistry)
+# native C++17 projection (descriptors for runtime::Registry)
 ./build/Release/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
 
 # Aue (Lua) boundary contract

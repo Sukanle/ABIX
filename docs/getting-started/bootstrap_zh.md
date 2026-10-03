@@ -69,8 +69,8 @@ graph TD
     TypeInfo --> Field
     TypeInfo --> Method
     Layout --> TypeIdHash["TypeId / Hash"]
-    TypeIdHash --> Compatibility
-    Compatibility --> Map
+    TypeIdHash --> Compat
+    Compat --> Map
 ```
 
 ### Phase 1 —— Bootstrap 内核
@@ -177,7 +177,7 @@ constexpr LayoutHash layout_hash(...);
 | `Function` | 函数描述：name、signature hash、调用约定、参数 |
 | `Symbol` | 可导出符号：name、`TypeId`/`FunctionId`、visibility |
 | `MapInfo` | ABI 映射描述：源类型到目标类型的转换规则 |
-| `Compatibility` | 兼容性规则：`TypeId` 对 → compatible / incompatible |
+| `Compat` | 兼容性规则：`TypeId` 对 → compatible / incompatible |
 | `ABI Identity` | 平台、编译器与调用约定的唯一标识 |
 | `Target` | 目标平台描述：arch、OS、ABI convention |
 
@@ -226,24 +226,24 @@ graph TD
 `lookup()` / `insert()` / `erase()` API。
 
 ```cpp
-namespace abix::bootstrap {
+namespace skl::abix::model {
 
-struct BootstrapRecord {
+struct BootRecord {
     uint64_t type_hash;
     uint32_t size;
     uint32_t align;
     const void* metadata;   // 指向生成的 TypeDesc / TypeLayout
 };
 
-struct BootstrapImage {
-    const BootstrapRecord* records;
+struct BootImage {
+    const BootRecord* records;
     uint32_t count;
 };
 
 // 唯一入口函数
-void abix_bootstrap(const BootstrapImage& image);
+BootStatus abix_bootstrap(const BootImage& image);
 
-} // namespace abix::bootstrap
+} // namespace skl::abix::model
 ```
 
 ### 约束
@@ -275,20 +275,20 @@ struct BootstrapType {
 
 ```cpp
 // .rodata 中的静态数据
-static const BootstrapRecord self_records[] = {
+static const BootRecord self_records[] = {
     { type_hash<RegistryEntry>, sizeof(RegistryEntry), alignof(RegistryEntry),
       &generated::RegistryEntry_Desc },
     // ...
 };
 
-static const BootstrapImage self_image = {
+static const BootImage self_image = {
     .records = self_records,
     .count   = sizeof(self_records) / sizeof(self_records[0])
 };
 
 void abix_initialize() {
-    abix::bootstrap::abix_bootstrap(self_image);
-    // Bootstrap 完成后，BootstrapImage 不再使用
+    abix::model::abix_bootstrap(self_image);
+    // Bootstrap 完成后，BootImage 不再使用
 }
 ```
 
@@ -338,7 +338,7 @@ graph TD
 
 ```mermaid
 flowchart TD
-    UNINITIALIZED --> BOOTSTRAP["BOOTSTRAP<br/>← 加载 BootstrapImage"]
+    UNINITIALIZED --> BOOTSTRAP["BOOTSTRAP<br/>← 加载 BootImage"]
     BOOTSTRAP --> SELF_METADATA["SELF_METADATA<br/>← 注册 ABIX 内部元数据"]
     SELF_METADATA --> RUNTIME["RUNTIME<br/>← Runtime 初始化"]
     RUNTIME --> PROMOTE["PROMOTE<br/>← 发布到正式 Registry"]
@@ -428,11 +428,11 @@ stage 0，它永远不需要被 ABIX 描述。见 [`self-hosting_zh.md`](self-ho
 * 从 C++ header 到 `.abix` 再到静态 Runtime descriptor 的生成链路；
 * Type、field、function、layout、`Hash128` 与 Symbol metadata；
 * namespace、alias、bitfield、继承、访问级别、模板特化与调用约定的提取；
-* `RuntimeRegistry` 注册、`TypeId` 查询与 canonical registry bridge；
-* Compatibility / Map IR 与 `MapPrivate` constexpr 操作计划；
+* `runtime::Registry` 注册、`TypeId` 查询与 canonical registry bridge；
+* Compat / Map IR 与 `MapPrivate` constexpr 操作计划；
 * 独立 provider 进程与 JSON-lines IPC；
 * `amc/self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor
-  注册进 `RuntimeRegistry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()`
+  注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()`
   与 `type_of<amc::CompatibilityRecord>()` 均可查询。
 
 ### 自举边界
@@ -443,12 +443,12 @@ metadata 与 C++ 投影。它不是严格编译器理论意义上的源码自托
 
 ### Self-hosting Bootstrap
 
-1. `abix/self/abix_self.abic.toml` 覆盖 Type、Registry、Map、Bootstrap 与 RCU/EBR
+1. `ABIX/self.abic.toml` 覆盖 Type、Registry、Map、Bootstrap 与 RCU/EBR
    核心类型。
 2. AMC 从干净构建目录生成 `build/abix_self.abix`，并生成消费者使用的
    `abix_self_metadata.hpp`。
-3. 生成的 `ModuleDescriptor` 通过 `RuntimeRegistry::register_module()` 接入；
-   `MetadataRegistry::bootstrap_self()` 中仅保留两条 Bootstrap Kernel wire record
+3. 生成的 `ModuleDescriptor` 通过 `runtime::Registry::register_module()` 接入；
+   `metadata::Registry::bootstrap_self()` 中仅保留两条 Bootstrap Kernel wire record
    作为 TCB。
 4. 闭环消费者验证 `type_of<TypeInfo>()`、`type_of<RegistryEntry>()`、按 TypeId/名称
    lookup、canonical registry bridge，以及生成 descriptor 的 size/align 与本机类型
@@ -467,16 +467,16 @@ ABIX Runtime 自举里程碑均已完成。
 
 | 里程碑 | 范围 | 状态 |
 |--------|------|------|
-| M0 —— ABI Model | `TypeId`、`TypeDesc`、`TypeLayout`、`Field`、`Function`、`Symbol`、`MapInfo`、`Compatibility`、`ABI Identity`、`Target`；`Hash128` 抽象与 TypeHash ≠ LayoutHash；刻意不实现 RCU | 已完成 |
+| M0 —— ABI Model | `TypeId`、`TypeDesc`、`TypeLayout`、`Field`、`Function`、`Symbol`、`MapInfo`、`Compat`、`ABI Identity`、`Target`；`Hash128` 抽象与 TypeHash ≠ LayoutHash；刻意不实现 RCU | 已完成 |
 | M1 —— `.abix` v0 | Header、Type/Field/Function Table（首版 inline 顺序序列化）；`write_abix` / `read_abix` round-trip；`amc inspect` / `amc validate`；Section Directory 与 String Table 去重、offset/index 引用、length、flags 与 optional section；ABI Identity、Target、Hash Table、Symbol Table section | 已完成 |
-| M2 —— Bootstrap Kernel | `BootstrapImage`、`BootstrapRecord` 与 loader；无 allocator、无 Registry、无 RCU、无 ABIX API；以显式 endianness 与 padding 定义 wire format | 已完成 |
-| M3 —— Runtime Registry | Type registration、lookup、validation；打通 `Bootstrap → Registry → Type lookup` 闭环；Registry 自描述（`RegistryEntry` / `BootstrapMetadata`） | 已完成 |
-| M4 —— Type Self-hosting | 为 ABIX 核心类型建立正式 `.abic` self-description 配置；AMC 生成核心类型、`RegistryEntry`、`TypeDescriptor` 的 `.abix` metadata；静态 descriptor 注册进 `RuntimeRegistry`；验证 `RuntimeRegistry::type_of<TypeDesc>()` 能返回自身 metadata | 已完成 |
-| M5 —— Compatibility | HashDescriptor、Hash Domain、算法版本与 RuntimeKey 分层模型；`TypeHash`、`LayoutHash`、`SignatureHash` 与兼容性检查 | 已完成 |
+| M2 —— Bootstrap Kernel | `BootImage`、`BootRecord` 与 loader；无 allocator、无 Registry、无 RCU、无 ABIX API；以显式 endianness 与 padding 定义 wire format | 已完成 |
+| M3 —— Runtime Registry | Type registration、lookup、validation；打通 `Bootstrap → Registry → Type lookup` 闭环；Registry 自描述（`RegistryEntry` / `metadata::Bootstrap`） | 已完成 |
+| M4 —— Type Self-hosting | 为 ABIX 核心类型建立正式 `.abic` self-description 配置；AMC 生成核心类型、`RegistryEntry`、`TypeDescriptor` 的 `.abix` metadata；静态 descriptor 注册进 `runtime::Registry`；验证 `runtime::Registry::type_of<TypeDesc>()` 能返回自身 metadata | 已完成 |
+| M5 —— Compat | HashDescriptor、Hash Domain、算法版本与 RuntimeKey 分层模型；`TypeHash`、`LayoutHash`、`SignatureHash` 与兼容性检查 | 已完成 |
 | M6 —— Runtime Map | `MapInfo` 与 dynamic Map 的运行时转换 | 已完成 |
 | M7 —— RCU / EBR | AMC 提取 `ThreadState`、`Epoch`、`RetiredNode` 的布局与成员关系；将 RCU/EBR 类型注册进 Runtime Registry；完成 `ABIX Registry → ABIX RCU → ABIX Registry` 初始化闭环；验证 lookup 与 retire 不依赖未注册 metadata | 已完成 |
 | M8 —— MapPrivate | 生成 `MapPrivate<A, B>` 静态转换；验证 Runtime Map 与 `MapPrivate` 语义一致（copy/default；转换需 native converter） | 已完成 |
-| M9 —— Full Self-hosting | ABIX 的 Type、Registry、Map、RCU、Compatibility、Bootstrap metadata 全部由 ABIX 描述；从干净构建目录重新生成 self-description artifact；禁止运行时路径依赖手写的非 Bootstrap metadata；至此完成 Runtime Self-hosting | 已完成 |
+| M9 —— Full Self-hosting | ABIX 的 Type、Registry、Map、RCU、Compat、Bootstrap metadata 全部由 ABIX 描述；从干净构建目录重新生成 self-description artifact；禁止运行时路径依赖手写的非 Bootstrap metadata；至此完成 Runtime Self-hosting | 已完成 |
 
 ## 关键设计决策
 

@@ -35,7 +35,7 @@ call goes through the native ABI with no per-call ABI machinery.
 
 ## Registry
 
-`RuntimeRegistry` holds the ABI facts for all loaded modules and validates them
+`runtime::Registry` holds the ABI facts for all loaded modules and validates them
 at load time:
 
 * canonical `TypeDesc` / `TypeLayout` records are the one ABI truth;
@@ -85,7 +85,7 @@ sequenceDiagram
 ```
 
 The loader locates the ABIX Metadata Region embedded in the binary, materializes
-it into a `ModuleDescriptor`, and registers it in the `RuntimeRegistry`. After
+it into a `ModuleDescriptor`, and registers it in the `runtime::Registry`. After
 this point all type lookups are resolved from the registry, not re-parsed from
 the section.
 
@@ -94,14 +94,14 @@ the section.
 ```mermaid
 sequenceDiagram
     participant User
-    participant dll_func
+    participant dll::Function
     participant FunctionTable
     participant NativeFunction
 
-    User->>dll_func: operator()(args...)
-    dll_func->>FunctionTable: read function pointer
-    FunctionTable-->>dll_func: function pointer
-    dll_func->>NativeFunction: direct call(args...)
+    User->>dll::Function: operator()(args...)
+    dll::Function->>FunctionTable: read function pointer
+    FunctionTable-->>dll::Function: function pointer
+    dll::Function->>NativeFunction: direct call(args...)
     NativeFunction-->>User: result
 ```
 
@@ -114,7 +114,7 @@ is not involved in the hot path.
 ### DLL Side (Provider)
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double a, double b) { return a * b; }
@@ -128,19 +128,19 @@ SKL_ABIX_DEFINE_TABLE(
 ### Host Side (Consumer)
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 using namespace skl::abix;
 
-dll_object lib;
+dll::Object lib;
 lib.load("math_dll.dll");
 
-auto add = dll_func<int(int, int)>(lib, "add");
+auto add = dll::Function<int(int, int)>(lib, "add");
 if (add.valid()) {
     int result = add(2, 3);  // 5
 }
 
-auto mul = dll_func<double(double, double)>(lib, "multiply");
+auto mul = dll::Function<double(double, double)>(lib, "multiply");
 if (mul.valid()) {
     double result = mul(1.5, 4.0);  // 6.0
 }
@@ -150,7 +150,7 @@ See [`api.md`](../abix/api.md) for the runtime API.
 
 ## API reference
 
-The full runtime API — `entry`, `table`, `dll_object`, `call_error`, smart
+The full runtime API — `entry`, `table`, `dll::Object`, `dll::CallError`, smart
 pointers for DLL resources, logging, RCU timeout policies, typed function
 handles and signature hashing — is documented in
 [`api.md`](../abix/api.md).

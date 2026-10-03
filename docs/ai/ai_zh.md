@@ -228,7 +228,7 @@ ABIX Agent 则：
 
 ```mermaid
 graph TD
-    A[v1.abix + v2.abix] --> B[ABI diff] --> C[Plugin dependency graph] --> D[Compatibility analysis] --> E[Policy] --> F[Build] --> G[Runtime verify]
+    A[v1.abix + v2.abix] --> B[ABI diff] --> C[Plugin dependency graph] --> D[Compat analysis] --> E[Policy] --> F[Build] --> G[Runtime verify]
 ```
 
 然后报告：

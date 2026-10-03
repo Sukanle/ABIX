@@ -4,7 +4,7 @@
 > as current work.** Do not implement a future item just because it appears
 > here. See [`AGENTS.md`](AGENTS.md) §13 (scope discipline).
 
-## Current — ABIX 1.0 (Foundation, self-hosting and toolchain)
+## Current — ABIX 0.1.0 (Foundation, self-hosting and toolchain)
 
 Established and maintained:
 
@@ -25,7 +25,7 @@ Established and maintained:
 * LLDB C++ plugin (`libabix_lldb.so`) and Python helper;
 * ELF metadata section test script (`tools/test_amc_elf-pe.py`).
 
-## Next — ABIX 2.0 (Cross-language)
+## Next — ABIX 0.2.0 (Cross-language)
 
 The next stage is **cross-language support**: ABIX IR becomes the common ABI
 representation that other language frontends feed into and project out of.
@@ -77,7 +77,7 @@ inspection via `amc metadata --from-elf`.
 * runtime materialization of the metadata image;
 * ABI adaptation / shimming — adapter generation delivered, runtime dispatch pending;
 * dynamic-language boundary layers with differential semantic verification
-  (`aue/`).
+  (`Aue/`).
 
 ## Explicitly out of scope
 

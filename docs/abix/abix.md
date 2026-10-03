@@ -45,7 +45,7 @@
 |------|------|
 | Record ABI facts | Real state of types, layouts, fields, functions, symbols |
 | Record ABI IR | Intermediate representation of Map operations (language-agnostic) |
-| Record compatibility | LayoutHash / SignatureHash / Compatibility |
+| Record compatibility | LayoutHash / SignatureHash / Compat |
 | Support mmap | Binary format, zero deserialization, direct access |
 | Support projection | Can be projected by AMC to C++ / Rust / Zig and other target code |
 
@@ -84,7 +84,7 @@ graph TD
     R --> H["Function Table"]
     R --> I["Parameter Table"]
     R --> J["Symbol Table"]
-    R --> K["Compatibility Table"]
+    R --> K["Compat Table"]
     R --> L["Map Table"]
     R --> M["Map Operation Table"]
     R --> N["Dependency Table"]
@@ -98,7 +98,7 @@ Changes from the initial design:
 |-----------|------|
 | `Target` section | Merged into `ABI Identity`, unified responsibility as "compilation environment of this artifact" |
 | `Hash Table` | Current AMC v4 required section, stores HashDescriptor and canonical hash records |
-| `Compatibility Table` `source/target_layout_hash` | Derived from source/target TypeId → Type Table → Layout Table |
+| `Compat Table` `source/target_layout_hash` | Derived from source/target TypeId → Type Table → Layout Table |
 | Type Table `field_begin` / `field_count` | Obtained from `layout_index` via Layout Table |
 | Symbol Table `target_hash` | Changed to `(target_kind, target_index)` typed index |
 | Parameter Table `position` | Derived from array order |
@@ -127,13 +127,13 @@ A Section Directory replaces fixed `*_offset` fields, avoiding Header layout cha
 
 The current development version of `amc-core` implements and only reads `format_version = 4`. Earlier v1/v2/v3 artifacts are actively deprecated during devel and no compatibility reads are provided. v4 uses the Header and Section Directory described in this section. The current required section IDs are: `1 Strings`, `2 Identity`, `13 Target`, `3 Types`, `4 Fields`, `5 Functions`, `6 Parameters`, `7 Symbols`, `8 HashDescriptor`, `9 HashTable`.
 
-All implemented string references use `(offset, length)`; Identity records also carry package name and package version as such references. Readers will reject incorrect directory ranges, incorrect required entry sizes, out-of-bounds string references, invalid TypeKind/SymbolKind, and artifacts that violate Core layout/type reference invariants. The Hash Table is implemented as part of the current required profile. Compatibility, Map IR, Dependency, and optional sections remain for future expansion.
+All implemented string references use `(offset, length)`; Identity records also carry package name and package version as such references. Readers will reject incorrect directory ranges, incorrect required entry sizes, out-of-bounds string references, invalid TypeKind/SymbolKind, and artifacts that violate Core layout/type reference invariants. The Hash Table is implemented as part of the current required profile. Compat, Map IR, Dependency, and optional sections remain for future expansion.
 
-Directory entries use `{section_id, offset, byte_length, count, entry_size, flags}`. `flags.required` requires the reader to understand that section; unknown optional sections can be safely skipped. Compatibility, Map, and MapOperation are currently optional sections. Hash Cache sections remain a future extension.
+Directory entries use `{section_id, offset, byte_length, count, entry_size, flags}`. `flags.required` requires the reader to understand that section; unknown optional sections can be safely skipped. Compat, Map, and MapOperation are currently optional sections. Hash Cache sections remain a future extension.
 
-Runtime integration uses the fixed-layout descriptors from `abix/runtime_descriptor.h`. MICS Runtime's `TypeId` and ABIX `model::TypeId` are both full Hash128; cross-namespace conversion must go through explicit `abix/mics_bridge.h` functions; truncating ABI identity to a single `uint64_t` is forbidden.
+Runtime integration uses the fixed-layout descriptors from `ABIX/Metadata/Descriptor.h`. MICS Runtime's `TypeId` and ABIX `model::TypeId` are both full Hash128; cross-namespace conversion must go through explicit `ABIX/Bridge/MICS.h` functions; truncating ABI identity to a single `uint64_t` is forbidden.
 
-`abix/runtime_registry.h` provides a `RuntimeRegistry<Capacity>` bridge. It receives the generated `ModuleDescriptor`, performs module-level integrity checks, duplicate TypeId checks, and field/function type reference checks before writing; failure leaves no partial registration results. On success, it retains both runtime descriptor pointers and canonical `MetadataRegistry` entries, queryable by either Hash128 or name.
+`ABIX/Runtime/Registry.h` provides a `runtime::Registry<Capacity>` bridge. It receives the generated `ModuleDescriptor`, performs module-level integrity checks, duplicate TypeId checks, and field/function type reference checks before writing; failure leaves no partial registration results. On success, it retains both runtime descriptor pointers and canonical `metadata::Registry` entries, queryable by either Hash128 or name.
 
 ### Section Directory
 
@@ -295,7 +295,7 @@ Offset  Size  Field             (per record)
 
 **Streamlined**: `target_hash` changed to `(target_kind, target_index)` typed index. Storing both hash and index is redundant — index is faster and collision-free.
 
-### Compatibility Table
+### Compat Table
 
 ```
 Offset  Size  Field             (per record)
@@ -328,7 +328,7 @@ Offset  Size  Field             (per record)
 0x38    u32   flags             ← bidirectional / lossy / ...
 ```
 
-The current AMC v2 Map record is 60 bytes. Compatibility reports can be stored across two artifacts, so Map records store stable names for both source and target, avoiding the requirement that the source TypeId must exist in the target artifact's Type Table.
+The current AMC v2 Map record is 60 bytes. Compat reports can be stored across two artifacts, so Map records store stable names for both source and target, avoiding the requirement that the source TypeId must exist in the target artifact's Type Table.
 
 ### Map Operation Table (ABI IR)
 
@@ -411,7 +411,7 @@ This avoids mixing C++/Rust/compiler-specific implementations into the `.abix` c
 
 ## Hash System
 
-### Hash Width and Compatibility Layer
+### Hash Width and Compat Layer
 
 ```cpp
 struct Hash128 {

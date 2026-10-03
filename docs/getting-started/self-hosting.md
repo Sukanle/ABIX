@@ -15,16 +15,16 @@
 
 </details>
 
-ABIX 1.0 is self-hosting for its own public ABI: it describes its public ABI
+ABIX 0.1.0 is self-hosting for its own public ABI: it describes its public ABI
 with its own model, and uses that description to build and verify later
 versions.
 
 ```mermaid
 graph TD
-    A["ABIX 1.0"] --> B["Describe itself"]
+    A["ABIX 0.1.0"] --> B["Describe itself"]
     B --> C["Verify / Bind"]
     C --> D["Build next ABI"]
-    D --> E["ABIX 1.x"]
+    D --> E["ABIX 0.1.x"]
     E --> F["describes itself"]
 ```
 
@@ -76,13 +76,13 @@ and verified by its predecessor.
 ABIX describes its own core IR through its own configuration and validates the
 result:
 
-* `abix/self/abix_self.abic.toml` — the ABIX runtime's public types
+* `ABIX/self.abic.toml` — the ABIX runtime's public types
 * `amc/self.abic.toml` — the AMC core IR
-* `abix/self_types.cpp`, `amc/self_types.cpp` — the inputs described
+* `src/self_types.cpp`, `amc/self_types.cpp` — the inputs described
 
 The integration suite builds these artifacts, validates them, generates a
 native projection and compiles a consumer that uses
-`RuntimeRegistry::type_of<T>()` — proving the bootstrap loop is intact.
+`runtime::Registry::type_of<T>()` — proving the bootstrap loop is intact.
 
 ## Why it matters
 

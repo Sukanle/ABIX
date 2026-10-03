@@ -2,22 +2,23 @@
 
 TEST_CASE("8.lookup_policy_benchmark", "[perf][prompt8]") {
     log_info("Test 8: lookup policy benchmark - Linear strategy");
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     if (!lib.load(dll_path("hotcache_dll").c_str())) {
         WARN("missing hotcache_dll, skip performance test");
         return;
     }
-    const skl::abix::table *t = lib.get_table();
-    REQUIRE(t->count == 1'000u + 20u);
+    const auto *t = lib.get_table();
+    REQUIRE(t->count == 1'000U + 20U);
     log_info("hotcache_dll table entry count = %u (1000 regular + 20 hot)", t->count);
 
     constexpr int CALLS = 1'000'000;
 
-    auto bench = [&](const std::function<const skl::abix::entry *(const char *, skl::abix::name_hash_t, skl::abix::sig_t)> &look,
+    auto bench = [&](const std::function<const skl::abix::runtime::Entry *(
+                         const char *, skl::abix::runtime::name_hash_t, skl::abix::runtime::sig_t)> &look,
                      const std::function<const char *(int)> &name_for) {
         double t0 = ns();
         volatile uintptr_t sink = 0;
-        skl::abix::sig_t sg = skl::abix::fn_sig<int(int)>::value;
+        auto sg = skl::abix::dll::FnSig<int(int)>::value;
         for (int i = 0; i < CALLS; ++i) {
             const char *nm = name_for(i);
             auto e = look(nm, mics::utils::cstr32(nm), sg);
@@ -27,7 +28,9 @@ TEST_CASE("8.lookup_policy_benchmark", "[perf][prompt8]") {
         return ns() - t0;
     };
 
-    auto linear_look = [&](const char *nm, skl::abix::name_hash_t hh, skl::abix::sig_t sg2) { return skl::abix::lookup_linear(*t, nm, hh, sg2); };
+    auto linear_look = [&](const char *nm, skl::abix::runtime::name_hash_t hh, skl::abix::runtime::sig_t sg2) {
+        return skl::abix::runtime::lookup_linear(*t, nm, hh, sg2);
+    };
 
     SECTION("8a.linear_hot_warm") {
         log_info("8a: linear lookup on hot entries (after warm-up)");

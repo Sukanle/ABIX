@@ -171,7 +171,7 @@ class TestRunner:
             '"layout_hash"',
             '"runtime_descriptor"',
             '"type_id_bits": 128',
-            '"registry": "RuntimeRegistry"',
+            '"registry": "runtime::Registry"',
         ]
         all_ok = True
         for pat in patterns:
@@ -410,12 +410,12 @@ class TestRunner:
     def step10_self_description(self) -> bool:
         """Step 10: ABIX self-description bootstrap artifact."""
         self_build = os.path.join(self.build_dir, "self-build")
-        self_abix = os.path.join(self_build, "build/abix_self.abix")
+        self_abix = os.path.join(self_build, "build/abix_runtime.abix")
         self_hpp = os.path.join(self.build_dir, "abix_self_metadata.hpp")
 
         # build
         r = self.run([self.bin_path("amc"), "build",
-                       "-c", os.path.join(SOURCE_ROOT, "abix/self/abix_self.abic.toml"),
+                       "-c", os.path.join(SOURCE_ROOT, "ABIX/self.abic.toml"),
                        "-B", self_build])
         if r.returncode != 0:
             self.fail("ABIX self-description generation failed")
@@ -444,7 +444,7 @@ class TestRunner:
             hpp_content = f.read()
 
         all_ok = True
-        for pat in ["skl_abix_runtime_TypeDescriptor_ABIX", "skl_abix_model_TypeDesc_ABIX"]:
+        for pat in ["skl_abix_metadata_TypeDescriptor_ABIX", "skl_abix_model_TypeDesc_ABIX"]:
             if self.grep(hpp_content, pat):
                 self.pass_(f"self-description contains {pat}")
             else:
@@ -457,15 +457,15 @@ class TestRunner:
             consumer_bin = os.path.join(self.build_dir, "self_type_of_consumer")
             r = self.run([
                 "clang++", "-std=c++17",
-                f"-I{SOURCE_ROOT}", f"-I{self.build_dir}",
+                f"-I{SOURCE_ROOT}", f"-I{SOURCE_ROOT}/mics", f"-I{self.build_dir}",
                 consumer_src, "-o", consumer_bin,
             ])
             if r.returncode == 0:
                 r = self.run([consumer_bin])
                 if r.returncode == 0:
-                    self.pass_("native type_of, Registry lookup, and registered EBR metadata self-hosting succeeded")
+                    self.pass_("native type_of, Registry lookup, and registered RCU metadata self-hosting succeeded")
                 else:
-                    self.fail("native type_of, Registry lookup, or registered EBR metadata self-hosting failed")
+                    self.fail("native type_of, Registry lookup, or registered RCU metadata self-hosting failed")
                     all_ok = False
             else:
                 self.fail("compilation of self_type_of_consumer failed")
@@ -521,7 +521,7 @@ class TestRunner:
             consumer_bin = os.path.join(self.build_dir, "amc_self_consumer")
             r = self.run([
                 "clang++", "-std=c++17",
-                f"-I{SOURCE_ROOT}", f"-I{self.build_dir}",
+                f"-I{SOURCE_ROOT}", f"-I{SOURCE_ROOT}/amc/include", f"-I{self.build_dir}",
                 consumer_src, "-o", consumer_bin,
             ])
             if r.returncode == 0:
@@ -694,7 +694,7 @@ class TestRunner:
         if not (verify.returncode == 0 and document
                 and document.get("schema") == "abix.metadata/1"
                 and document.get("counts", {}).get("types", 0) > 0
-                and document.get("build_id") == "0x" + build_id):
+                and document.get("build_id") == "0X" + build_id):
             self.fail("metadata region verification failed")
             return False
         self.pass_("metadata region round-trips and verifies")
@@ -1157,7 +1157,7 @@ class TestRunner:
         with open(source, "w") as handle:
             handle.write('''
 #include "amc_lua_contract.hpp"
-#include "aue/aue.h"
+#include "Aue/aue.h"
 #include <string>
 
 extern "C" int amc_test_create(lua_State*) { return 0; }
@@ -1625,10 +1625,10 @@ int main() {
             return False
         with open(typed_header) as handle:
             typed_text = handle.read()
-        if "::abix::adapter<" not in typed_text or "ABIX_ADAPTER_TYPED" not in typed_text:
-            self.fail("typed adapter is missing the abix::adapter specialization")
+        if "::skl::abix::bridge::Adapter<" not in typed_text or "ABIX_ADAPTER_TYPED" not in typed_text:
+            self.fail("typed adapter is missing the skl::abix::bridge::Adapter specialization")
             return False
-        self.pass_("amc adapter --typed emits an abix::adapter specialization")
+        self.pass_("amc adapter --typed emits a skl::abix::bridge::Adapter specialization")
 
         projection = os.path.join(build, "projection")
         if self.run([self.bin_path("amc"), "generate", v1, "-l", "cpp",
@@ -1645,8 +1645,8 @@ int main() {
                 'struct V2 { int value; int added; };\n'
                 'int main() {\n'
                 '    V1 a{42}; V2 b{9, 9};\n'
-                '    using ad = abix::adapter<amc_generated::amc_map_MapRecord_ABIX,\n'
-                '                             amc_generated::amc_map_MapRecord_ABIX>;\n'
+                '    using ad = skl::abix::bridge::Adapter<amc_generated::amc_map_MapRecord_ABIX,\n'
+                '                                          amc_generated::amc_map_MapRecord_ABIX>;\n'
                 '    if (!ad::apply(&b, &a)) return 1;\n'
                 '    return (b.value == 42 && b.added == 0) ? 0 : 2;\n'
                 '}\n')
@@ -2037,7 +2037,7 @@ int main() {
         if types and isinstance(types[0], dict):
             candidate = types[0].get("id")
             if isinstance(candidate, str) and len(candidate) >= 34 \
-                    and candidate.startswith("0x"):
+                    and candidate.startswith("0X"):
                 full_id = candidate
         require(bool(full_id), "abix.list_types did not expose a reusable full TypeID")
 

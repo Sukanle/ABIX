@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-4C8C4A.svg" alt="Platforms: Linux | macOS">
-  <img src="https://img.shields.io/badge/status-1.0-orange.svg" alt="Status: 1.0">
+  <img src="https://img.shields.io/badge/status-0.1.0-orange.svg" alt="Status: 0.1.0 (unstable)">
 </p>
 
 <p align="center">
@@ -256,15 +256,15 @@ See [`docs/amc/amc.md`](docs/amc/amc.md).
 
 ## Self-Hosting
 
-ABIX 1.0 is self-hosting for its own public ABI: it describes its public ABI with
+ABIX 0.1.0 is self-hosting for its own public ABI: it describes its public ABI with
 its own model, and uses that to build and verify the next version.
 
 ```mermaid
 graph TD
-    A[ABIX 1.0] --> B[Describe itself]
+    A[ABIX 0.1.0] --> B[Describe itself]
     B --> C[Verify / Bind]
     C --> D[Build next ABI]
-    D --> E[ABIX 1.x]
+    D --> E[ABIX 0.1.x]
     E -->|describes itself| E
 ```
 
@@ -360,11 +360,18 @@ For details see [docs/ecosystem/ecosystem.md](docs/ecosystem/ecosystem.md). For 
 
 ```text
 ABIX
-├── ABIX IR            abix/            ABI model + runtime
+├── ABIX IR            ABIX/            header-only ABI model + runtime
+│   ├── Model/         ABI.h Bootstrap.h Map.h Compat.h
+│   ├── Metadata/      Registry.h Descriptor.h
+│   ├── Runtime/       Registry.h Type.h TypeSig.h Search.h Function.h
+│   ├── DLL/           Object.h Function.h FnSig.h Export.h *Ptr.h
+│   ├── RCU/           Config.h Domain.h
+│   ├── Bridge/        Adapter.h Refl.h MICS.h
+│   └── Util/          Config.h Log.h Atomic.h Hash.h Mem.h Timeout.h
 ├── AMC                amc/             ABI toolchain
 ├── .abix              serialized ABI artifact
 ├── tests / benchmarks test/ bench/
-├── Aue (experimental) aue/             Lua boundary layer + conformance
+├── Aue (experimental) Aue/             Lua boundary layer + conformance
 └── docs/              specification, design, runtime, AMC, benchmarks
 ```
 
@@ -420,7 +427,7 @@ For the first complete walkthrough see
 
 ### Core Concepts
 
-* [ABI Identity & Compatibility](docs/architecture/compatibility.md)
+* [ABI Identity & Compat](docs/architecture/compatibility.md)
 * [`.abic` — ABI Configuration](docs/abix/abic.md)
 * [Metadata Modes](docs/abix/metadata_modes.md)
 * [Self-Hosting](docs/getting-started/self-hosting.md)
@@ -448,9 +455,9 @@ For the first complete walkthrough see
 
 ## Current Status
 
-**ABIX 1.0** — the foundation, self-hosting and toolchain release: ABI inspection, diff, compatibility classification, adapter generation, metadata modes and ELF / Mach-O inspection. The project is
+**ABIX 0.1.0** — an unstable, pre-1.0 foundation preview: ABI inspection, diff, compatibility classification, adapter generation, metadata modes and ELF / Mach-O inspection. The project is
 under active development; the C++ implementation is the *first* implementation
-of the model, not a limitation of it. The next stage, **ABIX 2.0**, is
+of the model, not a limitation of it. The next stage, **ABIX 0.2.0**, is
 **cross-language support** (Rust, then Zig).
 
 Current focus:

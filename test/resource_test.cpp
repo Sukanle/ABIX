@@ -2,18 +2,18 @@
 
 TEST_CASE("4.unique_resource_takeover", "[resource][prompt4]") {
     log_info(
-        "Test 4: exclusive resource takeover across DLLs - both unique_dll_ptr / unique_ptr invoke the DLL release "
+        "Test 4: exclusive resource takeover across DLLs - both dll::UniquePtr / unique_ptr invoke the DLL release "
         "function");
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(dll_path("resource_dll").c_str()));
     log_info("resource_dll loaded, preparing resource lifecycle tests");
 
     {
-        auto alive = skl::abix::dll_func<int()>(lib, "get_resource_alive");
-        auto create = skl::abix::dll_func<Resource *(int)>(lib, "create_resource");
-        auto destroy = skl::abix::dll_func<void(Resource *)>(lib, "destroy_resource");
-        auto rid = skl::abix::dll_func<int(Resource *)>(lib, "resource_id");
-        auto rpay = skl::abix::dll_func<int(Resource *, int)>(lib, "resource_payload");
+        auto alive = skl::abix::dll::Function<int()>(lib, "get_resource_alive");
+        auto create = skl::abix::dll::Function<Resource *(int)>(lib, "create_resource");
+        auto destroy = skl::abix::dll::Function<void(Resource *)>(lib, "destroy_resource");
+        auto rid = skl::abix::dll::Function<int(Resource *)>(lib, "resource_id");
+        auto rpay = skl::abix::dll::Function<int(Resource *, int)>(lib, "resource_payload");
         REQUIRE(create.valid());
         REQUIRE(destroy.valid());
 
@@ -21,29 +21,29 @@ TEST_CASE("4.unique_resource_takeover", "[resource][prompt4]") {
         log_info("initial alive resource count = %d", alive());
 
         {
-            skl::abix::unique_dll_ptr<Resource> h(create(7), destroy.raw());
+            skl::abix::dll::UniquePtr<Resource> h(create(7), destroy.raw());
             REQUIRE((bool)h);
             REQUIRE(rid(h.get()) == 7);
             REQUIRE(rpay(h.get(), 3) == 3);
-            log_info("method A: unique_dll_ptr holds resource id=%d, payload[3]=%d", rid(h.get()), rpay(h.get(), 3));
+            log_info("method A: dll::UniquePtr holds resource id=%d, payload[3]=%d", rid(h.get()), rpay(h.get(), 3));
         }
         REQUIRE(alive() == 0);
         log_info("after leaving scope, the DLL destroy_resource was called and the alive count dropped to zero");
 
         {
-            skl::abix::fn_deleter<Resource> dl(destroy.raw());
-            ::std::unique_ptr<Resource, skl::abix::fn_deleter<Resource>> up(create(3), dl);
+            skl::abix::dll::FnDeleter<Resource> dl(destroy.raw());
+            ::std::unique_ptr<Resource, skl::abix::dll::FnDeleter<Resource>> up(create(3), dl);
             REQUIRE(rid(up.get()) == 3);
-            log_info("method B: unique_ptr<Resource, fn_deleter> holds resource id=%d", rid(up.get()));
+            log_info("method B: unique_ptr<Resource, dll::FnDeleter> holds resource id=%d", rid(up.get()));
         }
         REQUIRE(alive() == 0);
-        log_info("unique_ptr called the DLL release function via fn_deleter; the alive count dropped to zero");
+        log_info("unique_ptr called the DLL release function via dll::FnDeleter; the alive count dropped to zero");
 
         {
-            skl::abix::unique_dll_ptr<Resource> h(create(1), destroy.raw());
+            skl::abix::dll::UniquePtr<Resource> h(create(1), destroy.raw());
             REQUIRE(lib.ref_count() >= 1);
             REQUIRE(lib.unload() == false);
-            REQUIRE(skl::abix::last_error() == skl::abix::call_error::stale_handle);
+            REQUIRE(skl::abix::dll::last_error() == skl::abix::dll::CallError::stale_handle);
             REQUIRE(lib.is_loaded());
             log_info("ref-count token: unload() rejected while live handles exist (stale_handle)");
             h.reset();
@@ -55,34 +55,35 @@ TEST_CASE("4.unique_resource_takeover", "[resource][prompt4]") {
     log_info("after all handles were destroyed, unload() succeeded and the module is unloaded");
 }
 
-TEST_CASE("5.ref_dll_ptr_refcount", "[resource][prompt5]") {
+TEST_CASE("5.dll::RefPtr_refcount", "[resource][prompt5]") {
     log_info(
-        "Test 5: shared resource (ref_dll_ptr non-atomic ref-count) - multiple handles share, released only on last "
+        "Test 5: shared resource (dll::RefPtr non-atomic ref-count) - multiple handles share, released only on last "
         "destruction");
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(dll_path("resource_dll").c_str()));
 
-    auto alive = skl::abix::dll_func<int()>(lib, "get_config_alive");
-    auto area = skl::abix::dll_func<int(Config *)>(lib, "config_area");
-    auto create_shared = skl::abix::dll_func<skl::abix::ref_dll_ptr<Config>(int, int)>(lib, "create_shared_config");
+    auto alive = skl::abix::dll::Function<int()>(lib, "get_config_alive");
+    auto area = skl::abix::dll::Function<int(Config *)>(lib, "config_area");
+    auto create_shared =
+        skl::abix::dll::Function<skl::abix::dll::RefPtr<Config>(int, int)>(lib, "create_shared_config");
     REQUIRE(create_shared.valid());
 
     {
-        skl::abix::ref_dll_ptr<Config> a = create_shared(3, 4);
+        skl::abix::dll::RefPtr<Config> a = create_shared(3, 4);
         REQUIRE(a.use_count() == 1);
         REQUIRE(area(a.get()) == 12);
         log_info("first handle a created, ref-count=1, config_area=%d", area(a.get()));
 
-        skl::abix::ref_dll_ptr<Config> b = a;
+        skl::abix::dll::RefPtr<Config> b = a;
         REQUIRE(a.use_count() == 2);
         REQUIRE(b.use_count() == 2);
         log_info("after copying b=a ref-count=2");
 
-        skl::abix::ref_dll_ptr<Config> c = b;
+        skl::abix::dll::RefPtr<Config> c = b;
         REQUIRE(a.use_count() == 3);
         log_info("after copying c=b ref-count=3");
         {
-            skl::abix::ref_dll_ptr<Config> d = c;
+            skl::abix::dll::RefPtr<Config> d = c;
             REQUIRE(a.use_count() == 4);
             log_info("after copying d=c ref-count=4");
         }
@@ -98,11 +99,11 @@ TEST_CASE("5.ref_dll_ptr_refcount", "[resource][prompt5]") {
 TEST_CASE("11.char_string_copy", "[resource][prompt11][charcopy]") {
     log_info(
         "Test 11: character copy resource - strdup_copy allocates in the DLL, the host reads, then the DLL releases");
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(dll_path("resource_dll").c_str()));
 
-    auto strdup = skl::abix::dll_func<char *(const char *, int *)>(lib, "strdup_copy");
-    auto freed = skl::abix::dll_func<void(char *)>(lib, "string_destroy");
+    auto strdup = skl::abix::dll::Function<char *(const char *, int *)>(lib, "strdup_copy");
+    auto freed = skl::abix::dll::Function<void(char *)>(lib, "string_destroy");
     REQUIRE(strdup.valid());
     REQUIRE(freed.valid());
     log_info("resolved strdup_copy / string_destroy, starting the character copy test");
@@ -127,16 +128,16 @@ TEST_CASE("12.socket_resource_lifecycle", "[resource][prompt12][socket]") {
     log_info(
         "Test 12: Socket resource - simulating network connection open/send/recv/close, verifying resource management "
         "and character transfer");
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(dll_path("resource_dll").c_str()));
 
-    auto alive = skl::abix::dll_func<int()>(lib, "socket_alive");
-    auto open = skl::abix::dll_func<Socket *(const char *, int)>(lib, "socket_open");
-    auto close = skl::abix::dll_func<void(Socket *)>(lib, "socket_close");
-    auto isopen = skl::abix::dll_func<int(const Socket *)>(lib, "socket_is_open");
-    auto fd = skl::abix::dll_func<int(const Socket *)>(lib, "socket_fd");
-    auto send_ = skl::abix::dll_func<int(Socket *, const char *)>(lib, "socket_send");
-    auto recv_ = skl::abix::dll_func<int(Socket *, char *, int)>(lib, "socket_recv");
+    auto alive = skl::abix::dll::Function<int()>(lib, "socket_alive");
+    auto open = skl::abix::dll::Function<Socket *(const char *, int)>(lib, "socket_open");
+    auto close = skl::abix::dll::Function<void(Socket *)>(lib, "socket_close");
+    auto isopen = skl::abix::dll::Function<int(const Socket *)>(lib, "socket_is_open");
+    auto fd = skl::abix::dll::Function<int(const Socket *)>(lib, "socket_fd");
+    auto send_ = skl::abix::dll::Function<int(Socket *, const char *)>(lib, "socket_send");
+    auto recv_ = skl::abix::dll::Function<int(Socket *, char *, int)>(lib, "socket_recv");
     REQUIRE(open.valid());
     REQUIRE(close.valid());
     REQUIRE(send_.valid());
@@ -146,7 +147,7 @@ TEST_CASE("12.socket_resource_lifecycle", "[resource][prompt12][socket]") {
     log_info("initial state: socket_alive=0 (no connections yet)");
 
     {
-        skl::abix::unique_dll_ptr<Socket> s(open("127.0.0.1", 8'080), close.raw());
+        skl::abix::dll::UniquePtr<Socket> s(open("127.0.0.1", 8'080), close.raw());
         REQUIRE((bool)s);
         REQUIRE(isopen(s.get()) == 1);
         REQUIRE(fd(s.get()) >= 0);
@@ -166,7 +167,7 @@ TEST_CASE("12.socket_resource_lifecycle", "[resource][prompt12][socket]") {
         log_info("socket_recv read the receive buffer, got [%s] (byte count=%d)", buf, got);
     }
     REQUIRE(alive() == 0);
-    log_info("after leaving scope unique_dll_ptr automatically called socket_close, socket_alive=0");
+    log_info("after leaving scope dll::UniquePtr automatically called socket_close, socket_alive=0");
     log_info("Socket resource lifecycle test complete: open -> send -> recv -> close all correct");
 }
 
@@ -182,13 +183,13 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
              << " (please run tools/build_msvc_variants.py first), skip cross-CRT resource test");
         return;
     }
-    skl::abix::dll_object lib;
+    skl::abix::dll::Object lib;
     REQUIRE(lib.load(variant.c_str()));
     log_info("loaded the MSVC-compiled resource_dll (cross-CRT resource lifecycle)");
 
     {
-        auto strdup = skl::abix::dll_func<char *(const char *, int *)>(lib, "strdup_copy");
-        auto freed = skl::abix::dll_func<void(char *)>(lib, "string_destroy");
+        auto strdup = skl::abix::dll::Function<char *(const char *, int *)>(lib, "strdup_copy");
+        auto freed = skl::abix::dll::Function<void(char *)>(lib, "string_destroy");
         REQUIRE(strdup.valid());
         REQUIRE(freed.valid());
         int len;
@@ -201,31 +202,31 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
     }
 
     {
-        auto alive = skl::abix::dll_func<int()>(lib, "get_resource_alive");
-        auto create = skl::abix::dll_func<Resource *(int)>(lib, "create_resource");
-        auto destroy = skl::abix::dll_func<void(Resource *)>(lib, "destroy_resource");
-        auto rid = skl::abix::dll_func<int(Resource *)>(lib, "resource_id");
+        auto alive = skl::abix::dll::Function<int()>(lib, "get_resource_alive");
+        auto create = skl::abix::dll::Function<Resource *(int)>(lib, "create_resource");
+        auto destroy = skl::abix::dll::Function<void(Resource *)>(lib, "destroy_resource");
+        auto rid = skl::abix::dll::Function<int(Resource *)>(lib, "resource_id");
         REQUIRE(create.valid());
         REQUIRE(destroy.valid());
         REQUIRE(alive() == 0);
         {
-            skl::abix::unique_dll_ptr<Resource> h(create(9), destroy.raw());
+            skl::abix::dll::UniquePtr<Resource> h(create(9), destroy.raw());
             REQUIRE(rid(h.get()) == 9);
             REQUIRE(alive() == 1);
         }
         REQUIRE(alive() == 0);
-        log_info(" [MSVC] Resource created/released across CRT via unique_dll_ptr, alive count dropped to zero");
+        log_info(" [MSVC] Resource created/released across CRT via dll::UniquePtr, alive count dropped to zero");
     }
 
     {
-        auto alive = skl::abix::dll_func<int()>(lib, "socket_alive");
-        auto open = skl::abix::dll_func<Socket *(const char *, int)>(lib, "socket_open");
-        auto close = skl::abix::dll_func<void(Socket *)>(lib, "socket_close");
-        auto send_ = skl::abix::dll_func<int(Socket *, const char *)>(lib, "socket_send");
-        auto recv_ = skl::abix::dll_func<int(Socket *, char *, int)>(lib, "socket_recv");
+        auto alive = skl::abix::dll::Function<int()>(lib, "socket_alive");
+        auto open = skl::abix::dll::Function<Socket *(const char *, int)>(lib, "socket_open");
+        auto close = skl::abix::dll::Function<void(Socket *)>(lib, "socket_close");
+        auto send_ = skl::abix::dll::Function<int(Socket *, const char *)>(lib, "socket_send");
+        auto recv_ = skl::abix::dll::Function<int(Socket *, char *, int)>(lib, "socket_recv");
         REQUIRE(open.valid());
         {
-            skl::abix::unique_dll_ptr<Socket> s(open("10.0.0.1", 443), close.raw());
+            skl::abix::dll::UniquePtr<Socket> s(open("10.0.0.1", 443), close.raw());
             REQUIRE(alive() == 1);
             send_(s.get(), "PING");
             char buf[16];
@@ -239,18 +240,18 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
     }
 
     {
-        auto alive = skl::abix::dll_func<int()>(lib, "get_config_alive");
-        auto create = skl::abix::dll_func<skl::abix::ref_dll_ptr<Config>(int, int)>(lib, "create_shared_config");
-        auto area = skl::abix::dll_func<int(Config *)>(lib, "config_area");
+        auto alive = skl::abix::dll::Function<int()>(lib, "get_config_alive");
+        auto create = skl::abix::dll::Function<skl::abix::dll::RefPtr<Config>(int, int)>(lib, "create_shared_config");
+        auto area = skl::abix::dll::Function<int(Config *)>(lib, "config_area");
         REQUIRE(create.valid());
         {
-            skl::abix::ref_dll_ptr<Config> a = create(5, 2);
+            skl::abix::dll::RefPtr<Config> a = create(5, 2);
             REQUIRE(area(a.get()) == 10);
-            skl::abix::ref_dll_ptr<Config> b = a;
+            skl::abix::dll::RefPtr<Config> b = a;
             REQUIRE(a.use_count() == 2);
         }
         REQUIRE(alive() == 0);
-        log_info(" [MSVC] ref_dll_ptr ref-count dropped to zero across CRT and released correctly");
+        log_info(" [MSVC] dll::RefPtr ref-count dropped to zero across CRT and released correctly");
     }
     log_info("MinGW host loaded the MSVC resource_dll; all resource lifecycles are correct across CRT");
 #else

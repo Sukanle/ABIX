@@ -8,8 +8,8 @@
 #include "amc_generated.hpp"
 
 int main() {
-    skl::abix::runtime::RuntimeRegistry<16> registry;
-    if (registry.register_module(amc_generated::amc_module) != skl::abix::runtime::RuntimeRegisterStatus::ok) return 1;
+    skl::abix::runtime::Registry<16> registry;
+    if (registry.register_module(amc_generated::amc_module) != skl::abix::runtime::RegisterStatus::ok) return 1;
     if (registry.find_by_id(amc_generated::AmcTestFoo_ABIX::type_id) == nullptr) return 2;
     if (registry.find_by_name("AmcTestFoo") != nullptr) return 3;
     return 0;

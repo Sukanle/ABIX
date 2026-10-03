@@ -85,12 +85,18 @@ genuine ABI concept. Language-specific behaviour belongs in a
 ## 2. Repository Orientation
 
 ```text
-abix/    ABI model + runtime (header-only registry, descriptors, adapter)
+ABIX/    header-only ABI model + runtime, organised by layer:
+         Model/ (abi.h, Bootstrap.h, Map.h, Compat.h),
+         Metadata/ (Registry.h, Descriptor.h),
+         Runtime/ (Registry.h, Type.h, TypeSig.h, Search.h, Function.h),
+         DLL/ (Object.h, Function.h, FnSig.h, Export.h, *Ptr.h),
+         RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
+         Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h)
 amc/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
-aue/     experimental Lua boundary layer + differential conformance
+Aue/     experimental Lua boundary layer + differential conformance
 tools/   helper scripts (MCP demo, token cost, LLDB command, ELF test)
 docs/    specification and design
 ```
@@ -99,14 +105,18 @@ docs/    specification and design
 
 | Subsystem | Location | Responsibility |
 |-----------|----------|----------------|
-| ABI model | `abix/` | `TypeDescriptor`, `FieldDescriptor`, `RuntimeRegistry`, `TypeTraits`, adapter dispatch |
+| ABI model | `ABIX/Model/` | `model::TypeDesc`, `model::TypeLayout`, `model::Field`, `model::Target`, `model::Compat` |
+| Metadata projection | `ABIX/Metadata/` | `metadata::Registry`, `metadata::TypeDescriptor`, `metadata::ModuleDescriptor` |
+| ABI runtime | `ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
+| DLL binding | `ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
+| Adapter dispatch | `ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
 | ELF/Mach-O reader | `amc/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
 | Metadata Region | `amc/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
 | ABI adapter | `amc/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
 | Symbol store | `amc/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
 | MCP server | `amc/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
 | LLDB plugin | `amc/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
-| Versioned registry | `abix/runtime_registry.h` | `RuntimeRegistry::register_module(module, version)` — same TypeID across versions |
+| Versioned registry | `ABIX/Runtime/Registry.h` | `runtime::Registry::register_module(module, version)` — same TypeID across versions |
 
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
 your change.
@@ -222,7 +232,7 @@ CLI tools report failures through the unified `abix.error/1` envelope
 
 ---
 
-## 8. ABI Compatibility
+## 8. ABI Compat
 
 Never assume source-level compatibility implies ABI compatibility. When changing
 layout, field order/type, alignment, size, calling convention, parameter/return
@@ -307,7 +317,7 @@ regenerate. When generated output changes, verify it is reproducible
 
 Do not optimize from intuition when changing binding, registry lookup,
 synchronization, metadata lookup, call paths or type mapping. Prefer benchmarks
-(see `bench/`, `aue/abix-bench`, `tools/abix_token_cost.py`). A performance
+(see `bench/`, `Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
 optimization must not silently change ABI semantics.
 
 ---

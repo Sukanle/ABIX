@@ -98,7 +98,7 @@ System"，因为它会暗示一种对象模型。
 
 ```mermaid
 flowchart TD
-    compat["ABI Compatibility"]
+    compat["ABI Compat"]
     compat --> comp["compatible"]
     comp --> direct["direct call (fn(args...))"]
     compat --> incomp["incompatible"]
@@ -117,7 +117,7 @@ flowchart TD
 
 ```cpp
 // 默认路径——直接调用，零转换开销：
-auto add = dll_func<int(int, int)>(lib, "add");
+auto add = dll::Function<int(int, int)>(lib, "add");
 int result = add(2, 3);
 
 // 类型适配只在显式使用时才触发：
@@ -178,7 +178,7 @@ flowchart TD
 
 两条约束界定了这条边界。
 
-1. **`RuntimeRegistry` 是 `AbiModule` 的投影，不是另一套类型系统。** 投影可以丢信息，但不能
+1. **`runtime::Registry` 是 `AbiModule` 的投影，不是另一套类型系统。** 投影可以丢信息，但不能
    创造 ABI 事实。AMC 知道类型名字、TypeID、布局、字段、source origin 与 diagnostics；
    Runtime 只需要 TypeID、LayoutHash 与 runtime 指针。这种缩减是合法的 lower。Runtime 不得
    自行定义新的 TypeID 或 LayoutHash。
@@ -187,7 +187,7 @@ flowchart TD
    Runtime 认为是 B、LLDB 认为是 C、Package Manager 认为是 D。
 
 一致性：`ModuleDescriptor` 同时携带 runtime 投影与 AMC 生成的 canonical 数组。
-`RuntimeRegistry::register_module()` 直接 import canonical 的 `TypeDesc`/`TypeLayout` 数据，
+`runtime::Registry::register_module()` 直接 import canonical 的 `TypeDesc`/`TypeLayout` 数据，
 不再重建；`valid()` 校验 runtime 投影与 canonical 数据在 `type_id`、`size`、`align`、
 `layout_hash` 上严格一致。
 
@@ -196,7 +196,7 @@ flowchart TD
     ast["Clang AST"] --> amc["AMC"] --> module["AbiModule"]
     module --> types["amc_types[]<br/>(runtime 投影)"]
     module --> canon["amc_canonical_types[]<br/>amc_canonical_layouts[]<br/>(唯一 ABI 真相)"]
-    canon --> registry["RuntimeRegistry<br/>(直接 import canonical 数据)"]
+    canon --> registry["runtime::Registry<br/>(直接 import canonical 数据)"]
 ```
 
 ### 边界风险清单
@@ -205,7 +205,7 @@ flowchart TD
 |---------|---------|---------|---------|
 | 在 `operator()` 热路径中加入类型检查 | 1 | 高 | 保持 `fn(args...)` 直接调用 |
 | 引入 ABIX 自己的对象生命周期管理 | 2 | 高 | 只描述，不管理 |
-| 隐式类型转换（`dll_func` 自动调用 `MapPlan`） | 3 | 中 | `MapPlan` 必须显式构造 |
+| 隐式类型转换（`dll::Function` 自动调用 `MapPlan`） | 3 | 中 | `MapPlan` 必须显式构造 |
 | `.abix` 开始存储源码行号 / 变量作用域 | 4 | 中 | Code Review 把关 |
 | Runtime 注册非 AMC 生成的类型 | 5 | 高 | `.abix` canonical hash 校验 |
 
@@ -252,7 +252,7 @@ Runtime 只是该对象的一个 consumer。
 
 ```mermaid
 flowchart TD
-    core["ABIX Core<br/>ABI Semantic Model<br/>ABI Identity<br/>ABI Metadata<br/>ABI Compatibility"]
+    core["ABIX Core<br/>ABI Semantic Model<br/>ABI Identity<br/>ABI Metadata<br/>ABI Compat"]
     core --> compiler["Compiler"]
     core --> runtime["Runtime"]
     core --> tools["Tools"]
@@ -302,9 +302,9 @@ CRT 共同解释。
 
 1. **注册宏与调用约定。** `Cdecl`、`Stdcall` 作为 `cc::tag` 在编译期混入签名哈希，错误调用
    约定在解析期报 `sig_mismatch`，而不是运行时崩溃。
-2. **类型化句柄。** `dll_func<Sig, CC>` 把 `(库, 名字, 版本)` 封装起来；`operator()` 自动进出
+2. **类型化句柄。** `dll::Function<Sig, CC>` 把 `(库, 名字, 版本)` 封装起来；`operator()` 自动进出
    读侧临界区，错误统一收敛到线程本地 `last_error()`。
-3. **签名与类型哈希。** `type_sig` 统一类型签名，为 `*_dll_ptr`、`function_dll` 特化复合哈希，
+3. **签名与类型哈希。** `type_sig` 统一类型签名，为 `*_dll_ptr`、`runtime::Function` 特化复合哈希，
    让"对象归属哪个模块、如何被持有"也成为 ABI 的一部分。
 4. **版本共存与演进。** 同名多版本函数通过 `SKL_ABIX_VERSION` 并存，老、新客户端各取所需；
    `handle_id()` 在热重载前后稳定。
@@ -317,10 +317,10 @@ CRT 共同解释。
 6. **查找加速。** 小表线性扫描；大表（≥64）使用开放寻址哈希索引，负载约 50%，加载时一次构建，
    运行时无初始化竞争。支持热点函数（80/20 场景）。
 7. **资源生命周期。** 借鉴 Rust 的 ownership/lifetime：`unique`/`ref`/`shared`/`weak`/
-   `view_dll_ptr` 智能指针族内部是标准布局、可平凡拷贝的句柄加删除器，配合 DLL 端删除器与
-   `abi_alloc`/`abi_free`。对象由 DLL 创建、也由 DLL 释放，所有权不逃逸出模块。生命周期先在
+   `dll::ViewPtr` 智能指针族内部是标准布局、可平凡拷贝的句柄加删除器，配合 DLL 端删除器与
+   `mem::alloc`/`mem::dealloc`。对象由 DLL 创建、也由 DLL 释放，所有权不逃逸出模块。生命周期先在
    单线程理顺，再交给 RCU 层处理多线程。
-8. **跨边界闭包。** `function_dll` 是固定 8 字节、可拷可移、带魔数校验的值，把宿主回调安全
+8. **跨边界闭包。** `runtime::Function` 是固定 8 字节、可拷可移、带魔数校验的值，把宿主回调安全
    传入 DLL。
 
 ### 阶段三 · MICS 双轨反射库

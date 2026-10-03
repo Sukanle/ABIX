@@ -34,7 +34,7 @@ ABI 机制。
 
 ## 注册表
 
-`RuntimeRegistry` 持有所有已加载模块的 ABI 事实，并在加载期校验：
+`runtime::Registry` 持有所有已加载模块的 ABI 事实，并在加载期校验：
 
 * canonical `TypeDesc` / `TypeLayout` 是唯一 ABI 事实；
 * 同一 module version 内共享 TypeID 必须携带相同 `LayoutHash`（兼容重复去重，冲突拒绝）；
@@ -79,7 +79,7 @@ sequenceDiagram
 ```
 
 加载器定位内嵌在二进制中的 ABIX Metadata Region，将其 materialize 为
-`ModuleDescriptor` 并注册到 `RuntimeRegistry`。此后所有类型查找都从注册表解析，
+`ModuleDescriptor` 并注册到 `runtime::Registry`。此后所有类型查找都从注册表解析，
 不再重新解析 section。
 
 ## 函数调用时序
@@ -87,14 +87,14 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User as 用户
-    participant dll_func
+    participant dll::Function
     participant FunctionTable as 函数表
     participant NativeFunction as 原生函数
 
-    User->>dll_func: operator()(args...)
-    dll_func->>FunctionTable: read function pointer
-    FunctionTable-->>dll_func: function pointer
-    dll_func->>NativeFunction: direct call(args...)
+    User->>dll::Function: operator()(args...)
+    dll::Function->>FunctionTable: read function pointer
+    FunctionTable-->>dll::Function: function pointer
+    dll::Function->>NativeFunction: direct call(args...)
     NativeFunction-->>User: result
 ```
 
@@ -106,7 +106,7 @@ sequenceDiagram
 ### DLL 端（提供方）
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double a, double b) { return a * b; }
@@ -120,19 +120,19 @@ SKL_ABIX_DEFINE_TABLE(
 ### 宿主端（使用方）
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 using namespace skl::abix;
 
-dll_object lib;
+dll::Object lib;
 lib.load("math_dll.dll");
 
-auto add = dll_func<int(int, int)>(lib, "add");
+auto add = dll::Function<int(int, int)>(lib, "add");
 if (add.valid()) {
     int result = add(2, 3);  // 5
 }
 
-auto mul = dll_func<double(double, double)>(lib, "multiply");
+auto mul = dll::Function<double(double, double)>(lib, "multiply");
 if (mul.valid()) {
     double result = mul(1.5, 4.0);  // 6.0
 }
@@ -142,7 +142,7 @@ if (mul.valid()) {
 
 ## API 参考
 
-完整运行时 API（`entry`、`table`、`dll_object`、`call_error`、DLL 资源智能指针、
+完整运行时 API（`entry`、`table`、`dll::Object`、`dll::CallError`、DLL 资源智能指针、
 日志、RCU 超时策略、类型化函数句柄与签名 hash）见 [`api_zh.md`](../abix/api_zh.md)。
 
 ## 性能

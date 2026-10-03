@@ -1,4 +1,4 @@
-#include "../core/amc_core.h"
+#include "AMC/Core/Core.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>

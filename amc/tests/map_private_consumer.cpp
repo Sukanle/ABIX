@@ -1,7 +1,7 @@
 #include <array>
 #include <cstdint>
 
-#include "abix/map.h"
+#include "ABIX/Model/Map.h"
 #include "amc_map.hpp"
 
 int main() {
@@ -18,12 +18,12 @@ int main() {
         {0, {1, 0}, 0, 0, 0, 0}, {0, {1, 0}, 4, 0, 0, 0}};
     constexpr skl::abix::model::TypeLayout source_layout{4, 4, 0, 1, {1, 1}};
     constexpr skl::abix::model::TypeLayout target_layout{8, 4, 0, 2, {2, 2}};
-    constexpr skl::abix::runtime_map::Operation operations[] = {
-        {skl::abix::runtime_map::Opcode::copy_field, {}, 0, 0, 4},
-        {skl::abix::runtime_map::Opcode::add_default, {}, 1, 1, 4}};
-    const skl::abix::runtime_map::MapPlan<2> dynamic_plan({{1, 0}, {2, 0}, 0, 0}, operations, 2);
+    constexpr skl::abix::model::Operation operations[] = {
+        {skl::abix::model::Opcode::copy_field, {}, 0, 0, 4},
+        {skl::abix::model::Opcode::add_default, {}, 1, 1, 4}};
+    const skl::abix::model::MapPlan<2> dynamic_plan({{1, 0}, {2, 0}, 0, 0}, operations, 2);
     if (dynamic_plan.apply(source_layout, target_layout, source_fields, target_fields,
-                           dynamic_target.data(), source.data()) != skl::abix::runtime_map::Status::ok)
+                           dynamic_target.data(), source.data()) != skl::abix::model::PlanStatus::ok)
         return 2;
     return static_target == dynamic_target ? 0 : 3;
 }

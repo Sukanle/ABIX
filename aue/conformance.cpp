@@ -4,7 +4,7 @@
 // This turns "is the ABIX boundary layer semantically transparent?" into an
 // automatically checked proposition (plan AI-P3): the same standard Lua runs
 // unchanged; only the dispatch backend differs.
-#include "aue.h"
+#include "Aue.h"
 
 #include <cstdio>
 #include <string>

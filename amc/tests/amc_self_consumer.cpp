@@ -1,12 +1,12 @@
-#include "amc/core/amc_core.h"
+#include "AMC/Core/Core.h"
 
 #define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
 #include "amc_core.hpp"
 
 int main() {
-    skl::abix::runtime::RuntimeRegistry<128> registry;
+    skl::abix::runtime::Registry<128> registry;
     if (registry.register_module(amc_generated::amc_module) !=
-        skl::abix::runtime::RuntimeRegisterStatus::ok)
+        skl::abix::runtime::RegisterStatus::ok)
         return 1;
     return registry.type_of<amc::AbiModule>() &&
                    registry.type_of<amc::MapOperation>() &&

@@ -1,4 +1,4 @@
-#include "abix/self_types.cpp"
+#include "src/self_types.cpp"
 
 #define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
 #include "abix_self_metadata.hpp"
@@ -13,18 +13,17 @@ void reclaim(void *object) noexcept {
 }  // namespace
 
 int main() {
-    skl::abix::runtime::RuntimeRegistry<64> registry;
+    skl::abix::runtime::Registry<64> registry;
     if (registry.register_module(amc_generated::amc_module) !=
-        skl::abix::runtime::RuntimeRegisterStatus::ok)
+        skl::abix::runtime::RegisterStatus::ok)
         return 1;
     if (!registry.type_of<skl::abix::model::TypeDesc>() ||
         !registry.type_of<skl::abix::model::TypeInfo>() ||
-        !registry.type_of<skl::abix::runtime::ebr::Epoch>() ||
-        !registry.type_of<skl::abix::runtime::ebr::RetiredNode>() ||
+        !registry.type_of<skl::abix::rcu::Epoch>() ||
+        !registry.type_of<skl::abix::rcu::RetiredNode>() ||
         !registry.type_of<skl::abix::runtime::RegistryEntry>() ||
-        !registry.type_of<skl::abix::runtime::RuntimeRegistryEntry>() ||
-        !registry.type_of<skl::abix::runtime_map::Operation>() ||
-        !registry.type_of<skl::abix::rcu_domain>())
+        !registry.type_of<skl::abix::model::Operation>() ||
+        !registry.type_of<skl::abix::rcu::Domain>())
         return 2;
 
     const auto *entry = registry.type_of<skl::abix::runtime::RegistryEntry>();
@@ -39,13 +38,13 @@ int main() {
                                sizeof(skl::abix::model::TypeInfo), alignof(skl::abix::model::TypeInfo)) ||
         !matches_native_layout(entry, sizeof(skl::abix::runtime::RegistryEntry),
                                alignof(skl::abix::runtime::RegistryEntry)) ||
-        !matches_native_layout(registry.type_of<skl::abix::runtime::ebr::Epoch>(),
-                               sizeof(skl::abix::runtime::ebr::Epoch), alignof(skl::abix::runtime::ebr::Epoch)) ||
-        !matches_native_layout(registry.type_of<skl::abix::runtime::ebr::RetiredNode>(),
-                               sizeof(skl::abix::runtime::ebr::RetiredNode), alignof(skl::abix::runtime::ebr::RetiredNode)))
+        !matches_native_layout(registry.type_of<skl::abix::rcu::Epoch>(),
+                               sizeof(skl::abix::rcu::Epoch), alignof(skl::abix::rcu::Epoch)) ||
+        !matches_native_layout(registry.type_of<skl::abix::rcu::RetiredNode>(),
+                               sizeof(skl::abix::rcu::RetiredNode), alignof(skl::abix::rcu::RetiredNode)))
         return 4;
 
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     domain.retire(new int(7), reclaim);
     for (unsigned i = 0; i < SKL_ABIX_RCU_EPOCH_BATCH; ++i)
         domain.synchronize();

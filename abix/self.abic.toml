@@ -1,49 +1,48 @@
-# This compatibility entry point is retained for existing invocations.  New
-# builds should use self/abix_self.abic.toml, whose artifact names form the
-# public bootstrap contract.
+# ABIX self-description: describes ABIX's own public ABI with its own model.
+# The artifact names form the public bootstrap contract.
 [package]
 name = "abix_runtime"
-version = "1"
+version = "0.1.0"
 
 [[import]]
 language = "cpp"
 flags = [
   "-std=c++17",
-  "-isystem", "/usr/lib/clang/22/include",
-  "-isystem", "/usr/lib/gcc/x86_64-pc-linux-gnu/16/include"
+  "-I", "..",
+  "-I", "../mics",
 ]
-files = ["self_types.cpp"]
+files = ["../src/self_types.cpp"]
 symbols = [
-  "skl::abix::model::Hash128",
+  "skl::abix::Hash128",
   "skl::abix::model::TypeLayout",
   "skl::abix::model::TypeDesc",
   "skl::abix::model::Field",
   "skl::abix::model::Function",
   "skl::abix::model::Symbol",
   "skl::abix::model::MapInfo",
-  "skl::abix::model::Compatibility",
+  "skl::abix::model::Compat",
   "skl::abix::model::ABIIdentity",
   "skl::abix::model::Target",
-  "skl::abix::bootstrap::BootstrapRecord",
-  "skl::abix::bootstrap::BootstrapWireRecord",
-  "skl::abix::bootstrap::BootstrapImage",
-  "skl::abix::runtime::BootstrapMetadata",
+  "skl::abix::model::BootRecord",
+  "skl::abix::model::WireRecord",
+  "skl::abix::model::BootImage",
+  "skl::abix::metadata::Bootstrap",
+  "skl::abix::metadata::RegistryEntry",
+  "skl::abix::metadata::LayoutInfo",
+  "skl::abix::metadata::FieldDescriptor",
+  "skl::abix::metadata::TypeDescriptor",
+  "skl::abix::metadata::ParameterDescriptor",
+  "skl::abix::metadata::FunctionDescriptor",
+  "skl::abix::metadata::SymbolDescriptor",
+  "skl::abix::metadata::ModuleDescriptor",
   "skl::abix::runtime::RegistryEntry",
-  "skl::abix::runtime::LayoutInfo",
-  "skl::abix::runtime::FieldDescriptor",
-  "skl::abix::runtime::TypeDescriptor",
-  "skl::abix::runtime::ParameterDescriptor",
-  "skl::abix::runtime::FunctionDescriptor",
-  "skl::abix::runtime::SymbolDescriptor",
-  "skl::abix::runtime::ModuleDescriptor",
-  "skl::abix::runtime::RuntimeRegistryEntry",
-  "skl::abix::runtime_map::Operation",
-  "skl::abix::compatibility::Result",
-  "skl::abix::rcu_domain",
-  "skl::abix::runtime::ebr::ThreadState",
-  "skl::abix::runtime::ebr::RetiredNode",
-  "skl::abix::runtime::ebr::RetiredBatch",
-  "skl::abix::runtime::ebr::Epoch"
+  "skl::abix::model::Operation",
+  "skl::abix::runtime::LookupResult",
+  "skl::abix::rcu::Domain",
+  "skl::abix::rcu::ThreadState",
+  "skl::abix::rcu::RetiredNode",
+  "skl::abix::rcu::RetiredBatch",
+  "skl::abix::rcu::Epoch"
 ]
 
 [[export]]

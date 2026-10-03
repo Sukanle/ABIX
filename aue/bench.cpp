@@ -8,7 +8,7 @@
 //
 // Timing is inherently noisy and this runs as a smoke test that must simply
 // succeed; the numbers are printed for comparison, not asserted.
-#include "aue.h"
+#include "Aue.h"
 
 #include <chrono>
 #include <cstdio>

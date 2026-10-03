@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <mutex>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 #include "dlls/plugin_types.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -83,15 +83,15 @@ std::string dll_path(const char *name) {
 namespace {
 struct LogSinkInitializer {
     LogSinkInitializer() {
-        skl::abix::set_log_sink([](skl::abix::LogLevel level, const char *msg) {
+        skl::abix::util::set_log_sink([](skl::abix::util::LogLevel level, const char *msg) {
             static std::mutex log_mutex;
             std::lock_guard<std::mutex> lock(log_mutex);
             const char *level_str = "UNKNOWN";
             switch (level) {
-                case skl::abix::LogLevel::Debug:   level_str = "DEBUG"; break;
-                case skl::abix::LogLevel::Info:    level_str = "INFO"; break;
-                case skl::abix::LogLevel::Warning: level_str = "WARNING"; break;
-                case skl::abix::LogLevel::Error:   level_str = "ERROR"; break;
+                case skl::abix::util::LogLevel::Debug:   level_str = "DEBUG"; break;
+                case skl::abix::util::LogLevel::Info:    level_str = "INFO"; break;
+                case skl::abix::util::LogLevel::Warning: level_str = "WARNING"; break;
+                case skl::abix::util::LogLevel::Error:   level_str = "ERROR"; break;
             }
             std::fprintf(stderr, "[ABIX_%s] %s\n", level_str, msg);
         });

@@ -122,7 +122,7 @@ path is close to a static ABI. See [`docs/runtime.md`](../docs/runtime.md) and
 
 ## 7.1 Versioned TypeID Registration
 
-The `RuntimeRegistry` supports versioned registration: the same `TypeID` may
+The `runtime::Registry` supports versioned registration: the same `TypeID` may
 coexist under distinct module ABI versions with different layouts. Only a
 repeated `TypeID` *within the same version* is a layout conflict (Boundary #1).
 

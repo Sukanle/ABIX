@@ -27,12 +27,12 @@
 ABIX 的发布是项目阶段，而不是功能清单。每个大版本代表一个阶段，版本号本身承载产品叙事。
 
 ```text
-ABIX 1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于真实工程
-ABIX 2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
-ABIX 3.0 — Ecosystem                 其他项目建立在 ABIX 之上
+ABIX 0.1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于真实工程
+ABIX 0.2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
+ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
-### ABIX 1.0 — Foundation, self-hosting and toolchain（当前/已发布）
+### ABIX 0.1.0 — Foundation, self-hosting and toolchain（当前，pre-1.0/非稳定）
 
 * ABI 规范、metadata 格式、核心运行时。
 * 引导与自举：ABIX 用自身描述并校验其公开 ABI。
@@ -42,7 +42,7 @@ ABIX 3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * ELF / Mach-O 二进制检查。
 * 构建系统与 CI 集成、运行时稳定性、benchmark 基线。
 
-### ABIX 2.0 — Cross-language（下一阶段）
+### ABIX 0.2.0 — Cross-language（下一阶段）
 
 主线：ABIX IR 作为跨语言的统一 ABI 表示。
 
@@ -52,7 +52,7 @@ ABIX 3.0 — Ecosystem                 其他项目建立在 ABIX 之上
   （例如 C `double` → Rust `core::ffi::c_double`）。
 * 跨语言绑定与 C++ ↔ Rust 互操作 demo。
 
-### ABIX 3.0 — Ecosystem（未来）
+### ABIX 0.3.0 — Ecosystem（未来）
 
 目标方向，而非硬性承诺：
 
@@ -107,9 +107,9 @@ ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI 
 
 ## 发布历史
 
-ABIX 自 `v1.0.0` 起使用标准 SemVer tag。项目阶段在 release 标题中命名（例如 `ABIX 1.0.0 — Foundation, self-hosting and toolchain`）。
+ABIX 使用标准 SemVer tag，从非稳定的 `v0.1.0` 线开始。项目阶段在 release 标题中命名（例如 `ABIX 0.1.0 — Foundation, self-hosting and toolchain`）。
 
-* `v1.0.0` — Foundation, self-hosting and toolchain
+* `v0.1.0` — Foundation, self-hosting and toolchain（pre-1.0，非稳定）
 
 ## 明确不在范围内
 
