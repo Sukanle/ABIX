@@ -13,7 +13,7 @@ int cmd_generate(char **args, int arg_count, const fs::path &provider) {
     const std::string command = args[1];
     if (command == "generate" || command == "backend") {
         if (arg_count != 7 || std::string(args[3]) != "-l" || std::string(args[5]) != "-o")
-            return usage_error(command + " expects -l cpp|lua -o <directory|file>");
+            return usage_error(command + " expects -l cpp|lua|rust -o <directory|file>");
         const std::string language = args[4];
         if (language == "lua") {
             if (command == "backend") return usage_error("backend is a C++ provider capability; use generate for lua");
@@ -43,29 +43,52 @@ int cmd_generate(char **args, int arg_count, const fs::path &provider) {
             }
             return 0;
         }
-        if (language != "cpp") return usage_error(command + " expects -l cpp|lua -o <directory|file>");
-        if (command == "backend") {
-            std::string error;
-            if (!dispatch_provider(provider, "backend", args[2], args[6], error))
-                return fail(amc::ErrorCategory::provider, "backend", error, args[2]);
-            return 0;
+        if (language == "cpp") {
+            if (command == "backend") {
+                std::string error;
+                if (!dispatch_provider(provider, "backend", args[2], args[6], error))
+                    return fail(amc::ErrorCategory::provider, "backend", error, args[2]);
+                return 0;
+            }
+            return generate(provider, args[2], args[6], ".hpp");
         }
-        return generate(provider, args[2], args[6]);
+        if (language == "rust") {
+            const fs::path rust_provider = provider_executable(provider, "rust");
+            if (command == "backend") {
+                std::string error;
+                if (!dispatch_provider(rust_provider, "backend", args[2], args[6], error))
+                    return fail(amc::ErrorCategory::provider, "backend", error, args[2]);
+                return 0;
+            }
+            return generate(rust_provider, args[2], args[6], ".rs");
+        }
+        return usage_error(command + " expects -l cpp|lua|rust -o <directory|file>");
     }
 }
 
 int cmd_frontend(char **args, int arg_count, const fs::path &provider) {
     const std::string command = args[1];
     if (command == "frontend") {
-        if (arg_count != 8
-            || std::string(args[2]) != "-l"
-            || std::string(args[3]) != "cpp"
-            || std::string(args[4]) != "-c"
-            || std::string(args[6]) != "-o")
-            return usage_error("frontend expects -l cpp -c <config> -o <output>");
+        std::string language;
+        fs::path config_path;
+        fs::path output_path;
+        for (int i = 2; i < arg_count; ++i) {
+            const std::string argument = args[i];
+            if (argument == "-l" && i + 1 < arg_count)
+                language = args[++i];
+            else if (argument == "-c" && i + 1 < arg_count)
+                config_path = args[++i];
+            else if (argument == "-o" && i + 1 < arg_count)
+                output_path = args[++i];
+            else
+                return usage_error("frontend expects -l <language> -c <config> -o <output>");
+        }
+        if (language.empty() || config_path.empty() || output_path.empty())
+            return usage_error("frontend expects -l <language> -c <config> -o <output>");
         std::string error;
-        if (!dispatch_provider(provider, "frontend", args[5], args[7], error))
-            return fail(amc::ErrorCategory::provider, "frontend", error, args[5]);
+        const fs::path selected = provider_executable(provider, language);
+        if (!dispatch_provider(selected, "frontend", config_path, output_path, error))
+            return fail(amc::ErrorCategory::provider, "frontend", error, config_path.string());
         return 0;
     }
 }

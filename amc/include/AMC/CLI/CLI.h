@@ -44,7 +44,13 @@ struct ExportSpec {
 bool parse_exports(const toml::table &table, std::vector<ExportSpec> &exports, std::string &error);
 bool dispatch_provider(const fs::path &provider, const char *capability, const fs::path &input, const fs::path &output,
     std::string &error);
-int generate(const fs::path &provider, const fs::path &input, const fs::path &destination);
+// Resolve the `amc-<language>` provider executable that sits next to `amc`.
+// `base_provider` is the path to the reference `amc-cpp` provider computed by
+// the driver; the C++ provider is returned unchanged for the default language.
+fs::path provider_executable(const fs::path &base_provider, const std::string &language);
+// Dispatch a provider `backend` capability, defaulting the output to
+// `amc_generated<extension>` when `destination` does not already carry it.
+int generate(const fs::path &provider, const fs::path &input, const fs::path &destination, const std::string &extension);
 void print_usage();
 
 int cmd_context(char **args, int arg_count);

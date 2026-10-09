@@ -39,6 +39,10 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
             std::string error;
             if (!parse_exports(config, exports, error))
                 return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+            const auto *import_table = (*imports)[0].as_table();
+            const std::string language =
+                import_table ? import_table->get("language")->value_or(std::string("cpp")) : "cpp";
+            const fs::path frontend = provider_executable(provider, language);
             const fs::path base = build_dir.empty() ? fs::absolute(config_path).parent_path() : build_dir;
             const fs::path temporary = base / ".amc" / "frontend.abix";
             std::error_code ec;
@@ -46,7 +50,7 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
             if (ec)
                 return fail(
                     amc::ErrorCategory::io, "build", "cannot create build directory", base.string(), ec.message());
-            if (!dispatch_provider(provider, "frontend", config_path, temporary, error))
+            if (!dispatch_provider(frontend, "frontend", config_path, temporary, error))
                 return fail(amc::ErrorCategory::provider, "frontend", error, config_path.string());
 
             amc::AbiModule full;

@@ -146,6 +146,11 @@ bool parse_exports(const toml::table &table, std::vector<ExportSpec> &exports, s
     return true;
 }
 
+fs::path provider_executable(const fs::path &base_provider, const std::string &language) {
+    if (language.empty() || language == "cpp") return base_provider;
+    return base_provider.parent_path() / ("amc-" + language);
+}
+
 bool dispatch_provider(const fs::path &provider, const char *capability, const fs::path &input, const fs::path &output,
     std::string &error) {
     int request_pipe[2] = {}, response_pipe[2] = {};
@@ -210,14 +215,16 @@ bool dispatch_provider(const fs::path &provider, const char *capability, const f
     return ok && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-int generate(const fs::path &provider, const fs::path &input, const fs::path &destination) {
+int generate(const fs::path &provider, const fs::path &input, const fs::path &destination, const std::string &extension) {
     fs::path output = destination;
-    if (destination.extension() != ".hpp") output /= "amc_generated.hpp";
+    if (destination.extension() != extension) output /= ("amc_generated" + extension);
     std::error_code ec;
-    fs::create_directories(output.parent_path(), ec);
-    if (ec)
-        return fail(
-            amc::ErrorCategory::io, "generate", "cannot create output directory", output.string(), ec.message());
+    if (!output.parent_path().empty()) {
+        fs::create_directories(output.parent_path(), ec);
+        if (ec)
+            return fail(
+                amc::ErrorCategory::io, "generate", "cannot create output directory", output.string(), ec.message());
+    }
     std::string error;
     if (!dispatch_provider(provider, "backend", input, output, error))
         return fail(amc::ErrorCategory::provider, "backend", error, input.string());
@@ -228,7 +235,7 @@ void print_usage() {
     fmt::print(stderr,
         "usage:\n"
         "  amc build -c <file>.abic.toml [-B <build_dir>]\n"
-        "  amc generate <file>.abix -l cpp|lua -o <directory|file>\n"
+        "  amc generate <file>.abix -l cpp|lua|rust -o <directory|file>\n"
         "  amc validate <file>.abix\n"
         "  amc inspect <file>.abix\n"
         "  amc context <file>.abix [--format llm|json] [--no-names] [-o <file>]\n"
