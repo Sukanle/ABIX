@@ -1,0 +1,21 @@
+[package]
+name = "rust_demo"
+version = "0.1"
+
+[[import]]
+language = "rust"
+files = ["rust_demo.rs"]
+symbols = [
+    "RustPoint",
+    "RustRect",
+    "RustColor",
+    "RustBuffer",
+    "RustAligned",
+    "rust_make_rect",
+    "rust_rect_area",
+    "rust_shade",
+    "rust_buffer_len",
+]
+
+[[export]]
+output = "rust_demo.abix"
