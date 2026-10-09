@@ -40,7 +40,10 @@ def main() -> int:
 
     context = subprocess.run(
         [args.amc, "context", args.abix, "--format", "llm"],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
 
     source = ""
     for path in args.source:
@@ -50,11 +53,16 @@ def main() -> int:
     metadata_tokens = estimate(context)
     source_tokens = estimate(source)
     ratio = round(source_tokens / metadata_tokens, 3) if metadata_tokens else 0.0
-    print(json.dumps({
-        "source_tokens": source_tokens,
-        "metadata_tokens": metadata_tokens,
-        "source_over_metadata": ratio,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "source_tokens": source_tokens,
+                "metadata_tokens": metadata_tokens,
+                "source_over_metadata": ratio,
+            },
+            indent=2,
+        )
+    )
     if metadata_tokens == 0 or source_tokens == 0:
         print("could not measure both views", file=sys.stderr)
         return 1

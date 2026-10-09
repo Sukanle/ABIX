@@ -4,24 +4,25 @@ set(BENCH_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(BENCH_INC_DIR ${SKL_ABIX_SRC_DIR} ${SKL_ABIX_SRC_DIR}/mics ${BENCH_SRC_DIR})
 
 if(SKL_ABIX_DEVELOPMENT)
-  add_compile_definitions(SKL_ABIX_DEVELOPMENT)
+    add_compile_definitions(SKL_ABIX_DEVELOPMENT)
 endif()
 
 # file 可不填，默认是 ${name}.cpp
 function(abi_add_bench)
-  cmake_parse_arguments(BENCH "" "NAME" "SOURCES" ${ARGN})
+    cmake_parse_arguments(BENCH "" "NAME" "SOURCES" ${ARGN})
 
-  add_executable(${BENCH_NAME} ${BENCH_SOURCES})
-  target_include_directories(${BENCH_NAME} PRIVATE ${BENCH_INC_DIR})
-  target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark benchmark::benchmark_main)
-  set_target_properties(${BENCH_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND 
-    (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
-    add_custom_command(TARGET ${BENCH_NAME} POST_BUILD
-      COMMAND dsymutil $<TARGET_FILE:${BENCH_NAME}> -o ${CMAKE_BINARY_DIR}/bin/${BENCH_NAME}.dSYM
-      COMMENT "Generate dSYM file for ${BENCH_NAME} on macOS")
-  endif()
+    add_executable(${BENCH_NAME} ${BENCH_SOURCES})
+    target_include_directories(${BENCH_NAME} PRIVATE ${BENCH_INC_DIR})
+    target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark benchmark::benchmark_main)
+    set_target_properties(${BENCH_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
+                                                                                     "RelWithDebInfo"))
+        add_custom_command(
+            TARGET ${BENCH_NAME}
+            POST_BUILD
+            COMMAND dsymutil $<TARGET_FILE:${BENCH_NAME}> -o ${CMAKE_BINARY_DIR}/bin/${BENCH_NAME}.dSYM
+            COMMENT "Generate dSYM file for ${BENCH_NAME} on macOS")
+    endif()
 endfunction()
 
 abi_add_bench(NAME "atomic_bench" SOURCES "atomic_bench.cpp")
@@ -59,14 +60,25 @@ abi_add_bench(NAME "ebr_profile_bench" SOURCES "ebr/profile_bench.cpp" ${EBR_SOU
 add_executable(bench_all ${BENCH_SRC_DIR}/bench_all.cpp ${EBR_SOURCES})
 target_include_directories(bench_all PRIVATE ${BENCH_INC_DIR})
 target_link_libraries(bench_all PRIVATE benchmark::benchmark benchmark::benchmark_main)
-set_target_properties(bench_all PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-foreach(plugin math_dll version_dll sigcheck_dll resource_dll callback_dll
-  reload_dll_a reload_dll_b edge_dll edge_stdcall_dll hotcache_dll
-  closed_dll closed_dll_v2)
-  add_compile_definitions(${plugin} PRIVATE ALL_BENCHMARKS)
-  add_custom_command(TARGET bench_all POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/bin
-    COMMENT "Stage plugin ${plugin} for bench_all")
+set_target_properties(bench_all PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+foreach(
+    plugin
+    math_dll
+    version_dll
+    sigcheck_dll
+    resource_dll
+    callback_dll
+    reload_dll_a
+    reload_dll_b
+    edge_dll
+    edge_stdcall_dll
+    hotcache_dll
+    closed_dll
+    closed_dll_v2)
+    add_compile_definitions(${plugin} PRIVATE ALL_BENCHMARKS)
+    add_custom_command(
+        TARGET bench_all
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/bin
+        COMMENT "Stage plugin ${plugin} for bench_all")
 endforeach()

@@ -34,7 +34,9 @@ def main() -> int:
         return 1
 
     if not inside_git_repo():
-        print("Error: Current directory is not inside a Git repository.", file=sys.stderr)
+        print(
+            "Error: Current directory is not inside a Git repository.", file=sys.stderr
+        )
         return 1
 
     run(["git", "config", "core.hooksPath", ".githooks"])

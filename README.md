@@ -213,9 +213,9 @@ graph TD
 The IR focuses on ABI semantics rather than source-level detail. Its serialized
 form is the `.abix` artifact:
 
-* [`docs/abix/abix.md`](docs/abix/abix.md) — the canonical `.abix` artifact
-* [`docs/abix/abic.md`](docs/abix/abic.md) — the `.abic.toml` build configuration
-* [`docs/abix/metadata_modes.md`](docs/abix/metadata_modes.md) — the three metadata modes
+- [`docs/abix/abix.md`](docs/abix/abix.md) — the canonical `.abix` artifact
+- [`docs/abix/abic.md`](docs/abix/abic.md) — the `.abic.toml` build configuration
+- [`docs/abix/metadata_modes.md`](docs/abix/metadata_modes.md) — the three metadata modes
 
 ---
 
@@ -325,12 +325,12 @@ vcpkg), FFI (bindgen), component models (COM, Wasm Component Model),
 RPC/IDL (gRPC/Protobuf), and build systems (CMake/Bazel). ABIX unifies
 these native binary lifecycle capabilities onto a single ABI/IR.
 
-| What others solve       | What ABIX adds                             |
-|-------------------------|--------------------------------------------|
-| ABI analysis / diff     | ABI IR / contract / verification           |
-| Package / build         | ABI metadata as first-class object         |
-| Source-oriented FFI     | Binary-oriented binding                    |
-| Wire-level contracts    | Native binary boundary semantics           |
+| What others solve    | What ABIX adds                     |
+| -------------------- | ---------------------------------- |
+| ABI analysis / diff  | ABI IR / contract / verification   |
+| Package / build      | ABI metadata as first-class object |
+| Source-oriented FFI  | Binary-oriented binding            |
+| Wire-level contracts | Native binary boundary semantics   |
 
 For a detailed analysis see [docs/development/competitors.md](docs/development/competitors.md).
 
@@ -342,13 +342,13 @@ ABIX is designed as an open foundation for native binary interoperability.
 
 AMC provides tooling around ABIX, while higher-level applications can be built independently across areas such as:
 
-* ABI governance and CI
-* Cross-language interoperability
-* Native plugin systems
-* Package and binary management
-* IDE and LSP integration
-* AI-assisted development
-* Robotics and runtime systems
+- ABI governance and CI
+- Cross-language interoperability
+- Native plugin systems
+- Package and binary management
+- IDE and LSP integration
+- AI-assisted development
+- Robotics and runtime systems
 
 The project aims to support both community-driven and commercial adoption while keeping the core ABI technology broadly reusable and interoperable.
 
@@ -381,10 +381,10 @@ ABIX
 
 ### Requirements
 
-* C++17 or later
-* CMake 3.20+
-* LLVM / Clang tooling (for the AMC C++ frontend)
-* a supported native toolchain
+- C++17 or later
+- CMake 3.20+
+- LLVM / Clang tooling (for the AMC C++ frontend)
+- a supported native toolchain
 
 ### Build
 
@@ -420,54 +420,54 @@ For the first complete walkthrough see
 
 ### Start Here
 
-* [Getting Started](docs/getting-started/getting-started.md)
-* [Architecture](.agents/ARCHITECTURE.md)
-* [ABIX Specification](.agents/ABI-SPEC.md)
-* [`.abix` — Canonical ABI Artifact](docs/abix/abix.md)
+- [Getting Started](docs/getting-started/getting-started.md)
+- [Architecture](.agents/ARCHITECTURE.md)
+- [ABIX Specification](.agents/ABI-SPEC.md)
+- [`.abix` — Canonical ABI Artifact](docs/abix/abix.md)
 
 ### Core Concepts
 
-* [ABI Identity & Compat](docs/architecture/compatibility.md)
-* [`.abic` — ABI Configuration](docs/abix/abic.md)
-* [Metadata Modes](docs/abix/metadata_modes.md)
-* [Self-Hosting](docs/getting-started/self-hosting.md)
+- [ABI Identity & Compat](docs/architecture/compatibility.md)
+- [`.abic` — ABI Configuration](docs/abix/abic.md)
+- [Metadata Modes](docs/abix/metadata_modes.md)
+- [Self-Hosting](docs/getting-started/self-hosting.md)
 
 ### Runtime
 
-* [Runtime Overview](docs/architecture/runtime.md)
-* [API Reference](docs/abix/api.md)
-* [Performance & Benchmarks](docs/benchmark/benchmark.md)
+- [Runtime Overview](docs/architecture/runtime.md)
+- [API Reference](docs/abix/api.md)
+- [Performance & Benchmarks](docs/benchmark/benchmark.md)
 
 ### AMC Toolchain
 
-* [AMC](docs/amc/amc.md)
-* [Language Plugins](.agents/LANGUAGE-PLUGIN.md)
-* [MCP: ABI Metadata for AI agents](docs/ai/MCP.md)
+- [AMC](docs/amc/amc.md)
+- [Language Plugins](.agents/LANGUAGE-PLUGIN.md)
+- [MCP: ABI Metadata for AI agents](docs/ai/MCP.md)
 
 ### Project
 
-* [Roadmap](.agents/ROADMAP.md)
-* [Contributing](CONTRIBUTING.md)
-* [Agent Instructions](.agents/AGENTS.md)
-* [Design Notes](docs/development/design-notes.md)
+- [Roadmap](.agents/ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
+- [Agent Instructions](.agents/AGENTS.md)
+- [Design Notes](docs/development/design-notes.md)
 
 ---
 
 ## Current Status
 
 **ABIX 0.1.0** — an unstable, pre-1.0 foundation preview: ABI inspection, diff, compatibility classification, adapter generation, metadata modes and ELF / Mach-O inspection. The project is
-under active development; the C++ implementation is the *first* implementation
+under active development; the C++ implementation is the _first_ implementation
 of the model, not a limitation of it. The next stage, **ABIX 0.2.0**, is
 **cross-language support** (Rust, then Zig).
 
 Current focus:
 
-* strengthening the ABIX specification
-* improving AMC usability
-* language / toolchain integration
-* ABI compatibility analysis
-* documentation and examples
-* external validation and adoption
+- strengthening the ABIX specification
+- improving AMC usability
+- language / toolchain integration
+- ABI compatibility analysis
+- documentation and examples
+- external validation and adoption
 
 ---
 

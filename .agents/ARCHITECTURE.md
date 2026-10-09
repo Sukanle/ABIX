@@ -1,7 +1,7 @@
 # Architecture
 
-This document is the **design map** for ABIX. It states *why the system is
-shaped this way* and which invariants must not be broken. It intentionally does
+This document is the **design map** for ABIX. It states _why the system is
+shaped this way_ and which invariants must not be broken. It intentionally does
 not track file-level implementation detail, which ages quickly.
 
 For ABI semantics see [`ABI-SPEC.md`](ABI-SPEC.md). For extension see
@@ -10,11 +10,11 @@ in [`docs/`](../docs/).
 
 ## 1. Design Goals
 
-* Make the native ABI an explicit, machine-readable, verifiable object.
-* Keep ABI semantics independent of any single language implementation.
-* Keep compatible native execution on the native fast path.
-* Give the ecosystem one machine-readable source of ABI truth.
-* Make ABI evolution explicit and safe (identity, layout, compatibility).
+- Make the native ABI an explicit, machine-readable, verifiable object.
+- Keep ABI semantics independent of any single language implementation.
+- Keep compatible native execution on the native fast path.
+- Give the ecosystem one machine-readable source of ABI truth.
+- Make ABI evolution explicit and safe (identity, layout, compatibility).
 
 ## 2. Layer Model
 
@@ -39,13 +39,13 @@ redefines a layer above it.
 
 ## 3. Ownership of Responsibilities
 
-| Layer | Owns |
-|-------|------|
+| Layer                      | Owns                                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
 | Language frontend / plugin | parsing, type resolution, extracting language ABI semantics, normalizing language constructs |
-| AMC | driving frontends, projection, comparison, verification, code generation, distribution |
-| ABIX IR | the ABI model: identity, layout, functions, symbols, compatibility, mapping |
-| `.abix` / Metadata Region | canonical serialization of the model |
-| ABIX Runtime | consuming ABI: registry, binding, adaptation, native execution |
+| AMC                        | driving frontends, projection, comparison, verification, code generation, distribution       |
+| ABIX IR                    | the ABI model: identity, layout, functions, symbols, compatibility, mapping                  |
+| `.abix` / Metadata Region  | canonical serialization of the model                                                         |
+| ABIX Runtime               | consuming ABI: registry, binding, adaptation, native execution                               |
 
 ## 4. Architectural Invariants
 
@@ -91,9 +91,9 @@ plugins ──► ABIX IR ──► AMC ──► runtime
                      └──► .abix
 ```
 
-* Plugins depend on ABIX IR, never on runtime internals.
-* The runtime depends on the ABI model, never on a language AST.
-* Tooling splits into `libabix-format` / `libabix-abi` / `libabix-metadata` /
+- Plugins depend on ABIX IR, never on runtime internals.
+- The runtime depends on the ABI model, never on a language AST.
+- Tooling splits into `libabix-format` / `libabix-abi` / `libabix-metadata` /
   `libabix-tools` (plus header-only `libabix-runtime`) so every consumer shares
   one parser.
 
@@ -124,7 +124,7 @@ path is close to a static ABI. See [`docs/runtime.md`](../docs/runtime.md) and
 
 The `runtime::Registry` supports versioned registration: the same `TypeID` may
 coexist under distinct module ABI versions with different layouts. Only a
-repeated `TypeID` *within the same version* is a layout conflict (Boundary #1).
+repeated `TypeID` _within the same version_ is a layout conflict (Boundary #1).
 
 ```cpp
 // Two versions of the same module may register the same TypeID.
@@ -164,28 +164,28 @@ See [`docs/amc.md`](../docs/amc.md) `amc adapter` section and
 
 ## 8. Extension Points
 
-* **New language** → implement a frontend/plugin ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
-* **New artifact consumer** → link `libabix-*`, do not write a new parser.
-* **New tool** → build on `amc/core` query/verify APIs; keep JSON schemas stable.
-* **New runtime capability** → extend the runtime projection, not the ABI model,
+- **New language** → implement a frontend/plugin ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
+- **New artifact consumer** → link `libabix-*`, do not write a new parser.
+- **New tool** → build on `amc/core` query/verify APIs; keep JSON schemas stable.
+- **New runtime capability** → extend the runtime projection, not the ABI model,
   unless it is a genuine ABI concept.
-* **ABI adaptation** → use `amc adapter` to generate field-level mapping code
+- **ABI adaptation** → use `amc adapter` to generate field-level mapping code
   between ABI versions; the runtime adapter dispatches via `abix::adapter<S,T>`.
 
 ## 9. Forbidden Architectural Patterns
 
 Do not:
 
-* make the runtime registry a second ABI authority;
-* put C++ template / language semantics into ABIX IR;
-* introduce runtime dispatch for directly callable functions;
-* make `.abix` or the Metadata Region depend on raw pointers;
-* require the runtime to understand source-language ASTs;
-* let names participate in ABI identity or compatibility;
-* hand-edit generated artifacts instead of regenerating them;
-* duplicate a metadata parser in a new consumer;
-* change ABI semantics to simplify an implementation;
-* hardcode adapter mappings instead of deriving them from compatibility reports;
+- make the runtime registry a second ABI authority;
+- put C++ template / language semantics into ABIX IR;
+- introduce runtime dispatch for directly callable functions;
+- make `.abix` or the Metadata Region depend on raw pointers;
+- require the runtime to understand source-language ASTs;
+- let names participate in ABI identity or compatibility;
+- hand-edit generated artifacts instead of regenerating them;
+- duplicate a metadata parser in a new consumer;
+- change ABI semantics to simplify an implementation;
+- hardcode adapter mappings instead of deriving them from compatibility reports;
 
 If a task appears to require one of these, stop and explain the conflict
 before changing the constraint ([`AGENTS.md`](AGENTS.md) §13).

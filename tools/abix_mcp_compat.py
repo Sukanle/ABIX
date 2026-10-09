@@ -26,10 +26,15 @@ def request(process, payload):
 
 
 def call(process, identifier, tool, arguments):
-    response = request(process, {
-        "jsonrpc": "2.0", "id": identifier, "method": "tools/call",
-        "params": {"name": tool, "arguments": arguments},
-    })
+    response = request(
+        process,
+        {
+            "jsonrpc": "2.0",
+            "id": identifier,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        },
+    )
     if "error" in response:
         raise RuntimeError(f"{tool}: {response['error']}")
     result = response["result"]
@@ -47,16 +52,25 @@ def main() -> int:
 
     process = subprocess.Popen(
         [args.amc_mcp, args.host],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     try:
-        request(process, {
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {"protocolVersion": "2024-11-05"},
-        })
+        request(
+            process,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05"},
+            },
+        )
         host = call(process, 2, "abix.get_module", {})
         plugin = call(process, 3, "abix.get_module", {"module": args.plugin})
-        verdict = call(process, 4, "abix.compare_abi",
-                       {"module": args.host, "other": args.plugin})
+        verdict = call(
+            process, 4, "abix.compare_abi", {"module": args.host, "other": args.plugin}
+        )
     finally:
         process.stdin.close()
         process.wait()

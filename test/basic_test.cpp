@@ -28,7 +28,8 @@ TEST_CASE("1.basic_math_linear_scan", "[basic][prompt1]") {
 
     skl::abix::runtime::index_t idx;
     skl::abix::runtime::HashIndex empty_idx;
-    REQUIRE(find_index(*t, empty_idx, "add", skl::abix::dll::FnSig<int(int, int)>::value, 0, idx) == skl::abix::runtime::LookupResult::ok);
+    REQUIRE(find_index(*t, empty_idx, "add", skl::abix::dll::FnSig<int(int, int)>::value, 0, idx)
+            == skl::abix::runtime::LookupResult::ok);
     log_info("mics table is plain POD, linear scan find_index(add) hit at index %u", (unsigned)idx);
 }
 
@@ -38,8 +39,7 @@ TEST_CASE("2.cross_compiler_variant", "[cross][prompt2]") {
         "boundary");
     for (const char *dir :
         {"./", "./variants/tool_x/version_dll", "./variants/tool_y/version_dll", "./variants/msvc_x64/version_dll"}) {
-        std::string full = std::string(dir) +
-                           "/version_dll" + SKL_ABIX_DLL_SUFFIX;
+        std::string full = std::string(dir) + "/version_dll" + SKL_ABIX_DLL_SUFFIX;
         if (!file_exists(full)) {
             log_info("missing cross-compiler variant %s (built in %s)", full.c_str(), dir);
             continue;

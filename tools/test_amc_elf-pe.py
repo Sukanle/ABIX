@@ -45,6 +45,7 @@ NATIVE_NAMES = "__abix_names"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class TestResult:
     def __init__(self):
         self.passed = 0
@@ -62,7 +63,7 @@ class TestResult:
 
     def summary(self):
         total = self.passed + self.failed
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         if self.failed == 0:
             print(f"\033[32mAll {total} tests passed.\033[0m")
         else:
@@ -87,9 +88,11 @@ def run(cmd, cwd=None, check=True):
 def file_size(path):
     return os.path.getsize(path) if path.exists() else 0
 
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_amc_build(workdir):
     """Test: amc build produces .abix and .abix.meta."""
@@ -97,11 +100,16 @@ def test_amc_build(workdir):
     build_dir = workdir / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
 
-    _, stdout, stderr = run([
-        str(AMC), "build",
-        "-c", str(FIXTURE_CONFIG),
-        "-B", str(build_dir),
-    ])
+    _, stdout, stderr = run(
+        [
+            str(AMC),
+            "build",
+            "-c",
+            str(FIXTURE_CONFIG),
+            "-B",
+            str(build_dir),
+        ]
+    )
 
     abix_file = build_dir / "build" / "amc_test.abix"
     meta_file = build_dir / "build" / "amc_test.abix.meta"
@@ -124,10 +132,17 @@ def test_amc_generate(abix_file, workdir):
     result = TestResult()
     header = workdir / "amc_generated.hpp"
 
-    _, _, stderr = run([
-        str(AMC), "generate", str(abix_file),
-        "-l", "cpp", "-o", str(header),
-    ])
+    _, _, stderr = run(
+        [
+            str(AMC),
+            "generate",
+            str(abix_file),
+            "-l",
+            "cpp",
+            "-o",
+            str(header),
+        ]
+    )
 
     if not header.exists():
         result.fail("amc generate produced header", "file not found")
@@ -157,12 +172,20 @@ def test_compile_elf(header, workdir):
 
     binary = workdir / "test_abix"
 
-    rc, stdout, stderr = run([
-        "clang++", "-std=c++17",
-        "-I", str(workdir),
-        "-I", str(ROOT),
-        str(main_cpp), "-o", str(binary),
-    ], check=False)
+    rc, stdout, stderr = run(
+        [
+            "clang++",
+            "-std=c++17",
+            "-I",
+            str(workdir),
+            "-I",
+            str(ROOT),
+            str(main_cpp),
+            "-o",
+            str(binary),
+        ],
+        check=False,
+    )
 
     if rc != 0:
         result.fail("clang++ compilation", stderr.strip())
@@ -213,7 +236,9 @@ def test_readelf_sections(binary, workdir):
                     idx = next(i for i, p in enumerate(parts) if SECTION_METADATA in p)
                     size_hex = parts[idx + 4]
                     size = int(size_hex, 16)
-                    result.ok(f"readelf: {SECTION_METADATA} section found (size=0x{size:x})")
+                    result.ok(
+                        f"readelf: {SECTION_METADATA} section found (size=0x{size:x})"
+                    )
                 except (StopIteration, IndexError, ValueError):
                     result.ok(f"readelf: {SECTION_METADATA} section found")
                 break
@@ -236,11 +261,13 @@ def test_objdump_metadata(binary, workdir):
         if not shutil.which("otool"):
             result.ok("otool not found, skipping section content dump")
             return result
-        rc, stdout, stderr = run(["otool", "-s", "__DATA", NATIVE_METADATA, str(binary)], check=False)
+        rc, stdout, stderr = run(
+            ["otool", "-s", "__DATA", NATIVE_METADATA, str(binary)], check=False
+        )
         if rc != 0:
             result.fail("otool -s __DATA __abix_metadata", stderr.strip())
             return result
-        if "58494241" in stdout:   # little-endian word for the "ABIX" magic
+        if "58494241" in stdout:  # little-endian word for the "ABIX" magic
             result.ok("otool: .abix.metadata contains ABIX magic")
         else:
             result.fail("otool", "ABIX magic not found in section content")
@@ -250,9 +277,9 @@ def test_objdump_metadata(binary, workdir):
             result.fail("otool", "no section content in output")
         return result
 
-    rc, stdout, stderr = run([
-        "objdump", "-s", "-j", SECTION_METADATA, str(binary)
-    ], check=False)
+    rc, stdout, stderr = run(
+        ["objdump", "-s", "-j", SECTION_METADATA, str(binary)], check=False
+    )
 
     if rc != 0:
         result.fail("objdump -s -j .abix.metadata", stderr.strip())
@@ -284,7 +311,9 @@ def test_objdump_names(binary, workdir):
         if not shutil.which("otool"):
             result.ok("otool not found, skipping section content dump")
             return result
-        rc, stdout, stderr = run(["otool", "-s", "__DATA", NATIVE_NAMES, str(binary)], check=False)
+        rc, stdout, stderr = run(
+            ["otool", "-s", "__DATA", NATIVE_NAMES, str(binary)], check=False
+        )
         if rc != 0:
             result.fail("otool -s __DATA __abix_names", stderr.strip())
             return result
@@ -294,14 +323,16 @@ def test_objdump_names(binary, workdir):
             result.fail("otool", "no section content in output")
         data_lines = [l for l in stdout.splitlines() if "\t" in l]
         if data_lines:
-            result.ok(f"otool: .abix.names has {len(data_lines)} data line(s) (pointer array)")
+            result.ok(
+                f"otool: .abix.names has {len(data_lines)} data line(s) (pointer array)"
+            )
         else:
             result.fail("otool", ".abix.names appears empty")
         return result
 
-    rc, stdout, stderr = run([
-        "objdump", "-s", "-j", SECTION_NAMES, str(binary)
-    ], check=False)
+    rc, stdout, stderr = run(
+        ["objdump", "-s", "-j", SECTION_NAMES, str(binary)], check=False
+    )
 
     if rc != 0:
         result.fail("objdump -s -j .abix.names", stderr.strip())
@@ -313,10 +344,16 @@ def test_objdump_names(binary, workdir):
         result.fail("objdump", "no section content in output")
 
     # .abix.names is a pointer array; verify it has data (non-trivial size)
-    lines = [l for l in stdout.splitlines() if any(c in l for c in "0123456789abcdef") and "abix" not in l.lower()]
+    lines = [
+        l
+        for l in stdout.splitlines()
+        if any(c in l for c in "0123456789abcdef") and "abix" not in l.lower()
+    ]
     data_lines = [l for l in lines if len(l.strip()) > 20]  # hex dump lines
     if len(data_lines) >= 1:
-        result.ok(f"objdump: .abix.names has {len(data_lines)} data line(s) (pointer array)")
+        result.ok(
+            f"objdump: .abix.names has {len(data_lines)} data line(s) (pointer array)"
+        )
     else:
         result.fail("objdump", ".abix.names appears empty")
 
@@ -328,9 +365,10 @@ def test_amc_metadata_from_elf(binary, workdir):
     result = TestResult()
 
     # JSON output
-    rc, stdout, stderr = run([
-        str(AMC), "metadata", "--from-elf", str(binary), "--format", "json"
-    ], check=False)
+    rc, stdout, stderr = run(
+        [str(AMC), "metadata", "--from-elf", str(binary), "--format", "json"],
+        check=False,
+    )
 
     if rc != 0:
         result.fail("amc metadata --from-elf", stderr.strip())
@@ -362,8 +400,10 @@ def test_amc_metadata_from_elf(binary, workdir):
 
     sections = meta.get("sections", {})
     if "desc" in sections and "hash" in sections:
-        result.ok(f"amc metadata: sections present (desc@{sections['desc']['offset']}, "
-                  f"hash@{sections['hash']['offset']})")
+        result.ok(
+            f"amc metadata: sections present (desc@{sections['desc']['offset']}, "
+            f"hash@{sections['hash']['offset']})"
+        )
     else:
         result.fail("amc metadata sections", "desc or hash section missing")
 
@@ -374,9 +414,9 @@ def test_amc_metadata_verify_from_elf(binary, workdir):
     """Test: amc metadata --verify on ELF binary."""
     result = TestResult()
 
-    rc, stdout, stderr = run([
-        str(AMC), "metadata", "--verify", str(binary), "--format", "json"
-    ], check=False)
+    rc, stdout, stderr = run(
+        [str(AMC), "metadata", "--verify", str(binary), "--format", "json"], check=False
+    )
 
     if rc != 0:
         result.fail("amc metadata --verify", stderr.strip())
@@ -403,10 +443,16 @@ def test_amc_metadata_export(abix_file, workdir):
     region_file = workdir / "region.abixmeta"
 
     # Export metadata region
-    rc, stdout, stderr = run([
-        str(AMC), "metadata", str(abix_file),
-        "-o", str(region_file),
-    ], check=False)
+    rc, stdout, stderr = run(
+        [
+            str(AMC),
+            "metadata",
+            str(abix_file),
+            "-o",
+            str(region_file),
+        ],
+        check=False,
+    )
 
     if rc != 0:
         result.fail("amc metadata export", stderr.strip())
@@ -419,9 +465,10 @@ def test_amc_metadata_export(abix_file, workdir):
         return result
 
     # Verify the exported region
-    rc, stdout, stderr = run([
-        str(AMC), "metadata", "--verify", str(region_file), "--format", "json"
-    ], check=False)
+    rc, stdout, stderr = run(
+        [str(AMC), "metadata", "--verify", str(region_file), "--format", "json"],
+        check=False,
+    )
 
     if rc != 0:
         result.fail("amc metadata --verify (region)", stderr.strip())
@@ -437,15 +484,20 @@ def test_non_elf_rejection(workdir):
     fake_bin = workdir / "not_elf.bin"
     fake_bin.write_bytes(b"this is not an ELF file" * 10)
 
-    rc, stdout, stderr = run([
-        str(AMC), "metadata", "--from-elf", str(fake_bin), "--format", "json"
-    ], check=False)
+    rc, stdout, stderr = run(
+        [str(AMC), "metadata", "--from-elf", str(fake_bin), "--format", "json"],
+        check=False,
+    )
 
     if rc != 0:
         # Expected: should fail on non-binary input
-        if ("not an ELF" in stderr or "not an ELF" in stdout
-                or "not a supported binary" in stderr or "not a supported binary" in stdout
-                or rc == 1):
+        if (
+            "not an ELF" in stderr
+            or "not an ELF" in stdout
+            or "not a supported binary" in stderr
+            or "not a supported binary" in stdout
+            or rc == 1
+        ):
             result.ok("amc metadata --from-elf rejects non-binary input")
         else:
             result.ok(f"amc metadata --from-elf fails on non-binary (rc={rc})")
@@ -471,9 +523,10 @@ def test_corrupted_elf_rejection(workdir):
     truncated = workdir / "truncated.elf"
     truncated.write_bytes(b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 8)
 
-    rc, stdout, stderr = run([
-        str(AMC), "metadata", "--from-elf", str(truncated), "--format", "json"
-    ], check=False)
+    rc, stdout, stderr = run(
+        [str(AMC), "metadata", "--from-elf", str(truncated), "--format", "json"],
+        check=False,
+    )
 
     if rc != 0:
         result.ok("amc metadata --from-elf rejects truncated ELF")
@@ -486,6 +539,7 @@ def test_corrupted_elf_rejection(workdir):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     parser = argparse.ArgumentParser(description="Test ELF/PE metadata sections")

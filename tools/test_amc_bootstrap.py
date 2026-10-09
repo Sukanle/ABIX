@@ -22,7 +22,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -63,9 +62,9 @@ def main() -> None:
     keep_artifacts = os.environ.get("KEEP_ARTIFACTS", "0") == "1"
 
     # Temp working directory with manual cleanup (matching bash trap semantics)
-    work_dir = Path(tempfile.mkdtemp(
-        prefix="amc-bootstrap.", dir=os.environ.get("TMPDIR", "/tmp")
-    ))
+    work_dir = Path(
+        tempfile.mkdtemp(prefix="amc-bootstrap.", dir=os.environ.get("TMPDIR", "/tmp"))
+    )
 
     print("=== AMC Core Metadata Bootstrap ===")
     print(f"[INFO] source root: {PROJECT_ROOT}")
@@ -91,8 +90,16 @@ def main() -> None:
         print("[STEP] configure and build AMC")
         cmake_cache = build_dir / "CMakeCache.txt"
         if not cmake_cache.is_file():
-            run(["cmake", "-S", str(PROJECT_ROOT), "-B", str(build_dir),
-                 "-DCMAKE_BUILD_TYPE=Release"])
+            run(
+                [
+                    "cmake",
+                    "-S",
+                    str(PROJECT_ROOT),
+                    "-B",
+                    str(build_dir),
+                    "-DCMAKE_BUILD_TYPE=Release",
+                ]
+            )
         run(["cmake", "--build", str(build_dir), "--target", "amc", "amc-cpp", "-j2"])
 
     if not amc.is_file() or not os.access(amc, os.X_OK):
@@ -139,15 +146,23 @@ def main() -> None:
 
     print("[STEP] compile and run native type_of<T>() consumer")
     consumer_src = PROJECT_ROOT / "amc" / "tests" / "amc_self_consumer.cpp"
-    run([
-        "clang++", "-std=c++17",
-        f"-I{PROJECT_ROOT}", f"-I{work_dir}",
-        str(consumer_src), "-o", str(consumer),
-    ])
+    run(
+        [
+            "clang++",
+            "-std=c++17",
+            f"-I{PROJECT_ROOT}",
+            f"-I{work_dir}",
+            str(consumer_src),
+            "-o",
+            str(consumer),
+        ]
+    )
     run([str(consumer)])
 
     print("[PASS] AMC core metadata bootstrap succeeded")
-    print("[PASS] verified build -> validate -> generate -> RuntimeRegistry::type_of<T>()")
+    print(
+        "[PASS] verified build -> validate -> generate -> RuntimeRegistry::type_of<T>()"
+    )
 
     # Clean up (unless KEEP_ARTIFACTS is set)
     if keep_artifacts:

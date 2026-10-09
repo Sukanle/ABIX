@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
-import argparse
 import subprocess
 import sys
 from pathlib import Path
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INCLUDE_DIR = {PROJECT_ROOT, PROJECT_ROOT / "mics"}
@@ -22,21 +21,24 @@ CLANG_FALLBACKS = [
     r"clang++",
 ]
 
+
 def find_compiler(name: str) -> str | None:
     path = shutil.which(name)
     if path:
         return path
     return None
 
+
 def is_symlink_to_clang(path: str) -> bool:
     if not os.path.islink(path):
         return False
     target = os.readlink(path)
     # Check if target is clang (or contains 'clang' in its name)
-    return 'clang' in target.lower() or os.path.basename(target).startswith('clang')
+    return "clang" in target.lower() or os.path.basename(target).startswith("clang")
+
 
 def build_one(compiler: str, tag: str, build_type: str) -> None:
-    out_dir = PROJECT_ROOT / "build" / build_type / "variants" / tag 
+    out_dir = PROJECT_ROOT / "build" / build_type / "variants" / tag
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "version_dll.dll"
     src = PROJECT_ROOT / "dlls" / "version_dll.cpp"
@@ -52,8 +54,14 @@ def build_one(compiler: str, tag: str, build_type: str) -> None:
     print(f"== [{tag}] {compiler} ==")
     cmd = [
         compiler,
-        "-std=c++17", "-shared", "-fPIC", *opts,
-        *map(lambda dir: f"-I{dir}", INCLUDE_DIR), "-o", str(out), str(src),
+        "-std=c++17",
+        "-shared",
+        "-fPIC",
+        *opts,
+        *map(lambda dir: f"-I{dir}", INCLUDE_DIR),
+        "-o",
+        str(out),
+        str(src),
     ]
     print(f"  \033[90m{' '.join(cmd)}\033[0m")
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -67,16 +75,20 @@ def build_one(compiler: str, tag: str, build_type: str) -> None:
         raise SystemExit(f"[{tag}] Compilation failed")
     print(f"    Generated: {out}")
 
-    if sys.platform == "darwin" and (build_type == "Debug" or build_type == "RelWithDebInfo"):
+    if sys.platform == "darwin" and (
+        build_type == "Debug" or build_type == "RelWithDebInfo"
+    ):
         subprocess.run(["dsymutil", str(out), "-o", str(dSYM)])
         print(f"    Generated .dSYM: {dSYM}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build variants of the tool.")
-    parser.add_argument("--build-type", default="Release", help="Build type (Release or Debug)")
+    parser.add_argument(
+        "--build-type", default="Release", help="Build type (Release or Debug)"
+    )
     args = parser.parse_args()
-    
+
     gnu = find_compiler("g++")
     clang = find_compiler("clang++")
 

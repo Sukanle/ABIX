@@ -39,20 +39,20 @@ delegating to a language compiler.
 
 A plugin **should**:
 
-* parse the language's constructs;
-* resolve types to concrete ABI types;
-* extract ABI-relevant semantics (size, alignment, offsets, calling convention,
+- parse the language's constructs;
+- resolve types to concrete ABI types;
+- extract ABI-relevant semantics (size, alignment, offsets, calling convention,
   parameter/return types, symbol naming);
-* normalize language-specific constructs into the ABIX model;
-* declare the target (arch / os / ABI / compiler / calling convention).
+- normalize language-specific constructs into the ABIX model;
+- declare the target (arch / os / ABI / compiler / calling convention).
 
 A plugin **must not**:
 
-* redefine `TypeID` or `LayoutHash` semantics;
-* redefine compatibility rules;
-* create a second ABI IR;
-* depend on runtime internals;
-* leak language-specific concepts into the core model without an ABI meaning.
+- redefine `TypeID` or `LayoutHash` semantics;
+- redefine compatibility rules;
+- create a second ABI IR;
+- depend on runtime internals;
+- leak language-specific concepts into the core model without an ABI meaning.
 
 ## 4. Supported ABI Concepts
 
@@ -65,16 +65,16 @@ See [`ABI-SPEC.md`](ABI-SPEC.md) §3–§8.
 
 ## 5. Type Mapping
 
-| Language construct | ABIX representation |
-|--------------------|---------------------|
-| fixed-width integer / float | primitive (size, align) |
-| enum | enumeration (underlying integer type) |
-| struct / class / union | record + fields |
-| pointer / reference | pointer |
-| fixed-size array | array (`array_count`) |
-| function pointer | function |
-| namespace / module | namespace type |
-| `typedef` / `using` | alias (with an `underlying` field) |
+| Language construct          | ABIX representation                   |
+| --------------------------- | ------------------------------------- |
+| fixed-width integer / float | primitive (size, align)               |
+| enum                        | enumeration (underlying integer type) |
+| struct / class / union      | record + fields                       |
+| pointer / reference         | pointer                               |
+| fixed-size array            | array (`array_count`)                 |
+| function pointer            | function                              |
+| namespace / module          | namespace type                        |
+| `typedef` / `using`         | alias (with an `underlying` field)    |
 
 The mapping must describe the **ABI**, not the source spelling: two source types
 with the same ABI must produce the same identity.
@@ -86,28 +86,28 @@ inventing a name-based identity, so `long`/`long long` (LP64) and a C `double` /
 a Rust `f64` of the same target collapse onto a single `TypeID`. Character kinds
 are split by signedness: plain `char` and `wchar_t` must record their
 target-defined signedness so a signed and an unsigned `char` never merge. When projecting
-*a C-ABI scalar to a target language*, emit the target's C-ABI alias
+_a C-ABI scalar to a target language_, emit the target's C-ABI alias
 (for Rust, `core::ffi::c_*` such as `c_double`/`c_int`/`c_float`) rather than a
 fixed-width `f64`/`i32`, because the alias is what encodes the target's C ABI;
 use fixed-width spellings only when the contract explicitly fixes the width.
 
 ## 6. Generics / Templates
 
-* A template **primary** is recorded as a type with the
+- A template **primary** is recorded as a type with the
   `type_template_primary` flag; it is metadata for dependency closure, not a
   concrete native type.
-* A concrete **specialization** with a stable instantiated layout is recorded as
+- A concrete **specialization** with a stable instantiated layout is recorded as
   its own type.
-* Do not expose dependent AST nodes; if a construct cannot be resolved to a
+- Do not expose dependent AST nodes; if a construct cannot be resolved to a
   concrete ABI, record it as opaque rather than guessing.
 
 ## 7. Namespaces / Modules
 
-* Namespaces become `namespace_type` records; they are part of the diagnostic
+- Namespaces become `namespace_type` records; they are part of the diagnostic
   naming, not of compatibility.
-* A symbol's fully qualified name uses the target language's separator mapped to
+- A symbol's fully qualified name uses the target language's separator mapped to
   a stable canonical form (`Owner::name` for C++).
-* The runtime never resolves by name; names exist for tools and humans.
+- The runtime never resolves by name; names exist for tools and humans.
 
 ## 8. ABI Attributes
 
@@ -129,11 +129,11 @@ IR (not the language AST) and must not change ABI semantics.
 
 A plugin is not complete without:
 
-* **extraction tests** — known source → expected ABI records;
-* **serialization round-trip** — write/read `.abix` preserves the model;
-* **compatibility tests** — intentional ABI changes are detected;
-* **determinism** — identical inputs produce byte-identical artifacts;
-* **cross-check** — at least one consumer (`amc query` / runtime projection)
+- **extraction tests** — known source → expected ABI records;
+- **serialization round-trip** — write/read `.abix` preserves the model;
+- **compatibility tests** — intentional ABI changes are detected;
+- **determinism** — identical inputs produce byte-identical artifacts;
+- **cross-check** — at least one consumer (`amc query` / runtime projection)
   works against the produced artifact.
 
 The C++ reference coverage lives in `amc/tests/`.
@@ -152,7 +152,7 @@ The C++ reference coverage lives in `amc/tests/`.
 
 ## 12. Version Compat
 
-* A plugin targets a `.abix` format version and the ABIX IR revision.
-* When ABIX IR changes, plugins must be updated in the same change window; the
+- A plugin targets a `.abix` format version and the ABIX IR revision.
+- When ABIX IR changes, plugins must be updated in the same change window; the
   format version guards readers against mismatched artifacts.
-* Plugins must tolerate unknown optional sections (see [`ABI-SPEC.md`](ABI-SPEC.md) §17).
+- Plugins must tolerate unknown optional sections (see [`ABI-SPEC.md`](ABI-SPEC.md) §17).

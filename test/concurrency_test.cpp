@@ -71,7 +71,7 @@ TEST_CASE("33.writer_concurrent", "[writer][stress][concurrent]") {
     std::thread writers[N_WRITERS];
 
     for (int i = 0; i < N_WRITERS; ++i) {
-        writers[i] = std::thread([&, i]() {
+        writers[i] = std::thread([&]() {
             while (!start.load(std::memory_order_acquire)) {}
             for (int r = 0; r < ROUNDS; ++r) {
                 bool ok = lib.reload(dll_path("math_dll").c_str());
