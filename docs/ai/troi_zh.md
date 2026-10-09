@@ -83,7 +83,9 @@ graph TD
 $$
 TROI = \frac{C_{traditional}}{C_{amc+mcp}} \\
 $$
+
 其中 C 可以是综合 Agent 成本:
+
 $$
 C = \alpha T + \beta N + \gamma L + \delta B
 $$
