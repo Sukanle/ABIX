@@ -120,9 +120,10 @@ using the contract's Source Origin, for editors and CI annotations.
 ### `amc generate`
 
 ```bash
-amc generate file.abix -l cpp -o generated.hpp    # native C++17 projection
-amc generate file.abix -l lua -o aue_contract.hpp # Aue contract (header)
-amc generate file.abix -l lua -o conformance.lua  # generated Lua test case
+amc generate file.abix -l cpp  -o generated.hpp    # native C++17 projection
+amc generate file.abix -l rust -o generated.rs     # Rust `repr(C)` projection
+amc generate file.abix -l lua  -o aue_contract.hpp # Aue contract (header)
+amc generate file.abix -l lua  -o conformance.lua  # generated Lua test case
 ```
 
 The C++ provider writes `amc_generated.hpp` (the projection) and, next to it,
@@ -144,6 +145,27 @@ following offsets or the total size — the part of the LayoutHash comparison th
 offset checks miss. Bit-fields are skipped because `offsetof`/`sizeof` are not
 defined for them, and types AMC names implicitly (`struct Foo *`, anonymous
 enums) are skipped.
+
+The Rust provider (`amc-rust`) writes `amc_generated.rs`: `#[repr(C)]`
+aggregates, `extern "C"` declarations, associated `ABIX_*` constants and
+`const _: () = assert!(...)` size/align/offset checks. C-ABI scalars project to
+their `core::ffi::c_*` aliases (`c_int`, `c_double`, ...) derived from the
+ABI-normalised primitive identity, rather than to fixed-width spellings, so the
+alias encodes the target's C ABI. Because the Rust provider reads the language
+IR directly, `[[import]] language = "rust"` accepts `#[repr(C)]` structs/enums
+and `extern "C"` functions from `.rs` files without build flags.
+
+### Language providers
+
+```bash
+amc --list-languages              # cpp, lua, rust
+amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
+```
+
+Every `amc-<language>` executable is a standalone provider; `amc` dispatches to
+the one named by the `.abic.toml` `language` field (or by `-l` for `generate` /
+`frontend`). A new language is a separate provider process and does not change
+ABIX IR — see [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md).
 
 ### `amc adapter`
 
@@ -241,6 +263,7 @@ amc validate missing.abix --error-format json
 | Tool | Purpose |
 |------|---------|
 | `amc-cpp` | C++ frontend/backend provider (JSON-lines IPC) |
+| `amc-rust` | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools; indexes multiple artifacts as a knowledge base ([MCP.md](../ai/MCP.md)) |
 | `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`tools/lldb_abix.cpp`](../../tools/lldb_abix.cpp)) |

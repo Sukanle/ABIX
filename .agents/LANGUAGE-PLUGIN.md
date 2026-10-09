@@ -27,6 +27,14 @@ The C++ implementation of this boundary is `amc-cpp` (a provider speaking a
 JSON-lines IPC protocol) driven by `amc`. A new language may be implemented as a
 separate provider executable; it does not need to live inside `amc`.
 
+The second reference provider is `amc-rust` (`amc/src/Lang/Rust/`). Unlike
+`amc-cpp` it does not link Clang/LLVM: its frontend is a source-level extractor
+for the Rust FFI subset (`#[repr(C)]` structs/enums and `extern "C"`
+functions), and its backend projects ABIX IR to Rust `repr(C)` types, using the
+ABI-normalised primitive identity to select `core::ffi::c_*` aliases (§5). It is
+the working template for a provider that computes layout itself rather than
+delegating to a language compiler.
+
 ## 3. Responsibilities
 
 A plugin **should**:

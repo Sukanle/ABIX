@@ -52,6 +52,7 @@ Artifacts land in `build/bin`, including:
 |------|---------|
 | `amc` | ABI toolchain driver (build / inspect / query / verify / generate / metadata / publish / fetch) |
 | `amc-cpp` | C++ frontend/backend provider (JSON-lines IPC) |
+| `amc-rust` | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools to AI agents |
 | `abix-conformance` | Aue L0/L1 differential runner (when Lua is present) |

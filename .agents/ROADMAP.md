@@ -40,6 +40,12 @@ representation that other language frontends feed into and project out of.
   identity;
 * cross-language bindings and a C++ ↔ Rust interoperability demo.
 
+Delivered so far: an initial `amc-rust` provider (`frontend` + `backend`,
+JSON-lines IPC) — a source-level `#[repr(C)]` / `extern "C"` extractor and a
+Rust `repr(C)` projection built on the ABI-normalised primitive identity
+(`core::ffi::c_*`). A C++ fixture and an ABI-equal Rust fixture already produce
+the same `TypeID` / `LayoutHash` and report `compatible=true`.
+
 ### P0 — stabilize and validate
 
 * specification stabilization ([`ABI-SPEC.md`](ABI-SPEC.md));

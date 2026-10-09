@@ -108,9 +108,10 @@ Source Origin），供编辑器/CI 使用。
 ### generate
 
 ```bash
-amc generate file.abix -l cpp -o generated.hpp
-amc generate file.abix -l lua -o aue_contract.hpp
-amc generate file.abix -l lua -o conformance.lua
+amc generate file.abix -l cpp  -o generated.hpp
+amc generate file.abix -l rust -o generated.rs
+amc generate file.abix -l lua  -o aue_contract.hpp
+amc generate file.abix -l lua  -o conformance.lua
 ```
 
 C++ provider 在写出 `amc_generated.hpp`（projection）的同时，会在同目录生成
@@ -128,6 +129,26 @@ C++ provider 在写出 `amc_generated.hpp`（projection）的同时，会在同�
 offset 与总大小都没变"的情况——这是 offset 检查漏掉的、LayoutHash 比较的一部分。
 位域（`offsetof`/`sizeof` 对其未定义）与 AMC 隐式命名的类型（`struct Foo *`、
 匿名 enum）会被跳过。
+
+Rust provider（`amc-rust`）写出 `amc_generated.rs`：`#[repr(C)]` 聚合类型、
+`extern "C"` 声明、`ABIX_*` 关联常量，以及 `const _: () = assert!(...)` 形式的
+size/align/offset 检查。C-ABI 标量按其 ABI 归一化的 primitive identity 投影为
+`core::ffi::c_*` 别名（`c_int`、`c_double` 等），而不是固定宽度拼写——别名本身
+编码了目标的 C ABI。Rust provider 直接读取语言 IR，因此
+`[[import]] language = "rust"` 可从 `.rs` 文件解析 `#[repr(C)]` struct/enum 与
+`extern "C"` 函数，且不需要编译 flag。
+
+### 语言 provider
+
+```bash
+amc --list-languages              # cpp、lua、rust
+amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
+```
+
+每个 `amc-<language>` 可执行文件都是独立 provider；`amc` 依据 `.abic.toml` 的
+`language` 字段（或 `generate` / `frontend` 的 `-l`）选择对应 provider。新增语言
+只是一个独立的 provider 进程，不改变 ABIX IR——见
+[`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md)。
 
 ### metadata
 
@@ -170,6 +191,7 @@ amc validate missing.abix --error-format json
 | 工具 | 用途 |
 |------|------|
 | `amc-cpp` | C++ 前端/后端 provider（JSON-lines IPC） |
+| `amc-rust` | Rust 前端/后端 provider（JSON-lines IPC）；不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | MCP server；可把多个 artifact 索引成 ABI 知识库（见 [MCP_zh.md](../ai/MCP_zh.md)） |
 | `libabix_lldb.so` | 原生 LLDB 命令插件（`abix ...`），直接链接 `libabix-*`（[`tools/lldb_abix.cpp`](../../tools/lldb_abix.cpp)） |

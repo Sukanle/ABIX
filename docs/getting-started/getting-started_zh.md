@@ -49,6 +49,7 @@ cmake --build build/Release --parallel
 |------|------|
 | `amc` | ABI 工具链 driver（build/inspect/query/verify/generate/metadata/publish/fetch） |
 | `amc-cpp` | C++ 前端/后端 provider（JSON-lines IPC） |
+| `amc-rust` | Rust 前端/后端 provider（JSON-lines IPC）；不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | 面向 AI Agent 的 MCP server |
 | `abix-conformance` | Aue L0/L1 差分运行器（有 Lua 时构建） |
