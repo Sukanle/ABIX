@@ -42,8 +42,11 @@ bool config_load(const std::string &path, const std::string &expected_language, 
                 c.symbols.push_back(v.value_or(""));
         if (auto *ex = t["export"].as_array(); ex && !ex->empty())
             if (auto *et = (*ex)[0].as_table()) c.output = (*et)["output"].value_or("");
-        if ((c.db.empty() && c.flags.empty()) || c.files.empty() || c.symbols.empty()) {
-            e = c.language + " import requires compile_commands or flags, files and symbols";
+        // `compile_commands` / `flags` are optional: a source-level frontend
+        // (e.g. Rust's `#[repr(C)]` extractor) needs no build flags, and the
+        // C++ frontend falls back to a fixed compilation database.
+        if (c.files.empty() || c.symbols.empty()) {
+            e = c.language + " import requires files and symbols";
             return false;
         }
         return true;
