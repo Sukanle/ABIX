@@ -275,6 +275,17 @@ if(AMC_BUILD)
     target_compile_definitions(amc-cpp PRIVATE
       ABIX_CLANG_RESOURCE_DIR="${ABIX_CLANG_RESOURCE_DIR}")
     target_link_libraries(amc-cpp PRIVATE amc-core amc-lang clang-cpp LLVM fmt::fmt tomlplusplus::tomlplusplus)
+
+    # Rust provider: a self-contained frontend (source-level #[repr(C)] /
+    # extern "C" extractor) and backend (ABIX -> Rust repr(C) projection).
+    # Unlike amc-cpp it does not link Clang/LLVM.
+    add_executable(amc-rust
+      amc/src/Lang/Rust/Rust.cpp
+      amc/src/Lang/Rust/Frontend.cpp
+      amc/src/Lang/Rust/Backend.cpp)
+    target_include_directories(amc-rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+    target_link_libraries(amc-rust PRIVATE amc-core amc-lang fmt::fmt)
+
     add_executable(amc
       amc/main.cpp
       amc/src/CLI/CLI.cpp
@@ -337,7 +348,7 @@ if(AMC_BUILD)
     else()
       message(WARNING "python3 not found: AMC integration tests will not be registered")
     endif()
-    set_target_properties(amc amc-cpp amc-dump amc-mcp amc-core-test amc-e2e-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_target_properties(amc amc-cpp amc-rust amc-dump amc-mcp amc-core-test amc-e2e-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
   else()
     message(WARNING "LLVM/Clang not found: AMC tools will not be built")
   endif()
