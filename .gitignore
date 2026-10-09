@@ -7,5 +7,5 @@ variants/
 tmp/
 
 # AMC generated artifacts (never commit)
-amc/tests/fixtures/build/
+AMC/tests/fixtures/build/
 **/.amc/

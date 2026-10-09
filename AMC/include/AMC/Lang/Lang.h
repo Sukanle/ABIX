@@ -9,7 +9,7 @@
 // name (e.g. "cpp") plus the capabilities it implements (e.g. "frontend",
 // "backend"). The one-shot command line, the `.abic.toml` import config and the
 // JSONL IPC handshake are identical for all languages, so they live here; the
-// individual capability implementations stay in `amc/lang/<language>/`.
+// individual capability implementations stay in `AMC/src/Lang/<language>/`.
 namespace amc::lang {
 
 // Configuration parsed from the single `[[import]]` section of a `.abic.toml`.

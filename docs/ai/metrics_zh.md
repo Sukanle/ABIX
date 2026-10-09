@@ -432,7 +432,7 @@ O_type = 56 B/type
 O_binary = 1.17%
 ```
 
-Debug/Release/RelWithDebInfo 开销详情见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
+Debug/Release/RelWithDebInfo 开销详情见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
 
 ---
 
@@ -593,4 +593,4 @@ AI 效率
 | [`metrics.md`](metrics.md) | **本文档。** 定义、公式、方法。 |
 | [`benchmark.md`](../benchmark/benchmark_zh.md) | 特定硬件上的实际测量数据。 |
 | [`troi.md`](troi_zh.md) | AI 工作流 TROI / token 效率深度分析。 |
-| [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |
+| [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |

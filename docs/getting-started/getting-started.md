@@ -98,7 +98,7 @@ Build the metadata:
 # -> build/build/math_api.abix.meta
 ```
 
-See [`abic.md`](../abix/abic.md) for the full configuration reference.
+See [`abic.md`](../ABIX/abic.md) for the full configuration reference.
 
 ## 4. Inspect and query
 
@@ -183,9 +183,9 @@ See [`MCP.md`](../ai/MCP.md) for the tool catalogue.
 
 ## Next steps
 
-* [`abix.md`](../abix/abix.md) — the `.abix` artifact format
+* [`abix.md`](../ABIX/abix.md) — the `.abix` artifact format
 * [`compatibility.md`](../architecture/compatibility.md) — ABI identity and compatibility
-* [`amc.md`](../amc/amc.md) — the AMC toolchain
+* [`amc.md`](../AMC/amc.md) — the AMC toolchain
 * [`architecture.md`](../architecture/architecture.md) — how the pieces fit together
 * [`design-notes.md`](../development/design-notes.md) — design principles and history
 * [`bootstrap.md`](bootstrap.md) — bootstrap model and milestones

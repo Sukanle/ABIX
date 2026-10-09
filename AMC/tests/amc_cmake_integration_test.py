@@ -36,11 +36,11 @@ def main() -> None:
         print("  [INFO] Configuring CMake fixture...")
         cmake_cmd = [
             "cmake",
-            "-S", os.path.join(amc_root, "amc/tests/cmake_fixture"),
+            "-S", os.path.join(amc_root, "AMC/tests/cmake_fixture"),
             "-B", build_dir,
             "-G", "Ninja",
-            f"-DAMC_MODULE_DIR={amc_root}/amc/CMake",
-            f"-DAMC_FIXTURE_DIR={amc_root}/amc/tests/fixtures",
+            f"-DAMC_MODULE_DIR={amc_root}/AMC/CMake",
+            f"-DAMC_FIXTURE_DIR={amc_root}/AMC/tests/fixtures",
             f"-DAMC_EXECUTABLE={amc_bin}/amc",
         ]
         subprocess.run(cmake_cmd, check=True, capture_output=True, text=True)

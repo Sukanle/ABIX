@@ -23,8 +23,8 @@ graph TD
 | I want to … | Go to |
 |-------------|-------|
 | **install and try ABIX** | [Getting Started](getting-started/) |
-| **understand the ABI model** | [ABIX](abix/) |
-| **use the AMC toolchain** | [AMC](amc/) |
+| **understand the ABI model** | [ABIX](ABIX/) |
+| **use the AMC toolchain** | [AMC](AMC/) |
 | **learn internal architecture** | [Architecture](architecture/) |
 | **integrate AI / Agent workflows** | [AI](ai/) |
 | **see benchmarks and metrics** | [Benchmark](benchmark/) |
@@ -64,10 +64,10 @@ Core ABI model, format, and API documentation.
 
 | Document | 中文 | Description |
 |----------|------|-------------|
-| [abix.md](abix/abix.md) | [abix_zh.md](abix/abix_zh.md) | the canonical `.abix` artifact format |
-| [abic.md](abix/abic.md) | [abic_zh.md](abix/abic_zh.md) | `.abic.toml` configuration reference |
-| [api.md](abix/api.md) | [api_zh.md](abix/api_zh.md) | full C++ API reference |
-| [metadata_modes.md](abix/metadata_modes.md) | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo |
+| [abix.md](ABIX/abix.md) | [abix_zh.md](ABIX/abix_zh.md) | the canonical `.abix` artifact format |
+| [abic.md](ABIX/abic.md) | [abic_zh.md](ABIX/abic_zh.md) | `.abic.toml` configuration reference |
+| [api.md](ABIX/api.md) | [api_zh.md](ABIX/api_zh.md) | full C++ API reference |
+| [metadata_modes.md](ABIX/metadata_modes.md) | [metadata_modes_zh.md](ABIX/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo |
 
 ## AMC
 
@@ -75,7 +75,7 @@ Toolchain documentation.
 
 | Document | 中文 | Description |
 |----------|------|-------------|
-| [amc.md](amc/amc.md) | [amc_zh.md](amc/amc_zh.md) | the AMC toolchain and CLI |
+| [amc.md](AMC/amc.md) | [amc_zh.md](AMC/amc_zh.md) | the AMC toolchain and CLI |
 
 ## Architecture
 

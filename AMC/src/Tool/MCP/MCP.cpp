@@ -2,7 +2,7 @@
 //
 // Speaks the Model Context Protocol over stdio (newline-delimited JSON-RPC
 // 2.0) and exposes ABIX Metadata queries as MCP tools. The tools are thin
-// wrappers over the shared `amc/core/amc_query` engine, so the CLI, the MCP
+// wrappers over the shared `AMC/src/Core/Query.cpp` engine, so the CLI, the MCP
 // server and any future consumer answer from exactly one implementation.
 //
 // Usage:

@@ -173,7 +173,7 @@ ABIX must not know what `foo.cpp:37` is.
 Constraint: names are stripped, and the metadata modes (Debug / RelWithDebInfo / Release)
 exist to keep `.abix` from inflating into DWARF. Any proposal to add source locations,
 template instantiation paths or macro expansion history to `.abix` is rejected. See
-[`metadata_modes.md`](../abix/metadata_modes.md).
+[`metadata_modes.md`](../ABIX/metadata_modes.md).
 
 ### Principle 5: Single Source of ABI Truth
 
@@ -412,7 +412,7 @@ that can be projected across languages and diffed.
 
 `.abix` is the single source of ABI truth. The runtime can consume it through `mmap`, and the
 same artifact can be projected into compile-time constants in several languages, uniting
-dynamic ABI with static performance. See [`abix.md`](../abix/abix.md) and [`abic.md`](../abix/abic.md).
+dynamic ABI with static performance. See [`abix.md`](../ABIX/abix.md) and [`abic.md`](../ABIX/abic.md).
 
 ### Stage 5: AMC Metadata Compiler
 
@@ -446,7 +446,7 @@ end, core and back end.
 
 The loop `C++ header → Clang AST → AbiModule → .abix → projection code` is closed;
 round-trip tests and CTest keep the format stable, and `amc-dump` provides text and JSON
-summaries. See [`amc.md`](../amc/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
+summaries. See [`amc.md`](../AMC/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
 
 ### Stage 6: Micro-RCU Performance Engineering
 

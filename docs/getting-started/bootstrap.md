@@ -29,7 +29,7 @@ placing a small, manually maintained kernel at the base.
 
 This page documents that route: the meta-model, the bootstrap kernel, the
 runtime dependency and state model, and the self-hosting closure it enables.
-The artifact format itself is specified in [`abix.md`](../abix/abix.md); the runtime
+The artifact format itself is specified in [`abix.md`](../ABIX/abix.md); the runtime
 API is in [`runtime.md`](../architecture/runtime.md).
 
 ## The problem
@@ -232,7 +232,7 @@ graph TD
 The current implementation uses a Section Directory layout with a deduplicated
 String Table and offset/index references (including length, flags and optional
 sections), together with ABI Identity, Target, Hash Table and Symbol Table
-sections. The authoritative description is in [`abix.md`](../abix/abix.md).
+sections. The authoritative description is in [`abix.md`](../ABIX/abix.md).
 
 ## Bootstrap kernel
 
@@ -456,7 +456,7 @@ compiler bootstrap stage 0, it is never required to describe itself. See
   bridge;
 * compatibility / map IR and the `MapPrivate` constexpr operation plan;
 * a separate provider process and JSON-lines IPC;
-* `amc/self.abic.toml` generates `amc_core.abix` from a clean directory, and
+* `AMC/self.abic.toml` generates `amc_core.abix` from a clean directory, and
   the generated C++ descriptors register into `runtime::Registry`; lookups for
   `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and
   `type_of<amc::CompatibilityRecord>()` resolve.

@@ -483,7 +483,7 @@ class TestRunner:
 
         # build
         r = self.run([self.bin_path("amc"), "build",
-                       "-c", os.path.join(SOURCE_ROOT, "amc/self.abic.toml"),
+                       "-c", os.path.join(SOURCE_ROOT, "AMC/self.abic.toml"),
                        "-B", amc_self_build])
         if r.returncode != 0:
             self.fail("AMC core self-description generation failed")
@@ -521,7 +521,7 @@ class TestRunner:
             consumer_bin = os.path.join(self.build_dir, "amc_self_consumer")
             r = self.run([
                 "clang++", "-std=c++17",
-                f"-I{SOURCE_ROOT}", f"-I{SOURCE_ROOT}/amc/include", f"-I{self.build_dir}",
+                f"-I{SOURCE_ROOT}", f"-I{SOURCE_ROOT}/AMC/include", f"-I{self.build_dir}",
                 consumer_src, "-o", consumer_bin,
             ])
             if r.returncode == 0:
@@ -1246,7 +1246,7 @@ int main() {
         token_tool = os.path.join(SOURCE_ROOT, "tools", "abix_token_cost.py")
         measured = self.run([sys.executable, token_tool, "--abix", host,
                              "--amc", self.bin_path("amc"), "--source",
-                             os.path.join(SOURCE_ROOT, "amc/tests/fixtures/amc_test_types.hpp")])
+                             os.path.join(SOURCE_ROOT, "AMC/tests/fixtures/amc_test_types.hpp")])
         try:
             tokens = json.loads(measured.stdout)
         except ValueError:
@@ -1365,7 +1365,7 @@ int main() {
         """Step 30: type declaration sites survive build + query."""
         build = os.path.join(self.build_dir, "source-origin")
         os.makedirs(build, exist_ok=True)
-        config = os.path.join(SOURCE_ROOT, "amc/tests/fixtures/amc_test.abic.toml")
+        config = os.path.join(SOURCE_ROOT, "AMC/tests/fixtures/amc_test.abic.toml")
         if self.run([self.bin_path("amc"), "build", "-c", config, "-B", build]).returncode != 0:
             self.fail("amc build failed for the source-origin test")
             return False
@@ -1395,7 +1395,7 @@ int main() {
         """Step 31: amc verify --format diagnostics emits editor-style lines."""
         build = os.path.join(self.build_dir, "diagnostics")
         os.makedirs(build, exist_ok=True)
-        config = os.path.join(SOURCE_ROOT, "amc/tests/fixtures/amc_test.abic.toml")
+        config = os.path.join(SOURCE_ROOT, "AMC/tests/fixtures/amc_test.abic.toml")
         if self.run([self.bin_path("amc"), "build", "-c", config, "-B", build]).returncode != 0:
             self.fail("amc build failed for the diagnostics test")
             return False
@@ -1450,7 +1450,7 @@ int main() {
         # The debug .abix (with Source Origin) published under the binary's BuildID.
         build = os.path.join(self.build_dir, "gotodef-abi")
         os.makedirs(build, exist_ok=True)
-        config = os.path.join(SOURCE_ROOT, "amc/tests/fixtures/amc_test.abic.toml")
+        config = os.path.join(SOURCE_ROOT, "AMC/tests/fixtures/amc_test.abic.toml")
         if self.run([self.bin_path("amc"), "build", "-c", config, "-B", build]).returncode != 0:
             self.fail("go-to-definition .abix build failed")
             return False
@@ -1491,7 +1491,7 @@ int main() {
                 'AmcTestFoo g_foo{7, 2.5};\n'
                 'int main() { return g_foo.x == 7 ? 0 : 1; }\n')
         binary = os.path.join(self.build_dir, "cast_prog")
-        fixtures = os.path.join(SOURCE_ROOT, "amc/tests/fixtures")
+        fixtures = os.path.join(SOURCE_ROOT, "AMC/tests/fixtures")
         compiled = self.run([
             "clang++", "-std=c++17",
             f"-I{SOURCE_ROOT}", f"-I{self.gen_separate}", f"-I{fixtures}",
@@ -1526,7 +1526,7 @@ int main() {
         """Step 34: `amc adapter` generates a working ABI conversion."""
         build = os.path.join(self.build_dir, "adapter")
         os.makedirs(build, exist_ok=True)
-        fixtures = os.path.join(SOURCE_ROOT, "amc/tests/fixtures")
+        fixtures = os.path.join(SOURCE_ROOT, "AMC/tests/fixtures")
         for name in ("map_v1", "map_v2"):
             config = os.path.join(fixtures, f"{name}.abic.toml")
             if self.run([self.bin_path("amc"), "build", "-c", config,
@@ -1666,7 +1666,7 @@ int main() {
             return True
         build = os.path.join(self.build_dir, "shim")
         os.makedirs(build, exist_ok=True)
-        fixtures = os.path.join(SOURCE_ROOT, "amc/tests/fixtures")
+        fixtures = os.path.join(SOURCE_ROOT, "AMC/tests/fixtures")
         for name in ("map_v1", "map_v2"):
             config = os.path.join(fixtures, f"{name}.abic.toml")
             if self.run([self.bin_path("amc"), "build", "-c", config,

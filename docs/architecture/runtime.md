@@ -60,7 +60,7 @@ graph TD
   `ModuleDescriptor`, so a registry can be driven entirely by the metadata
   image — no compile-time descriptor arrays required.
 
-See [`metadata_modes.md`](../abix/metadata_modes.md) for the design.
+See [`metadata_modes.md`](../ABIX/metadata_modes.md) for the design.
 
 ## DLL function table
 
@@ -146,14 +146,14 @@ if (mul.valid()) {
 }
 ```
 
-See [`api.md`](../abix/api.md) for the runtime API.
+See [`api.md`](../ABIX/api.md) for the runtime API.
 
 ## API reference
 
 The full runtime API — `entry`, `table`, `dll::Object`, `dll::CallError`, smart
 pointers for DLL resources, logging, RCU timeout policies, typed function
 handles and signature hashing — is documented in
-[`api.md`](../abix/api.md).
+[`api.md`](../ABIX/api.md).
 
 ## Performance
 

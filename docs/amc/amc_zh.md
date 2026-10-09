@@ -47,7 +47,7 @@ symbols = ["math::add", "math::Point"]
 output = "build/math_api.abix"
 ```
 
-完整参考见 [`abic_zh.md`](../abix/abic_zh.md)。
+完整参考见 [`abic_zh.md`](../ABIX/abic_zh.md)。
 
 ## 命令
 

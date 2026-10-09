@@ -37,9 +37,9 @@ graph TD
 
 * **ABIX IR** — the language-independent ABI model: types, fields, functions,
   parameters, symbols, hashes, compatibility and mapping records.
-* **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../abix/abix.md).
+* **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../ABIX/abix.md).
 * **AMC** — extracts ABI from a language AST, projects/compares modules and
-  generates native code. See [`amc.md`](../amc/amc.md).
+  generates native code. See [`amc.md`](../AMC/amc.md).
 * **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation.
   See [`runtime.md`](runtime.md).
 
@@ -114,7 +114,7 @@ graph TD
 * The **Runtime Descriptor** is a one-time materialization of the Region at
   initialization; after that the hot path is close to a static ABI.
 
-See [`metadata_modes.md`](../abix/metadata_modes.md).
+See [`metadata_modes.md`](../ABIX/metadata_modes.md).
 
 ## Execution model
 
@@ -131,8 +131,8 @@ graph LR
 
 ```text
 ABIX
-├── abix/      ABI model + runtime (header-only registry)
-├── amc/        AMC toolchain: core/, cpp/ frontend+backend, dump/, mcp/
+├── ABIX/      ABI model + runtime (header-only registry)
+├── AMC/        AMC toolchain: core/, cpp/ frontend+backend, dump/, mcp/
 ├── test/       runtime + unit tests (Catch2)
 ├── bench/      benchmarks
 ├── Aue/        experimental Lua boundary layer + conformance runner

@@ -460,7 +460,7 @@ O_type = 56 B/type
 O_binary = 1.17%
 ```
 
-See [`metadata_modes.md`](../abix/metadata_modes.md) for Debug/Release/RelWithDebInfo
+See [`metadata_modes.md`](../ABIX/metadata_modes.md) for Debug/Release/RelWithDebInfo
 overhead details.
 
 ---
@@ -628,4 +628,4 @@ hardware and datasets.
 | [`metrics.md`](metrics.md) | **This document.** Definitions, formulas, methodology. |
 | [`benchmark.md`](../benchmark/benchmark.md) | Actual measurements on specific hardware. |
 | [`troi.md`](troi.md) | Deep dive into TROI / token-efficiency for AI workflows. |
-| [`metadata_modes.md`](../abix/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |
+| [`metadata_modes.md`](../ABIX/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |

@@ -92,7 +92,7 @@ ABIX/    header-only ABI model + runtime, organised by layer:
          DLL/ (Object.h, Function.h, FnSig.h, Export.h, *Ptr.h),
          RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
          Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h)
-amc/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
+AMC/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
@@ -110,12 +110,12 @@ docs/    specification and design
 | ABI runtime | `ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
 | DLL binding | `ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
 | Adapter dispatch | `ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
-| ELF/Mach-O reader | `amc/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
-| Metadata Region | `amc/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
-| ABI adapter | `amc/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
-| Symbol store | `amc/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
-| MCP server | `amc/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
-| LLDB plugin | `amc/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
+| ELF/Mach-O reader | `AMC/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
+| Metadata Region | `AMC/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
+| ABI adapter | `AMC/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
+| Symbol store | `AMC/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
+| MCP server | `AMC/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
+| LLDB plugin | `AMC/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
 | Versioned registry | `ABIX/Runtime/Registry.h` | `runtime::Registry::register_module(module, version)` — same TypeID across versions |
 
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
@@ -296,8 +296,8 @@ For AMC changes, also exercise the CLI manually. For ABI changes, verify
 generation, serialization, deserialization, comparison, compatibility and
 runtime behaviour.
 
-`amc/tests/amc_integration_test.py` is the CLI integration suite;
-`amc/tests/core_test.cpp` holds core assertions; `test/` uses Catch2.
+`AMC/tests/amc_integration_test.py` is the CLI integration suite;
+`AMC/tests/core_test.cpp` holds core assertions; `test/` uses Catch2.
 
 Do not claim a test passed unless it was actually run.
 

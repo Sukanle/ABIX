@@ -181,7 +181,7 @@ Consequences:
   stay distinct even though both occupy 16 bytes.
 
 The implementation is `PrimitiveAbiKind` and `FloatFormat` in
-`amc/core/amc_core.h`, packed into `Type::primitive_abi` and serialized in the
+`AMC/core/amc_core.h`, packed into `Type::primitive_abi` and serialized in the
 `.abix` type table.
 
 ## Source-language provenance

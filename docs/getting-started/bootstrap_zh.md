@@ -26,7 +26,7 @@ RCU/EBR 状态等。递归地描述这套机制会陷入鸡生蛋问题。自举
 阶段，并在最底层放置一个极小的、手工维护的内核来解决它。
 
 本文档记录这条路线：元模型、Bootstrap 内核、运行时依赖与状态模型，以及由此实现的
-自举闭环。artifact 格式本身见 [`abix_zh.md`](../abix/abix_zh.md)；运行时 API 见
+自举闭环。artifact 格式本身见 [`abix_zh.md`](../ABIX/abix_zh.md)；运行时 API 见
 [`runtime_zh.md`](../architecture/runtime_zh.md)。
 
 ## 核心问题
@@ -216,7 +216,7 @@ graph TD
 
 当前实现采用 Section Directory 布局，配合去重的 String Table 与 offset/index 引用
 （包含 length、flags 与 optional section），并增加 ABI Identity、Target、Hash Table
-和 Symbol Table section。权威描述见 [`abix_zh.md`](../abix/abix_zh.md)。
+和 Symbol Table section。权威描述见 [`abix_zh.md`](../ABIX/abix_zh.md)。
 
 ## Bootstrap 内核
 
@@ -431,7 +431,7 @@ stage 0，它永远不需要被 ABIX 描述。见 [`self-hosting_zh.md`](self-ho
 * `runtime::Registry` 注册、`TypeId` 查询与 canonical registry bridge；
 * Compat / Map IR 与 `MapPrivate` constexpr 操作计划；
 * 独立 provider 进程与 JSON-lines IPC；
-* `amc/self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor
+* `AMC/self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor
   注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()`
   与 `type_of<amc::CompatibilityRecord>()` 均可查询。
 

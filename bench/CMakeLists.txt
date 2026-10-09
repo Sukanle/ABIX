@@ -31,8 +31,8 @@ abi_add_bench(NAME "reload_bench" SOURCES "reload_bench.cpp")
 abi_add_bench(NAME "stress_bench" SOURCES "stress_bench.cpp")
 abi_add_bench(NAME "falseSharing_bench" SOURCES "falseSharing_bench.cpp")
 abi_add_bench(NAME "lookup_bench" SOURCES "lookup_bench.cpp")
-abi_add_bench(NAME "abix_resolve_bench" SOURCES "abix/abix_resolve_bench.cpp")
-abi_add_bench(NAME "abix_lookup_cross_bench" SOURCES "abix/abix_lookup_cross_bench.cpp")
+abi_add_bench(NAME "abix_resolve_bench" SOURCES "ABIX/abix_resolve_bench.cpp")
+abi_add_bench(NAME "abix_lookup_cross_bench" SOURCES "ABIX/abix_lookup_cross_bench.cpp")
 
 # --- EBR benchmarks (unity build — convenience binary) ---
 set(EBR_SOURCES "topology/topology.cpp" "workloads/workload.cpp" "workloads/workload_runner.cpp")

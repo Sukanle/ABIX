@@ -27,7 +27,7 @@ The C++ implementation of this boundary is `amc-cpp` (a provider speaking a
 JSON-lines IPC protocol) driven by `amc`. A new language may be implemented as a
 separate provider executable; it does not need to live inside `amc`.
 
-The second reference provider is `amc-rust` (`amc/src/Lang/Rust/`). Unlike
+The second reference provider is `amc-rust` (`AMC/src/Lang/Rust/`). Unlike
 `amc-cpp` it does not link Clang/LLVM: its frontend is a source-level extractor
 for the Rust FFI subset (`#[repr(C)]` structs/enums and `extern "C"`
 functions), and its backend projects ABIX IR to Rust `repr(C)` types, using the
@@ -136,7 +136,7 @@ A plugin is not complete without:
 - **cross-check** — at least one consumer (`amc query` / runtime projection)
   works against the produced artifact.
 
-The C++ reference coverage lives in `amc/tests/`.
+The C++ reference coverage lives in `AMC/tests/`.
 
 ## 11. Example Plugin
 

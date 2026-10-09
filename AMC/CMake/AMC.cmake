@@ -7,7 +7,7 @@ set(_AMC_MODULE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 # amc_add_abi(
 #   TARGET my_library
 #   CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/api.abic.toml
-#   ABIX_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/amc/api.abix
+#   ABIX_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/AMC/api.abix
 #   CPP_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/api_abix.hpp
 #   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/include/api.hpp
 # )

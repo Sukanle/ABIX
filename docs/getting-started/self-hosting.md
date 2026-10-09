@@ -77,8 +77,8 @@ ABIX describes its own core IR through its own configuration and validates the
 result:
 
 * `ABIX/self.abic.toml` — the ABIX runtime's public types
-* `amc/self.abic.toml` — the AMC core IR
-* `src/self_types.cpp`, `amc/self_types.cpp` — the inputs described
+* `AMC/self.abic.toml` — the AMC core IR
+* `src/self_types.cpp`, `AMC/self_types.cpp` — the inputs described
 
 The integration suite builds these artifacts, validates them, generates a
 native projection and compiles a consumer that uses

@@ -51,7 +51,7 @@ symbols = ["math::add", "math::Point"]
 output = "build/math_api.abix"
 ```
 
-See [`abic.md`](../abix/abic.md) for the complete reference.
+See [`abic.md`](../ABIX/abic.md) for the complete reference.
 
 ## Commands
 

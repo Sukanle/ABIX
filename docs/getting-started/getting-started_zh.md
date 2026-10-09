@@ -93,7 +93,7 @@ int add(int a, int b);
 # -> build/build/math_api.abix.meta
 ```
 
-完整配置见 [`abic_zh.md`](../abix/abic_zh.md)。
+完整配置见 [`abic_zh.md`](../ABIX/abic_zh.md)。
 
 ## 4. 查看与查询
 
@@ -150,7 +150,7 @@ python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
 
 ## 下一步
 
-* [`abix_zh.md`](../abix/abix_zh.md) — `.abix` artifact 格式
+* [`abix_zh.md`](../ABIX/abix_zh.md) — `.abix` artifact 格式
 * [`compatibility_zh.md`](../architecture/compatibility_zh.md) — ABI 身份与兼容性
-* [`amc_zh.md`](../amc/amc_zh.md) — AMC 工具链
+* [`amc_zh.md`](../AMC/amc_zh.md) — AMC 工具链
 * [`architecture_zh.md`](../architecture/architecture_zh.md) — 整体架构

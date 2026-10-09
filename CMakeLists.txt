@@ -194,16 +194,16 @@ if(AMC_BUILD)
         # ------------------------------------------------------------------
         add_library(
             libabix-format STATIC
-            amc/src/Core/Core.cpp # .abix v4 read/write + hashing + canonical form
-            amc/src/Core/Error.cpp
-            amc/src/Core/ELF.cpp
-            amc/src/Core/Json.cpp
-            amc/src/ljson/json.c
-            amc/src/ljson/jnum.c
-            amc/src/ljson/grisu2.c
-            amc/src/ljson/dragonbox.c)
-        target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/include
-                                                         ${CMAKE_CURRENT_SOURCE_DIR}/amc/include/ljson)
+            AMC/src/Core/Core.cpp # .abix v4 read/write + hashing + canonical form
+            AMC/src/Core/Error.cpp
+            AMC/src/Core/ELF.cpp
+            AMC/src/Core/Json.cpp
+            AMC/src/ljson/json.c
+            AMC/src/ljson/jnum.c
+            AMC/src/ljson/grisu2.c
+            AMC/src/ljson/dragonbox.c)
+        target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include
+                                                         ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include/ljson)
         # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep the rest of the project on C++17 and
         # compile only these files as C23.
         set_target_properties(libabix-format PROPERTIES C_STANDARD 23 C_STANDARD_REQUIRED ON)
@@ -220,15 +220,15 @@ if(AMC_BUILD)
                     JSON_PARSE_FINISHED_CHAR=0
                     JSON_ERROR_PRINT_ENABLE=0)
 
-        add_library(libabix-abi STATIC amc/src/Core/Verify.cpp)
+        add_library(libabix-abi STATIC AMC/src/Core/Verify.cpp)
         target_link_libraries(libabix-abi PUBLIC libabix-format)
 
         add_library(
-            libabix-metadata STATIC amc/src/Core/Metadata.cpp # Metadata Region serialize/parse/materialize
-                                    amc/src/Core/Materialize.cpp amc/src/Core/Context.cpp amc/src/Core/Query.cpp)
+            libabix-metadata STATIC AMC/src/Core/Metadata.cpp # Metadata Region serialize/parse/materialize
+                                    AMC/src/Core/Materialize.cpp AMC/src/Core/Context.cpp AMC/src/Core/Query.cpp)
         target_link_libraries(libabix-metadata PUBLIC libabix-abi)
 
-        add_library(libabix-tools STATIC amc/src/Core/Adapter.cpp amc/src/Core/Lua.cpp amc/src/Core/Symbol.cpp)
+        add_library(libabix-tools STATIC AMC/src/Core/Adapter.cpp AMC/src/Core/Lua.cpp AMC/src/Core/Symbol.cpp)
         target_link_libraries(libabix-tools PUBLIC libabix-metadata)
 
         # The libabix-* objects are linked into the LLDB plugin, which is a shared object, so they must be position
@@ -236,59 +236,59 @@ if(AMC_BUILD)
         set_target_properties(libabix-format libabix-abi libabix-metadata libabix-tools
                               PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-        # Header-only runtime registry/binding layer; consumers link it for the `abix/` include root.
+        # Header-only runtime registry/binding layer; consumers link it for the `ABIX/` include root.
         add_library(libabix-runtime INTERFACE)
         target_include_directories(libabix-runtime INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
         # Backwards-compatible aggregate used by the AMC executables and tests. Shared helpers for the AMC executables
         # (hex/name rendering, JSON text helpers, the unified error envelope).
-        add_library(amc-util STATIC amc/src/Util/Names.cpp amc/src/Util/Json.cpp amc/src/Util/Error.cpp)
-        target_include_directories(amc-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_library(amc-util STATIC AMC/src/Util/Names.cpp AMC/src/Util/Json.cpp AMC/src/Util/Error.cpp)
+        target_include_directories(amc-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-util PUBLIC libabix-format fmt::fmt)
 
         # Language-provider infrastructure shared by every `amc-<language>` executable: `.abic.toml` import config,
         # JSONL IPC and capability dispatch.
-        add_library(amc-lang STATIC amc/src/Lang/Lang.cpp)
-        target_include_directories(amc-lang PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_library(amc-lang STATIC AMC/src/Lang/Lang.cpp)
+        target_include_directories(amc-lang PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-lang PUBLIC amc-util fmt::fmt tomlplusplus::tomlplusplus)
 
         add_library(amc-core INTERFACE)
         target_link_libraries(amc-core INTERFACE libabix-format libabix-abi libabix-metadata libabix-tools amc-util
                                                  fmt::fmt)
 
-        add_executable(amc-cpp amc/src/Lang/C++/C++.cpp amc/src/Lang/C++/Frontend.cpp amc/src/Lang/C++/Backend.cpp)
-        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include ${LLVM_INCLUDE_DIRS}
+        add_executable(amc-cpp AMC/src/Lang/C++/C++.cpp AMC/src/Lang/C++/Frontend.cpp AMC/src/Lang/C++/Backend.cpp)
+        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include ${LLVM_INCLUDE_DIRS}
                                                    ${CLANG_INCLUDE_DIRS})
         target_compile_definitions(amc-cpp PRIVATE ABIX_CLANG_RESOURCE_DIR="${ABIX_CLANG_RESOURCE_DIR}")
         target_link_libraries(amc-cpp PRIVATE amc-core amc-lang clang-cpp LLVM fmt::fmt tomlplusplus::tomlplusplus)
 
         # Rust provider: a self-contained frontend (source-level #[repr(C)] / extern "C" extractor) and backend (ABIX ->
         # Rust repr(C) projection). Unlike amc-cpp it does not link Clang/LLVM.
-        add_executable(amc-rust amc/src/Lang/Rust/Rust.cpp amc/src/Lang/Rust/Frontend.cpp amc/src/Lang/Rust/Backend.cpp)
-        target_include_directories(amc-rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_executable(amc-rust AMC/src/Lang/Rust/Rust.cpp AMC/src/Lang/Rust/Frontend.cpp AMC/src/Lang/Rust/Backend.cpp)
+        target_include_directories(amc-rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-rust PRIVATE amc-core amc-lang fmt::fmt)
 
         add_executable(
             amc
-            amc/main.cpp
-            amc/src/CLI/CLI.cpp
-            amc/src/CLI/Context.cpp
-            amc/src/CLI/Metadata.cpp
-            amc/src/CLI/Adapter.cpp
-            amc/src/CLI/Query.cpp
-            amc/src/CLI/Symbols.cpp
-            amc/src/CLI/Verify.cpp
-            amc/src/CLI/Diff.cpp
-            amc/src/CLI/Generate.cpp
-            amc/src/CLI/Build.cpp)
-        target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+            AMC/main.cpp
+            AMC/src/CLI/CLI.cpp
+            AMC/src/CLI/Context.cpp
+            AMC/src/CLI/Metadata.cpp
+            AMC/src/CLI/Adapter.cpp
+            AMC/src/CLI/Query.cpp
+            AMC/src/CLI/Symbols.cpp
+            AMC/src/CLI/Verify.cpp
+            AMC/src/CLI/Diff.cpp
+            AMC/src/CLI/Generate.cpp
+            AMC/src/CLI/Build.cpp)
+        target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc PRIVATE amc-core tomlplusplus::tomlplusplus)
-        add_executable(amc-dump amc/src/Tool/Dump/Dump.cpp amc/src/Tool/Dump/Json.cpp amc/src/Tool/Dump/Text.cpp)
-        target_include_directories(amc-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_executable(amc-dump AMC/src/Tool/Dump/Dump.cpp AMC/src/Tool/Dump/Json.cpp AMC/src/Tool/Dump/Text.cpp)
+        target_include_directories(amc-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-dump PRIVATE amc-core)
-        add_executable(amc-mcp amc/src/Tool/MCP/MCP.cpp amc/src/Tool/MCP/State.cpp amc/src/Tool/MCP/Tools.cpp
-                               amc/src/Tool/MCP/Server.cpp)
-        target_include_directories(amc-mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_executable(amc-mcp AMC/src/Tool/MCP/MCP.cpp AMC/src/Tool/MCP/State.cpp AMC/src/Tool/MCP/Tools.cpp
+                               AMC/src/Tool/MCP/Server.cpp)
+        target_include_directories(amc-mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-mcp PRIVATE amc-core)
 
         # ABIX LLDB C++ plugin (AI-P2): a native `abix` command linked against the shared libabix-* libraries. Loaded
@@ -298,7 +298,7 @@ if(AMC_BUILD)
         if(ABIX_LLDB_INCLUDE_DIR AND ABIX_LLDB_LIBRARY)
             add_library(abix-lldb MODULE tools/lldb_abix.cpp)
             target_include_directories(abix-lldb PRIVATE ${ABIX_LLDB_INCLUDE_DIR}
-                                                         ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+                                                         ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
             target_link_libraries(abix-lldb PRIVATE amc-core ${ABIX_LLDB_LIBRARY})
             set_target_properties(abix-lldb PROPERTIES OUTPUT_NAME abix_lldb LIBRARY_OUTPUT_DIRECTORY
                                                                              ${CMAKE_BINARY_DIR}/bin)
@@ -306,25 +306,25 @@ if(AMC_BUILD)
         else()
             message(STATUS "LLDB not found: the native ABIX LLDB plugin will not be built")
         endif()
-        add_executable(amc-core-test amc/tests/core_test.cpp)
-        target_include_directories(amc-core-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_executable(amc-core-test AMC/tests/core_test.cpp)
+        target_include_directories(amc-core-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-core-test PRIVATE amc-core)
         add_test(NAME amc-core-test COMMAND amc-core-test)
-        add_executable(amc-e2e-test amc/tests/amc_e2e_test.cpp)
-        target_include_directories(amc-e2e-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/amc/include)
+        add_executable(amc-e2e-test AMC/tests/amc_e2e_test.cpp)
+        target_include_directories(amc-e2e-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-e2e-test PRIVATE amc-core)
         add_test(NAME amc-e2e-test COMMAND amc-e2e-test)
         find_program(AMC_PYTHON_EXECUTABLE NAMES python3 python)
         if(AMC_PYTHON_EXECUTABLE)
             add_test(NAME amc-integration-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_integration_test.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/amc_integration_test.py
                              ${CMAKE_BINARY_DIR}/bin)
             add_test(
                 NAME amc-cmake-integration-test
-                COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_cmake_integration_test.py
+                COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/amc_cmake_integration_test.py
                         ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(NAME amc-rust-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/amc/tests/amc_rust_test.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/amc_rust_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")

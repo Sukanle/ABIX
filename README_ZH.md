@@ -352,7 +352,7 @@ ABIX
 │   ├── RCU/           Config.h Domain.h
 │   ├── Bridge/        Adapter.h Refl.h MICS.h
 │   └── Util/          Config.h Log.h Atomic.h Hash.h Mem.h Timeout.h
-├── AMC                amc/             ABI 工具链
+├── AMC                AMC/             ABI 工具链
 ├── .abix              serialized ABI artifact
 ├── 测试 / 基准         test/ bench/
 ├── Aue（实验性）       Aue/             Lua 边界层 + 一致性测试
@@ -383,7 +383,7 @@ cmake --build build/Release --parallel
 
 ```bash
 # 从示例配置构建 .abix
-./build/Release/bin/amc build -c amc/tests/fixtures/amc_test.abic.toml -B build/demo
+./build/Release/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
 
 # 查看
 ./build/Release/bin/amc inspect build/demo/build/amc_test.abix

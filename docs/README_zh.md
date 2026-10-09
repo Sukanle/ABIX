@@ -23,8 +23,8 @@ graph TD
 | 我想要 … | 去这里 |
 |----------|--------|
 | **安装并试用 ABIX** | [快速开始](getting-started/) |
-| **理解 ABI 模型** | [ABIX](abix/) |
-| **使用 AMC 工具链** | [AMC](amc/) |
+| **理解 ABI 模型** | [ABIX](ABIX/) |
+| **使用 AMC 工具链** | [AMC](AMC/) |
 | **了解内部架构** | [架构](architecture/) |
 | **集成 AI / Agent 工作流** | [AI](ai/) |
 | **查看基准测试和指标** | [基准测试](benchmark/) |
@@ -64,10 +64,10 @@ graph TD
 
 | 文档 | English | 描述 |
 |------|---------|------|
-| [abix_zh.md](abix/abix_zh.md) | [abix.md](abix/abix.md) | 规范的 `.abix` 产物格式 |
-| [abic_zh.md](abix/abic_zh.md) | [abic.md](abix/abic.md) | `.abic.toml` 配置参考 |
-| [api_zh.md](abix/api_zh.md) | [api.md](abix/api.md) | 完整的 C++ API 参考 |
-| [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
+| [abix_zh.md](ABIX/abix_zh.md) | [abix.md](ABIX/abix.md) | 规范的 `.abix` 产物格式 |
+| [abic_zh.md](ABIX/abic_zh.md) | [abic.md](ABIX/abic.md) | `.abic.toml` 配置参考 |
+| [api_zh.md](ABIX/api_zh.md) | [api.md](ABIX/api.md) | 完整的 C++ API 参考 |
+| [metadata_modes_zh.md](ABIX/metadata_modes_zh.md) | [metadata_modes.md](ABIX/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
 
 ## AMC
 
@@ -75,7 +75,7 @@ graph TD
 
 | 文档 | English | 描述 |
 |------|---------|------|
-| [amc_zh.md](amc/amc_zh.md) | [amc.md](amc/amc.md) | AMC 工具链和 CLI |
+| [amc_zh.md](AMC/amc_zh.md) | [amc.md](AMC/amc.md) | AMC 工具链和 CLI |
 
 ## 架构
 

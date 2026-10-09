@@ -54,7 +54,7 @@ graph TD
 * `MaterializedModule` 可把 Region 重新投影为 pointer-rich 的 `ModuleDescriptor`，
   使注册表完全由 metadata image 驱动，无需编译期 descriptor 数组。
 
-设计细节见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
+设计细节见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
 
 ## DLL 函数表
 
@@ -138,12 +138,12 @@ if (mul.valid()) {
 }
 ```
 
-运行时 API 见 [`api_zh.md`](../abix/api_zh.md)。
+运行时 API 见 [`api_zh.md`](../ABIX/api_zh.md)。
 
 ## API 参考
 
 完整运行时 API（`entry`、`table`、`dll::Object`、`dll::CallError`、DLL 资源智能指针、
-日志、RCU 超时策略、类型化函数句柄与签名 hash）见 [`api_zh.md`](../abix/api_zh.md)。
+日志、RCU 超时策略、类型化函数句柄与签名 hash）见 [`api_zh.md`](../ABIX/api_zh.md)。
 
 ## 性能
 

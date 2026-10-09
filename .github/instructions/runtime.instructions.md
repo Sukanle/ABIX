@@ -1,5 +1,5 @@
 ---
-applyTo: "abix/**"
+applyTo: "ABIX/**"
 ---
 
 # Runtime instructions
@@ -7,9 +7,9 @@ applyTo: "abix/**"
 Source of truth: [`ARCHITECTURE.md`](../../.agents/ARCHITECTURE.md) and
 [`docs/architecture/runtime.md`](../../docs/architecture/runtime.md).
 
-`applyTo` uses the lowercase `abix/` prefix recorded in the git index, which is
-what a fresh clone sees; the working tree displays `ABIX/` on case-insensitive
-filesystems.
+`applyTo` uses the `ABIX/` prefix, which now matches the git index: the layer
+directories were renamed to upper case, so a fresh clone sees `ABIX/` on every
+filesystem.
 
 - The runtime **consumes** ABI; it must never become a second ABI authority.
   Canonical records come from ABIX IR / the `.abix` artifact.

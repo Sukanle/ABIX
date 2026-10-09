@@ -112,7 +112,7 @@ cmake -B build/Release -S . \
 A missing Clang resource directory is a related failure with a different
 symptom: `amc-cpp` prints `ABIX_CLANG_RESOURCE_DIR not set at build time` and
 cannot find built-in headers, which breaks the self-description steps of
-`amc/tests/amc_integration_test.py`. Clear the stale detection results to let
+`AMC/tests/amc_integration_test.py`. Clear the stale detection results to let
 CMake re-run `clang -print-resource-dir`:
 
 ```bash
@@ -123,8 +123,8 @@ cmake -B build/Release -S . -U ABIX_CLANG_EXECUTABLE -U ABIX_CLANG_RESOURCE_DIR
 
 - Keep the build green: run `ctest` before opening a pull request.
 - Add tests for behaviour changes. The AMC CLI suite is
-  `amc/tests/amc_integration_test.py`; core assertions live in
-  `amc/tests/core_test.cpp`; runtime tests use Catch2 in `test/`.
+  `AMC/tests/amc_integration_test.py`; core assertions live in
+  `AMC/tests/core_test.cpp`; runtime tests use Catch2 in `test/`.
 - Keep ABI semantics in one place: extend `libabix-*` rather than duplicating a
   parser in a consumer.
 - Update the relevant `docs/` page (and its `_zh` edition when you can) for

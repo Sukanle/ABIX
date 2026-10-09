@@ -157,7 +157,7 @@ ABIX 不应该知道 `foo.cpp:37` 是什么。
 
 约束：名字被剥离，三档 metadata 模式（Debug / RelWithDebInfo / Release）的存在就是为了防止
 `.abix` 膨胀成 DWARF。任何向 `.abix` 中加入源码位置、模板实例化路径或宏展开历史的提议都应被
-拒绝。见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
+拒绝。见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
 
 ### 原则 5：单一 ABI 真相源
 
@@ -362,7 +362,7 @@ ABI 真相应独立于任何语言与编译器存在，作为可持久化、可�
   `amc generate`，以保持 `.abix` 语言无关。
 
 `.abix` 是单一 ABI 真相源。Runtime 可经 `mmap` 消费它，同一产物也可投影成多语言的编译期常量，
-统一动态 ABI 与静态性能。见 [`abix_zh.md`](../abix/abix_zh.md) 与 [`abic_zh.md`](../abix/abic_zh.md)。
+统一动态 ABI 与静态性能。见 [`abix_zh.md`](../ABIX/abix_zh.md) 与 [`abic_zh.md`](../ABIX/abic_zh.md)。
 
 ### 阶段五 · AMC 元数据编译器
 
@@ -387,7 +387,7 @@ ABI 真相应独立于任何语言与编译器存在，作为可持久化、可�
   不用 RCU 的 bootstrap kernel 作为等价可信计算基（TCB），严格 DAG 依赖避免递归。
 
 `C++ 头文件 → Clang AST → AbiModule → .abix → 投影代码` 的闭环被打通；round-trip 测试与
-CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh.md`](../amc/amc_zh.md) 与
+CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh.md`](../AMC/amc_zh.md) 与
 [`self-hosting_zh.md`](../getting-started/self-hosting_zh.md)。
 
 ### 阶段六 · Micro-RCU 性能工程

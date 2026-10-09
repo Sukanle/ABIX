@@ -368,7 +368,7 @@ ABIX
 │   ├── RCU/           Config.h Domain.h
 │   ├── Bridge/        Adapter.h Refl.h MICS.h
 │   └── Util/          Config.h Log.h Atomic.h Hash.h Mem.h Timeout.h
-├── AMC                amc/             ABI toolchain
+├── AMC                AMC/             ABI toolchain
 ├── .abix              serialized ABI artifact
 ├── tests / benchmarks test/ bench/
 ├── Aue (experimental) Aue/             Lua boundary layer + conformance
@@ -399,7 +399,7 @@ cmake --build build/Release --parallel
 
 ```bash
 # Build an .abix artifact from the example config
-./build/Release/bin/amc build -c amc/tests/fixtures/amc_test.abic.toml -B build/demo
+./build/Release/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
 
 # Inspect it
 ./build/Release/bin/amc inspect build/demo/build/amc_test.abix

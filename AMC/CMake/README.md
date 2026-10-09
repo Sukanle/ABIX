@@ -9,7 +9,7 @@ add_library(foo STATIC foo.cpp)
 amc_add_abi(
   TARGET foo
   CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/foo.abic.toml
-  ABIX_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/amc/build/foo.abix
+  ABIX_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/AMC/build/foo.abix
   CPP_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/foo_abix.hpp
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/include/foo.hpp)
 ```
