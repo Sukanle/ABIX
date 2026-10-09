@@ -272,6 +272,13 @@ Additional CMake options (see `CMakeLists.txt`):
 | `-DSKL_ABIX_BUILD_DLL_VARIANTS=ON` | ON | Build cross-toolchain DLL variants |
 | `-DAMC_BUILD=ON` | ON | Build AMC toolchain (requires Clang/LLVM) |
 
+On macOS with Homebrew, `llvm` is keg-only: pass
+`-DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"` (the keg **root**, not `.../lib`)
+or the AMC tools are silently skipped. Do not export `LDFLAGS`/`CPPFLAGS` at an
+unversioned LLVM prefix — CMake caches them into the linker flags on first
+configure and the stale path then reaches every link. See
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#locating-llvm-macos--homebrew).
+
 ### Test & Run
 
 ```bash

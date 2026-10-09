@@ -69,6 +69,56 @@ Requirements:
 - LLVM / Clang tooling (links `clang-cpp` for the AMC C++ frontend)
 - optional: Lua 5.4 (Aue), `readelf`/`strip`/`lldb`/`clang++` (integration tests)
 
+### Locating LLVM (macOS / Homebrew)
+
+`cmake/AbixDependencies.cmake` locates LLVM with
+`find_package(LLVM CONFIG)`. On Homebrew, `llvm` is **keg-only**: installing
+`llvm@22` creates `/opt/homebrew/opt/llvm@22`, and the unversioned
+`/opt/homebrew/opt/llvm` symlink does **not** exist. Point `CMAKE_PREFIX_PATH`
+at the keg root:
+
+```bash
+cmake -B build/Release -G Ninja -S . \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"
+```
+
+Two constraints are easy to trip over:
+
+- `CMAKE_PREFIX_PATH` must be the keg **root**. `.../llvm@22/lib` and
+  `.../llvm@22/lib/cmake/llvm` both fail to resolve.
+- `-DLLVM_DIR=...` / `-DClang_DIR=...` have no effect: the dependency module
+  clears those cache entries on every configure so it re-detects a changed
+  toolchain. Use `CMAKE_PREFIX_PATH`.
+
+If LLVM is not found, `AMC_BUILD` still succeeds but the AMC tools are skipped
+with a warning — `amc`, `amc-cpp`, `amc-rust` and the AMC tests are absent from
+`build/<type>/bin`.
+
+Avoid exporting `LDFLAGS` / `CPPFLAGS` pointing at an unversioned LLVM prefix.
+CMake copies them into `CMAKE_EXE_LINKER_FLAGS` (and the shared/module
+variants) on the **first** configure and then reuses the cached value, so a
+stale `-L/opt/homebrew/opt/llvm/lib` keeps reaching every link line — the linker
+warns `search path ... not found`, and `CPPFLAGS` can shadow the toolchain's own
+headers. To repair an existing build directory after changing the environment:
+
+```bash
+cmake -B build/Release -S . \
+  -U CMAKE_EXE_LINKER_FLAGS \
+  -U CMAKE_SHARED_LINKER_FLAGS \
+  -U CMAKE_MODULE_LINKER_FLAGS
+```
+
+A missing Clang resource directory is a related failure with a different
+symptom: `amc-cpp` prints `ABIX_CLANG_RESOURCE_DIR not set at build time` and
+cannot find built-in headers, which breaks the self-description steps of
+`amc/tests/amc_integration_test.py`. Clear the stale detection results to let
+CMake re-run `clang -print-resource-dir`:
+
+```bash
+cmake -B build/Release -S . -U ABIX_CLANG_EXECUTABLE -U ABIX_CLANG_RESOURCE_DIR
+```
+
 ## Guidelines
 
 - Keep the build green: run `ctest` before opening a pull request.
