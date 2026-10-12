@@ -67,7 +67,7 @@ Two MCP protocol versions are supported, `2024-11-05` and `2025-06-18`, with
 `2025-06-18` the preferred newest. On `initialize` the server echoes the
 client's requested `protocolVersion` when that version is supported, and
 otherwise negotiates down to the preferred newest supported version;
-`serverInfo` always reports `{"name": "amc-mcp", "version": "1.0.0"}`.
+`serverInfo` always reports `{"name": "amc-mcp", "version": "0.1.0"}`.
 The exposed tools are:
 
 | Tool | Parameters | Description |
