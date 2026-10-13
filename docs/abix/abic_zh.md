@@ -33,21 +33,18 @@
 
 ## 核心职责
 
-| 职责 | 说明 |
-|------|------|
-| 声明源文件路径 | 指定需要扫描的源文件，避免全项目扫描 |
-| 声明导出范围 | 哪些类型、函数需要导出 |
-| 声明目标平台 | arch / OS |
-| 声明 ABI 约定 | 编译器 / 调用约定 |
-| 声明归一化策略 | 类型名如何规范化 |
-| 声明兼容性策略 | 是否生成兼容关系、兼容规则 |
-| 声明映射策略 | 是否生成 Map、映射方向 |
-| 声明生成目标 | 目标语言、输出格式 |
-| 声明运行模式 | 静态/动态/混合 |
+| 职责 | 配置节 | 说明 |
+|------|------|------|
+| 声明源 | `[[import]]` | 语言与要扫描的文件，以及可选 flags / compilation database |
+| 声明导出范围 | `[[import]].symbols` | 哪些类型、函数构成导出的 ABI 表面 |
+| 声明输出 | `[[export]]` | `.abix` 产物写到哪里 |
+| 声明所有权 | `[[owned]]`、`[[contract]]` | 释放策略与逐交互所有权模式 |
+| 声明错误边界 | `[[error]]` | 函数在哪里报告状态、结果放在哪里 |
+| 声明目标平台 | `[target]` | 用于验证的目标平台事实 |
 
 ## 格式：TOML
 
-`.abic` 面向**人**，因此使用 TOML（或 YAML）这种可读的格式。
+`.abic` 面向**人**，因此使用 TOML 这种可读的格式。
 
 ## 完整示例
 
@@ -55,58 +52,46 @@
 [package]
 name = "mylib"
 version = "2.0"
-abi_version = 1
 
-[source]
-files = [
-    "src/foo.hpp",
-    "src/bar.hpp",
-    "src/baz.cpp"
-]
-include_dirs = ["include", "src"]
-exclude = ["src/internal/*"]
+[[import]]
+language = "cpp"                       # cpp | rust（前端）；lua/zig 仅用于 generate
+flags = ["-std=c++17"]
+# compile_commands = "compile_commands.json"   # 可选，存在时替代 flags
+files = ["src/foo.hpp", "src/bar.hpp"]
+symbols = ["Foo", "Bar", "FooKind", "foo_create", "foo_destroy", "bar_process"]
 
+# 释放策略：被拥有的值如何创建与释放
+[[owned]]
+type = "Foo"
+create = "foo_create"
+destroy = "foo_destroy"
+
+# 逐交互所有权模式（borrowed / owned / copy）
+[[contract]]
+function = "foo_create"
+returns = "owned"
+release = "foo_destroy"
+
+[[contract]]
+function = "bar_process"
+params = ["borrowed"]
+
+# 错误边界：状态在返回值，结果通过参数 2
+[[error]]
+function = "bar_process"
+success = 0
+value = 2
+
+# 目标平台事实（整数；`endianness` 为关键字）
 [target]
-arch = "x86_64"
-os = "linux"
+arch = 1
+os = 1
+abi = 1
+pointer_bits = 64
+endianness = "little"                  # little | big
 
-[abi]
-compiler = "gcc"
-calling_convention = "sysv_abi"
-
-[export]
-types = ["Foo", "Bar", "Baz", "FooKind", "BarFlags"]
-functions = ["foo_create", "foo_destroy", "bar_process"]
-
-[normalization]
-integer = "fixed-width"       # int → i32, long → i64, ...
-pointer = "opaque"             # T* → Ptr<T>
-string = "slice"               # std::string → StringSlice
-container = "abi_stable"       # std::vector → AbiVector
-
-[compatibility]
-enable = true
-mode = "layout_hash"           # layout_hash | type_id | strict
-max_minor_version = 4
-
-[map]
-Foo_v1 = "Foo_v2"              # 版本映射
-Bar_old = "Bar_new"            # 重命名映射
-
-[generator]
-language = ["cpp", "rust"]
-hash_algorithm = "fnv1a64"     # fnv1a64 | xxh3 | blake3
-emit_map_ir = true             # 在 .abix 中生成 Map IR
-emit_static_map = true         # 生成 MapPrivate 静态转换
-
-[runtime]
-mode = "hybrid"                # static | dynamic | hybrid
-lazy_load = true               # Runtime 延迟加载
-
-[output]
-format = "abix"                # abix | json | none
-compact = true                 # 二进制紧凑布局
-debug_info = false             # 嵌入调试字符串（与 compact 互斥，debug_info 优先）
+[[export]]
+output = "build/mylib.abix"
 ```
 
 ## 配置节详解
@@ -115,114 +100,74 @@ debug_info = false             # 嵌入调试字符串（与 compact 互斥，de
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `name` | string | 包名 |
-| `version` | string | 语义版本号 |
-| `abi_version` | uint | ABI 格式版本（与包版本解耦） |
+| `name` | string | 包名（记入产物与 metadata region） |
+| `version` | string | 版本字符串（与 `.abix` 格式版本无关） |
 
-### `[source]`
+### `[[import]]`
+
+每个文件恰好一个 import，用于选择语言前端与源。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `files` | string[] | 需要扫描的源文件路径（相对 .abic 所在目录） |
-| `include_dirs` | string[] | 头文件搜索路径 |
-| `exclude` | string[] | 排除的文件模式（glob） |
+| `language` | string | `cpp` 或 `rust`。（`lua` / `zig` 无前端，只用于 `amc generate -l`。） |
+| `files` | string[] | 要扫描的源/头文件（相对 `.abic.toml` 所在目录） |
+| `symbols` | string[] | 构成导出 ABI 表面的类型与函数 |
+| `flags` | string[] | 传给前端的编译 flag（可选） |
+| `compile_commands` | string | `compile_commands.json` 路径；存在时替代 `flags`（可选） |
 
-**设计意图**：AMC 仅扫描 `[source]` 指定的文件，而非整个项目，避免大型项目中不必要的 AST 解析。
+`files` 与 `symbols` 为必填。AMC 只扫描列出的文件，而非整个项目。
 
-如果 `[source]` 缺失，AMC 将扫描 .abic 同目录下所有 `.hpp` / `.h` / `.cpp` 文件（向后兼容，但会发出警告）。
+### `[[export]]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `output` | string | `.abix` 产物的输出路径，相对构建目录 |
+
+### `[[owned]]` — 释放策略
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 由库管理生命周期的值类型 |
+| `create` | string | 工厂函数名（可选） |
+| `destroy` | string | 释放函数名（必填） |
+
+### `[[contract]]` — 逐交互所有权
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `function` | string | 契约所描述的函数 |
+| `returns` | string | 返回值的模式：`borrowed` / `owned` / `copy` |
+| `release` | string | `owned` 返回值的释放函数名 |
+| `params` | string[] | 各参数位置的模式 |
+
+所有权是**契约而非布局事实**：永不参与 `TypeID` / `LayoutHash` / `ABIHash`。缺失即
+`unspecified`，reader **不得**推断为 `borrowed` 或 `owned`。见
+[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §9。
+
+### `[[error]]` — 错误边界
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `function` | string | 契约所描述的函数 |
+| `status` | string | `return`（默认）或 `parameter` |
+| `success` | int | 表示成功的状态值（默认 `0`） |
+| `value` | int | 承载结果值的参数下标（返回值为结果时可省略） |
+
+它让后端把裸 C 状态码变成类型化结果；语言原生的异常/panic **不得**穿越 ABI 边界。
+见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1。
 
 ### `[target]`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `arch` | string | 目标架构：`x86_64` / `aarch64` / `riscv64` / ... |
-| `os` | string | 目标 OS：`linux` / `windows` / `macos` / ... |
+| `arch` | uint | 目标架构码 |
+| `os` | uint | 目标 OS 码 |
+| `abi` | uint | 目标 ABI 码 |
+| `pointer_bits` | uint | 指针宽度（bit，`0` = 未知） |
+| `endianness` | string | `little` / `big` |
 
-`[target]` 仅描述**目标平台**，不包含编译器/调用约定（后者属于 `[abi]`）。
-
-### `[abi]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `compiler` | string | 编译器：`gcc` / `clang` / `msvc` / ... |
-| `calling_convention` | string | 调用约定：`sysv_abi` / `ms_abi` / `aapcs` / ... |
-
-`[abi]` 描述**编译器与 ABI 约定**，与 `[target]`（平台）职责分离。
-
-### `[export]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `types` | string[] | 需要导出 ABI 的类型名（含枚举） |
-| `functions` | string[] | 需要导出 ABI 的函数名 |
-
-枚举本质上是 Type，统一列入 `types`。不再单独设置 `enums` 字段，避免语义重叠。
-
-### `[normalization]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `integer` | enum | 整数归一化策略：`fixed-width` / `native` / `none` |
-| `pointer` | enum | 指针归一化策略：`opaque` / `typed` / `none` |
-| `string` | enum | 字符串归一化策略：`slice` / `ptr` / `none` |
-| `container` | enum | 容器归一化策略：`abi_stable` / `none` |
-
-归一化的目的是让不同编译器/语言产生的类型名映射到同一规范表示：
-
-```
-C++ int        → i32
-C++ long       → i64 (on LP64)
-Rust i32       → i32
-Zig i32        → i32
-```
-
-### `[compatibility]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `enable` | bool | 是否生成兼容性信息 |
-| `mode` | enum | 兼容检查模式：`layout_hash` / `type_id` / `strict` |
-| `max_minor_version` | uint | 最大兼容的 minor 版本号 |
-
-### `[map]`
-
-键值对形式，声明类型映射关系：
-
-- 版本映射：`Foo_v1 = "Foo_v2"` — 从旧版本映射到新版本
-- 重命名映射：`Bar_old = "Bar_new"` — 从旧名称映射到新名称
-
-### `[generator]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `language` | string[] | 目标语言：`cpp` / `rust` / `zig` / ... |
-| `hash_algorithm` | enum | Hash 算法：`fnv1a64` / `xxh3` / `blake3` |
-| `emit_map_ir` | bool | 是否在 .abix 中生成 Map IR |
-| `emit_static_map` | bool | 是否生成 MapPrivate 静态转换 |
-
-`emit_map_ir` 和 `emit_static_map` 是独立的生成开关，与 `[runtime].mode` 无耦合：
-- `emit_map_ir = true, emit_static_map = false`：仅在 .abix 中保存 Map IR，运行时动态执行
-- `emit_map_ir = true, emit_static_map = true`：同时生成运行时 IR 和编译期 MapPrivate
-- `emit_map_ir = false, emit_static_map = true`：仅生成 MapPrivate（.abix 中无 Map IR）
-
-`hash_algorithm` 是**生成策略**（输入），.abix Header 中的 `hash_algorithm` 是**实际使用的算法**（输出），两者是配置→产物关系。
-
-### `[runtime]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `mode` | enum | 运行模式：`static` / `dynamic` / `hybrid` |
-| `lazy_load` | bool | Runtime 是否延迟加载 |
-
-### `[output]`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `format` | enum | 输出格式：`abix` / `json` / `none` |
-| `compact` | bool | 二进制是否紧凑布局 |
-| `debug_info` | bool | 是否嵌入调试字符串 |
-
-`debug_info` 与 `compact` 互斥：当 `debug_info = true` 时，忽略 `compact`（调试信息优先）。
+`[target]` 描述**目标平台**；未知事实在运行期验证中报告为 `unverifiable`，而不是假定兼容。
+见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §10。
 
 ## 运行模式
 
@@ -282,27 +227,29 @@ flowchart TD
 
 ## 最小示例
 
-仅导出类型，使用默认配置：
+仅导出一个类型，其余使用默认配置：
 
 ```toml
 [package]
 name = "minimal"
 version = "1.0"
 
-[source]
+[[import]]
+language = "cpp"
 files = ["src/foo.hpp"]
+symbols = ["Foo"]
 
-[export]
-types = ["Foo"]
+[[export]]
+output = "build/minimal.abix"
 ```
 
-AMC 将使用所有字段的默认值补全配置。
+AMC 会为可选字段补全默认值（无契约、无目标事实）。
 
 ## 设计原则
 
 1. **声明式**：描述"要什么"，而非"怎么做"
 2. **人可读**：TOML 格式，便于手写和版本控制
-3. **可补全**：所有字段都有合理默认值
-4. **与版本解耦**：`abi_version` 独立于 `version`
+3. **可补全**：所有可选字段都有合理默认值
+4. **与版本解耦**：包 `version` 独立于 `.abix` 格式版本
 5. **仅构建时使用**：运行时不依赖 `.abic`
-6. **无语义重叠**：每个配置项有唯一职责，不同节之间不产生冲突组合
+6. **契约是增量的**：所有权/错误/目标段可选，且永不改变 `TypeID` / `LayoutHash` / `ABIHash`
