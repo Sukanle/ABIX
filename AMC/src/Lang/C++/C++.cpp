@@ -12,9 +12,9 @@ int main(int argc, char **argv) {
     static const amc::lang::Provider provider{
         "cpp",
         {
-            {"frontend", amc::cpp::run_frontend},
-            {"backend", amc::cpp::backend},
-        },
+          {"frontend", amc::lang::cpp::run_frontend},
+          {"backend", amc::lang::cpp::backend},
+          },
     };
     return amc::lang::run_provider(argc, argv, provider);
 }

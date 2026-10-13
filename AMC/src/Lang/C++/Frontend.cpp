@@ -1,6 +1,24 @@
 #include "AMC/Lang/C++.h"
+#include "AMC/Lang/Lang.h"
+#include "AMC/Core/Core.h"
 
-namespace amc::cpp {
+#include <clang/AST/ASTConsumer.h>
+#include <clang/AST/ASTContext.h>
+#include <clang/AST/RecordLayout.h>
+#include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/Basic/SourceManager.h>
+#include <clang/Options/OptionUtils.h>
+#include <clang/Tooling/CompilationDatabase.h>
+#include <clang/Tooling/JSONCompilationDatabase.h>
+#include <clang/Tooling/Tooling.h>
+
+#include <llvm/ADT/APFloat.h>
+
+#include <fmt/base.h>
+
+#include <filesystem>
+
+namespace amc::lang::cpp {
 namespace {
 // Stable, language-independent name for a floating-point format. Two float
 // types only share an identity when they share an actual IEEE/format semantic
@@ -32,8 +50,8 @@ amc::FloatFormat float_format_code(const llvm::fltSemantics &semantics) {
 
 // Pick the ABI kind that matches the observed signedness of a type whose C
 // spelling does not fix it (`char`, `wchar_t`).
-amc::PrimitiveAbiKind signedness_kind(bool is_signed, amc::PrimitiveAbiKind signed_kind,
-    amc::PrimitiveAbiKind unsigned_kind) {
+amc::PrimitiveAbiKind signedness_kind(
+    bool is_signed, amc::PrimitiveAbiKind signed_kind, amc::PrimitiveAbiKind unsigned_kind) {
     return is_signed ? signed_kind : unsigned_kind;
 }
 
@@ -66,8 +84,8 @@ std::string primitive_abi_key(clang::ASTContext &ctx, clang::QualType qt, uint32
         case clang::BuiltinType::Char_U:
             // Plain `char`: signedness is target-defined, so the kind encodes
             // the *actual* signedness, not the spelling.
-            abi = amc::primitive_abi(bytes, signedness_kind(is_signed, amc::PrimitiveAbiKind::char_signed,
-                amc::PrimitiveAbiKind::char_unsigned));
+            abi = amc::primitive_abi(bytes,
+                signedness_kind(is_signed, amc::PrimitiveAbiKind::char_signed, amc::PrimitiveAbiKind::char_unsigned));
             return is_signed ? "prim:char_s" : "prim:char_u";
         case clang::BuiltinType::SChar:
             abi = amc::primitive_abi(bytes, amc::PrimitiveAbiKind::schar, amc::FloatFormat::none, true);
@@ -86,8 +104,8 @@ std::string primitive_abi_key(clang::ASTContext &ctx, clang::QualType qt, uint32
             return "prim:char32";
         case clang::BuiltinType::WChar_S:
         case clang::BuiltinType::WChar_U:
-            abi = amc::primitive_abi(bytes, signedness_kind(is_signed, amc::PrimitiveAbiKind::wchar_signed,
-                amc::PrimitiveAbiKind::wchar_unsigned));
+            abi = amc::primitive_abi(bytes,
+                signedness_kind(is_signed, amc::PrimitiveAbiKind::wchar_signed, amc::PrimitiveAbiKind::wchar_unsigned));
             return std::string("prim:wchar") + (is_signed ? "_s" : "_u");
         default: break;
     }
@@ -490,4 +508,4 @@ int run_frontend(const char *config_path, const char *output_path) {
     }
     return EXIT_SUCCESS;
 }
-}   // namespace amc::cpp
+}   // namespace amc::lang::cpp

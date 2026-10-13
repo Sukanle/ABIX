@@ -1,10 +1,14 @@
 #include "AMC/Lang/C++.h"
+#include "AMC/Core/Core.h"
+#include "AMC/Core/Metadata.h"
+
+#include <fmt/os.h>
 
 #ifndef ABIX_CLANG_RESOURCE_DIR
 #  define ABIX_CLANG_RESOURCE_DIR ""
 #endif
 
-namespace amc::cpp {
+namespace amc::lang::cpp {
 
 const char * const kClangResourceDir = ABIX_CLANG_RESOURCE_DIR;
 
@@ -306,7 +310,7 @@ int backend(const char *input, const char *output) {
                     o.print("    memset(static_cast<char *>(target) + {}, 0, {});\n", operation.target_offset,
                         operation.byte_count);
                     break;
-                case amc::MapOpcode::skip_field: break;
+                case amc::MapOpcode::skip_field:  break;
                 case amc::MapOpcode::convert_int:
                 case amc::MapOpcode::convert_float:
                     o.print("    return false;  // conversion requires an explicit native converter\n");
@@ -560,4 +564,4 @@ void append_macos_sysroot(std::vector<std::string> &flags) {
 }
 #endif
 
-}   // namespace amc::cpp
+}   // namespace amc::lang::cpp

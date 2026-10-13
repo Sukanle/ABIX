@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AMC/Lang/Lang.h"
+#include "AMC/Lang/Lang.h"   // IWYU pragma: keep
 #include "AMC/Core/Core.h"
 
 #include <string>
@@ -14,7 +14,7 @@
 // functions); the backend projects ABIX IR back into Rust using the
 // ABI-normalised primitive identity so that a C ABI scalar becomes its
 // `core::ffi::c_*` alias (`c_int`, `c_double`, ...).
-namespace amc::rust {
+namespace amc::lang::rust {
 
 // Rust source + `.abic.toml` -> ABIX IR.
 int run_frontend(const char *config_path, const char *output_path);
@@ -29,4 +29,4 @@ std::string primitive_rust_type(uint32_t primitive_abi);
 // Render the Rust projection for a module. Exposed for tests.
 std::string generate_projection(const amc::AbiModule &module);
 
-}   // namespace amc::rust
+}   // namespace amc::lang::rust

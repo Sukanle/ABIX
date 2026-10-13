@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
-#include <filesystem>
 #include <iterator>
 #include <string>
 #include <unordered_map>
@@ -14,14 +13,14 @@
 #include <fmt/format.h>
 #include <fmt/os.h>
 
-namespace amc::rust {
+namespace amc::lang::rust {
 namespace {
 
 // Thin wrapper over `fmt::memory_buffer` so the emit helpers read like a file
 // stream while the projection is built in memory.
 struct Output {
     fmt::memory_buffer &buffer;
-    template <typename... Args>
+    template<typename... Args>
     void print(fmt::format_string<Args...> format, Args &&...args) {
         fmt::format_to(std::back_inserter(buffer), format, std::forward<Args>(args)...);
     }
@@ -38,10 +37,10 @@ bool is_rust_identifier(const std::string &s) {
 
 bool is_rust_keyword(const std::string &s) {
     static const char * const keywords[] = {"as", "break", "const", "continue", "crate", "dyn", "else", "enum",
-        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
-        "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use",
-        "where", "while", "async", "await", "box", "abstract", "become", "do", "final", "macro", "override",
-        "priv", "try", "typeof", "unsized", "virtual", "yield"};
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref",
+        "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where",
+        "while", "async", "await", "box", "abstract", "become", "do", "final", "macro", "override", "priv", "try",
+        "typeof", "unsized", "virtual", "yield"};
     for (const char *k : keywords)
         if (s == k) return true;
     return false;
@@ -80,11 +79,11 @@ std::string rust_string(const std::string &value) {
     for (const char c : value) {
         switch (c) {
             case '\\': out += "\\\\"; break;
-            case '"': out += "\\\""; break;
+            case '"':  out += "\\\""; break;
             case '\n': out += "\\n"; break;
             case '\r': out += "\\r"; break;
             case '\t': out += "\\t"; break;
-            default: out += c; break;
+            default:   out += c; break;
         }
     }
     out += '"';
@@ -224,14 +223,14 @@ void emit_opaque(Output &o, const Projector &p, const amc::Type &type) {
 
 void emit_type(Output &o, const Projector &p, const amc::Type &type) {
     switch (type.kind) {
-        case amc::TypeKind::record: emit_record(o, p, type); break;
+        case amc::TypeKind::record:      emit_record(o, p, type); break;
         case amc::TypeKind::enumeration: emit_enumeration(o, p, type); break;
-        case amc::TypeKind::alias: emit_alias(o, p, type); break;
-        case amc::TypeKind::pointer: o.print("pub type {} = *mut core::ffi::c_void;\n", p.name_of(type.id)); break;
-        case amc::TypeKind::array: emit_opaque(o, p, type); break;
+        case amc::TypeKind::alias:       emit_alias(o, p, type); break;
+        case amc::TypeKind::pointer:     o.print("pub type {} = *mut core::ffi::c_void;\n", p.name_of(type.id)); break;
+        case amc::TypeKind::array:       emit_opaque(o, p, type); break;
         case amc::TypeKind::namespace_type: break;
-        case amc::TypeKind::primitive: break;
-        case amc::TypeKind::function: break;
+        case amc::TypeKind::primitive:      break;
+        case amc::TypeKind::function:       break;
     }
 }
 
@@ -252,9 +251,9 @@ void emit_functions(Output &o, const Projector &p) {
         }
         const int return_index = p.index_of(function->return_type);
         const bool returns_void = return_index >= 0
-            && p.m.types[static_cast<size_t>(return_index)].kind == amc::TypeKind::primitive
-            && (p.m.types[static_cast<size_t>(return_index)].primitive_abi & 0xffu)
-                == static_cast<uint32_t>(amc::PrimitiveAbiKind::void_);
+                               && p.m.types[static_cast<size_t>(return_index)].kind == amc::TypeKind::primitive
+                               && (p.m.types[static_cast<size_t>(return_index)].primitive_abi & 0xffu)
+                                      == static_cast<uint32_t>(amc::PrimitiveAbiKind::void_);
         if (returns_void)
             o.print("unsafe extern \"C\" {{ pub fn {}({}) -> (); }}\n", rust_ident(function->name), params);
         else
@@ -274,14 +273,13 @@ void emit_abi_checks(Output &o, const Projector &p) {
         }
         const std::string &name = p.name_of(type.id);
         o.print("const _: () = assert!(core::mem::size_of::<{}>() == {});\n", name, type.size);
-        o.print("const _: () = assert!(core::mem::align_of::<{}>() == {});\n", name,
-            type.align == 0 ? 1 : type.align);
+        o.print("const _: () = assert!(core::mem::align_of::<{}>() == {});\n", name, type.align == 0 ? 1 : type.align);
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = p.m.fields[type.field_begin + i];
             if (field.name.empty() || (field.flags & amc::field_base) != 0) continue;
             if ((field.flags & amc::field_bitfield) != 0) continue;
-            o.print("const _: () = assert!(core::mem::offset_of!({}, {}) == {});\n", name,
-                rust_field_ident(field.name), field.offset);
+            o.print("const _: () = assert!(core::mem::offset_of!({}, {}) == {});\n", name, rust_field_ident(field.name),
+                field.offset);
         }
     }
 }
@@ -308,16 +306,16 @@ std::string primitive_rust_type(uint32_t primitive_abi) {
     const uint32_t kind = primitive_abi & 0xffu;
     const uint32_t width = (primitive_abi & amc::primitive_width_mask) >> amc::primitive_width_shift;
     switch (static_cast<amc::PrimitiveAbiKind>(kind)) {
-        case amc::PrimitiveAbiKind::void_: return "()";
-        case amc::PrimitiveAbiKind::bool_: return "bool";
+        case amc::PrimitiveAbiKind::void_:          return "()";
+        case amc::PrimitiveAbiKind::bool_:          return "bool";
         case amc::PrimitiveAbiKind::char_signed:
-        case amc::PrimitiveAbiKind::char_unsigned: return "core::ffi::c_char";
-        case amc::PrimitiveAbiKind::schar: return "core::ffi::c_schar";
-        case amc::PrimitiveAbiKind::uchar: return "core::ffi::c_uchar";
-        case amc::PrimitiveAbiKind::char8: return "u8";
-        case amc::PrimitiveAbiKind::char16: return "u16";
-        case amc::PrimitiveAbiKind::char32: return "u32";
-        case amc::PrimitiveAbiKind::wchar_signed: return width == 2 ? "i16" : "i32";
+        case amc::PrimitiveAbiKind::char_unsigned:  return "core::ffi::c_char";
+        case amc::PrimitiveAbiKind::schar:          return "core::ffi::c_schar";
+        case amc::PrimitiveAbiKind::uchar:          return "core::ffi::c_uchar";
+        case amc::PrimitiveAbiKind::char8:          return "u8";
+        case amc::PrimitiveAbiKind::char16:         return "u16";
+        case amc::PrimitiveAbiKind::char32:         return "u32";
+        case amc::PrimitiveAbiKind::wchar_signed:   return width == 2 ? "i16" : "i32";
         case amc::PrimitiveAbiKind::wchar_unsigned: return width == 2 ? "u16" : "u32";
         case amc::PrimitiveAbiKind::sint:
             switch (width) {
@@ -340,19 +338,19 @@ std::string primitive_rust_type(uint32_t primitive_abi) {
         case amc::PrimitiveAbiKind::floating: {
             switch (static_cast<amc::FloatFormat>(
                 (primitive_abi & amc::primitive_format_mask) >> amc::primitive_format_shift)) {
-                case amc::FloatFormat::ieee32: return "core::ffi::c_float";
-                case amc::FloatFormat::ieee64: return "core::ffi::c_double";
-                case amc::FloatFormat::ieee16: return "u16";
-                case amc::FloatFormat::bfloat16: return "u16";
-                case amc::FloatFormat::ieee128: return "u128";
-                case amc::FloatFormat::x87_80: return "u128";
+                case amc::FloatFormat::ieee32:            return "core::ffi::c_float";
+                case amc::FloatFormat::ieee64:            return "core::ffi::c_double";
+                case amc::FloatFormat::ieee16:            return "u16";
+                case amc::FloatFormat::bfloat16:          return "u16";
+                case amc::FloatFormat::ieee128:           return "u128";
+                case amc::FloatFormat::x87_80:            return "u128";
                 case amc::FloatFormat::ppc_double_double: return "u128";
                 case amc::FloatFormat::none:
-                default: return "core::ffi::c_double";
+                default:                                  return "core::ffi::c_double";
             }
         }
         case amc::PrimitiveAbiKind::none:
-        default: return "core::ffi::c_void";
+        default:                          return "core::ffi::c_void";
     }
 }
 
@@ -396,4 +394,4 @@ int backend(const char *input, const char *output) {
     return 0;
 }
 
-}   // namespace amc::rust
+}   // namespace amc::lang::rust

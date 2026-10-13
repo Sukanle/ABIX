@@ -23,12 +23,18 @@
 // rules the C++ frontend obtains from Clang). Generics, traits, lifetimes and
 // bit-fields are out of scope; unsupported constructs are ignored rather than
 // guessed at, per `LANGUAGE-PLUGIN.md`.
-namespace amc::rust {
+namespace amc::lang::rust {
 namespace {
 
 constexpr uint64_t kTypeDomain = 0x54595045;   // "TYPE"
 
-enum class Tok { Ident, Number, String, Punct, End };
+enum class Tok {
+    Ident,
+    Number,
+    String,
+    Punct,
+    End
+};
 
 struct Token {
     Tok kind = Tok::End;
@@ -49,7 +55,8 @@ std::vector<Token> lex(const std::string &source) {
             continue;
         }
         if (c == '/' && i + 1 < n && source[i + 1] == '/') {
-            while (i < n && source[i] != '\n') ++i;
+            while (i < n && source[i] != '\n')
+                ++i;
             continue;
         }
         if (c == '/' && i + 1 < n && source[i + 1] == '*') {
@@ -94,21 +101,24 @@ std::vector<Token> lex(const std::string &source) {
                 i = j < n ? j + 1 : j;
             } else {
                 size_t j = i + 1;
-                while (j < n && is_ident_char(source[j])) ++j;
+                while (j < n && is_ident_char(source[j]))
+                    ++j;
                 i = j;
             }
             continue;
         }
         if (is_ident_start(c)) {
             size_t j = i;
-            while (j < n && is_ident_char(source[j])) ++j;
+            while (j < n && is_ident_char(source[j]))
+                ++j;
             tokens.push_back({Tok::Ident, source.substr(i, j - i)});
             i = j;
             continue;
         }
         if (std::isdigit(static_cast<unsigned char>(c))) {
             size_t j = i;
-            while (j < n && (is_ident_char(source[j]) || source[j] == '.')) ++j;
+            while (j < n && (is_ident_char(source[j]) || source[j] == '.'))
+                ++j;
             tokens.push_back({Tok::Number, source.substr(i, j - i)});
             i = j;
             continue;
@@ -134,7 +144,11 @@ struct RawField {
 };
 
 struct RawItem {
-    enum class Kind { Record, Enum, Alias } kind = Kind::Record;
+    enum class Kind {
+        Record,
+        Enum,
+        Alias
+    } kind = Kind::Record;
     std::string name;
     std::vector<RawField> fields;
     uint32_t align_override = 0;
@@ -166,7 +180,8 @@ public:
     std::vector<RawFunction> &functions() { return functions_; }
 
     void parse() {
-        while (!at_end() && ok_) parse_item();
+        while (!at_end() && ok_)
+            parse_item();
     }
 
 private:
@@ -209,8 +224,10 @@ private:
         if (!accept(open)) return;
         int depth = 1;
         while (!at_end() && depth > 0) {
-            if (check(open)) ++depth;
-            else if (check(close)) --depth;
+            if (check(open))
+                ++depth;
+            else if (check(close))
+                --depth;
             advance();
         }
     }
@@ -243,7 +260,8 @@ private:
 
     std::string join(const std::vector<std::string> &parts) {
         std::string out;
-        for (const auto &part : parts) out += part;
+        for (const auto &part : parts)
+            out += part;
         return out;
     }
 
@@ -258,8 +276,10 @@ private:
             std::vector<std::string> inner;
             int depth = 1;
             while (!at_end() && depth > 0) {
-                if (check("[")) ++depth;
-                else if (check("]")) --depth;
+                if (check("["))
+                    ++depth;
+                else if (check("]"))
+                    --depth;
                 if (depth == 0) break;
                 inner.push_back(peek().text);
                 advance();
@@ -276,10 +296,14 @@ private:
                             attrs.align = 0;
                         }
                     }
-                    if (inner[i] == "u8") attrs.int_size = 1;
-                    else if (inner[i] == "u16" || inner[i] == "i16") attrs.int_size = 2;
-                    else if (inner[i] == "u32" || inner[i] == "i32") attrs.int_size = 4;
-                    else if (inner[i] == "u64" || inner[i] == "i64") attrs.int_size = 8;
+                    if (inner[i] == "u8")
+                        attrs.int_size = 1;
+                    else if (inner[i] == "u16" || inner[i] == "i16")
+                        attrs.int_size = 2;
+                    else if (inner[i] == "u32" || inner[i] == "i32")
+                        attrs.int_size = 4;
+                    else if (inner[i] == "u64" || inner[i] == "i64")
+                        attrs.int_size = 8;
                 }
             }
         }
@@ -296,7 +320,8 @@ private:
         Attrs attrs = parse_attributes();
         if (!ok_) return;
         skip_visibility();
-        while (check("unsafe") || check("const") || check("async")) advance();
+        while (check("unsafe") || check("const") || check("async"))
+            advance();
 
         if (accept("struct")) {
             parse_struct(attrs);
@@ -424,7 +449,8 @@ private:
             while (!at_end() && !check("}")) {
                 parse_attributes();
                 skip_visibility();
-                while (check("unsafe") || check("const")) advance();
+                while (check("unsafe") || check("const"))
+                    advance();
                 if (accept("fn")) {
                     parse_extern_function_signature(is_c);
                 } else {
@@ -435,7 +461,8 @@ private:
             return;
         }
         // `extern "C" fn ...` definition.
-        while (check("unsafe") || check("const")) advance();
+        while (check("unsafe") || check("const"))
+            advance();
         if (accept("fn")) parse_function(is_c);
     }
 
@@ -472,8 +499,7 @@ private:
         if (!expect("(", "to open parameter list")) return;
         while (!at_end() && !check(")")) {
             parse_attributes();
-            const bool reference_receiver =
-                check("&") && (check("self", 1) || (check("mut", 1) && check("self", 2)));
+            const bool reference_receiver = check("&") && (check("self", 1) || (check("mut", 1) && check("self", 2)));
             if (reference_receiver) {
                 // Receiver (`&self`, `&mut self`) — not part of the C ABI.
                 advance();
@@ -519,7 +545,8 @@ public:
     Builder(std::vector<RawItem> items, std::vector<RawFunction> functions)
         : items_(std::move(items))
         , functions_(std::move(functions)) {
-        for (size_t i = 0; i < items_.size(); ++i) by_name_.emplace(items_[i].name, i);
+        for (size_t i = 0; i < items_.size(); ++i)
+            by_name_.emplace(items_[i].name, i);
     }
 
     amc::AbiModule build(const std::vector<std::string> &wanted) {
@@ -571,35 +598,35 @@ private:
             const char *descriptor;
         };
         static const std::unordered_map<std::string, Spec> specs = {
-            {"bool", {amc::PrimitiveAbiKind::bool_, 1, amc::FloatFormat::none, false, "prim:bool"}},
-            {"char", {amc::PrimitiveAbiKind::char32, 4, amc::FloatFormat::none, false, "prim:char32"}},
-            {"i8", {amc::PrimitiveAbiKind::sint, 1, amc::FloatFormat::none, true, "prim:i1"}},
-            {"i16", {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i2"}},
-            {"i32", {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i4"}},
-            {"i64", {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {"i128", {amc::PrimitiveAbiKind::sint, 16, amc::FloatFormat::none, true, "prim:i16"}},
-            {"isize", {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {"u8", {amc::PrimitiveAbiKind::uint, 1, amc::FloatFormat::none, false, "prim:u1"}},
-            {"u16", {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u2"}},
-            {"u32", {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u4"}},
-            {"u64", {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
-            {"u128", {amc::PrimitiveAbiKind::uint, 16, amc::FloatFormat::none, false, "prim:u16"}},
-            {"usize", {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
-            {"f32", {amc::PrimitiveAbiKind::floating, 4, amc::FloatFormat::ieee32, false, "prim:fieee32"}},
-            {"f64", {amc::PrimitiveAbiKind::floating, 8, amc::FloatFormat::ieee64, false, "prim:fieee64"}},
-            {"c_char", {amc::PrimitiveAbiKind::char_signed, 1, amc::FloatFormat::none, true, "prim:char_s"}},
-            {"c_schar", {amc::PrimitiveAbiKind::schar, 1, amc::FloatFormat::none, true, "prim:schar"}},
-            {"c_uchar", {amc::PrimitiveAbiKind::uchar, 1, amc::FloatFormat::none, false, "prim:uchar"}},
-            {"c_short", {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i2"}},
-            {"c_ushort", {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u2"}},
-            {"c_int", {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i4"}},
-            {"c_uint", {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u4"}},
-            {"c_long", {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {"c_ulong", {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
-            {"c_longlong", {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {"c_ulonglong", {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
-            {"c_float", {amc::PrimitiveAbiKind::floating, 4, amc::FloatFormat::ieee32, false, "prim:fieee32"}},
-            {"c_double", {amc::PrimitiveAbiKind::floating, 8, amc::FloatFormat::ieee64, false, "prim:fieee64"}},
+            {       "bool",         {amc::PrimitiveAbiKind::bool_, 1, amc::FloatFormat::none, false, "prim:bool"}},
+            {       "char",      {amc::PrimitiveAbiKind::char32, 4, amc::FloatFormat::none, false, "prim:char32"}},
+            {         "i8",             {amc::PrimitiveAbiKind::sint, 1, amc::FloatFormat::none, true, "prim:i1"}},
+            {        "i16",             {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i2"}},
+            {        "i32",             {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i4"}},
+            {        "i64",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
+            {       "i128",           {amc::PrimitiveAbiKind::sint, 16, amc::FloatFormat::none, true, "prim:i16"}},
+            {      "isize",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
+            {         "u8",            {amc::PrimitiveAbiKind::uint, 1, amc::FloatFormat::none, false, "prim:u1"}},
+            {        "u16",            {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u2"}},
+            {        "u32",            {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u4"}},
+            {        "u64",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
+            {       "u128",          {amc::PrimitiveAbiKind::uint, 16, amc::FloatFormat::none, false, "prim:u16"}},
+            {      "usize",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
+            {        "f32", {amc::PrimitiveAbiKind::floating, 4, amc::FloatFormat::ieee32, false, "prim:fieee32"}},
+            {        "f64", {amc::PrimitiveAbiKind::floating, 8, amc::FloatFormat::ieee64, false, "prim:fieee64"}},
+            {     "c_char",  {amc::PrimitiveAbiKind::char_signed, 1, amc::FloatFormat::none, true, "prim:char_s"}},
+            {    "c_schar",         {amc::PrimitiveAbiKind::schar, 1, amc::FloatFormat::none, true, "prim:schar"}},
+            {    "c_uchar",        {amc::PrimitiveAbiKind::uchar, 1, amc::FloatFormat::none, false, "prim:uchar"}},
+            {    "c_short",             {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i2"}},
+            {   "c_ushort",            {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u2"}},
+            {      "c_int",             {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i4"}},
+            {     "c_uint",            {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u4"}},
+            {     "c_long",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
+            {    "c_ulong",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
+            { "c_longlong",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
+            {"c_ulonglong",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
+            {    "c_float", {amc::PrimitiveAbiKind::floating, 4, amc::FloatFormat::ieee32, false, "prim:fieee32"}},
+            {   "c_double", {amc::PrimitiveAbiKind::floating, 8, amc::FloatFormat::ieee64, false, "prim:fieee64"}},
         };
         const auto it = specs.find(spelling);
         if (it == specs.end()) return false;
@@ -636,9 +663,11 @@ private:
         // Reference / raw pointer.
         if (tokens[0] == "*" || tokens[0] == "&") {
             size_t i = 1;
-            while (i < tokens.size() && (tokens[i] == "const" || tokens[i] == "mut")) ++i;
+            while (i < tokens.size() && (tokens[i] == "const" || tokens[i] == "mut"))
+                ++i;
             std::string name;
-            for (const auto &token : tokens) name += token;
+            for (const auto &token : tokens)
+                name += token;
             return add_aggregate_ref(name, 8, 8, amc::TypeKind::pointer);
         }
         // Fixed-size array `[T; N]`.
@@ -664,7 +693,8 @@ private:
             const Resolved inner = resolve_type(element);
             if (!ok()) return {};
             std::string name;
-            for (const auto &token : tokens) name += token;
+            for (const auto &token : tokens)
+                name += token;
             amc::Type type;
             type.name = name;
             type.kind = amc::TypeKind::array;
@@ -679,12 +709,13 @@ private:
         }
         // `()` -> C void (only meaningful as a return type; not emitted).
         if (tokens.size() == 2 && tokens[0] == "(" && tokens[1] == ")") {
-            const int index = add_primitive(amc::PrimitiveAbiKind::void_, 0, amc::FloatFormat::none, false,
-                "prim:void", "void");
+            const int index =
+                add_primitive(amc::PrimitiveAbiKind::void_, 0, amc::FloatFormat::none, false, "prim:void", "void");
             return {module_.types[static_cast<size_t>(index)].id, 0, 1};
         }
         std::string spelling;
-        for (const auto &token : tokens) spelling += token;
+        for (const auto &token : tokens)
+            spelling += token;
         amc::PrimitiveAbiKind kind;
         uint32_t width = 0;
         amc::FloatFormat format = amc::FloatFormat::none;
@@ -760,7 +791,8 @@ private:
         type.field_begin = static_cast<uint32_t>(module_.fields.size());
         type.field_count = 1;
         module_.types.push_back(type);
-        const Resolved underlying = resolve_type(item.fields.empty() ? std::vector<std::string>{} : item.fields[0].type);
+        const Resolved underlying =
+            resolve_type(item.fields.empty() ? std::vector<std::string>{} : item.fields[0].type);
         if (!ok()) return -1;
         module_.types[static_cast<size_t>(index)].size = underlying.size;
         module_.types[static_cast<size_t>(index)].align = underlying.align == 0 ? 1 : underlying.align;
@@ -807,7 +839,8 @@ private:
     }
 
     void add_function(const RawFunction &raw) {
-        const bool void_return = raw.return_type.empty()
+        const bool void_return =
+            raw.return_type.empty()
             || (raw.return_type.size() == 2 && raw.return_type[0] == "(" && raw.return_type[1] == ")");
         // ABIX cannot represent a zero-sized `void` return, so void-returning
         // functions are not exported by this preliminary frontend.
@@ -861,7 +894,8 @@ int run_frontend(const char *config_path, const char *output_path) {
         }
         for (auto &item : parser.items())
             if (seen_items.emplace(item.name, true).second) items.push_back(std::move(item));
-        for (auto &function : parser.functions()) functions.push_back(std::move(function));
+        for (auto &function : parser.functions())
+            functions.push_back(std::move(function));
     }
 
     Builder builder(std::move(items), std::move(functions));
@@ -877,4 +911,4 @@ int run_frontend(const char *config_path, const char *output_path) {
     return EXIT_SUCCESS;
 }
 
-}   // namespace amc::rust
+}   // namespace amc::lang::rust
