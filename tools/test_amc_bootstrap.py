@@ -108,7 +108,7 @@ def main() -> None:
     artifact_build = work_dir / "build"
     artifact = artifact_build / "build" / "amc_core.abix"
     header = work_dir / "amc_core.hpp"
-    consumer = work_dir / "amc_self_consumer"
+    consumer = work_dir / "self_consumer"
 
     print("[STEP] extract AMC core metadata")
     amc_config = PROJECT_ROOT / "amc" / "self.abic.toml"
@@ -145,7 +145,7 @@ def main() -> None:
         fail("projection lacks MapOperation descriptor")
 
     print("[STEP] compile and run native type_of<T>() consumer")
-    consumer_src = PROJECT_ROOT / "amc" / "tests" / "amc_self_consumer.cpp"
+    consumer_src = PROJECT_ROOT / "AMC" / "tests" / "consumers" / "self_consumer.cpp"
     run(
         [
             "clang++",

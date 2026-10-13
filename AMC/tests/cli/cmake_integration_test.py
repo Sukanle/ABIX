@@ -2,7 +2,7 @@
 """CMake integration test for AMC.
 
 Usage:
-    amc_cmake_integration_test.py <amc_bin_dir> <source_root>
+    cmake_integration_test.py <amc_bin_dir> <source_root>
 
 Behaviour:
     - Configures and builds a CMake fixture project using Ninja.
@@ -11,16 +11,14 @@ Behaviour:
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
-import shutil
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="AMC CMake integration test"
-    )
+    parser = argparse.ArgumentParser(description="AMC CMake integration test")
     parser.add_argument("amc_bin_dir", help="Directory containing amc executable")
     parser.add_argument("source_root", help="Root of the ABIX source tree")
     args = parser.parse_args()
@@ -28,7 +26,9 @@ def main() -> None:
     amc_bin = os.path.abspath(args.amc_bin_dir)
     amc_root = os.path.abspath(args.source_root)
 
-    build_dir = tempfile.mkdtemp(prefix="amc-cmake.", dir=os.environ.get("TMPDIR", "/tmp"))
+    build_dir = tempfile.mkdtemp(
+        prefix="amc-cmake.", dir=os.environ.get("TMPDIR", "/tmp")
+    )
     print(f"  [INFO] BUILD_DIR: {build_dir}")
 
     try:
@@ -36,9 +36,12 @@ def main() -> None:
         print("  [INFO] Configuring CMake fixture...")
         cmake_cmd = [
             "cmake",
-            "-S", os.path.join(amc_root, "AMC/tests/cmake_fixture"),
-            "-B", build_dir,
-            "-G", "Ninja",
+            "-S",
+            os.path.join(amc_root, "AMC/tests/cli/cmake_fixture"),
+            "-B",
+            build_dir,
+            "-G",
+            "Ninja",
             f"-DAMC_MODULE_DIR={amc_root}/AMC/CMake",
             f"-DAMC_FIXTURE_DIR={amc_root}/AMC/tests/fixtures",
             f"-DAMC_EXECUTABLE={amc_bin}/amc",
@@ -49,7 +52,9 @@ def main() -> None:
         print("  [INFO] Building CMake target...")
         subprocess.run(
             ["cmake", "--build", build_dir, "--target", "amc_cmake_consumer"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         )
 
         # Step 3: verify artifacts

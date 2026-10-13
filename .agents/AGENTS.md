@@ -296,8 +296,8 @@ For AMC changes, also exercise the CLI manually. For ABI changes, verify
 generation, serialization, deserialization, comparison, compatibility and
 runtime behaviour.
 
-`AMC/tests/amc_integration_test.py` is the CLI integration suite;
-`AMC/tests/core_test.cpp` holds core assertions; `test/` uses Catch2.
+`AMC/tests/cli/integration_test.py` is the CLI integration suite;
+`AMC/tests/unit/core_test.cpp` holds core assertions; `test/` uses Catch2.
 
 Do not claim a test passed unless it was actually run.
 

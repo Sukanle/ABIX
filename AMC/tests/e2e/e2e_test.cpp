@@ -17,26 +17,21 @@ struct TestResult {
     int passed = 0, failed = 0;
 };
 
-#define AMC_TEST(r, cond, msg)                                              \
-    do {                                                                    \
-        if (cond) {                                                         \
-            (r).passed++;                                                   \
-        } else {                                                            \
-            (r).failed++;                                                   \
-            std::cerr << "  FAIL: " << msg << " [" << __FILE__              \
-                      << ":" << __LINE__ << "]\n";                          \
-        }                                                                   \
+#define AMC_TEST(r, cond, msg)                                                              \
+    do {                                                                                    \
+        if (cond) {                                                                         \
+            (r).passed++;                                                                   \
+        } else {                                                                            \
+            (r).failed++;                                                                   \
+            std::cerr << "  FAIL: " << msg << " [" << __FILE__ << ":" << __LINE__ << "]\n"; \
+        }                                                                                   \
     } while (0)
 
 #define AMC_CHECK(r, a, b, msg) AMC_TEST(r, (a) == (b), msg << ": " << (a) << " != " << (b))
 
-std::string tmp_path(const char *name) {
-    return std::string("/tmp/amc_e2e_") + name;
-}
+std::string tmp_path(const char *name) { return std::string("/tmp/amc_e2e_") + name; }
 
-void cleanup(const std::string &path) {
-    std::remove(path.c_str());
-}
+void cleanup(const std::string &path) { std::remove(path.c_str()); }
 
 std::vector<uint8_t> read_bytes(const std::string &path) {
     std::ifstream input(path, std::ios::binary);
@@ -45,22 +40,22 @@ std::vector<uint8_t> read_bytes(const std::string &path) {
 
 void write_bytes(const std::string &path, const std::vector<uint8_t> &bytes) {
     std::ofstream output(path, std::ios::binary);
-    output.write(reinterpret_cast<const char *>(bytes.data()),
-                 static_cast<std::streamsize>(bytes.size()));
+    output.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
 
 uint32_t read_le_u32(const std::vector<uint8_t> &bytes, size_t offset) {
-    return uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
-           (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
+    return uint32_t(bytes[offset])
+         | (uint32_t(bytes[offset + 1]) << 8)
+         | (uint32_t(bytes[offset + 2]) << 16)
+         | (uint32_t(bytes[offset + 3]) << 24);
 }
 
 void write_le_u32(std::vector<uint8_t> &bytes, size_t offset, uint32_t value) {
-    for (int i = 0; i < 4; ++i) bytes[offset + i] = uint8_t(value >> (i * 8));
+    for (int i = 0; i < 4; ++i)
+        bytes[offset + i] = uint8_t(value >> (i * 8));
 }
 
-amc::Hash128 make_type_id(const char *name) {
-    return amc::hash_text(name, 0x54595045);
-}
+amc::Hash128 make_type_id(const char *name) { return amc::hash_text(name, 0x54595045); }
 
 // A descriptor tag for a primitive, mirroring the frontend's spelling-free
 // identity: integers by width + signedness, floats by format, and the distinct
@@ -76,11 +71,11 @@ struct PrimitiveSpec {
     uint32_t abi;
 };
 PrimitiveSpec primitive_spec(const std::string &name, uint32_t sz) {
-    using amc::PrimitiveAbiKind;
     using amc::FloatFormat;
+    using amc::PrimitiveAbiKind;
     const bool is_float = name == "float" || name == "double" || name == "f32" || name == "f64";
-    const bool is_unsigned = name.find("unsigned") != std::string::npos
-                             || name == "u8" || name == "u32" || name == "u64";
+    const bool is_unsigned =
+        name.find("unsigned") != std::string::npos || name == "u8" || name == "u32" || name == "u64";
     if (name == "bool") return {"bool", amc::primitive_abi(sz, PrimitiveAbiKind::bool_)};
     if (name == "signed char")
         return {"schar", amc::primitive_abi(sz, PrimitiveAbiKind::schar, FloatFormat::none, true)};
@@ -93,12 +88,11 @@ PrimitiveSpec primitive_spec(const std::string &name, uint32_t sz) {
     if (is_float) {
         const auto format = sz == 4 ? FloatFormat::ieee32 : FloatFormat::ieee64;
         const char *fmt_tag = sz == 4 ? "ieee32" : "ieee64";
-        return {std::string("f") + fmt_tag,
-            amc::primitive_abi(sz, PrimitiveAbiKind::floating, format)};
+        return {std::string("f") + fmt_tag, amc::primitive_abi(sz, PrimitiveAbiKind::floating, format)};
     }
     return {std::string(is_unsigned ? "u" : "i") + std::to_string(sz),
-        amc::primitive_abi(sz, is_unsigned ? PrimitiveAbiKind::uint : PrimitiveAbiKind::sint,
-            FloatFormat::none, !is_unsigned)};
+        amc::primitive_abi(
+            sz, is_unsigned ? PrimitiveAbiKind::uint : PrimitiveAbiKind::sint, FloatFormat::none, !is_unsigned)};
 }
 
 amc::Type make_primitive(const char *name, uint32_t sz, uint32_t al) {
@@ -123,8 +117,7 @@ amc::Type make_enum_type(const char *name, uint32_t sz, uint32_t al) {
     return t;
 }
 
-amc::Type make_record(const char *name, uint32_t sz, uint32_t al,
-                       uint32_t fb, uint32_t fc) {
+amc::Type make_record(const char *name, uint32_t sz, uint32_t al, uint32_t fb, uint32_t fc) {
     amc::Type t;
     t.name = name;
     t.kind = amc::TypeKind::record;
@@ -144,8 +137,7 @@ amc::Field make_field(const char *name, amc::Hash128 tid, uint32_t off) {
     return f;
 }
 
-amc::Function make_func(const char *name, amc::Hash128 ret,
-                          std::vector<amc::Parameter> params) {
+amc::Function make_func(const char *name, amc::Hash128 ret, std::vector<amc::Parameter> params) {
     amc::Function fn;
     fn.name = name;
     fn.return_type = ret;
@@ -206,8 +198,7 @@ void test_layout_hash_stability(TestResult &r) {
         make_field("z", make_type_id("double"), 8),
     };
     auto lh3 = amc::layout_hash(t, fs2);
-    AMC_TEST(r, lh1.lo != lh3.lo || lh1.hi != lh3.hi,
-             "different field names produce different layout hashes");
+    AMC_TEST(r, lh1.lo != lh3.lo || lh1.hi != lh3.hi, "different field names produce different layout hashes");
 }
 
 void test_signature_hash_stability(TestResult &r) {
@@ -219,7 +210,7 @@ void test_signature_hash_stability(TestResult &r) {
 
     auto fn3 = make_func("foo_destroy", make_type_id("int"), {});
     AMC_TEST(r, fn1.signature.lo != fn3.signature.lo || fn1.signature.hi != fn3.signature.hi,
-             "different function names produce different signature hashes");
+        "different function names produce different signature hashes");
 }
 
 void test_validate_empty_module(TestResult &r) {
@@ -542,10 +533,8 @@ void test_abix_roundtrip_full_module(TestResult &r) {
 
     if (loaded.types.size() >= 8) {
         for (size_t i = 0; i < m.types.size(); ++i) {
-            AMC_CHECK(r, loaded.types[i].id.lo, m.types[i].id.lo,
-                      "type[" << i << "] id.lo match");
-            AMC_CHECK(r, loaded.types[i].id.hi, m.types[i].id.hi,
-                      "type[" << i << "] id.hi match");
+            AMC_CHECK(r, loaded.types[i].id.lo, m.types[i].id.lo, "type[" << i << "] id.lo match");
+            AMC_CHECK(r, loaded.types[i].id.hi, m.types[i].id.hi, "type[" << i << "] id.hi match");
         }
     }
 
@@ -567,7 +556,7 @@ void test_abix_invalid_magic(TestResult &r) {
     std::string e;
     AMC_TEST(r, !amc::read_abix(path, m, e), "bad magic rejected");
     AMC_TEST(r, e.find("invalid") != std::string::npos || e.find("unsupported") != std::string::npos,
-             "error mentions invalid/unsupported header");
+        "error mentions invalid/unsupported header");
 
     cleanup(path);
 }
@@ -612,8 +601,7 @@ void test_abix_nonexistent(TestResult &r) {
     std::cerr << "[abix_nonexistent]\n";
     amc::AbiModule m;
     std::string e;
-    AMC_TEST(r, !amc::read_abix("/tmp/amc_e2e_nonexistent_42.abix", m, e),
-             "nonexistent file rejected");
+    AMC_TEST(r, !amc::read_abix("/tmp/amc_e2e_nonexistent_42.abix", m, e), "nonexistent file rejected");
 }
 
 void test_abix_v4_section_directory(TestResult &r) {
@@ -640,7 +628,8 @@ void test_abix_v4_section_directory(TestResult &r) {
             const size_t entry = 20 + i * 24;
             AMC_CHECK(r, read_le_u32(bytes, entry), expected_ids[i], "section id");
             if (expected_sizes[i] != 0)
-                AMC_CHECK(r, read_le_u32(bytes, entry + 8), read_le_u32(bytes, entry + 12) * expected_sizes[i], "section byte length");
+                AMC_CHECK(r, read_le_u32(bytes, entry + 8), read_le_u32(bytes, entry + 12) * expected_sizes[i],
+                    "section byte length");
             else
                 AMC_TEST(r, read_le_u32(bytes, entry + 8) >= 8, "variable section byte length");
             AMC_CHECK(r, read_le_u32(bytes, entry + 16), expected_sizes[i], "section entry size");
@@ -685,14 +674,14 @@ void test_compatibility_and_map_ir(TestResult &r) {
     AMC_CHECK(r, report.maps.size(), size_t(1), "one map plan");
     if (!report.compatibility.empty()) {
         AMC_CHECK(r, uint32_t(report.compatibility[0].kind), uint32_t(amc::CompatibilityKind::map_compatible),
-                  "record is map compatible");
+            "record is map compatible");
     }
     if (!report.maps.empty()) {
         AMC_CHECK(r, report.maps[0].operations.size(), size_t(2), "convert and default operations");
         AMC_CHECK(r, uint32_t(report.maps[0].operations[0].opcode), uint32_t(amc::MapOpcode::convert_int),
-                  "integer conversion operation");
+            "integer conversion operation");
         AMC_CHECK(r, uint32_t(report.maps[0].operations[1].opcode), uint32_t(amc::MapOpcode::add_default),
-                  "default operation");
+            "default operation");
     }
     const auto path = tmp_path("compatibility.abix");
     AMC_TEST(r, amc::write_abix(report, path, error), "write compatibility report");
@@ -733,7 +722,7 @@ void test_primitive_identity_is_abi_based(TestResult &r) {
     AMC_TEST(r, !(schar_kind.id == uchar_kind.id), "signed/unsigned char are different primitives");
     AMC_TEST(r, !(char_kind.id == schar_kind.id), "plain char and signed char are different kinds");
     AMC_CHECK(r, char_kind.primitive_abi & amc::primitive_signed_bit, amc::primitive_signed_bit,
-              "plain char records its target signedness");
+        "plain char records its target signedness");
 
     // Float identity follows the *format*: on a target where `double` is 32-bit
     // IEEE (e.g. AVR) it collapses with `float`, while on a normal target the
@@ -752,9 +741,7 @@ void test_primitive_identity_is_abi_based(TestResult &r) {
     module.package_name = "prim";
     module.types = {lang, long_long, c_double, rust_f64};
     std::string error;
-    const auto seen = [&](uint32_t a, uint32_t b) {
-        return module.types[a].id == module.types[b].id;
-    };
+    const auto seen = [&](uint32_t a, uint32_t b) { return module.types[a].id == module.types[b].id; };
     AMC_TEST(r, seen(0, 1), "first pair dedups by ABI");
     AMC_TEST(r, seen(2, 3), "second pair dedups by ABI");
 }
@@ -782,7 +769,7 @@ void test_compatibility_matches_primitives_by_abi(TestResult &r) {
     AMC_TEST(r, record != nullptr, "record matched across spellings");
     if (record != nullptr) {
         AMC_CHECK(r, uint32_t(record->kind), uint32_t(amc::CompatibilityKind::identical),
-                  "ABI-equal scalar yields identical record");
+            "ABI-equal scalar yields identical record");
     }
 }
 
@@ -903,15 +890,31 @@ std::string generate_projection(const amc::AbiModule &m) {
     std::ostringstream o;
     o << "#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace amc_generated {\n";
     for (auto &t : m.types) {
-        o << "struct " << cpp_name(t.name) << "_ABIX {\n"
-          << " static constexpr uint64_t type_id_lo = 0x" << std::hex << t.id.lo << "ULL;\n"
-          << " static constexpr uint64_t type_id_hi = 0x" << t.id.hi << "ULL;\n"
-          << std::dec
-          << " static constexpr size_t size = " << t.size << ";\n"
-          << " static constexpr size_t align = " << t.align << ";\n";
+        o
+            << "struct "
+            << cpp_name(t.name)
+            << "_ABIX {\n"
+            << " static constexpr uint64_t type_id_lo = 0x"
+            << std::hex
+            << t.id.lo
+            << "ULL;\n"
+            << " static constexpr uint64_t type_id_hi = 0x"
+            << t.id.hi
+            << "ULL;\n"
+            << std::dec
+            << " static constexpr size_t size = "
+            << t.size
+            << ";\n"
+            << " static constexpr size_t align = "
+            << t.align
+            << ";\n";
         for (uint32_t i = 0; i < t.field_count; ++i)
-            o << " static constexpr size_t " << cpp_name(m.fields[t.field_begin + i].name)
-              << "_offset = " << m.fields[t.field_begin + i].offset << ";\n";
+            o
+                << " static constexpr size_t "
+                << cpp_name(m.fields[t.field_begin + i].name)
+                << "_offset = "
+                << m.fields[t.field_begin + i].offset
+                << ";\n";
         o << "};\n";
     }
     o << "}\n";
@@ -1098,30 +1101,23 @@ void test_full_pipeline(TestResult &r) {
     AMC_CHECK(r, loaded.functions.size(), m.functions.size(), "function count preserved");
 
     for (size_t i = 0; i < m.types.size() && i < loaded.types.size(); ++i) {
-        AMC_CHECK(r, loaded.types[i].name, m.types[i].name,
-                  "type[" << i << "] name preserved");
-        AMC_CHECK(r, loaded.types[i].size, m.types[i].size,
-                  "type[" << i << "] size preserved");
-        AMC_CHECK(r, loaded.types[i].align, m.types[i].align,
-                  "type[" << i << "] align preserved");
-        AMC_CHECK(r, loaded.types[i].id.lo, m.types[i].id.lo,
-                  "type[" << i << "] id.lo preserved");
+        AMC_CHECK(r, loaded.types[i].name, m.types[i].name, "type[" << i << "] name preserved");
+        AMC_CHECK(r, loaded.types[i].size, m.types[i].size, "type[" << i << "] size preserved");
+        AMC_CHECK(r, loaded.types[i].align, m.types[i].align, "type[" << i << "] align preserved");
+        AMC_CHECK(r, loaded.types[i].id.lo, m.types[i].id.lo, "type[" << i << "] id.lo preserved");
     }
 
     for (size_t i = 0; i < m.fields.size() && i < loaded.fields.size(); ++i) {
-        AMC_CHECK(r, loaded.fields[i].name, m.fields[i].name,
-                  "field[" << i << "] name preserved");
-        AMC_CHECK(r, loaded.fields[i].offset, m.fields[i].offset,
-                  "field[" << i << "] offset preserved");
+        AMC_CHECK(r, loaded.fields[i].name, m.fields[i].name, "field[" << i << "] name preserved");
+        AMC_CHECK(r, loaded.fields[i].offset, m.fields[i].offset, "field[" << i << "] offset preserved");
     }
 
     for (size_t i = 0; i < m.functions.size() && i < loaded.functions.size(); ++i) {
-        AMC_CHECK(r, loaded.functions[i].name, m.functions[i].name,
-                  "function[" << i << "] name preserved");
+        AMC_CHECK(r, loaded.functions[i].name, m.functions[i].name, "function[" << i << "] name preserved");
         AMC_CHECK(r, loaded.functions[i].parameters.size(), m.functions[i].parameters.size(),
-                  "function[" << i << "] param count preserved");
+            "function[" << i << "] param count preserved");
         AMC_CHECK(r, loaded.functions[i].signature.lo, m.functions[i].signature.lo,
-                  "function[" << i << "] signature.lo preserved");
+            "function[" << i << "] signature.lo preserved");
     }
 
     auto proj = generate_projection(loaded);
@@ -1285,22 +1281,22 @@ void test_symbol_projection(TestResult &r) {
     auto foo = make_record("demo::Foo", 16, 8, 0, 2);
     auto bar = make_record("demo::Bar", 8, 4, 2, 1);
     source.types = {i32, f64, foo, bar};
-    source.fields = {make_field("x", i32.id, 0), make_field("y", f64.id, 8),
-                     make_field("z", i32.id, 0)};
+    source.fields = {make_field("x", i32.id, 0), make_field("y", f64.id, 8), make_field("z", i32.id, 0)};
     auto make_foo = make_func("demo::make_foo", foo.id, {});
     auto make_bar = make_func("demo::make_bar", bar.id, {});
     source.functions = {make_foo, make_bar};
 
     amc::AbiModule projected;
     std::string error;
-    AMC_TEST(r, amc::project_symbols(source, {"demo::Foo", "demo::make_foo"}, projected, error),
-             "project selected symbols");
+    AMC_TEST(
+        r, amc::project_symbols(source, {"demo::Foo", "demo::make_foo"}, projected, error), "project selected symbols");
     AMC_CHECK(r, projected.functions.size(), size_t(1), "one selected function");
     AMC_CHECK(r, projected.fields.size(), size_t(2), "selected record fields retained");
     AMC_CHECK(r, projected.types.size(), size_t(3), "selected type dependencies retained");
-    AMC_TEST(r, std::none_of(projected.types.begin(), projected.types.end(),
-                             [](const amc::Type &type) { return type.name == "demo::Bar"; }),
-             "unselected type omitted");
+    AMC_TEST(r,
+        std::none_of(projected.types.begin(), projected.types.end(),
+            [](const amc::Type &type) { return type.name == "demo::Bar"; }),
+        "unselected type omitted");
 }
 
 void test_member_symbol_projection(TestResult &r) {
@@ -1324,7 +1320,7 @@ void test_member_symbol_projection(TestResult &r) {
     amc::AbiModule projected;
     std::string error;
     AMC_TEST(r, amc::project_symbols(source, {"demo::Foo::reset", "demo::Foo::first"}, projected, error),
-             "project selected class members");
+        "project selected class members");
     AMC_CHECK(r, projected.types.size(), size_t(2), "member projection retains owner and dependency type");
     AMC_CHECK(r, projected.fields.size(), size_t(1), "member projection retains only selected field");
     AMC_CHECK(r, projected.functions.size(), size_t(1), "member projection retains only selected method");
@@ -1336,13 +1332,12 @@ void test_member_symbol_projection(TestResult &r) {
         AMC_CHECK(r, projected.functions[0].name, std::string("demo::Foo::reset"), "selected method name");
         AMC_CHECK(r, projected.functions[0].owner_type.lo, foo.id.lo, "selected method owner");
     }
-    AMC_TEST(r, amc::project_symbols(source, {"demo::Foo"}, projected, error),
-             "project complete class");
+    AMC_TEST(r, amc::project_symbols(source, {"demo::Foo"}, projected, error), "project complete class");
     AMC_CHECK(r, projected.fields.size(), size_t(2), "complete class retains all fields");
     AMC_CHECK(r, projected.functions.size(), size_t(2), "complete class retains all methods");
 }
 
-}
+}   // namespace
 
 int main() {
     TestResult r;

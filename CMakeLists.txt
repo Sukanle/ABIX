@@ -306,25 +306,25 @@ if(AMC_BUILD)
         else()
             message(STATUS "LLDB not found: the native ABIX LLDB plugin will not be built")
         endif()
-        add_executable(amc-core-test AMC/tests/core_test.cpp)
+        add_executable(amc-core-test AMC/tests/unit/core_test.cpp)
         target_include_directories(amc-core-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-core-test PRIVATE amc-core)
         add_test(NAME amc-core-test COMMAND amc-core-test)
-        add_executable(amc-e2e-test AMC/tests/amc_e2e_test.cpp)
+        add_executable(amc-e2e-test AMC/tests/e2e/e2e_test.cpp)
         target_include_directories(amc-e2e-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-e2e-test PRIVATE amc-core)
         add_test(NAME amc-e2e-test COMMAND amc-e2e-test)
         find_program(AMC_PYTHON_EXECUTABLE NAMES python3 python)
         if(AMC_PYTHON_EXECUTABLE)
             add_test(NAME amc-integration-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/amc_integration_test.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/integration_test.py
                              ${CMAKE_BINARY_DIR}/bin)
             add_test(
                 NAME amc-cmake-integration-test
-                COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/amc_cmake_integration_test.py
+                COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/cmake_integration_test.py
                         ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(NAME amc-rust-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/amc_rust_test.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/rust/conformance_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")
@@ -363,7 +363,7 @@ if(NOT WIN32)
     endif()
     if(LUA_FOUND)
         message(STATUS "Lua found: building the Aue conformance prototype")
-        add_subdirectory(aue)
+        add_subdirectory(Aue)
     else()
         message(STATUS "Lua not found: Aue conformance prototype will not be built")
     endif()

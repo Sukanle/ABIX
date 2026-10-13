@@ -29,4 +29,4 @@ filesystem.
 - `.abix` / Metadata Region layout changes are **ABI semantic changes** — update
   [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) and add serialization tests.
 - Exercise the CLI manually after changes; the integration suite lives in
-  `AMC/tests/amc_integration_test.py`.
+  `AMC/tests/cli/integration_test.py`.
