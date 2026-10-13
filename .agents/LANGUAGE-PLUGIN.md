@@ -136,7 +136,10 @@ A plugin is not complete without:
 - **cross-check** — at least one consumer (`amc query` / runtime projection)
   works against the produced artifact.
 
-The C++ reference coverage lives in `AMC/tests/`.
+The reference coverage lives in `AMC/tests/`: `unit/` and `e2e/` (C++),
+`cli/` (AMC CLI), `conformance/provider_harness.py` (the shared provider
+conformance harness) and `providers/<language>/` (per-provider cases, for
+example `providers/rust/`).
 
 ## 11. Example Plugin
 
