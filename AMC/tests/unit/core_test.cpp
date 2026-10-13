@@ -575,6 +575,133 @@ int main() {
         std::remove("amc_source_test.abix");
     }
 
+    {
+        // Region extension directory: discovery, boundary rules and the
+        // treatment of unknown versions/kinds.
+        amc::AbiModule m;
+        m.package_name = "ext";
+        m.package_version = "1";
+        amc::Type t;
+        t.name = "Foo";
+        t.kind = amc::TypeKind::record;
+        t.id = amc::hash_text("Foo", 0x54595045);
+        t.size = 4;
+        t.align = 4;
+        m.types.push_back(t);
+        amc::Function f;
+        f.name = "f";
+        f.return_type = t.id;
+        m.functions.push_back(f);
+        amc::OwnershipContract contract;
+        contract.target = amc::OwnershipTarget::return_value;
+        contract.target_index = 0;
+        contract.mode = amc::OwnershipMode::borrowed;
+        m.contracts.push_back(contract);
+
+        amc::MetadataOptions options;
+        std::vector<uint8_t> region;
+        std::string error;
+        check(amc::build_metadata_region(m, options, region, error), "build region with a contract");
+        std::vector<amc::MetadataOwnershipContract> owned;
+        check(amc::read_ownership_contracts(region, owned, error)
+                  && owned.size() == 1
+                  && owned[0].mode == amc::OwnershipMode::borrowed,
+            "ownership contract discovered through the directory");
+
+        amc::MetadataHeader header;
+        check(amc::read_metadata_header(region, header, error), "read region header");
+        const size_t known = static_cast<size_t>(header.type_count) * 64
+                           + static_cast<size_t>(header.field_count) * 48
+                           + static_cast<size_t>(header.function_count) * 72
+                           + static_cast<size_t>(header.parameter_count) * 32
+                           + static_cast<size_t>(header.symbol_count) * 16;
+        check(header.desc_size > known, "region carries an extension directory");
+        const size_t directory = static_cast<size_t>(header.desc_offset) + known;
+
+        std::vector<amc::MetadataOwnershipContract> ignored;
+        std::vector<uint8_t> bad_version = region;
+        bad_version[directory] = 99;
+        check(!amc::read_ownership_contracts(bad_version, ignored, error), "unknown directory version rejected");
+
+        std::vector<uint8_t> bad_bounds = region;
+        bad_bounds[directory + 16 + 12] = 0xff;   // first entry byte_offset low byte -> out of range
+        bad_bounds[directory + 16 + 13] = 0xff;
+        check(!amc::read_ownership_contracts(bad_bounds, ignored, error), "out-of-bounds extension entry rejected");
+
+        std::vector<uint8_t> unknown_kind = region;
+        unknown_kind[directory + 16] = 0x7f;   // first entry kind -> unknown
+        check(amc::read_ownership_contracts(unknown_kind, ignored, error) && ignored.empty(),
+            "unknown extension kind is skipped");
+    }
+
+    {
+        // Target ABI verification: compatible / incompatible / unverifiable.
+        amc::MetadataOptions options;
+        std::string error;
+        amc::Type t;
+        t.name = "Foo";
+        t.kind = amc::TypeKind::record;
+        t.id = amc::hash_text("Foo", 0x54595045);
+        t.size = 4;
+        t.align = 4;
+
+        amc::AbiModule m;
+        m.package_name = "target";
+        m.package_version = "1";
+        m.arch = 1;
+        m.os = 1;
+        m.target_abi = 1;
+        m.pointer_bits = 64;
+        m.endianness = 1;
+        m.types.push_back(t);
+        std::vector<uint8_t> region;
+        check(amc::build_metadata_region(m, options, region, error), "build region with target");
+        amc::TargetDescription target;
+        check(amc::read_target_description(region, target, error) && target.present && target.pointer_bits == 64,
+            "read target description");
+
+        amc::TargetExpectation expected;
+        expected.arch = 1;
+        expected.os = 1;
+        expected.target_abi = 1;
+        expected.pointer_bits = 64;
+        expected.endianness = 1;
+        amc::TargetVerification verdict;
+        check(amc::verify_target_abi(region, expected, verdict, error)
+                  && verdict.status == amc::TargetVerificationStatus::compatible,
+            "target compatible");
+        amc::TargetExpectation wrong = expected;
+        wrong.arch = 2;
+        check(amc::verify_target_abi(region, wrong, verdict, error)
+                  && verdict.status == amc::TargetVerificationStatus::incompatible,
+            "target incompatible");
+
+        // No target extension -> unverifiable, never compatible.
+        amc::AbiModule bare;
+        bare.package_name = "bare";
+        bare.package_version = "1";
+        bare.types.push_back(t);
+        std::vector<uint8_t> bare_region;
+        check(amc::build_metadata_region(bare, options, bare_region, error), "build region without target");
+        amc::TargetExpectation any;
+        any.arch = 1;
+        check(amc::verify_target_abi(bare_region, any, verdict, error)
+                  && verdict.status == amc::TargetVerificationStatus::unverifiable,
+            "missing target is unverifiable");
+
+        // Target present but a checked fact is unknown -> unverifiable.
+        amc::AbiModule partial;
+        partial.package_name = "partial";
+        partial.package_version = "1";
+        partial.arch = 1;
+        partial.types.push_back(t);
+        std::vector<uint8_t> partial_region;
+        check(amc::build_metadata_region(partial, options, partial_region, error), "build partial target region");
+        check(amc::verify_target_abi(partial_region, expected, verdict, error)
+                  && verdict.status == amc::TargetVerificationStatus::unverifiable,
+            "unknown target field is unverifiable");
+    }
+
     if (failures != 0) {
         std::fprintf(stderr, "amc-core-test: %d failure(s)\n", failures);
         return 1;
