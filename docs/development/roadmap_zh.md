@@ -52,6 +52,12 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
   （例如 C `double` → Rust `core::ffi::c_double`）。
 * 跨语言绑定与 C++ ↔ Rust 互操作 demo。
 
+已交付：`amc-rust` provider（`frontend` + `backend`）、**M1** 闭环（真实 C++ 库 →
+`.abix` → 生成 Rust 并链接运行，所有权/错误边界/目标契约承载在版本化的
+metadata-region 扩展目录中），以及最小化的 `amc-zig` **仅后端** provider ——
+即 **M2**：同一份 `.abix` 同时驱动 Rust 与 Zig 投影，两个消费者链接同一个原生库
+（`AMC/tests/interop/`）。见 [`memory/10-已完成任务.md`](../../memory/10-已完成任务.md)。
+
 ### ABIX 0.3.0 — Ecosystem（未来）
 
 目标方向，而非硬性承诺：

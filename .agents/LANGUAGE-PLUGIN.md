@@ -35,6 +35,14 @@ ABI-normalised primitive identity to select `core::ffi::c_*` aliases (§5). It i
 the working template for a provider that computes layout itself rather than
 delegating to a language compiler.
 
+`amc-zig` (`AMC/src/Lang/Zig/`) is a **backend-only** provider: it consumes the
+same `.abix` and projects it to Zig (`extern struct` types, `extern fn`
+declarations, `[*c]` typed pointers and `comptime` `@sizeOf`/`@alignOf`/
+`@offsetOf` assertions). It exists to demonstrate that a backend needs no
+language-specific information in the model — the same artifact that drives the
+Rust backend drives the Zig backend, and both consumers link the same native
+library. There is no Zig frontend yet.
+
 ## 3. Responsibilities
 
 A plugin **should**:
@@ -138,8 +146,10 @@ A plugin is not complete without:
 
 The reference coverage lives in `AMC/tests/`: `unit/` and `e2e/` (C++),
 `cli/` (AMC CLI), `conformance/provider_harness.py` (the shared provider
-conformance harness) and `providers/<language>/` (per-provider cases, for
-example `providers/rust/`).
+conformance harness), `providers/<language>/` (per-provider cases, for example
+`providers/rust/`) and `interop/` (the C++ → ABIX → Rust/Zig end-to-end test
+that builds a real library, projects the same `.abix` to two languages and runs
+both consumers against it).
 
 ## 11. Example Plugin
 

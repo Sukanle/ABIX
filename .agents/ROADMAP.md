@@ -46,6 +46,15 @@ Rust `repr(C)` projection built on the ABI-normalised primitive identity
 (`core::ffi::c_*`). A C++ fixture and an ABI-equal Rust fixture already produce
 the same `TypeID` / `LayoutHash` and report `compatible=true`.
 
+Also delivered: a minimal `amc-zig` **backend-only** provider that consumes the
+same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]`
+typed pointers / `comptime` layout assertions). It validates that ABIX IR is
+reusable: the same artifact drives both the Rust and the Zig projection, and
+`AMC/tests/interop/` builds one native library and runs both consumers against
+it. M1 (the C++ → ABIX → Rust closed loop, with ownership, error-boundary and
+target contracts in an optional metadata-region extension directory) is complete;
+see [`memory/10-已完成任务.md`](../memory/10-已完成任务.md).
+
 ### P0 — stabilize and validate
 
 - specification stabilization ([`ABI-SPEC.md`](ABI-SPEC.md));
