@@ -5,7 +5,7 @@ version = "1.0"
 [[import]]
 language = "cpp"
 flags = ["-std=c++17"]
-files = ["counter_api.hpp"]
+files = ["Counter.api.hpp"]
 symbols = ["counter_new", "counter_add", "counter_get"]
 
 [[export]]

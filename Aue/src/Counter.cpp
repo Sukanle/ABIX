@@ -7,7 +7,7 @@
 // When AMC is available the build generates the contract from
 // `counter.abic.toml` and feeds it in (AUE_HAVE_GENERATED_CONTRACT); otherwise
 // a hand-written contract with the same entries is used.
-#include "Aue.h"
+#include "Aue/Aue.h"
 
 #ifdef AUE_HAVE_GENERATED_CONTRACT
 #  include "counter_contract.hpp"

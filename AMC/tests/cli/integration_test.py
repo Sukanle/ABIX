@@ -1716,7 +1716,7 @@ int main() {
         """Step 28: metadata -> generated contract + generated Lua case."""
         build = os.path.join(self.build_dir, "counter-aue")
         os.makedirs(build, exist_ok=True)
-        config = os.path.join(SOURCE_ROOT, "Aue", "counter.abic.toml")
+        config = os.path.join(SOURCE_ROOT, "Aue", "Counter.abic.toml")
         if (
             self.run(
                 [self.bin_path("amc"), "build", "-c", config, "-B", build]
