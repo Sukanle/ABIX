@@ -326,6 +326,9 @@ if(AMC_BUILD)
             add_test(NAME amc-rust-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/rust/conformance_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME amc-interop-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/interop_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")
         endif()

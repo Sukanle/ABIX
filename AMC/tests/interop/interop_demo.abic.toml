@@ -1,0 +1,54 @@
+[package]
+name = "interop_demo"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["demo_api.hpp"]
+symbols = [
+    "DemoVec2",
+    "demo_add",
+    "demo_scale",
+    "demo_vec2_create",
+    "demo_vec2_destroy",
+    "demo_div",
+    "demo_live_count",
+]
+
+[[owned]]
+type = "DemoVec2"
+create = "demo_vec2_create"
+destroy = "demo_vec2_destroy"
+
+# Per-interaction ownership contract (not a property of the type).
+[[contract]]
+function = "demo_vec2_create"
+returns = "owned"
+release = "demo_vec2_destroy"
+
+[[contract]]
+function = "demo_scale"
+params = ["borrowed"]
+
+[[contract]]
+function = "demo_vec2_destroy"
+params = ["owned"]
+
+# Error boundary: demo_div reports its status in the return value and writes the
+# result through parameter 2.
+[[error]]
+function = "demo_div"
+success = 0
+value = 2
+
+# Target platform facts, carried into the region for runtime verification.
+[target]
+arch = 1
+os = 1
+abi = 1
+pointer_bits = 64
+endianness = "little"
+
+[[export]]
+output = "interop_demo.abix"
