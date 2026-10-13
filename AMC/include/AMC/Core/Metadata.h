@@ -123,12 +123,168 @@ struct MetadataHashRecord {
     uint32_t reserved;
 };
 
+// Optional ownership contract record. Ownership is a property of one ABI
+// interaction (a parameter or a return value), not of a type, so each record
+// points at a parameter or a function return. Records live inside the trailing
+// extension directory (see below), so an old reader that stops after the symbol
+// table still sees a valid region, and the manifest is unchanged.
+struct MetadataOwnershipRecord {
+    uint32_t target_kind;        // 0 = parameter, 1 = return value
+    uint32_t target_index;       // global parameter index, or function index
+    uint32_t mode;               // OwnershipMode
+    uint32_t release_function;   // function table index, or UINT32_MAX
+    uint32_t flags;              // reserved contract flags
+    uint32_t reserved;
+};
+
+// Optional error-boundary record: where a function reports its status and where
+// the result value is carried.
+struct MetadataErrorRecord {
+    uint32_t function_index;
+    uint32_t status_source;      // StatusSource
+    uint32_t status_parameter;   // local parameter index, or UINT32_MAX
+    uint32_t value_parameter;    // local parameter index, or UINT32_MAX
+    int64_t success_value;
+    uint32_t flags;
+    uint32_t reserved;
+};
+
+// Target platform identity, carried as an extension so runtime verification can
+// compare the artifact's platform against the host (or a required target).
+struct MetadataTargetRecord {
+    uint32_t arch;
+    uint32_t os;
+    uint32_t target_abi;
+    uint32_t compiler;
+    uint32_t calling_convention;
+    uint32_t pointer_bits;   // 0 = unknown
+    uint32_t endianness;     // 0 unknown, 1 little, 2 big
+    uint32_t flags;
+};
+
+// Trailing extension directory: how optional contract tables are discovered.
+//
+// Layout (inside the desc section, after the symbol table):
+//   [ header  ]  MetadataExtensionHeader (16 bytes)
+//   [ entries ]  MetadataExtensionEntry * count (24 bytes each)
+//   [ records ]  extension payloads, each addressed by an entry
+//
+// Rules:
+//   * a region with no extensions has `desc_size == known_size`; its bytes are
+//     identical to a region produced before this directory existed;
+//   * `directory.version` describes the directory encoding only. Each entry has
+//     its own `version` for the contract's semantics, so contracts evolve
+//     independently;
+//   * `kind` names the contract type (not the record shape); `byte_size` alone
+//     fixes record boundaries. A reader may skip an unknown `kind` only when the
+//     directory is well formed and the boundaries check out;
+//   * an unknown directory version, a duplicate `kind`, or an out-of-bounds
+//     entry is rejected rather than guessed at.
+constexpr uint32_t metadata_extension_version = 1;
+constexpr uint32_t metadata_extension_ownership = 1;
+constexpr uint32_t metadata_extension_error = 2;
+constexpr uint32_t metadata_extension_target = 3;
+
+struct MetadataExtensionHeader {
+    uint32_t version;
+    uint32_t count;
+    uint32_t flags;
+    uint32_t reserved;
+};
+struct MetadataExtensionEntry {
+    uint32_t kind;
+    uint32_t version;
+    uint32_t count;
+    uint32_t byte_offset;   // relative to the start of the desc section
+    uint32_t byte_size;
+    uint32_t reserved;
+};
+
 static_assert(sizeof(MetadataTypeRecord) == 64, "MetadataTypeRecord wire layout changed");
 static_assert(sizeof(MetadataFieldRecord) == 48, "MetadataFieldRecord wire layout changed");
 static_assert(sizeof(MetadataFunctionRecord) == 72, "MetadataFunctionRecord wire layout changed");
 static_assert(sizeof(MetadataParameterRecord) == 32, "MetadataParameterRecord wire layout changed");
 static_assert(sizeof(MetadataSymbolRecord) == 16, "MetadataSymbolRecord wire layout changed");
 static_assert(sizeof(MetadataHashRecord) == 24, "MetadataHashRecord wire layout changed");
+static_assert(sizeof(MetadataOwnershipRecord) == 24, "MetadataOwnershipRecord wire layout changed");
+static_assert(sizeof(MetadataErrorRecord) == 32, "MetadataErrorRecord wire layout changed");
+static_assert(sizeof(MetadataTargetRecord) == 32, "MetadataTargetRecord wire layout changed");
+static_assert(sizeof(MetadataExtensionHeader) == 16, "MetadataExtensionHeader wire layout changed");
+static_assert(sizeof(MetadataExtensionEntry) == 24, "MetadataExtensionEntry wire layout changed");
+
+// A decoded ownership contract, resolved against the region's function table.
+struct MetadataOwnershipContract {
+    uint32_t target_kind = 0;   // 0 = parameter, 1 = return value
+    uint32_t target_index = 0;
+    OwnershipMode mode = OwnershipMode::unspecified;
+    uint32_t release_function = UINT32_MAX;   // function table index, or UINT32_MAX
+};
+
+// A decoded error-boundary contract.
+struct MetadataErrorContract {
+    uint32_t function_index = 0;
+    StatusSource status_source = StatusSource::return_value;
+    uint32_t status_parameter = UINT32_MAX;
+    int64_t success_value = 0;
+    uint32_t value_parameter = UINT32_MAX;
+};
+
+// Reads the optional ownership contract records from a Metadata Region. Regions
+// without them yield an empty `out` (every interaction is `unspecified`); an
+// unknown contract version or a malformed record is reported as an error rather
+// than being silently treated as safe.
+bool read_ownership_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataOwnershipContract> &out, std::string &error);
+bool read_ownership_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataOwnershipContract> &out, std::string &error);
+
+// Reads the optional error-boundary contracts. Same rules as ownership.
+bool read_error_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataErrorContract> &out, std::string &error);
+bool read_error_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataErrorContract> &out, std::string &error);
+
+// Target platform description recovered from a region. `present` is false when
+// the region carries no target extension (all fields unknown).
+struct TargetDescription {
+    uint32_t arch = 0;
+    uint32_t os = 0;
+    uint32_t target_abi = 0;
+    uint32_t compiler = 0;
+    uint32_t calling_convention = 0;
+    uint32_t pointer_bits = 0;
+    uint32_t endianness = 0;
+    bool present = false;
+};
+bool read_target_description(const uint8_t *data, size_t size, TargetDescription &out, std::string &error);
+bool read_target_description(const std::vector<uint8_t> &region, TargetDescription &out, std::string &error);
+
+// Target ABI verification. A field of 0 in the expectation means "do not
+// check". The result separates the three outcomes the plan calls for:
+//   compatible   — every checked fact matched
+//   incompatible — a checked fact disagreed
+//   unverifiable — evidence is missing (no target description, or the region
+//                  leaves a checked fact unknown); never reported as compatible
+enum class TargetVerificationStatus : uint32_t {
+    compatible = 0,
+    incompatible = 1,
+    unverifiable = 2
+};
+struct TargetExpectation {
+    uint32_t arch = 0;
+    uint32_t os = 0;
+    uint32_t target_abi = 0;
+    uint32_t pointer_bits = 0;
+    uint32_t endianness = 0;
+};
+struct TargetVerification {
+    TargetVerificationStatus status = TargetVerificationStatus::unverifiable;
+    std::vector<std::string> reasons;
+};
+bool verify_target_abi(
+    const uint8_t *data, size_t size, const TargetExpectation &expected, TargetVerification &out, std::string &error);
+bool verify_target_abi(
+    const std::vector<uint8_t> &region, const TargetExpectation &expected, TargetVerification &out, std::string &error);
 
 struct MetadataOptions {
     BuildID build_id{};

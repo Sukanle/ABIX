@@ -194,6 +194,88 @@ bool build_metadata_region(
         append_record(desc, &record, sizeof(record));
     }
 
+    // Optional contract tables, discovered through a trailing extension
+    // directory. With no extensions the desc ends at the symbol table, so the
+    // bytes are identical to a region produced before the directory existed.
+    const auto function_index_by_signature = [&](Hash128 signature) -> uint32_t {
+        for (size_t i = 0; i < module.functions.size(); ++i)
+            if (module.functions[i].signature == signature) return static_cast<uint32_t>(i);
+        return UINT32_MAX;
+    };
+    std::vector<uint8_t> ownership_records;
+    for (const auto &contract : module.contracts) {
+        MetadataOwnershipRecord record{};
+        record.target_kind = static_cast<uint32_t>(contract.target);
+        record.target_index = contract.target_index;
+        record.mode = static_cast<uint32_t>(contract.mode);
+        record.release_function =
+            (contract.release == Hash128{}) ? UINT32_MAX : function_index_by_signature(contract.release);
+        record.flags = contract.flags;
+        append_record(ownership_records, &record, sizeof(record));
+    }
+    std::vector<uint8_t> error_records;
+    for (const auto &contract : module.errors) {
+        MetadataErrorRecord record{};
+        record.function_index = contract.function_index;
+        record.status_source = static_cast<uint32_t>(contract.status_source);
+        record.status_parameter = contract.status_parameter;
+        record.value_parameter = contract.value_parameter;
+        record.success_value = contract.success_value;
+        record.flags = contract.flags;
+        append_record(error_records, &record, sizeof(record));
+    }
+    struct PendingExtension {
+        uint32_t kind;
+        uint32_t version;
+        uint32_t count;
+        const std::vector<uint8_t> *bytes;
+    };
+    std::vector<uint8_t> target_records;
+    if (module.arch != 0
+        || module.os != 0
+        || module.target_abi != 0
+        || module.pointer_bits != 0
+        || module.endianness != 0) {
+        MetadataTargetRecord record{};
+        record.arch = module.arch;
+        record.os = module.os;
+        record.target_abi = module.target_abi;
+        record.compiler = module.compiler;
+        record.calling_convention = module.calling_convention;
+        record.pointer_bits = module.pointer_bits;
+        record.endianness = module.endianness;
+        append_record(target_records, &record, sizeof(record));
+    }
+    std::vector<PendingExtension> pending;
+    if (!ownership_records.empty())
+        pending.push_back(
+            {metadata_extension_ownership, 1, static_cast<uint32_t>(module.contracts.size()), &ownership_records});
+    if (!error_records.empty())
+        pending.push_back({metadata_extension_error, 1, static_cast<uint32_t>(module.errors.size()), &error_records});
+    if (!target_records.empty()) pending.push_back({metadata_extension_target, 1, 1, &target_records});
+    if (!pending.empty()) {
+        const uint64_t directory_begin = desc.size();
+        const uint64_t entries_begin = directory_begin + sizeof(MetadataExtensionHeader);
+        uint64_t record_cursor = entries_begin + pending.size() * sizeof(MetadataExtensionEntry);
+        MetadataExtensionHeader extension_header{};
+        extension_header.version = metadata_extension_version;
+        extension_header.count = static_cast<uint32_t>(pending.size());
+        append_record(desc, &extension_header, sizeof(extension_header));
+        std::vector<MetadataExtensionEntry> entries(pending.size());
+        for (size_t i = 0; i < pending.size(); ++i) {
+            entries[i].kind = pending[i].kind;
+            entries[i].version = pending[i].version;
+            entries[i].count = pending[i].count;
+            entries[i].byte_offset = static_cast<uint32_t>(record_cursor);
+            entries[i].byte_size = static_cast<uint32_t>(pending[i].bytes->size());
+            record_cursor += pending[i].bytes->size();
+        }
+        for (const auto &entry : entries)
+            append_record(desc, &entry, sizeof(entry));
+        for (const auto &extension : pending)
+            desc.insert(desc.end(), extension.bytes->begin(), extension.bytes->end());
+    }
+
     // --- hash index ----------------------------------------------------
     std::vector<uint8_t> hash_index;
     if (options.include_hash_index) {
@@ -304,7 +386,7 @@ bool read_metadata_header(const uint8_t *data, size_t size, MetadataHeader &head
         error = "invalid metadata desc section bounds";
         return false;
     }
-    if (header.desc_size != expected_desc_size(header)) {
+    if (header.desc_size < expected_desc_size(header)) {
         error = "metadata desc section does not match record counts";
         return false;
     }
@@ -534,6 +616,267 @@ bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std
 
 bool module_from_region(const std::vector<uint8_t> &region, AbiModule &module, std::string &error) {
     return module_from_region(region.data(), region.size(), module, error);
+}
+
+namespace {
+
+// Locate one extension payload by kind. Returns false only on a structural
+// error; `present` reports whether the kind exists. An unknown kind is not an
+// error -- the directory fixes its boundaries, so it can be skipped safely.
+bool find_extension(const uint8_t *data, size_t size, const MetadataHeader &header, uint32_t kind, bool &present,
+    uint32_t &version, uint32_t &count, const uint8_t *&records, size_t &byte_size, std::string &error) {
+    present = false;
+    version = 0;
+    count = 0;
+    records = nullptr;
+    byte_size = 0;
+    const uint64_t known = static_cast<uint64_t>(header.type_count) * sizeof(MetadataTypeRecord)
+                         + static_cast<uint64_t>(header.field_count) * sizeof(MetadataFieldRecord)
+                         + static_cast<uint64_t>(header.function_count) * sizeof(MetadataFunctionRecord)
+                         + static_cast<uint64_t>(header.parameter_count) * sizeof(MetadataParameterRecord)
+                         + static_cast<uint64_t>(header.symbol_count) * sizeof(MetadataSymbolRecord);
+    if (header.desc_size == known) return true;   // no extension directory
+    if (header.desc_size < known + sizeof(MetadataExtensionHeader)) {
+        error = "truncated extension directory";
+        return false;
+    }
+    const uint8_t *base = data + header.desc_offset;
+    MetadataExtensionHeader directory{};
+    std::memcpy(&directory, base + known, sizeof(directory));
+    if (directory.version != metadata_extension_version) {
+        error = "unsupported extension directory version";
+        return false;
+    }
+    if (directory.count > 64) {
+        error = "extension directory has too many entries";
+        return false;
+    }
+    const uint64_t entries_begin = known + sizeof(MetadataExtensionHeader);
+    const uint64_t entries_end =
+        entries_begin + static_cast<uint64_t>(directory.count) * sizeof(MetadataExtensionEntry);
+    if (entries_end > header.desc_size) {
+        error = "extension directory entries are out of bounds";
+        return false;
+    }
+    std::vector<uint32_t> seen;
+    for (uint32_t i = 0; i < directory.count; ++i) {
+        MetadataExtensionEntry entry{};
+        std::memcpy(
+            &entry, base + entries_begin + static_cast<uint64_t>(i) * sizeof(MetadataExtensionEntry), sizeof(entry));
+        for (const uint32_t previous : seen)
+            if (previous == entry.kind) {
+                error = "duplicate extension kind";
+                return false;
+            }
+        seen.push_back(entry.kind);
+        if (entry.byte_offset < entries_end
+            || entry.byte_offset > header.desc_size
+            || entry.byte_size > header.desc_size - entry.byte_offset) {
+            error = "extension entry is out of bounds";
+            return false;
+        }
+        if (entry.kind == kind) {
+            present = true;
+            version = entry.version;
+            count = entry.count;
+            records = base + entry.byte_offset;
+            byte_size = entry.byte_size;
+        }
+    }
+    return true;
+}
+
+}   // namespace
+
+bool read_ownership_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataOwnershipContract> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_ownership, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1) {
+        error = "unsupported ownership contract version";
+        return false;
+    }
+    if (byte_size != static_cast<size_t>(count) * sizeof(MetadataOwnershipRecord)) {
+        error = "ownership extension size mismatch";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataOwnershipRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.target_kind > 1 || record.mode > static_cast<uint32_t>(OwnershipMode::copy)) {
+            error = "invalid ownership contract record";
+            return false;
+        }
+        if (record.release_function != UINT32_MAX && record.release_function >= header.function_count) {
+            error = "ownership contract release function is out of range";
+            return false;
+        }
+        MetadataOwnershipContract contract;
+        contract.target_kind = record.target_kind;
+        contract.target_index = record.target_index;
+        contract.mode = static_cast<OwnershipMode>(record.mode);
+        contract.release_function = record.release_function;
+        out.push_back(contract);
+    }
+    return true;
+}
+
+bool read_ownership_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataOwnershipContract> &out, std::string &error) {
+    return read_ownership_contracts(region.data(), region.size(), out, error);
+}
+
+bool read_error_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataErrorContract> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_error, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1) {
+        error = "unsupported error contract version";
+        return false;
+    }
+    if (byte_size != static_cast<size_t>(count) * sizeof(MetadataErrorRecord)) {
+        error = "error extension size mismatch";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataErrorRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.status_source > static_cast<uint32_t>(StatusSource::parameter)) {
+            error = "invalid error contract record";
+            return false;
+        }
+        if (record.function_index >= header.function_count) {
+            error = "error contract function is out of range";
+            return false;
+        }
+        MetadataErrorContract contract;
+        contract.function_index = record.function_index;
+        contract.status_source = static_cast<StatusSource>(record.status_source);
+        contract.status_parameter = record.status_parameter;
+        contract.success_value = record.success_value;
+        contract.value_parameter = record.value_parameter;
+        out.push_back(contract);
+    }
+    return true;
+}
+
+bool read_error_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataErrorContract> &out, std::string &error) {
+    return read_error_contracts(region.data(), region.size(), out, error);
+}
+
+bool read_target_description(const uint8_t *data, size_t size, TargetDescription &out, std::string &error) {
+    out = {};
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_target, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1) {
+        error = "unsupported target description version";
+        return false;
+    }
+    if (count < 1 || byte_size < sizeof(MetadataTargetRecord)) {
+        error = "target description is malformed";
+        return false;
+    }
+    MetadataTargetRecord record{};
+    std::memcpy(&record, records, sizeof(record));
+    out.arch = record.arch;
+    out.os = record.os;
+    out.target_abi = record.target_abi;
+    out.compiler = record.compiler;
+    out.calling_convention = record.calling_convention;
+    out.pointer_bits = record.pointer_bits;
+    out.endianness = record.endianness;
+    out.present = true;
+    return true;
+}
+
+bool read_target_description(const std::vector<uint8_t> &region, TargetDescription &out, std::string &error) {
+    return read_target_description(region.data(), region.size(), out, error);
+}
+
+bool verify_target_abi(
+    const uint8_t *data, size_t size, const TargetExpectation &expected, TargetVerification &out, std::string &error) {
+    out = {};
+    TargetDescription target;
+    if (!read_target_description(data, size, target, error)) return false;
+    if (!target.present) {
+        out.status = TargetVerificationStatus::unverifiable;
+        out.reasons.push_back("region carries no target description");
+        return true;
+    }
+    bool incompatible = false;
+    bool unverifiable = false;
+    const auto compare = [&](uint32_t want, uint32_t have, const char *field) {
+        if (want == 0) return;
+        if (have == 0) {
+            unverifiable = true;
+            out.reasons.push_back(std::string("target ") + field + " is unknown in the region");
+        } else if (have != want) {
+            incompatible = true;
+            out.reasons.push_back(std::string("target ") + field + " mismatch");
+        }
+    };
+    compare(expected.arch, target.arch, "arch");
+    compare(expected.os, target.os, "os");
+    compare(expected.target_abi, target.target_abi, "abi");
+    compare(expected.pointer_bits, target.pointer_bits, "pointer width");
+    compare(expected.endianness, target.endianness, "endianness");
+
+    // Pointer width consistency: a pointer-typed record must be pointer-sized.
+    if (target.pointer_bits != 0) {
+        MetadataHeader header;
+        if (!read_metadata_header(data, size, header, error)) return false;
+        const uint8_t *base = data + header.desc_offset;
+        const uint32_t pointer_bytes = target.pointer_bits / 8;
+        for (uint32_t i = 0; i < header.type_count; ++i) {
+            MetadataTypeRecord record{};
+            std::memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            if (record.kind == static_cast<uint32_t>(TypeKind::pointer) && record.size != pointer_bytes) {
+                incompatible = true;
+                out.reasons.push_back("a pointer type is not pointer-sized");
+                break;
+            }
+        }
+    }
+
+    if (incompatible)
+        out.status = TargetVerificationStatus::incompatible;
+    else if (unverifiable)
+        out.status = TargetVerificationStatus::unverifiable;
+    else
+        out.status = TargetVerificationStatus::compatible;
+    return true;
+}
+
+bool verify_target_abi(const std::vector<uint8_t> &region, const TargetExpectation &expected, TargetVerification &out,
+    std::string &error) {
+    return verify_target_abi(region.data(), region.size(), expected, out, error);
 }
 
 bool load_module_source(const std::string &path, AbiModule &module, std::string &error) {
