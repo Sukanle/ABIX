@@ -120,6 +120,20 @@ A function record carries:
 A function is identified at the ABI by its signature, not its name. Parameter
 order is significant. A function whose return type is zero is invalid.
 
+### 6.1 Error boundary
+
+A function may carry an optional **error-boundary contract** describing how it
+reports success/failure and where the result value is carried: the status source
+(the return value or a parameter), the status value that means success, and the
+parameter holding the result. It lets a consumer turn a bare C status code into a
+typed result (`Result<T, E>`).
+
+The contract is a **semantic contract, not a layout fact**: it does not change
+`TypeID`, `LayoutHash` or `ABIHash`, and a module without it is fully valid
+(every function is then "no declared error boundary"). It never permits a
+language-native unwinding mechanism (C++ exception, Rust panic) to cross the ABI
+boundary; the producing side converts it to the declared status.
+
 ## 7. Symbol Identity
 
 - A `Symbol` maps a name to a type, field or function by index.
@@ -137,16 +151,40 @@ order is significant. A function whose return type is zero is invalid.
 
 ## 9. Ownership
 
-Ownership semantics are **not yet part of the ABIX ABI model**. Where a language
-expresses ownership (for example C++ RAII), a frontend may encode it as flags,
-but it must not be assumed by the core model. Reserved for a future revision;
-until then, ownership differences are not detected by compatibility checks.
+Ownership is a **contract about how an ABI interaction is used**, not a fixed
+property of a type: the same type may be borrowed by one function and owned by
+another. It is declared, never inferred.
+
+A module may carry an optional ownership contract:
+
+- **release policies** — a value type and the entry points that create and
+  release it;
+- **per-interaction modes** — for a parameter or return value, one of
+  `borrowed` (non-owning view), `owned` (receiver releases through the declared
+  release entry point) or `copy` (independent data from an explicit copy), plus
+  a reference to the release entry point for `owned` returns.
+
+Rules:
+
+- Ownership is a contract, not a layout fact: it does **not** participate in
+  `TypeID`, `LayoutHash` or `ABIHash`, and it never changes the meaning of an
+  existing record.
+- An absent contract means `unspecified`; a reader must not infer `borrowed` or
+  `owned` from the absence of a record.
+- An `owned` interaction must reference an available release entry point; a
+  contract without one is rejected rather than assumed safe.
+- A module without ownership records is fully valid.
+
+Because it is optional and additive, ownership differences are not (yet) part of
+the compatibility classification; they are reported through the contract query,
+not folded into a single "ABI compatible" answer.
 
 ## 10. Target
 
-A module records `arch`, `os`, `target_abi`, `compiler` and the module-level
-`calling_convention`. ABI facts are only comparable when their targets are
-compatible; tooling must report target differences rather than silently
+A module records `arch`, `os`, `target_abi`, `compiler`, the module-level
+`calling_convention`, and the optional platform facts `pointer_bits` and
+`endianness` (0 means unknown). ABI facts are only comparable when their targets
+are compatible; tooling must report target differences rather than silently
 comparing them.
 
 A module describes **one** target, and target differences are resolved by
@@ -157,6 +195,23 @@ floating-point format) for that target. Source-language identity — how a
 language spelled the type (`c_long`, `i32`) — is not an ABIX core type; it may be
 retained as optional provenance that never participates in identity. See
 [`docs/development/type-model.md`](../docs/development/type-model.md).
+
+### 10.1 Runtime target verification
+
+A region may carry a target description so a consumer can verify, at load time,
+that the artifact's platform matches the host or a required target. Verification
+distinguishes three outcomes and **never reports an unknown as compatible**:
+
+- `compatible` — every checked fact matched;
+- `incompatible` — a checked fact disagreed (including a pointer-typed record
+  that is not pointer-sized);
+- `unverifiable` — evidence is missing (no target description, or the region
+  leaves a checked fact unknown).
+
+Static verification (comparing a target against the produced artifact at build
+or CI time) and runtime verification (platform identity and metadata consistency
+at load) are separate concerns; facts that cannot be independently verified at
+runtime are reported as unverifiable rather than assumed.
 
 ## 11. Canonical Representation
 
@@ -211,6 +266,29 @@ must be an explicit decision.
 - A Metadata Region is integrity-checked by recomputing `MetadataID` over
   `desc + hash + names`.
 - Artifacts must be mmap-able and parse-able offline without loading the program.
+
+### 13.1 Extension directory
+
+Optional contract tables (ownership, error boundary, target description, and
+future contracts) are discovered through a trailing **extension directory** in
+the `desc` section, after the fixed record tables:
+
+```text
+[ header  ]  version, count, flags, reserved
+[ entries ]  kind, version, count, byte_offset, byte_size, reserved
+[ records ]  payloads, addressed by their entry
+```
+
+- A region with **no extensions** has `desc_size` equal to the fixed record
+  size; its bytes are identical to a region produced before the directory
+  existed.
+- `directory.version` describes the directory encoding only; each entry carries
+  its own `version`, so contracts evolve independently.
+- `kind` names the contract type, not the record shape; `byte_size` alone fixes
+  record boundaries. A reader may skip an unknown `kind` only when the directory
+  is well formed and the boundaries check out.
+- An unknown directory version, a duplicate `kind`, or an out-of-bounds entry is
+  rejected rather than guessed at.
 
 ## 14. Versioning
 
@@ -301,6 +379,9 @@ it MUST NOT be assumed to be bidirectional.
 - A new required section, or a change to an existing record layout, is a format
   version change.
 - Extensions must not change the meaning of existing records.
+- Optional contract tables inside the Metadata Region use the extension
+  directory (§13.1); adding a contract kind does not require a format version
+  change.
 
 ## 16. Reserved Fields
 
