@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
     const fs::path provider = fs::absolute(fs::path(args[0])).parent_path() / "amc-cpp";
 
     if (command == "--list-languages") {
-        fmt::print("cpp\nlua\nrust\n");
+        fmt::print("cpp\nlua\nrust\nzig\n");
         return 0;
     }
     if (command == "--describe-language") {
@@ -78,7 +78,11 @@ int main(int argc, char **argv) {
             fmt::print("rust frontend backend protocol=jsonl-v1\n");
             return 0;
         }
-        return usage_error("--describe-language supports cpp, lua and rust");
+        if (language == "zig") {
+            fmt::print("zig backend protocol=jsonl-v1\n");
+            return 0;
+        }
+        return usage_error("--describe-language supports cpp, lua, rust and zig");
     }
 
     if (command == "context") return cmd_context(args, arg_count);

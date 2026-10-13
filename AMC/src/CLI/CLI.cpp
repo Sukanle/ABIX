@@ -27,9 +27,7 @@ bool parse_hash128(const std::string &text, amc::Hash128 &value) {
 
 // Renders a 128-bit value as 32 lowercase hex digits (hi then lo), matching
 // the symbol-server key format derived from ELF build ids.
-std::string hash_key(amc::Hash128 value) {
-    return fmt::format("{:016x}{:016x}", value.hi, value.lo);
-}
+std::string hash_key(amc::Hash128 value) { return fmt::format("{:016x}{:016x}", value.hi, value.lo); }
 
 // Minimal `.abix.meta` for a region extracted from a binary: the package/abi
 // hash are not carried by the manifest, so only identity + counts are emitted.
@@ -215,7 +213,8 @@ bool dispatch_provider(const fs::path &provider, const char *capability, const f
     return ok && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-int generate(const fs::path &provider, const fs::path &input, const fs::path &destination, const std::string &extension) {
+int generate(
+    const fs::path &provider, const fs::path &input, const fs::path &destination, const std::string &extension) {
     fs::path output = destination;
     if (destination.extension() != extension) output /= ("amc_generated" + extension);
     std::error_code ec;
@@ -235,7 +234,7 @@ void print_usage() {
     fmt::print(stderr,
         "usage:\n"
         "  amc build -c <file>.abic.toml [-B <build_dir>]\n"
-        "  amc generate <file>.abix -l cpp|lua|rust -o <directory|file>\n"
+        "  amc generate <file>.abix -l cpp|lua|rust|zig -o <directory|file>\n"
         "  amc validate <file>.abix\n"
         "  amc inspect <file>.abix\n"
         "  amc context <file>.abix [--format llm|json] [--no-names] [-o <file>]\n"

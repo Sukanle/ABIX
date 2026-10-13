@@ -62,7 +62,17 @@ int cmd_generate(char **args, int arg_count, const fs::path &provider) {
             }
             return generate(rust_provider, args[2], args[6], ".rs");
         }
-        return usage_error(command + " expects -l cpp|lua|rust -o <directory|file>");
+        if (language == "zig") {
+            const fs::path zig_provider = provider_executable(provider, "zig");
+            if (command == "backend") {
+                std::string error;
+                if (!dispatch_provider(zig_provider, "backend", args[2], args[6], error))
+                    return fail(amc::ErrorCategory::provider, "backend", error, args[2]);
+                return 0;
+            }
+            return generate(zig_provider, args[2], args[6], ".zig");
+        }
+        return usage_error(command + " expects -l cpp|lua|rust|zig -o <directory|file>");
     }
 }
 

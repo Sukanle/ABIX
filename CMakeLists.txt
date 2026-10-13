@@ -268,6 +268,13 @@ if(AMC_BUILD)
         target_include_directories(amc-rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-rust PRIVATE amc-core amc-lang fmt::fmt)
 
+        # Zig provider: backend-only, a minimal consumer of the same ABIX IR. It
+        # exists to validate that `.abix` is reusable across languages; there is
+        # no Zig frontend and no Zig-specific model.
+        add_executable(amc-zig AMC/src/Lang/Zig/Zig.cpp AMC/src/Lang/Zig/Backend.cpp)
+        target_include_directories(amc-zig PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_link_libraries(amc-zig PRIVATE amc-core amc-lang fmt::fmt)
+
         add_executable(
             amc
             AMC/main.cpp
@@ -336,6 +343,7 @@ if(AMC_BUILD)
             amc
             amc-cpp
             amc-rust
+            amc-zig
             amc-dump
             amc-mcp
             amc-core-test
