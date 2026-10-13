@@ -117,6 +117,38 @@ def main() -> int:
         else:
             check(False, "Rust consumer ran the native library", "consumer was not built")
 
+        # 6-8. The same artifact drives a second language backend (Zig),
+        #      validating that `.abix` is a reusable IR rather than a
+        #      single-language binding.
+        zig = shutil.which("zig")
+        if not zig:
+            print("  [SKIP] zig not found: skipping the Zig projection")
+        else:
+            zig_gen = os.path.join(work, "gen_zig")
+            result = run([amc, "generate", artifact, "-l", "zig", "-o", zig_gen]) if os.path.isfile(artifact) else None
+            zig_projection = os.path.join(zig_gen, "amc_generated.zig")
+            check(result is not None and result.returncode == 0 and os.path.isfile(zig_projection),
+                  "amc generate -l zig produced amc_generated.zig",
+                  (result.stderr.strip() if result else "skipped (no artifact)")[:2000])
+
+            zig_src = os.path.join(work, "zig_consumer.zig")
+            shutil.copyfile(os.path.join(SCRIPT_DIR, "zig_consumer.zig"), zig_src)
+            zig_exe = os.path.join(work, "zig_consumer")
+            result = run([zig, "build-exe", zig_src, "-lc", "-L", work, "-linterop_demo",
+                          "-femit-bin=" + zig_exe])
+            check(result.returncode == 0, "Zig consumer compiled against the projection",
+                  result.stderr.strip()[:2000])
+
+            if os.path.isfile(zig_exe):
+                env = dict(os.environ)
+                env[load_env] = work + os.pathsep + env.get(load_env, "")
+                result = run([zig_exe], env=env)
+                check(result.returncode == 0 and "zig interop ok" in (result.stdout + result.stderr),
+                      "Zig consumer ran the native library",
+                      (result.stderr.strip() + result.stdout.strip())[:2000])
+            else:
+                check(False, "Zig consumer ran the native library", "zig consumer was not built")
+
         print(f"\ninterop: {passed} passed, {failed} failed")
         return 0 if failed == 0 else 1
     finally:
