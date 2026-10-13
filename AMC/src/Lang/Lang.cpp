@@ -23,8 +23,9 @@ bool config_load(const std::string &path, const std::string &expected_language, 
         auto *tab = (*imp)[0].as_table();
         c.language = tab ? tab->get("language")->value_or(std::string{}) : std::string{};
         if (!tab || (!expected_language.empty() && c.language != expected_language)) {
-            e = "only " + (expected_language.empty() ? std::string("the provider") : expected_language)
-                + " import is supported";
+            e = "only "
+              + (expected_language.empty() ? std::string("the provider") : expected_language)
+              + " import is supported";
             return false;
         }
         c.db = (*tab)["compile_commands"].value_or("");
@@ -42,6 +43,44 @@ bool config_load(const std::string &path, const std::string &expected_language, 
                 c.symbols.push_back(v.value_or(""));
         if (auto *ex = t["export"].as_array(); ex && !ex->empty())
             if (auto *et = (*ex)[0].as_table()) c.output = (*et)["output"].value_or("");
+        if (auto *owned = t["owned"].as_array()) {
+            for (auto &&entry : *owned) {
+                auto *table = entry.as_table();
+                if (!table) continue;
+                OwnedDecl decl;
+                decl.type = (*table)["type"].value_or("");
+                decl.create = (*table)["create"].value_or("");
+                decl.destroy = (*table)["destroy"].value_or("");
+                decl.semantics = (*table)["semantics"].value_or(std::string("owned"));
+                if (!decl.type.empty()) c.owned.push_back(std::move(decl));
+            }
+        }
+        if (auto *contracts = t["contract"].as_array()) {
+            for (auto &&entry : *contracts) {
+                auto *table = entry.as_table();
+                if (!table) continue;
+                ContractDecl decl;
+                decl.function = (*table)["function"].value_or("");
+                decl.returns = (*table)["returns"].value_or("");
+                decl.release = (*table)["release"].value_or("");
+                if (auto *params = (*table)["params"].as_array())
+                    for (auto &&value : *params)
+                        decl.params.push_back(value.value_or(""));
+                if (!decl.function.empty()) c.contracts.push_back(std::move(decl));
+            }
+        }
+        if (auto *errors = t["error"].as_array()) {
+            for (auto &&entry : *errors) {
+                auto *table = entry.as_table();
+                if (!table) continue;
+                ErrorDecl decl;
+                decl.function = (*table)["function"].value_or("");
+                decl.status = (*table)["status"].value_or(std::string("return"));
+                decl.success = (*table)["success"].value_or(int64_t{0});
+                decl.value = (*table)["value"].value_or(int64_t{-1});
+                if (!decl.function.empty()) c.errors.push_back(std::move(decl));
+            }
+        }
         // `compile_commands` / `flags` are optional: a source-level frontend
         // (e.g. Rust's `#[repr(C)]` extractor) needs no build flags, and the
         // C++ frontend falls back to a fixed compilation database.
@@ -73,8 +112,7 @@ int run_provider(int argc, char **argv, const Provider &provider) {
             if (!names.empty()) names += "|";
             names += capability.name;
         }
-        fmt::print(
-            stderr, "usage: amc-{} <{}> <input> <output>\n", provider.language, names);
+        fmt::print(stderr, "usage: amc-{} <{}> <input> <output>\n", provider.language, names);
         return 2;
     }
     const std::string capability = argv[1];

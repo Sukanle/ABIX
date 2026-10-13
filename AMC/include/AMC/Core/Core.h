@@ -75,10 +75,12 @@ enum class FloatFormat : uint32_t {
     ppc_double_double
 };
 
-inline uint32_t primitive_abi(uint32_t width, PrimitiveAbiKind kind, FloatFormat format = FloatFormat::none,
-    bool is_signed = false) {
-    return static_cast<uint32_t>(kind) | (width << primitive_width_shift)
-           | (static_cast<uint32_t>(format) << primitive_format_shift) | (is_signed ? primitive_signed_bit : 0);
+inline uint32_t primitive_abi(
+    uint32_t width, PrimitiveAbiKind kind, FloatFormat format = FloatFormat::none, bool is_signed = false) {
+    return static_cast<uint32_t>(kind)
+         | (width << primitive_width_shift)
+         | (static_cast<uint32_t>(format) << primitive_format_shift)
+         | (is_signed ? primitive_signed_bit : 0);
 }
 
 // Field flags are part of the AMC semantic ABI, not Clang implementation details.
@@ -198,15 +200,85 @@ struct SourceOrigin {
     std::string file;
     uint32_t line = 0, column = 0;
 };
+
+// Ownership semantics of one ABI interaction (a parameter or a return value),
+// not a fixed property of a type: the same type may be borrowed by one function
+// and owned by another. This is a contract, not a layout fact, so it never
+// feeds the layout/ABI identity.
+//   unspecified — not declared (also the meaning of an absent record)
+//   borrowed    — a non-owning view; the callee/caller must not release it
+//   owned       — the receiver takes ownership and must release via `release`
+//   copy        — independent data produced by an explicit copy
+enum class OwnershipMode : uint32_t {
+    unspecified = 0,
+    borrowed = 1,
+    owned = 2,
+    copy = 3
+};
+
+// Release policy: the entry points that create and release a value type. It is
+// referenced by an `owned` contract; on its own it is not an ownership label.
+struct OwnedType {
+    Hash128 type_id{};
+    Hash128 create{};
+    Hash128 destroy{};
+    uint32_t flags = 0;
+};
+
+// Which ABI interaction an ownership contract describes.
+enum class OwnershipTarget : uint32_t {
+    parameter = 0,
+    return_value = 1
+};
+
+// One ownership contract: the declared mode of a parameter or return value,
+// plus the entry point that releases it when the mode is `owned`. It is a
+// contract, not a layout fact, so it never feeds the layout/ABI identity.
+struct OwnershipContract {
+    OwnershipTarget target = OwnershipTarget::parameter;
+    uint32_t target_index = 0;   // global parameter index, or function index for a return
+    OwnershipMode mode = OwnershipMode::unspecified;
+    Hash128 release{};   // release function signature (owned only), or zero
+    uint32_t flags = 0;
+};
+
+// Where a function reports its status.
+enum class StatusSource : uint32_t {
+    return_value = 0,
+    parameter = 1
+};
+
+// Error boundary contract: how a function reports success/failure and where the
+// result value is carried. It lets a consumer turn a C status code into a typed
+// result instead of inspecting a bare integer. A contract, not a layout fact.
+struct ErrorContract {
+    uint32_t function_index = 0;
+    StatusSource status_source = StatusSource::return_value;
+    uint32_t status_parameter = UINT32_MAX;   // local parameter index when status_source == parameter
+    int64_t success_value = 0;                // status value that means success
+    uint32_t value_parameter =
+        UINT32_MAX;   // local parameter index carrying the value, or UINT32_MAX when the return value is the value
+    uint32_t flags = 0;
+};
+
 struct AbiModule {
     std::string package_name, package_version;
     uint32_t arch = 0, os = 0, target_abi = 0, compiler = 1, calling_convention = 0;
+    // Target platform facts used for verification. 0 means "unknown", which is
+    // reported as unverifiable rather than assumed compatible.
+    uint32_t pointer_bits = 0;   // pointer width in bits
+    uint32_t endianness = 0;     // 0 unknown, 1 little, 2 big
     std::vector<Type> types;
     std::vector<Field> fields;
     std::vector<Function> functions;
     std::vector<Symbol> symbols;
     std::vector<CompatibilityRecord> compatibility;
     std::vector<MapRecord> maps;
+    // Ownership contract (see `OwnedType` / `OwnershipContract`). Not part of
+    // ABI identity.
+    std::vector<OwnedType> owned;               // release-policy registry
+    std::vector<OwnershipContract> contracts;   // per-interaction ownership modes
+    std::vector<ErrorContract> errors;          // per-function error boundary
     // Optional, debug-only: where each type was declared. Not part of ABI
     // identity (excluded from the artifact hash) — it exists so tools can
     // implement go-to-definition TypeID -> source declaration.

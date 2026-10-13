@@ -13,6 +13,32 @@
 namespace amc::lang {
 
 // Configuration parsed from the single `[[import]]` section of a `.abic.toml`.
+struct OwnedDecl {
+    std::string type;        // value type name
+    std::string create;      // factory function name (optional)
+    std::string destroy;     // release function name (required for `owned`)
+    std::string semantics;   // "owned" (default) | "borrow" | "copy"
+};
+
+// Per-interaction ownership contract for one function: the mode of its return
+// value and of each positional parameter, plus the release entry point for an
+// `owned` return.
+struct ContractDecl {
+    std::string function;
+    std::string returns;               // mode string, empty = unspecified
+    std::string release;               // release function name (owned returns)
+    std::vector<std::string> params;   // positional modes
+};
+
+// Error boundary for one function: the status value that means success and,
+// optionally, which parameter carries the result value.
+struct ErrorDecl {
+    std::string function;
+    std::string status;   // "return" (default) | "parameter"
+    int64_t success = 0;
+    int64_t value = -1;   // local parameter index, or -1 when the return value is the value
+};
+
 struct Config {
     std::string language;
     std::string db;       // compile_commands.json (optional)
@@ -20,6 +46,9 @@ struct Config {
     std::vector<std::string> flags;
     std::vector<std::string> files;
     std::vector<std::string> symbols;
+    std::vector<OwnedDecl> owned;          // [[owned]] release-policy declarations
+    std::vector<ContractDecl> contracts;   // [[contract]] ownership contracts
+    std::vector<ErrorDecl> errors;         // [[error]] error-boundary contracts
 };
 
 // A capability the provider exposes (e.g. "frontend", "backend").

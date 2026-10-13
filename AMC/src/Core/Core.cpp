@@ -29,7 +29,12 @@ constexpr uint32_t kHashRecordEntrySize = 32;
 constexpr uint32_t kCompatibilityEntrySize = 44;
 constexpr uint32_t kMapEntrySize = 60;
 constexpr uint32_t kMapOperationEntrySize = 40;
-constexpr uint32_t kSourceEntrySize = 32;   // type_id(16) + file_offset(4) + line(4) + column(4) + reserved(4)
+constexpr uint32_t kSourceEntrySize = 32;     // type_id(16) + file_offset(4) + line(4) + column(4) + reserved(4)
+constexpr uint32_t kOwnedEntrySize = 52;      // type_id(16) + create(16) + destroy(16) + flags(4)
+constexpr uint32_t kContractEntrySize = 32;   // target(4) + target_index(4) + mode(4) + flags(4) + release(16)
+constexpr uint32_t kErrorEntrySize =
+    28;   // function(4) + status_source(4) + status_param(4) + success(8) + value(4) + flags(4)
+constexpr uint32_t kPlatformEntrySize = 8;   // pointer_bits(4) + endianness(4)
 
 enum Section : uint32_t {
     strings = 1,
@@ -45,7 +50,11 @@ enum Section : uint32_t {
     maps,
     map_operations,
     target,
-    sources
+    sources,
+    owned,
+    contracts,
+    errors,
+    platform
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -536,6 +545,60 @@ bool validate(const AbiModule &module, std::string &error) {
             return false;
         }
     }
+    // Ownership contract: a mode must be declared (never inferred), must point
+    // at a real interaction, and an `owned` return must reference an available
+    // release entry point. A contract without a usable release capability is
+    // rejected rather than assumed safe.
+    uint32_t total_parameters = 0;
+    for (const auto &function : module.functions)
+        total_parameters += static_cast<uint32_t>(function.parameters.size());
+    for (const auto &contract : module.contracts) {
+        if (contract.mode == OwnershipMode::unspecified) {
+            error = "ownership contract has unspecified mode";
+            return false;
+        }
+        if (contract.target == OwnershipTarget::return_value) {
+            if (contract.target_index >= module.functions.size()) {
+                error = "ownership contract references an unknown return value";
+                return false;
+            }
+        } else if (contract.target_index >= total_parameters) {
+            error = "ownership contract references an unknown parameter";
+            return false;
+        }
+        const bool has_release = !(contract.release == Hash128{});
+        if (has_release) {
+            bool found = false;
+            for (const auto &function : module.functions)
+                if (function.signature == contract.release) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                error = "ownership contract release entry point not found";
+                return false;
+            }
+        } else if (contract.mode == OwnershipMode::owned && contract.target == OwnershipTarget::return_value) {
+            error = "owned return value has no release entry point";
+            return false;
+        }
+    }
+    for (const auto &contract : module.errors) {
+        if (contract.function_index >= module.functions.size()) {
+            error = "error contract references an unknown function";
+            return false;
+        }
+        const auto &function = module.functions[contract.function_index];
+        if (contract.status_source == StatusSource::parameter
+            && contract.status_parameter >= function.parameters.size()) {
+            error = "error contract status parameter is out of range";
+            return false;
+        }
+        if (contract.value_parameter != UINT32_MAX && contract.value_parameter >= function.parameters.size()) {
+            error = "error contract value parameter is out of range";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -566,6 +629,9 @@ bool project_symbols(
     result.symbols.clear();
     result.compatibility.clear();
     result.maps.clear();
+    result.owned.clear();
+    result.contracts.clear();
+    result.errors.clear();
     std::unordered_set<std::string> complete_type_ids;
     auto complete = [&](Hash128 id) { complete_type_ids.insert(hash_key(id)); };
     auto is_complete = [&](Hash128 id) { return complete_type_ids.count(hash_key(id)) != 0; };
@@ -621,6 +687,52 @@ bool project_symbols(
             ++projected.field_count;
         }
         result.types.push_back(std::move(projected));
+    }
+    // Carry the ownership contract for the types that survived projection.
+    for (const auto &record : source.owned)
+        if (has_type(record.type_id)) result.owned.push_back(record);
+    // Remap ownership contracts to the projected function/parameter indices.
+    std::vector<uint32_t> source_param_base(source.functions.size(), 0);
+    for (size_t i = 0, running = 0; i < source.functions.size(); ++i) {
+        source_param_base[i] = running;
+        running += source.functions[i].parameters.size();
+    }
+    std::unordered_map<std::string, uint32_t> projected_by_signature;
+    std::vector<uint32_t> projected_param_base(result.functions.size(), 0);
+    for (size_t i = 0, running = 0; i < result.functions.size(); ++i) {
+        projected_by_signature[hash_key(result.functions[i].signature)] = static_cast<uint32_t>(i);
+        projected_param_base[i] = running;
+        running += result.functions[i].parameters.size();
+    }
+    for (const auto &contract : source.contracts) {
+        if (contract.target == OwnershipTarget::return_value) {
+            if (contract.target_index >= source.functions.size()) continue;
+            const auto found = projected_by_signature.find(hash_key(source.functions[contract.target_index].signature));
+            if (found == projected_by_signature.end()) continue;
+            OwnershipContract projected = contract;
+            projected.target_index = found->second;
+            result.contracts.push_back(projected);
+        } else {
+            size_t owner = 0;
+            while (owner < source.functions.size()
+                   && contract.target_index >= source_param_base[owner] + source.functions[owner].parameters.size())
+                ++owner;
+            if (owner >= source.functions.size()) continue;
+            const uint32_t position = contract.target_index - source_param_base[owner];
+            const auto found = projected_by_signature.find(hash_key(source.functions[owner].signature));
+            if (found == projected_by_signature.end()) continue;
+            OwnershipContract projected = contract;
+            projected.target_index = projected_param_base[found->second] + position;
+            result.contracts.push_back(projected);
+        }
+    }
+    for (const auto &record : source.errors) {
+        if (record.function_index >= source.functions.size()) continue;
+        const auto found = projected_by_signature.find(hash_key(source.functions[record.function_index].signature));
+        if (found == projected_by_signature.end()) continue;
+        ErrorContract projected = record;
+        projected.function_index = found->second;
+        result.errors.push_back(projected);
     }
     if (!symbols.empty() && result.types.empty() && result.functions.empty()) {
         error = "export symbols did not match any ABI declaration";
@@ -846,6 +958,58 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         sections.push_back(std::move(source_table));
     }
 
+    // Optional ownership contract. Excluded from ABI identity (it is a
+    // contract, not a layout fact); old readers ignore the unknown section.
+    if (!module.owned.empty()) {
+        SectionData owned_table{owned, static_cast<uint32_t>(module.owned.size()), kOwnedEntrySize, 0, {}};
+        for (const auto &record : module.owned) {
+            put_hash(owned_table.bytes, record.type_id);
+            put_hash(owned_table.bytes, record.create);
+            put_hash(owned_table.bytes, record.destroy);
+            put_u32(owned_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(owned_table));
+    }
+
+    // Optional per-interaction ownership contract. Like `owned`, it is excluded
+    // from ABI identity and unknown to old readers.
+    if (!module.contracts.empty()) {
+        SectionData contract_table{
+            contracts, static_cast<uint32_t>(module.contracts.size()), kContractEntrySize, 0, {}};
+        for (const auto &record : module.contracts) {
+            put_u32(contract_table.bytes, static_cast<uint32_t>(record.target));
+            put_u32(contract_table.bytes, record.target_index);
+            put_u32(contract_table.bytes, static_cast<uint32_t>(record.mode));
+            put_u32(contract_table.bytes, record.flags);
+            put_hash(contract_table.bytes, record.release);
+        }
+        sections.push_back(std::move(contract_table));
+    }
+
+    // Optional error-boundary contract. Like `owned`/`contracts`, excluded from
+    // ABI identity and unknown to old readers.
+    if (!module.errors.empty()) {
+        SectionData error_table{errors, static_cast<uint32_t>(module.errors.size()), kErrorEntrySize, 0, {}};
+        for (const auto &record : module.errors) {
+            put_u32(error_table.bytes, record.function_index);
+            put_u32(error_table.bytes, static_cast<uint32_t>(record.status_source));
+            put_u32(error_table.bytes, record.status_parameter);
+            put_u64(error_table.bytes, static_cast<uint64_t>(record.success_value));
+            put_u32(error_table.bytes, record.value_parameter);
+            put_u32(error_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(error_table));
+    }
+
+    // Optional target platform facts (pointer width / endianness). Excluded
+    // from ABI identity; unknown to old readers.
+    if (module.pointer_bits != 0 || module.endianness != 0) {
+        SectionData platform_table{platform, 1, kPlatformEntrySize, 0, {}};
+        put_u32(platform_table.bytes, module.pointer_bits);
+        put_u32(platform_table.bytes, module.endianness);
+        sections.push_back(std::move(platform_table));
+    }
+
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
     put_u16(bytes, kHashAlgorithm);
@@ -964,6 +1128,10 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *map_table = optional(maps, kMapEntrySize);
     const auto *operation_table = optional(map_operations, kMapOperationEntrySize);
     const auto *source_table = optional(sources, kSourceEntrySize);
+    const auto *owned_table = optional(owned, kOwnedEntrySize);
+    const auto *contract_table = optional(contracts, kContractEntrySize);
+    const auto *error_table = optional(errors, kErrorEntrySize);
+    const auto *platform_table = optional(platform, kPlatformEntrySize);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -1199,6 +1367,61 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             return false;
         }
         module.sources.push_back(std::move(origin));
+    }
+    size_t owned_offset = owned_table ? owned_table->offset : 0;
+    for (uint32_t i = 0; owned_table && i < owned_table->count; ++i) {
+        OwnedType record;
+        if (!read_hash(bytes, owned_offset, record.type_id, error)
+            || !read_hash(bytes, owned_offset, record.create, error)
+            || !read_hash(bytes, owned_offset, record.destroy, error)
+            || !read_u32(bytes, owned_offset, record.flags, error)) {
+            error = "invalid ownership record";
+            return false;
+        }
+        module.owned.push_back(record);
+    }
+    size_t contract_offset = contract_table ? contract_table->offset : 0;
+    for (uint32_t i = 0; contract_table && i < contract_table->count; ++i) {
+        OwnershipContract record;
+        uint32_t target = 0, mode = 0;
+        if (!read_u32(bytes, contract_offset, target, error)
+            || !read_u32(bytes, contract_offset, record.target_index, error)
+            || !read_u32(bytes, contract_offset, mode, error)
+            || !read_u32(bytes, contract_offset, record.flags, error)
+            || !read_hash(bytes, contract_offset, record.release, error)
+            || target > static_cast<uint32_t>(OwnershipTarget::return_value)
+            || mode > static_cast<uint32_t>(OwnershipMode::copy)) {
+            error = "invalid ownership contract record";
+            return false;
+        }
+        record.target = static_cast<OwnershipTarget>(target);
+        record.mode = static_cast<OwnershipMode>(mode);
+        module.contracts.push_back(record);
+    }
+    size_t error_offset = error_table ? error_table->offset : 0;
+    for (uint32_t i = 0; error_table && i < error_table->count; ++i) {
+        ErrorContract record;
+        uint32_t status = 0;
+        uint64_t success = 0;
+        if (!read_u32(bytes, error_offset, record.function_index, error)
+            || !read_u32(bytes, error_offset, status, error)
+            || !read_u32(bytes, error_offset, record.status_parameter, error)
+            || !read_u64(bytes, error_offset, success, error)
+            || !read_u32(bytes, error_offset, record.value_parameter, error)
+            || !read_u32(bytes, error_offset, record.flags, error)
+            || status > static_cast<uint32_t>(StatusSource::parameter)) {
+            error = "invalid error contract record";
+            return false;
+        }
+        record.status_source = static_cast<StatusSource>(status);
+        record.success_value = static_cast<int64_t>(success);
+        module.errors.push_back(record);
+    }
+    if (platform_table) {
+        size_t platform_offset = platform_table->offset;
+        if (!read_u32(bytes, platform_offset, module.pointer_bits, error)
+            || !read_u32(bytes, platform_offset, module.endianness, error))
+            return false;
     }
     size_t descriptor_offset = descriptor_table->offset;
     uint16_t descriptor_algorithm = 0, descriptor_version = 0;
