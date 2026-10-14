@@ -125,18 +125,22 @@ ABIX is developed per platform and integrated only when consistent across
 platforms. A change may enter `devel` only if it builds and links on every
 supported platform; platform-specific details (linker, CRT, ELF/Mach-O/PE
 dynamic-library loading, symbol visibility, calling conventions) stay on the
-platform branch.
+platform branch and are promoted through staged test branches.
 
 | Branch | Role |
 |--------|------|
 | `main` | latest stable; moves forward from a fully verified `devel` |
 | `release/x.y.z` | frozen stable line; tags `vX.Y.Z` must be platform-consistent |
-| `devel` | unified integration branch (platform-neutral) |
+| `devel` | unified integration branch; only all-platform-verified changes land here |
+| `devel-Beta` | promotion stage: a tested `devel-Alpha` merges here for the next test round |
+| `devel-Alpha` | integration/test stage: completed platform work merges here first |
 | `devel-Linux` / `devel-macOS` / `devel-Windows` | per-platform development lines |
 
-Work on your platform branch, merge completed units into `devel` and resolve the
-platform differences there, and let `devel` promote to `main` / releases once
-every available platform is green. Windows is not supported yet.
+Promotion pipeline: **platform → `devel-Alpha` → `devel-Beta` → `devel`**.
+Work on your platform branch; merge completed units into `devel-Alpha` and
+resolve the platform differences there; promote to `devel-Beta` once Alpha
+passes, and to `devel` only when every available platform is green. `devel` then
+promotes to `main` / releases. Windows is not supported yet.
 
 ## Guidelines
 
