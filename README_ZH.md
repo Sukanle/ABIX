@@ -370,6 +370,9 @@ ABIX
 - LLVM / Clang 工具链（AMC C++ 前端需要）
 - 受支持的原生工具链
 
+> **平台支持：** 目前支持 Linux 与 macOS。**Windows 暂不可用**——PE/CRT 路径、跨 DLL
+> 行为与平台一致性测试仍在验证中，请在 Linux 或 macOS 上构建与评估。
+
 ### 构建
 
 ```bash

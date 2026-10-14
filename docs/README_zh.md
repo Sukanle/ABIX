@@ -6,6 +6,8 @@
 
 > [项目 README](README_zh.md) 是入口。本文件导航 `docs/` 目录。
 
+> **平台支持：** 目前支持 Linux 与 macOS。**Windows 暂不可用。**
+
 ```mermaid
 graph TD
     R[文档] --> GS[快速开始]

@@ -27,6 +27,10 @@ and shows the core operations: inspect, query, diff, verify and generate.
 
 ## 1. Requirements
 
+> **Platform support:** Linux and macOS are supported today. **Windows is not
+> available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
+> tests are still being validated, so please build and evaluate on Linux or macOS.
+
 * C++17 or later
 * CMake 3.20+
 * LLVM / Clang tooling (the AMC C++ frontend links `clang-cpp`)

@@ -6,6 +6,10 @@
 
 ## Current — ABIX 0.1.0 (Foundation, self-hosting and toolchain)
 
+**Platform support:** Linux and macOS are supported today. Windows is **not
+available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
+tests are still being validated.
+
 Established and maintained:
 
 - ABI inspection, diff, compatibility classification and adapter generation;

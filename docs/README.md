@@ -6,6 +6,9 @@
 
 > The [project README](README.md) is the entry point. This file navigates the `docs/` tree.
 
+> **Platform support:** Linux and macOS are supported today. **Windows is not
+> available yet.**
+
 ```mermaid
 graph TD
     R[Documentation] --> GS[Getting Started]
