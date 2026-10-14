@@ -82,6 +82,12 @@ function = "bar_process"
 success = 0
 value = 2
 
+# 泛型实例化：前端实例化模板，AMC 记录具体实体 `abix_span_i32`
+[[instantiate]]
+template = "abix_std::abix_span"
+args = ["int32_t"]
+as = "abix_span_i32"
+
 # 目标平台事实（整数；`endianness` 为关键字）
 [target]
 arch = 1
@@ -155,6 +161,34 @@ output = "build/mylib.abix"
 
 它让后端把裸 C 状态码变成类型化结果；语言原生的异常/panic **不得**穿越 ABI 边界。
 见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1。
+
+### `[[instantiate]]` — 泛型实例化
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `template` | string | 泛型实体名（可带限定，如 `abix_std::abix_span`） |
+| `args` | string[] | 规范类型实参，如 `["int32_t"]` |
+| `as` | string | 具体实体的导出名（同时作为源码别名生成） |
+| `contract` | string | 要 lower 到的 ABIX-STD 契约：`sequence-view` 或 `string-view`（可选） |
+| `element` | string | 契约要求的元素拼写，如 `int`（可选；按指针 pointee 的 `TypeID` 匹配） |
+| `mutable` | bool | 要求非常量数据指针（可选，默认 `false`） |
+
+**语言前端**负责实例化与约束检查（C++ 为 Clang/Sema）；AMC 协调请求并记录具体
+ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` 时，AMC 还会把具体类型对该
+契约做 **lowering** 并记录结果：`direct`（类型本身即边界实体）、`needs_adapter`（形状兼容，
+生成薄适配器）或拒绝。实例化成功**并不**等于满足 ABIX-STD 契约。见
+[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18。
+
+### `[[view]]` — 容器 accessor 适配
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 容器类型（其布局保持 opaque） |
+| `data_accessor` | string | 返回数据指针的函数 |
+| `size_accessor` | string | 返回元素个数的函数 |
+
+通过 accessor 把容器 lower 成连续序列视图（例如 `std::vector<T>` 的 `data()`/`size()`），
+不暴露内部布局。AMC 生成薄适配器；借用生命周期与失效条件仍属于调用方契约。
 
 ### `[target]`
 

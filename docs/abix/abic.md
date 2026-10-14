@@ -82,6 +82,13 @@ function = "bar_process"
 success = 0
 value = 2
 
+# Generic instantiation: the frontend instantiates the template and AMC records
+# the concrete entity `abix_span_i32`.
+[[instantiate]]
+template = "abix_std::abix_span"
+args = ["int32_t"]
+as = "abix_span_i32"
+
 # Target platform facts (integers; `endianness` is a keyword).
 [target]
 arch = 1
@@ -158,6 +165,39 @@ reader must not infer `borrowed` or `owned`. See
 It lets a backend turn a bare C status code into a typed result; a language-native
 exception/panic must not cross the ABI boundary. See
 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1.
+
+### `[[instantiate]]` — generic instantiation
+
+| Field | Type | Description |
+|------|------|------|
+| `template` | string | Generic entity name (may be qualified, e.g. `abix_std::abix_span`) |
+| `args` | string[] | Canonical type arguments, e.g. `["int32_t"]` |
+| `as` | string | Exported name of the concrete entity (also emitted as a source alias) |
+| `contract` | string | ABIX-STD contract to lower to: `sequence-view` or `string-view` (optional; `purpose` is an accepted alias) |
+| `element` | string | Element spelling the contract requires, e.g. `int` (optional; matched against the pointer's pointee `TypeID`) |
+| `mutable` | bool | Require a non-const data pointer (optional, default `false`) |
+
+The **language frontend** performs the instantiation and the constraint check
+(Clang/Sema for C++); AMC coordinates the request and records the concrete ABI
+facts. ABIX records concrete entities, not generic parameters. When a `contract`
+is given, AMC also **lowers** the concrete type against that contract and records
+the result: `direct` (the type is already the boundary entity), `needs_adapter`
+(compatible shape, a thin adapter is generated), or a rejection. A successful
+instantiation does **not** by itself claim ABIX-STD contract compatibility. See
+[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18.
+
+### `[[view]]` — container accessor adapter
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Container type (its layout stays opaque) |
+| `data_accessor` | string | Function returning the data pointer |
+| `size_accessor` | string | Function returning the element count |
+
+Lowers a container to the sequence view through accessors (for example a
+`std::vector<T>`'s `data()`/`size()`), without exposing its internal layout. AMC
+generates a thin adapter; the borrow lifetime and invalidation conditions remain
+part of the caller's contract.
 
 ### `[target]`
 

@@ -52,6 +52,9 @@ A plugin **should**:
 - extract ABI-relevant semantics (size, alignment, offsets, calling convention,
   parameter/return types, symbol naming);
 - normalize language-specific constructs into the ABIX model;
+- perform generic instantiation and constraint checking for its language, and
+  report the concrete entity (ABIX records concrete instantiations, not generic
+  parameters — see [`ABI-SPEC.md`](ABI-SPEC.md) §18);
 - declare the target (arch / os / ABI / compiler / calling convention).
 
 A plugin **must not**:
