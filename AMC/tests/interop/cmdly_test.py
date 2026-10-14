@@ -88,6 +88,12 @@ def main() -> int:
     facade = os.path.join(work, "libcmdly_c" + suffix)
 
     # 1. Build the C facade over cmdly.
+    # cmdly's headers include <fmt/...>; a Linux system fmt is on the default
+    # search path, but a Homebrew fmt is not, so ask pkg-config for its flags.
+    fmt_cflags = []
+    fmt_probe = run(["pkg-config", "--cflags", "fmt"])
+    if fmt_probe.returncode == 0:
+        fmt_cflags = fmt_probe.stdout.split()
     r = run([
         cxx, "-std=c++17", "-fPIC", "-shared", "-O2",
         os.path.join(work, "cmdly_c.cpp"),
@@ -96,7 +102,7 @@ def main() -> int:
         "-L" + cmdly_lib, "-lcmdly",
         "-Wl,-rpath," + cmdly_lib,
         "-o", facade,
-    ])
+    ] + fmt_cflags)
     if not check(r.returncode == 0, "compiled the cmdly C facade", r.stderr[-400:]):
         return 1
 
@@ -118,13 +124,19 @@ def main() -> int:
 
     # 4. Compile the Rust consumer against the generated projection.
     consumer = os.path.join(work, "consumer")
+    link_args = [
+        "-C", "link-arg=-Wl,-rpath," + work,
+        "-C", "link-arg=-Wl,-rpath," + cmdly_lib,
+    ]
+    if sys.platform != "darwin":
+        # GNU ld resolves transitive shared-library dependencies at link time;
+        # Mach-O ld has no -rpath-link option and does not need it.
+        link_args.insert(0, "-C")
+        link_args.insert(1, "link-arg=-Wl,-rpath-link," + cmdly_lib)
     r = run([
         rustc, "--edition", "2021", os.path.join(work, "consumer.rs"), "-o", consumer,
         "-L", "native=" + work, "-l", "dylib=cmdly_c",
-        "-C", "link-arg=-Wl,-rpath-link," + cmdly_lib,
-        "-C", "link-arg=-Wl,-rpath," + work,
-        "-C", "link-arg=-Wl,-rpath," + cmdly_lib,
-    ])
+    ] + link_args)
     if not check(r.returncode == 0, "rustc compiled the consumer", r.stderr[-400:]):
         return 1
 
