@@ -139,22 +139,22 @@ reproducible on every *available* platform.
 | `main` | latest stable; only moves forward from a fully verified `devel` |
 | `release/x.y.z` | a frozen stable line; tags `vX.Y.Z` must be platform-consistent |
 | `devel` | unified integration branch; only changes that pass on **all** available platforms land here |
-| `devel-Beta` | promotion stage: an `devel-Alpha` that passed its platform tests merges here for the next/broader test round |
-| `devel-Alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
-| `devel-Linux` | Linux development line |
-| `devel-macOS` | macOS development line |
-| `devel-Windows` | Windows development line (not building yet) |
+| `devel-beta` | promotion stage: a `devel-alpha` that passed its platform tests merges here for the next/broader test round |
+| `devel-alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
+| `devel-linux` | Linux development line |
+| `devel-macos` | macOS development line |
+| `devel-windows` | Windows development line (not building yet) |
 
-Promotion pipeline: **platform → `devel-Alpha` → `devel-Beta` → `devel`**
+Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**
 
-1. Develop on your platform branch (`devel-Linux` / `devel-macOS` /
-   `devel-Windows`).
-2. When a unit is complete, merge it into `devel-Alpha` and resolve platform
+1. Develop on your platform branch (`devel-linux` / `devel-macos` /
+   `devel-windows`).
+2. When a unit is complete, merge it into `devel-alpha` and resolve platform
    differences **there**; run the tests on the platforms Alpha supports. Do not
    leave `#ifdef`-style divergence to rot in a platform branch.
-3. Once `devel-Alpha` passes, merge it into `devel-Beta` for the next, broader
+3. Once `devel-alpha` passes, merge it into `devel-beta` for the next, broader
    test round.
-4. Only when **every available platform passes** on `devel-Beta` is it merged
+4. Only when **every available platform passes** on `devel-beta` is it merged
    into `devel`. A platform-specific fix that cannot build elsewhere stays in its
    platform branch, never in `devel`.
 5. `main` and `release/x.y.z` receive only `devel`/release merges that pass every
@@ -166,8 +166,8 @@ Agent rules:
 - When you touch build files, the linker, dynamic-library loading, CRT/allocator
   boundaries, symbol visibility, or any `_WIN32` / `__APPLE__` path, state in
   the change which platforms you verified.
-- Never push platform-specific work directly to `devel`, `devel-Beta` or `main`;
-  push it to a platform branch, promote it through `devel-Alpha` → `devel-Beta`
+- Never push platform-specific work directly to `devel`, `devel-beta` or `main`;
+  push it to a platform branch, promote it through `devel-alpha` → `devel-beta`
   → `devel`.
 - Do not move `main`, create a release branch, or create a version tag unless
   explicitly asked; release operations require full platform consistency.
