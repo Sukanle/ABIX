@@ -120,6 +120,132 @@ def main() -> int:
     check(r.returncode == 0 and "expose registry: OK" in r.stdout,
           "registry bus discovered, bound and leased the exposed capabilities", (r.stdout + r.stderr)[-400:])
 
+    # ABIX-STD contract mapping: exposed methods speak SequenceView / StringView
+    # / Result, and the contracts are recorded and projected.
+    for name in ("std_api.hpp", "std_api.abic.toml", "consumer_std.rs"):
+        shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
+    # The fixture reaches the ABIX-STD headers by a path relative to its own
+    # location; rewrite it to the real source root after the copy.
+    header = os.path.join(work, "std_api.hpp")
+    text = open(header, encoding="utf-8").read().replace(
+        "../../../../ABIX/", source_root.rstrip("/") + "/ABIX/")
+    open(header, "w", encoding="utf-8").write(text)
+    r = run([amc, "build", "-c", os.path.join(work, "std_api.abic.toml"), "-B", os.path.join(work, "std_out")])
+    if not check(r.returncode == 0, "amc build for the ABIX-STD api", (r.stdout + r.stderr)[-400:]):
+        return 1
+    std_module = os.path.join(work, "libmetrics" + suffix)
+    r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "std_thunks.cpp"),
+             "-I" + source_root, "-o", std_module])
+    if not check(r.returncode == 0, "the ABIX-STD thunks compile", r.stderr[-400:]):
+        return 1
+    std_gen = os.path.join(work, "std_gen")
+    os.makedirs(std_gen, exist_ok=True)
+    r = run([amc, "generate", os.path.join(work, "std_out", "expose_std.abix"), "-l", "rust", "-o", std_gen])
+    if not check(r.returncode == 0, "amc generate for the ABIX-STD api", (r.stdout + r.stderr)[-400:]):
+        return 1
+    std_consumer = os.path.join(work, "consumer_std")
+    # consumer_std.rs includes `gen/amc_generated.rs`; point it at the std gen.
+    std_consumer_src = os.path.join(work, "consumer_std.rs")
+    text = open(std_consumer_src, encoding="utf-8").read().replace("gen/amc_generated.rs", "std_gen/amc_generated.rs")
+    open(std_consumer_src, "w", encoding="utf-8").write(text)
+    r = run([rustc, "--edition", "2021", std_consumer_src, "-o", std_consumer,
+             "-L", "native=" + work, "-l", "dylib=metrics", "-C", "link-arg=-Wl,-rpath," + work])
+    if not check(r.returncode == 0, "rustc compiled the ABIX-STD consumer", r.stderr[-400:]):
+        return 1
+    r = run([std_consumer], env=env)
+    check(r.returncode == 0 and "expose std: OK" in r.stdout,
+          "SequenceView / StringView / Result mapped through the exposed API", (r.stdout + r.stderr)[-400:])
+
+    # Real-project comparison: expose a type from cmdly. Auto-expose covers its
+    # representable surface; a std::string method is refused pending a contract.
+    cmdly_root = os.environ.get("CMDLY_ROOT") or os.path.expanduser("~/Code/cmdly")
+    cmdly_include = os.path.join(cmdly_root, "libcmdly", "include")
+    cmdly_lib = None
+    for candidate in ("build/Release/libcmdly", "build/libcmdly", "build/lib", "lib"):
+        directory = os.path.join(cmdly_root, candidate)
+        for name in ("libcmdly.so", "libcmdly.dylib"):
+            if os.path.isfile(os.path.join(directory, name)):
+                cmdly_lib = directory
+                break
+        if cmdly_lib:
+            break
+    if not os.path.isdir(cmdly_include) or not cmdly_lib:
+        print("  [SKIP] cmdly real-project comparison (set CMDLY_ROOT to enable)")
+    else:
+        key_header = os.path.join(cmdly_include, "cmdly", "key.h")
+        key_config = os.path.join(work, "cmdly_key.abic.toml")
+        open(key_config, "w", encoding="utf-8").write(f"""[package]
+name = "cmdly_key"
+version = "1.0"
+[[import]]
+language = "cpp"
+flags = ["-std=c++17", "-I{cmdly_include}"]
+files = ["{key_header}"]
+symbols = ["cmdly::Key"]
+[[expose]]
+type = "cmdly::Key"
+methods = ["code", "isPrintable"]
+constructor = ["char"]
+[thunks]
+output = "cmdly_thunks.cpp"
+[[export]]
+output = "cmdly_key.abix"
+""")
+        r = run([amc, "build", "-c", key_config, "-B", os.path.join(work, "cmdly_out")])
+        ok = check(r.returncode == 0, "cmdly::Key exposed automatically", (r.stdout + r.stderr)[-400:])
+        if ok:
+            key_module = os.path.join(work, "libcmdlykey" + suffix)
+            r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "cmdly_thunks.cpp"),
+                     "-I" + source_root, "-I" + cmdly_include, "-L" + cmdly_lib, "-lcmdly",
+                     "-Wl,-rpath," + cmdly_lib, "-o", key_module])
+            if check(r.returncode == 0, "cmdly thunks compile", r.stderr[-400:]):
+                key_gen = os.path.join(work, "cmdly_gen")
+                os.makedirs(key_gen, exist_ok=True)
+                r = run([amc, "generate", os.path.join(work, "cmdly_out", "cmdly_key.abix"), "-l", "rust",
+                         "-o", key_gen])
+                check(r.returncode == 0, "cmdly capabilities project to Rust", (r.stdout + r.stderr)[-400:])
+                key_src = os.path.join(work, "consumer_key.rs")
+                shutil.copy(os.path.join(fixture, "consumer_key.rs"), key_src)
+                key_text = open(key_src, encoding="utf-8").read().replace(
+                    "gen/amc_generated.rs", "cmdly_gen/amc_generated.rs")
+                open(key_src, "w", encoding="utf-8").write(key_text)
+                kenv = dict(env)
+                kenv["LD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + kenv.get("LD_LIBRARY_PATH", "")
+                kenv["DYLD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + kenv.get("DYLD_LIBRARY_PATH", "")
+                key_bin = os.path.join(work, "consumer_key")
+                r = run([rustc, "--edition", "2021", key_src, "-o", key_bin,
+                         "-L", "native=" + work, "-l", "dylib=cmdlykey",
+                         "-C", "link-arg=-Wl,-rpath-link," + cmdly_lib,
+                         "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib])
+                if check(r.returncode == 0, "cmdly consumer compiles", r.stderr[-400:]):
+                    r = run([key_bin], env=kenv)
+                    check(r.returncode == 0 and "expose cmdly: OK" in r.stdout,
+                          "Rust drove the real cmdly Key", (r.stdout + r.stderr)[-400:])
+
+        # A std::string method must be refused (it needs an explicit contract).
+        ins_config = os.path.join(work, "cmdly_insert.abic.toml")
+        ins_header = os.path.join(cmdly_include, "cmdly", "history.h")
+        open(ins_config, "w", encoding="utf-8").write(f"""[package]
+name = "cmdly_insert"
+version = "1.0"
+[[import]]
+language = "cpp"
+flags = ["-std=c++17", "-I{cmdly_include}"]
+files = ["{ins_header}"]
+symbols = ["cmdly::History"]
+[[expose]]
+type = "cmdly::History"
+methods = ["insert"]
+constructor = ["unsigned long"]
+[thunks]
+output = "insert_thunks.cpp"
+[[export]]
+output = "cmdly_insert.abix"
+""")
+        r = run([amc, "build", "-c", ins_config, "-B", os.path.join(work, "insert_out")])
+        check(r.returncode != 0 and "needs a contract" in (r.stdout + r.stderr),
+              "a std::string method is refused pending a contract", (r.stdout + r.stderr)[-400:])
+
     shutil.rmtree(work, ignore_errors=True)
     print("=== automatic capability generation: %d passed, %d failed ===" % (passed, failed))
     return 1 if failed else 0
