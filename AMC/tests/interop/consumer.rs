@@ -84,6 +84,12 @@ fn main() {
         assert_eq!(ec.success_value, 0, "div success value");
         assert_eq!(ec.value_parameter, 2, "div value parameter");
 
+        // Container accessor adapters are discoverable from the region too, with
+        // their borrow semantics (the invalidation rule is the caller's contract).
+        assert!(region.view_adapter_count() >= 1, "view adapter in region");
+        assert!(region.range_adapter_count() >= 1, "range adapter in region");
+        assert_eq!(region.view_adapter_at(0).unwrap().semantics, 1, "view is borrowed");
+
         // Target platform verification, read from the same region.
         let target = region.target().expect("target description");
         assert_eq!(target.pointer_bits, 64, "pointer width");

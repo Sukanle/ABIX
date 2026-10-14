@@ -37,9 +37,10 @@ constexpr uint32_t kErrorEntrySize =
 constexpr uint32_t kPlatformEntrySize = 8;   // pointer_bits(4) + endianness(4)
 constexpr uint32_t kLoweringEntrySize =
     52;   // type_id(16) + contract_type(16) + kind(4) + status(4) + reason(4) + ptr(4) + len(4)
-constexpr uint32_t kPointeeEntrySize = 36;        // pointer(16) + pointee(16) + flags(4)
-constexpr uint32_t kViewAdapterEntrySize = 64;    // source(16) + target(16) + data(16) + size(16)
-constexpr uint32_t kRangeAdapterEntrySize = 48;   // source(16) + size(16) + at(16)
+constexpr uint32_t kPointeeEntrySize = 36;         // pointer(16) + pointee(16) + flags(4)
+constexpr uint32_t kViewAdapterEntrySize = 64;     // source(16) + target(16) + data(16) + size(16)
+constexpr uint32_t kRangeAdapterEntrySize = 48;    // source(16) + size(16) + at(16)
+constexpr uint32_t kInstantiationEntrySize = 32;   // request(16) + type(16)
 
 enum Section : uint32_t {
     strings = 1,
@@ -63,7 +64,8 @@ enum Section : uint32_t {
     lowering,
     pointees,
     view_adapters,
-    range_adapters
+    range_adapters,
+    instantiations
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -663,6 +665,12 @@ bool validate(const AbiModule &module, std::string &error) {
             }
         }
     }
+    for (const auto &record : module.instantiations) {
+        if (!find_type_by_id(module, record.type)) {
+            error = "instantiation record names an unknown type";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1063,6 +1071,7 @@ bool project_symbols(
     result.pointees.clear();
     result.view_adapters.clear();
     result.range_adapters.clear();
+    result.instantiations.clear();
     std::unordered_set<std::string> complete_type_ids;
     auto complete = [&](Hash128 id) { complete_type_ids.insert(hash_key(id)); };
     auto is_complete = [&](Hash128 id) { return complete_type_ids.count(hash_key(id)) != 0; };
@@ -1173,6 +1182,8 @@ bool project_symbols(
         if (has_type(record.source_type) && has_type(record.target_type)) result.view_adapters.push_back(record);
     for (const auto &record : source.range_adapters)
         if (has_type(record.source_type)) result.range_adapters.push_back(record);
+    for (const auto &record : source.instantiations)
+        if (has_type(record.type)) result.instantiations.push_back(record);
     if (!symbols.empty() && result.types.empty() && result.functions.empty()) {
         error = "export symbols did not match any ABI declaration";
         return false;
@@ -1500,6 +1511,17 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         sections.push_back(std::move(range_table));
     }
 
+    // Optional instantiation request identities.
+    if (!module.instantiations.empty()) {
+        SectionData instantiation_table{
+            instantiations, static_cast<uint32_t>(module.instantiations.size()), kInstantiationEntrySize, 0, {}};
+        for (const auto &record : module.instantiations) {
+            put_hash(instantiation_table.bytes, record.request);
+            put_hash(instantiation_table.bytes, record.type);
+        }
+        sections.push_back(std::move(instantiation_table));
+    }
+
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
     put_u16(bytes, kHashAlgorithm);
@@ -1626,6 +1648,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *pointee_table = optional(pointees, kPointeeEntrySize);
     const auto *view_adapter_table = optional(view_adapters, kViewAdapterEntrySize);
     const auto *range_adapter_table = optional(range_adapters, kRangeAdapterEntrySize);
+    const auto *instantiation_table = optional(instantiations, kInstantiationEntrySize);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -1968,6 +1991,16 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             return false;
         }
         module.range_adapters.push_back(record);
+    }
+    size_t instantiation_offset = instantiation_table ? instantiation_table->offset : 0;
+    for (uint32_t i = 0; instantiation_table && i < instantiation_table->count; ++i) {
+        InstantiationRecord record;
+        if (!read_hash(bytes, instantiation_offset, record.request, error)
+            || !read_hash(bytes, instantiation_offset, record.type, error)) {
+            error = "invalid instantiation record";
+            return false;
+        }
+        module.instantiations.push_back(record);
     }
     size_t descriptor_offset = descriptor_table->offset;
     uint16_t descriptor_algorithm = 0, descriptor_version = 0;

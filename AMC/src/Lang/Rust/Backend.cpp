@@ -649,6 +649,8 @@ pub mod metadata {
     pub const EXTENSION_ERROR: u32 = 2;
     pub const EXTENSION_TARGET: u32 = 3;
     pub const EXTENSION_LOWERING: u32 = 4;
+    pub const EXTENSION_VIEW: u32 = 5;
+    pub const EXTENSION_RANGE: u32 = 6;
 
     // ABIX-STD lowering status / reason codes.
     pub const LOWERING_DIRECT: u32 = 0;
@@ -780,6 +782,23 @@ pub mod metadata {
         pub reason: u32,   // LOWERING_REASON_*
         pub pointer_field: u32,
         pub length_field: u32,
+    }
+
+    /// A container accessor adapter (view or range); functions by table index.
+    #[derive(Clone, Copy)]
+    pub struct ViewAdapterRecord {
+        pub source_index: u32,
+        pub target_index: u32,
+        pub data_accessor: u32,
+        pub size_accessor: u32,
+        pub semantics: u32,   // 1 = borrowed, 2 = owned, 4 = copy
+    }
+    #[derive(Clone, Copy)]
+    pub struct RangeAdapterRecord {
+        pub source_index: u32,
+        pub size_accessor: u32,
+        pub at_accessor: u32,
+        pub semantics: u32,
     }
 
     /// Target platform identity recorded in the region.
@@ -1073,6 +1092,51 @@ pub mod metadata {
             (0..self.lowering_count())
                 .filter_map(|i| self.lowering_at(i))
                 .find(|r| r.type_index == type_index)
+        }
+
+        pub fn view_adapter_count(&self) -> u32 {
+            self.extension(EXTENSION_VIEW).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn view_adapter_at(&self, index: u32) -> Option<ViewAdapterRecord> {
+            let ext = self.extension(EXTENSION_VIEW)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * 24;
+            if base + 24 > d.len() {
+                return None;
+            }
+            Some(ViewAdapterRecord {
+                source_index: u32_at(d, base),
+                target_index: u32_at(d, base + 4),
+                data_accessor: u32_at(d, base + 8),
+                size_accessor: u32_at(d, base + 12),
+                semantics: u32_at(d, base + 16),
+            })
+        }
+
+        pub fn range_adapter_count(&self) -> u32 {
+            self.extension(EXTENSION_RANGE).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn range_adapter_at(&self, index: u32) -> Option<RangeAdapterRecord> {
+            let ext = self.extension(EXTENSION_RANGE)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * 16;
+            if base + 16 > d.len() {
+                return None;
+            }
+            Some(RangeAdapterRecord {
+                source_index: u32_at(d, base),
+                size_accessor: u32_at(d, base + 4),
+                at_accessor: u32_at(d, base + 8),
+                semantics: u32_at(d, base + 12),
+            })
         }
 
         /// Target platform identity, or `None` when the region has none.

@@ -176,6 +176,23 @@ struct MetadataLoweringRecord {
     uint32_t reserved;
 };
 
+// Container accessor adapters (kind = 5 view, 6 range). Functions are referenced
+// by their index in the function table; `flags` carries the contract semantics.
+struct MetadataViewAdapterRecord {
+    uint32_t source_index;
+    uint32_t target_index;
+    uint32_t data_accessor;
+    uint32_t size_accessor;
+    uint32_t flags;
+    uint32_t reserved;
+};
+struct MetadataRangeAdapterRecord {
+    uint32_t source_index;
+    uint32_t size_accessor;
+    uint32_t at_accessor;
+    uint32_t flags;
+};
+
 // Trailing extension directory: how optional contract tables are discovered.
 //
 // Layout (inside the desc section, after the symbol table):
@@ -199,6 +216,13 @@ constexpr uint32_t metadata_extension_ownership = 1;
 constexpr uint32_t metadata_extension_error = 2;
 constexpr uint32_t metadata_extension_target = 3;
 constexpr uint32_t metadata_extension_lowering = 4;
+constexpr uint32_t metadata_extension_view = 5;
+constexpr uint32_t metadata_extension_range = 6;
+
+// Semantics of an accessor adapter, as a contract flag (not a layout fact).
+constexpr uint32_t metadata_adapter_borrowed = 1u << 0;   // view over live data
+constexpr uint32_t metadata_adapter_owned = 1u << 1;      // receiver releases
+constexpr uint32_t metadata_adapter_copy = 1u << 2;       // independent data
 
 struct MetadataExtensionHeader {
     uint32_t version;
@@ -225,6 +249,8 @@ static_assert(sizeof(MetadataOwnershipRecord) == 24, "MetadataOwnershipRecord wi
 static_assert(sizeof(MetadataErrorRecord) == 32, "MetadataErrorRecord wire layout changed");
 static_assert(sizeof(MetadataTargetRecord) == 32, "MetadataTargetRecord wire layout changed");
 static_assert(sizeof(MetadataLoweringRecord) == 32, "MetadataLoweringRecord wire layout changed");
+static_assert(sizeof(MetadataViewAdapterRecord) == 24, "MetadataViewAdapterRecord wire layout changed");
+static_assert(sizeof(MetadataRangeAdapterRecord) == 16, "MetadataRangeAdapterRecord wire layout changed");
 static_assert(sizeof(MetadataExtensionHeader) == 16, "MetadataExtensionHeader wire layout changed");
 static_assert(sizeof(MetadataExtensionEntry) == 24, "MetadataExtensionEntry wire layout changed");
 
@@ -256,6 +282,21 @@ struct MetadataLoweringContract {
     uint32_t length_field = UINT32_MAX;
 };
 
+// Decoded container accessor adapters (functions referenced by table index).
+struct MetadataViewAdapter {
+    uint32_t source_index = 0;
+    uint32_t target_index = 0;
+    uint32_t data_accessor = 0;
+    uint32_t size_accessor = 0;
+    uint32_t semantics = metadata_adapter_borrowed;
+};
+struct MetadataRangeAdapter {
+    uint32_t source_index = 0;
+    uint32_t size_accessor = 0;
+    uint32_t at_accessor = 0;
+    uint32_t semantics = metadata_adapter_borrowed;
+};
+
 // Reads the optional ownership contract records from a Metadata Region. Regions
 // without them yield an empty `out` (every interaction is `unspecified`); an
 // unknown contract version or a malformed record is reported as an error rather
@@ -276,6 +317,15 @@ bool read_lowering_contracts(
     const uint8_t *data, size_t size, std::vector<MetadataLoweringContract> &out, std::string &error);
 bool read_lowering_contracts(
     const std::vector<uint8_t> &region, std::vector<MetadataLoweringContract> &out, std::string &error);
+
+// Reads the optional container accessor adapters (view / range). The `semantics`
+// flag carries borrow/owned/copy; the lifetime and invalidation rules are the
+// caller's contract, expressed here so a reader can report them.
+bool read_view_adapters(const uint8_t *data, size_t size, std::vector<MetadataViewAdapter> &out, std::string &error);
+bool read_view_adapters(const std::vector<uint8_t> &region, std::vector<MetadataViewAdapter> &out, std::string &error);
+bool read_range_adapters(const uint8_t *data, size_t size, std::vector<MetadataRangeAdapter> &out, std::string &error);
+bool read_range_adapters(
+    const std::vector<uint8_t> &region, std::vector<MetadataRangeAdapter> &out, std::string &error);
 
 // Target platform description recovered from a region. `present` is false when
 // the region carries no target extension (all fields unknown).

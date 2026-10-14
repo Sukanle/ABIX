@@ -384,8 +384,11 @@ the `desc` section, after the fixed record tables:
   rejected rather than guessed at.
 
 Known extension kinds: `1` ownership, `2` error boundary, `3` target
-description, `4` ABIX-STD lowering. Adding a kind does not require a format
-version change.
+description, `4` ABIX-STD lowering, `5` view adapter, `6` range adapter. Adding a
+kind does not require a format version change. A view/range adapter carries a
+`semantics` flag (borrowed / owned / copy); the lifetime and invalidation rules
+remain the caller's contract — the region only reports them, it never enforces a
+lifetime at run time.
 
 ## 14. Versioning
 
@@ -629,6 +632,11 @@ Identity is layered and MUST NOT be conflated:
 | Instantiation request      | template + canonical arguments + target + frontend   |
 | Concrete ABI identity      | layout + calling ABI + target (layout/`LayoutHash`)  |
 | Export symbol name         | a link/diagnostic name; not an identity              |
+
+The instantiation request identity is recorded in the `.abix` (an optional
+`instantiations` section) as request-hash → concrete type, so tools can recognise
+the same request across builds. A request match is not a compatibility proof: the
+concrete ABI identity is checked separately.
 
 Ownership and other contracts are validated separately from layout identity.
 

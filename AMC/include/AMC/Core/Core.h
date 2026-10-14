@@ -319,6 +319,14 @@ struct RangeAdapter {
     Hash128 at_accessor{};     // function signature: T (const Source *, unsigned index)
 };
 
+// Identity of one instantiation request (template + canonical arguments + target
+// + frontend), mapped to the concrete entity it produced. This is the request
+// identity layer; it is not the concrete ABI identity nor the export symbol name.
+struct InstantiationRecord {
+    Hash128 request{};
+    Hash128 type{};
+};
+
 // A pointer type's pointee, recorded so element/contract matching can use ABI
 // identity (TypeID) instead of a spelling. Mutability is a separate qualifier,// not part of the base element identity:
 // the contract matcher checks it. A pointer without a pointee entry is matched by spelling as a fallback.
@@ -344,13 +352,14 @@ struct AbiModule {
     std::vector<MapRecord> maps;
     // Ownership contract (see `OwnedType` / `OwnershipContract`). Not part of
     // ABI identity.
-    std::vector<OwnedType> owned;               // release-policy registry
-    std::vector<OwnershipContract> contracts;   // per-interaction ownership modes
-    std::vector<ErrorContract> errors;          // per-function error boundary
-    std::vector<LoweringResult> lowerings;      // ABIX-STD contract match results
-    std::vector<PointeeRef> pointees;           // pointer -> pointee TypeID
-    std::vector<ViewAdapter> view_adapters;     // container -> sequence-view accessors
-    std::vector<RangeAdapter> range_adapters;   // container -> iterable range accessors
+    std::vector<OwnedType> owned;                      // release-policy registry
+    std::vector<OwnershipContract> contracts;          // per-interaction ownership modes
+    std::vector<ErrorContract> errors;                 // per-function error boundary
+    std::vector<LoweringResult> lowerings;             // ABIX-STD contract match results
+    std::vector<PointeeRef> pointees;                  // pointer -> pointee TypeID
+    std::vector<ViewAdapter> view_adapters;            // container -> sequence-view accessors
+    std::vector<RangeAdapter> range_adapters;          // container -> iterable range accessors
+    std::vector<InstantiationRecord> instantiations;   // instantiation request identity -> concrete type
     // Optional, debug-only: where each type was declared. Not part of ABI
     // identity (excluded from the artifact hash) — it exists so tools can
     // implement go-to-definition TypeID -> source declaration.

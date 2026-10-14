@@ -286,6 +286,23 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
                         error = "[[instantiate]] contract references an unknown concrete type: " + as;
                         return fail(amc::ErrorCategory::config, "build", error, config_path.string());
                     }
+                    // Instantiation request identity: template + canonical args +
+                    // target + frontend. Not the concrete ABI identity.
+                    std::string request_key = (*table)["template"].value_or(std::string{}) + "\x1f";
+                    if (const auto *args = (*table)["args"].as_array())
+                        for (auto &&value : *args) {
+                            request_key += value.value_or("");
+                            request_key += ",";
+                        }
+                    request_key += "\x1f"
+                                 + std::to_string(full.arch)
+                                 + ":"
+                                 + std::to_string(full.os)
+                                 + ":"
+                                 + std::to_string(full.target_abi)
+                                 + ":"
+                                 + std::to_string(full.pointer_bits);
+                    full.instantiations.push_back({amc::hash_text(request_key, 0x494e5354), type_id});
                     const std::string element_name = (*table)["element"].value_or(std::string{});
                     amc::Hash128 element_id{};
                     if (!element_name.empty()) {

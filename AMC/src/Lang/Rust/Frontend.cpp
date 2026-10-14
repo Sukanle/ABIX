@@ -663,12 +663,30 @@ private:
         // Reference / raw pointer.
         if (tokens[0] == "*" || tokens[0] == "&") {
             size_t i = 1;
-            while (i < tokens.size() && (tokens[i] == "const" || tokens[i] == "mut"))
+            bool is_const = tokens[0] == "&";
+            while (i < tokens.size() && (tokens[i] == "const" || tokens[i] == "mut")) {
+                if (tokens[i] == "const") is_const = true;
+                if (tokens[i] == "mut") is_const = false;
                 ++i;
+            }
             std::string name;
             for (const auto &token : tokens)
                 name += token;
-            return add_aggregate_ref(name, 8, 8, amc::TypeKind::pointer);
+            const Resolved pointer = add_aggregate_ref(name, 8, 8, amc::TypeKind::pointer);
+            // Record the pointee so element/contract matching uses ABI identity
+            // (TypeID) instead of a spelling. An unresolvable pointee falls back
+            // to the spelling without failing the parse.
+            std::vector<std::string> pointee_tokens(tokens.begin() + static_cast<std::ptrdiff_t>(i), tokens.end());
+            if (!pointee_tokens.empty()) {
+                const std::string saved_error = error_;
+                error_.clear();
+                const Resolved pointee = resolve_type(pointee_tokens);
+                if (error_.empty())
+                    module_.pointees.push_back({pointer.id, pointee.id, is_const ? amc::pointee_const : 0u});
+                else
+                    error_ = saved_error;
+            }
+            return pointer;
         }
         // Fixed-size array `[T; N]`.
         if (tokens[0] == "[" && tokens.back() == "]") {

@@ -264,6 +264,42 @@ bool build_metadata_region(
         out.length_field = record.length_field;
         append_record(lowering_records, &out, sizeof(out));
     }
+    const auto type_index_of = [&](Hash128 id) -> uint32_t {
+        for (size_t i = 0; i < module.types.size(); ++i)
+            if (module.types[i].id == id) return static_cast<uint32_t>(i);
+        return UINT32_MAX;
+    };
+    const auto function_index_of = [&](Hash128 signature) -> uint32_t {
+        for (size_t i = 0; i < module.functions.size(); ++i)
+            if (module.functions[i].signature == signature) return static_cast<uint32_t>(i);
+        return UINT32_MAX;
+    };
+    std::vector<uint8_t> view_records;
+    for (const auto &adapter : module.view_adapters) {
+        MetadataViewAdapterRecord record{};
+        record.source_index = type_index_of(adapter.source_type);
+        record.target_index = type_index_of(adapter.target_type);
+        record.data_accessor = function_index_of(adapter.data_accessor);
+        record.size_accessor = function_index_of(adapter.size_accessor);
+        record.flags = metadata_adapter_borrowed;
+        if (record.source_index == UINT32_MAX
+            || record.target_index == UINT32_MAX
+            || record.data_accessor == UINT32_MAX
+            || record.size_accessor == UINT32_MAX)
+            continue;
+        append_record(view_records, &record, sizeof(record));
+    }
+    std::vector<uint8_t> range_records;
+    for (const auto &adapter : module.range_adapters) {
+        MetadataRangeAdapterRecord record{};
+        record.source_index = type_index_of(adapter.source_type);
+        record.size_accessor = function_index_of(adapter.size_accessor);
+        record.at_accessor = function_index_of(adapter.at_accessor);
+        record.flags = metadata_adapter_borrowed;
+        if (record.source_index == UINT32_MAX || record.size_accessor == UINT32_MAX || record.at_accessor == UINT32_MAX)
+            continue;
+        append_record(range_records, &record, sizeof(record));
+    }
     std::vector<PendingExtension> pending;
     if (!ownership_records.empty())
         pending.push_back(
@@ -274,6 +310,12 @@ bool build_metadata_region(
     if (!lowering_records.empty())
         pending.push_back({metadata_extension_lowering, 1,
             static_cast<uint32_t>(lowering_records.size() / sizeof(MetadataLoweringRecord)), &lowering_records});
+    if (!view_records.empty())
+        pending.push_back({metadata_extension_view, 1,
+            static_cast<uint32_t>(view_records.size() / sizeof(MetadataViewAdapterRecord)), &view_records});
+    if (!range_records.empty())
+        pending.push_back({metadata_extension_range, 1,
+            static_cast<uint32_t>(range_records.size() / sizeof(MetadataRangeAdapterRecord)), &range_records});
     if (!pending.empty()) {
         const uint64_t directory_begin = desc.size();
         const uint64_t entries_begin = directory_begin + sizeof(MetadataExtensionHeader);
@@ -854,6 +896,87 @@ bool read_lowering_contracts(
 bool read_lowering_contracts(
     const std::vector<uint8_t> &region, std::vector<MetadataLoweringContract> &out, std::string &error) {
     return read_lowering_contracts(region.data(), region.size(), out, error);
+}
+
+bool read_view_adapters(const uint8_t *data, size_t size, std::vector<MetadataViewAdapter> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_view, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1 || byte_size != static_cast<size_t>(count) * sizeof(MetadataViewAdapterRecord)) {
+        error = "malformed view adapter extension";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataViewAdapterRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.source_index >= header.type_count
+            || record.target_index >= header.type_count
+            || record.data_accessor >= header.function_count
+            || record.size_accessor >= header.function_count) {
+            error = "view adapter index is out of range";
+            return false;
+        }
+        MetadataViewAdapter adapter;
+        adapter.source_index = record.source_index;
+        adapter.target_index = record.target_index;
+        adapter.data_accessor = record.data_accessor;
+        adapter.size_accessor = record.size_accessor;
+        adapter.semantics = record.flags;
+        out.push_back(adapter);
+    }
+    return true;
+}
+
+bool read_view_adapters(const std::vector<uint8_t> &region, std::vector<MetadataViewAdapter> &out, std::string &error) {
+    return read_view_adapters(region.data(), region.size(), out, error);
+}
+
+bool read_range_adapters(const uint8_t *data, size_t size, std::vector<MetadataRangeAdapter> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_range, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1 || byte_size != static_cast<size_t>(count) * sizeof(MetadataRangeAdapterRecord)) {
+        error = "malformed range adapter extension";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataRangeAdapterRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.source_index >= header.type_count
+            || record.size_accessor >= header.function_count
+            || record.at_accessor >= header.function_count) {
+            error = "range adapter index is out of range";
+            return false;
+        }
+        MetadataRangeAdapter adapter;
+        adapter.source_index = record.source_index;
+        adapter.size_accessor = record.size_accessor;
+        adapter.at_accessor = record.at_accessor;
+        adapter.semantics = record.flags;
+        out.push_back(adapter);
+    }
+    return true;
+}
+
+bool read_range_adapters(
+    const std::vector<uint8_t> &region, std::vector<MetadataRangeAdapter> &out, std::string &error) {
+    return read_range_adapters(region.data(), region.size(), out, error);
 }
 
 bool read_target_description(const uint8_t *data, size_t size, TargetDescription &out, std::string &error) {
