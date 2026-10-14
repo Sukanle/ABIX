@@ -4,6 +4,7 @@
 
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/DeclTemplate.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/Basic/SourceManager.h>
@@ -17,6 +18,7 @@
 #include <fmt/base.h>
 
 #include <filesystem>
+#include <cctype>
 
 namespace amc::lang::cpp {
 namespace {
@@ -167,6 +169,12 @@ private:
     // `long` / `long long`) collapse onto one type record with one TypeID.
     std::unordered_map<std::string, amc::Hash128> primitive_ids;
     std::string name(const clang::NamedDecl *d) const { return d->getQualifiedNameAsString(); }
+    static bool plain_identifier(const std::string &s) {
+        if (s.empty() || !(std::isalpha(static_cast<unsigned char>(s[0])) || s[0] == '_')) return false;
+        for (const char c : s)
+            if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) return false;
+        return true;
+    }
     void record_source(amc::Hash128 type_id, clang::SourceLocation location) {
         if (location.isInvalid()) return;
         const auto presumed = ctx.getSourceManager().getPresumedLoc(location);
@@ -210,10 +218,22 @@ private:
         return false;
     }
     amc::Hash128 add_type(clang::QualType qt) {
+        // Keep the source spelling before canonicalizing: a typedef such as
+        // `abix_span_i32` names a concrete instantiation, and that name should
+        // be the exported ABI entity even when the alias is not an explicit
+        // export symbol.
+        const std::string original = qt.getAsString();
         qt = qt.getCanonicalType();
         auto s = qt.getAsString();
         auto it = ids.find(s);
         if (it != ids.end()) return it->second;
+        if (original != s) {
+            auto alias = ids.find(original);
+            if (alias != ids.end()) {
+                ids.emplace(s, alias->second);
+                return alias->second;
+            }
+        }
         if (qt->isDependentType()) {
             amc::Type t;
             t.name = s;
@@ -223,29 +243,70 @@ private:
             module.types.push_back(std::move(t));
             return ids.at(s);
         }
-        // A concrete template specialization has a stable instantiated layout,
-        // but walking its primary template can expose dependent AST nodes.
-        // Record the specialization as an opaque ABI type here; its concrete
-        // fields are still available when Clang presents a complete record.
+        // A concrete template specialization: when the instantiation is complete
+        // (the frontend owns instantiation), record its real layout and fields.
+        // Otherwise fall back to an opaque record so a reference never crashes.
         if (qt->getAs<clang::TemplateSpecializationType>()) {
+            // When the specialization was reached through a typedef alias (for
+            // example `abix_span_i32`), use the alias as the exported ABI name.
+            const bool alias_named = original != s && plain_identifier(original);
+            if (auto *record = qt->getAsCXXRecordDecl(); record && record->isCompleteDefinition()) {
+                add_record(record, alias_named ? original : std::string());
+                const auto found = ids.find(alias_named ? original : name(record));
+                if (found != ids.end()) {
+                    ids[s] = found->second;
+                    return found->second;
+                }
+            }
+            const std::string type_name = alias_named ? original : s;
             amc::Type t;
-            t.name = s;
+            t.name = type_name;
             t.kind = amc::TypeKind::record;
-            t.id = amc::hash_text(s, 0x54595045);
-            t.size = uint32_t(ctx.getTypeSize(qt) / 8);
-            t.align = uint32_t(ctx.getTypeAlign(qt) / 8);
+            t.id = amc::hash_text(type_name, 0x54595045);
+            t.size = 1;
+            t.align = 1;
             ids.emplace(s, t.id);
+            if (alias_named) ids.emplace(original, t.id);
             module.types.push_back(std::move(t));
             return ids.at(s);
         }
         if (const auto *record = qt->getAsCXXRecordDecl()) {
             const auto record_key = qt.getAsString();
-            add_record(const_cast<clang::CXXRecordDecl *>(record));
-            auto found = ids.find(record_key);
-            if (found != ids.end()) return found->second;
+            // A typedef alias of an instantiation (`abix_span_i32`) names the
+            // concrete ABI entity; record it under the alias so it can be
+            // lowered without an explicit export symbol.
+            const bool alias_named = original != s && plain_identifier(original);
+            add_record(const_cast<clang::CXXRecordDecl *>(record), alias_named ? original : std::string());
+            auto found = ids.find(alias_named ? original : record_key);
+            if (found != ids.end()) {
+                ids[s] = found->second;
+                return found->second;
+            }
             found = ids.find(name(record));
-            if (found != ids.end()) return found->second;
-            return add_type(ctx.getCanonicalTagType(const_cast<clang::CXXRecordDecl *>(record)));
+            if (found != ids.end()) {
+                ids[s] = found->second;
+                return found->second;
+            }
+            // Incomplete record (a forward declaration such as `struct Counter;`):
+            // record it as opaque and register it so a self-referential reference
+            // terminates instead of recursing forever. cv-qualifiers are dropped
+            // so `DemoBuffer` and `const DemoBuffer` share one opaque type.
+            const std::string opaque_name = name(record);
+            auto existing = ids.find(opaque_name);
+            if (existing != ids.end()) {
+                ids.emplace(s, existing->second);
+                return existing->second;
+            }
+            amc::Type t;
+            t.name = opaque_name;
+            t.kind = amc::TypeKind::record;
+            t.id = amc::hash_text(opaque_name, 0x54595045);
+            t.size = 1;
+            t.align = 1;
+            ids.emplace(s, t.id);
+            ids.emplace(opaque_name, t.id);
+            module.types.push_back(std::move(t));
+            return ids.at(s);
         }
         if (const auto *enumeration = qt->getAs<clang::EnumType>()) {
             add_enum(enumeration->getDecl());
@@ -277,11 +338,15 @@ private:
         } else {
             t.id = amc::hash_text(s, 0x54595045);
         }
+        clang::QualType pointee_type;
+        bool is_pointer = false;
         if (const auto *p = qt->getAs<clang::PointerType>()) {
             t.kind = amc::TypeKind::pointer;
             t.name = p->getPointeeType().getAsString() + "*";
             t.size = ctx.getTypeSize(qt) / 8;
             t.align = ctx.getTypeAlign(qt) / 8;
+            is_pointer = true;
+            pointee_type = p->getPointeeType();
         }
         if (const auto *a = llvm::dyn_cast<clang::ConstantArrayType>(qt.getTypePtr())) {
             t.kind = amc::TypeKind::array;
@@ -289,6 +354,13 @@ private:
         }
         ids[s] = t.id;
         module.types.push_back(t);
+        // Record the pointee AFTER registering this pointer, so a self-referential
+        // type (a node with a pointer to itself) terminates instead of recursing.
+        if (is_pointer) {
+            const amc::Hash128 pointee_id = add_type(pointee_type);
+            const uint32_t flags = pointee_type.isConstQualified() ? amc::pointee_const : 0u;
+            if (!(pointee_id == amc::Hash128{})) module.pointees.push_back({t.id, pointee_id, flags});
+        }
         return t.id;
     }
     static uint32_t access_flags(clang::AccessSpecifier access) {
@@ -311,10 +383,11 @@ private:
             default:                    return d->hasAttr<clang::AArch64SVEPcsAttr>() ? 5 : 0;
         }
     }
-    void add_record(clang::CXXRecordDecl *d) {
-        const auto record_name = name(d);
+    void add_record(clang::CXXRecordDecl *d, const std::string &forced_name = std::string()) {
+        const auto record_name = forced_name.empty() ? name(d) : forced_name;
         if (ids.count(record_name) != 0) return;
         if (d->isDependentContext() || ctx.getCanonicalTagType(d)->isDependentType()) return;
+        if (!d->isCompleteDefinition()) return;
         add_namespaces(d);
         amc::Type t;
         t.name = record_name;
@@ -326,7 +399,10 @@ private:
         t.size = uint32_t(ctx.getTypeSize(qt) / 8);
         t.align = uint32_t(ctx.getTypeAlign(qt) / 8);
         t.field_begin = uint32_t(module.fields.size());
-        ids[t.name] = t.id;
+        ids[record_name] = t.id;
+        // Also resolve references spelled the Clang way (e.g. a specialization
+        // named `abix_span<int>` exported under the alias `abix_span_i32`).
+        ids[name(d)] = t.id;
         module.types.push_back(t);
         record_source(t.id, d->getLocation());
         const auto record_index = module.types.size() - 1;
@@ -392,14 +468,36 @@ private:
         add_namespaces(d);
         const auto alias_name = name(d);
         if (ids.count(alias_name) != 0) return;
+        const auto underlying_type = d->getUnderlyingType();
+        // An alias of a template instantiation names a concrete ABI entity:
+        // record the instantiated record's layout under the alias name, so the
+        // exported name is stable and valid in every target language. This is the
+        // `span<int> -> abix_span_i32` step; it does not by itself claim the type
+        // satisfies any ABIX-STD contract.
+        if (auto *record = underlying_type.getCanonicalType()->getAsCXXRecordDecl();
+            record && record->isCompleteDefinition() && llvm::isa<clang::ClassTemplateSpecializationDecl>(record)) {
+            add_record(record, alias_name);
+            const auto found = ids.find(alias_name);
+            if (found != ids.end()) {
+                ids[underlying_type.getAsString()] = found->second;
+                ids[underlying_type.getCanonicalType().getAsString()] = found->second;
+                return;
+            }
+        }
         amc::Type t;
         t.name = alias_name;
         t.kind = amc::TypeKind::alias;
         t.id = amc::hash_text(t.name, 0x54595045);
-        t.size = uint32_t(ctx.getTypeSize(d->getUnderlyingType()) / 8);
-        t.align = uint32_t(ctx.getTypeAlign(d->getUnderlyingType()) / 8);
+        // Guard against incomplete underlying types (an uninstantiated template
+        // must not be queried for its layout).
+        if (underlying_type->isIncompleteType()) {
+            t.size = t.align = 1;
+        } else {
+            t.size = uint32_t(ctx.getTypeSize(underlying_type) / 8);
+            t.align = uint32_t(ctx.getTypeAlign(underlying_type) / 8);
+        }
         ids[t.name] = t.id;
-        const auto underlying = add_type(d->getUnderlyingType());
+        const auto underlying = add_type(underlying_type);
         t.field_begin = uint32_t(module.fields.size());
         t.field_count = 1;
         module.types.push_back(t);
@@ -496,8 +594,37 @@ int run_frontend(const char *config_path, const char *output_path) {
     std::set<std::string> wanted(c.symbols.begin(), c.symbols.end());
     amc::AbiModule module;
     module.package_name = "cpp";
+
+    // Generic instantiation protocol, stage A/B: AMC coordinates the request and
+    // the C++ frontend (Clang/Sema) performs the instantiation and constraint
+    // check. We force it with an anchor translation unit that requires each
+    // requested instantiation to be complete, so a constraint failure surfaces
+    // as a normal compiler diagnostic instead of a silent opaque record.
+    std::vector<std::string> tool_files = c.files;
+    std::string anchor_path;
+    std::string anchor;
+    if (!c.instantiations.empty()) {
+        for (const auto &file : c.files)
+            anchor += "#include \"" + file + "\"\n";
+        for (const auto &inst : c.instantiations) {
+            std::string concrete = inst.template_name + "<";
+            for (size_t i = 0; i < inst.args.size(); ++i) {
+                if (i != 0) concrete += ", ";
+                concrete += inst.args[i];
+            }
+            concrete += ">";
+            if (!inst.as.empty()) anchor += "using " + inst.as + " = " + concrete + ";\n";
+            anchor += "static_assert(sizeof(" + concrete + ") > 0, \"abix instantiate\");\n";
+        }
+        anchor_path = (base / ".amc" / "instantiate.hpp").string();
+        std::error_code ec;
+        std::filesystem::create_directories((base / ".amc").string(), ec);
+        tool_files = {anchor_path};
+    }
+
     Factory factory(wanted, module);
-    clang::tooling::ClangTool tool(*db, c.files);
+    clang::tooling::ClangTool tool(*db, tool_files);
+    if (!anchor_path.empty()) tool.mapVirtualFile(anchor_path, anchor);
     if (tool.run(&factory) != 0) {
         fmt::print(stderr, "clang analysis failed\n");
         return EXIT_FAILURE;

@@ -39,6 +39,16 @@ struct ErrorDecl {
     int64_t value = -1;   // local parameter index, or -1 when the return value is the value
 };
 
+// A request to instantiate a language generic into a concrete type. The
+// frontend owns instantiation and constraint checking; AMC only coordinates and
+// records the concrete ABI facts. `as` is the exported name of the concrete
+// entity (also emitted as a source alias in the instantiation anchor).
+struct InstantiateDecl {
+    std::string template_name;       // e.g. "abix_span"
+    std::vector<std::string> args;   // canonical type arguments, e.g. {"int32_t"}
+    std::string as;                  // exported concrete name, e.g. "abix_span_i32"
+};
+
 struct Config {
     std::string language;
     std::string db;       // compile_commands.json (optional)
@@ -46,9 +56,10 @@ struct Config {
     std::vector<std::string> flags;
     std::vector<std::string> files;
     std::vector<std::string> symbols;
-    std::vector<OwnedDecl> owned;          // [[owned]] release-policy declarations
-    std::vector<ContractDecl> contracts;   // [[contract]] ownership contracts
-    std::vector<ErrorDecl> errors;         // [[error]] error-boundary contracts
+    std::vector<OwnedDecl> owned;                  // [[owned]] release-policy declarations
+    std::vector<ContractDecl> contracts;           // [[contract]] ownership contracts
+    std::vector<ErrorDecl> errors;                 // [[error]] error-boundary contracts
+    std::vector<InstantiateDecl> instantiations;   // [[instantiate]] generic instantiations
 };
 
 // A capability the provider exposes (e.g. "frontend", "backend").

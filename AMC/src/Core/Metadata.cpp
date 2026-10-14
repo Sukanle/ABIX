@@ -246,6 +246,24 @@ bool build_metadata_region(
         record.endianness = module.endianness;
         append_record(target_records, &record, sizeof(record));
     }
+    std::vector<uint8_t> lowering_records;
+    for (const auto &record : module.lowerings) {
+        uint32_t type_index = UINT32_MAX, contract_index = UINT32_MAX;
+        for (size_t i = 0; i < module.types.size(); ++i) {
+            if (module.types[i].id == record.type_id) type_index = static_cast<uint32_t>(i);
+            if (module.types[i].id == record.contract_type) contract_index = static_cast<uint32_t>(i);
+        }
+        if (type_index == UINT32_MAX || contract_index == UINT32_MAX) continue;
+        MetadataLoweringRecord out{};
+        out.type_index = type_index;
+        out.contract_index = contract_index;
+        out.kind = record.kind;
+        out.status = record.status;
+        out.reason = record.reason;
+        out.pointer_field = record.pointer_field;
+        out.length_field = record.length_field;
+        append_record(lowering_records, &out, sizeof(out));
+    }
     std::vector<PendingExtension> pending;
     if (!ownership_records.empty())
         pending.push_back(
@@ -253,6 +271,9 @@ bool build_metadata_region(
     if (!error_records.empty())
         pending.push_back({metadata_extension_error, 1, static_cast<uint32_t>(module.errors.size()), &error_records});
     if (!target_records.empty()) pending.push_back({metadata_extension_target, 1, 1, &target_records});
+    if (!lowering_records.empty())
+        pending.push_back({metadata_extension_lowering, 1,
+            static_cast<uint32_t>(lowering_records.size() / sizeof(MetadataLoweringRecord)), &lowering_records});
     if (!pending.empty()) {
         const uint64_t directory_begin = desc.size();
         const uint64_t entries_begin = directory_begin + sizeof(MetadataExtensionHeader);
@@ -783,6 +804,58 @@ bool read_error_contracts(
     return read_error_contracts(region.data(), region.size(), out, error);
 }
 
+bool read_lowering_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataLoweringContract> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_lowering, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1) {
+        error = "unsupported lowering contract version";
+        return false;
+    }
+    if (byte_size != static_cast<size_t>(count) * sizeof(MetadataLoweringRecord)) {
+        error = "lowering extension size mismatch";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataLoweringRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.type_index >= header.type_count || record.contract_index >= header.type_count) {
+            error = "lowering contract type index is out of range";
+            return false;
+        }
+        if (record.kind > static_cast<uint32_t>(LoweringKind::string_view)
+            || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)
+            || record.reason > static_cast<uint32_t>(LoweringReason::layout)) {
+            error = "invalid lowering contract record";
+            return false;
+        }
+        MetadataLoweringContract contract;
+        contract.type_index = record.type_index;
+        contract.contract_index = record.contract_index;
+        contract.kind = static_cast<LoweringKind>(record.kind);
+        contract.status = static_cast<LoweringStatus>(record.status);
+        contract.reason = static_cast<LoweringReason>(record.reason);
+        contract.pointer_field = record.pointer_field;
+        contract.length_field = record.length_field;
+        out.push_back(contract);
+    }
+    return true;
+}
+
+bool read_lowering_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataLoweringContract> &out, std::string &error) {
+    return read_lowering_contracts(region.data(), region.size(), out, error);
+}
+
 bool read_target_description(const uint8_t *data, size_t size, TargetDescription &out, std::string &error) {
     out = {};
     MetadataHeader header;
@@ -877,6 +950,134 @@ bool verify_target_abi(
 bool verify_target_abi(const std::vector<uint8_t> &region, const TargetExpectation &expected, TargetVerification &out,
     std::string &error) {
     return verify_target_abi(region.data(), region.size(), expected, out, error);
+}
+
+bool verify_abi(const uint8_t *data, size_t size, const TargetExpectation &expected, AbiVerificationReport &out,
+    std::string &error) {
+    out = {};
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+
+    // --- platform identity ---
+    TargetDescription target;
+    if (!read_target_description(data, size, target, error)) return false;
+    if (!target.present) {
+        out.platform = TargetVerificationStatus::unverifiable;
+        out.reasons.push_back("no target description");
+    } else {
+        bool incompatible = false, unverifiable = false;
+        const auto compare = [&](uint32_t want, uint32_t have, const char *name) {
+            if (want == 0) return;
+            if (have == 0) {
+                unverifiable = true;
+                out.reasons.push_back(std::string("target ") + name + " unknown");
+            } else if (have != want) {
+                incompatible = true;
+                out.reasons.push_back(std::string("target ") + name + " mismatch");
+            }
+        };
+        compare(expected.arch, target.arch, "arch");
+        compare(expected.os, target.os, "os");
+        compare(expected.target_abi, target.target_abi, "abi");
+        compare(expected.pointer_bits, target.pointer_bits, "pointer width");
+        compare(expected.endianness, target.endianness, "endianness");
+        out.platform = incompatible ? TargetVerificationStatus::incompatible
+                     : unverifiable ? TargetVerificationStatus::unverifiable
+                                    : TargetVerificationStatus::compatible;
+    }
+
+    // --- layout consistency (region-internal) ---
+    {
+        const uint8_t *base = data + header.desc_offset;
+        struct TypeSize {
+            Hash128 id;
+            uint32_t size;
+        };
+        std::vector<TypeSize> types;
+        types.reserve(header.type_count);
+        for (uint32_t i = 0; i < header.type_count; ++i) {
+            MetadataTypeRecord record{};
+            std::memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            types.push_back({record.type_id, record.size});
+        }
+        const auto size_of = [&](Hash128 id, uint32_t &found) {
+            for (const auto &type : types)
+                if (type.id == id) {
+                    found = type.size;
+                    return true;
+                }
+            return false;
+        };
+        bool incompatible = false, unverifiable = false;
+        const uint32_t pointer_bytes = target.pointer_bits != 0 ? target.pointer_bits / 8 : 0;
+        for (uint32_t i = 0; i < header.type_count; ++i) {
+            MetadataTypeRecord record{};
+            std::memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            if (record.kind != static_cast<uint32_t>(TypeKind::pointer)) continue;
+            if (pointer_bytes == 0)
+                unverifiable = true;
+            else if (record.size != pointer_bytes) {
+                incompatible = true;
+                out.reasons.push_back("a pointer type is not pointer-sized");
+                break;
+            }
+        }
+        const uint8_t *field_base = base + static_cast<size_t>(header.type_count) * sizeof(MetadataTypeRecord);
+        for (uint32_t i = 0; i < header.field_count; ++i) {
+            MetadataFieldRecord record{};
+            std::memcpy(&record, field_base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            uint32_t owner_size = 0, field_size = 0;
+            if (!size_of(record.owner_type, owner_size) || !size_of(record.type_id, field_size)) {
+                unverifiable = true;
+                continue;
+            }
+            if (record.offset > owner_size || field_size > owner_size - record.offset) {
+                incompatible = true;
+                out.reasons.push_back("a field exceeds its owner type");
+                break;
+            }
+        }
+        out.layout = incompatible ? TargetVerificationStatus::incompatible
+                   : unverifiable ? TargetVerificationStatus::unverifiable
+                                  : TargetVerificationStatus::compatible;
+    }
+
+    // --- calling convention ---
+    {
+        if (header.function_count == 0) {
+            out.calling_convention = TargetVerificationStatus::unverifiable;
+            out.reasons.push_back("no functions to verify");
+        } else {
+            const uint8_t *fn_base = data
+                                   + header.desc_offset
+                                   + static_cast<size_t>(header.type_count) * sizeof(MetadataTypeRecord)
+                                   + static_cast<size_t>(header.field_count) * sizeof(MetadataFieldRecord);
+            bool incompatible = false, missing = false;
+            for (uint32_t i = 0; i < header.function_count; ++i) {
+                MetadataFunctionRecord record{};
+                std::memcpy(&record, fn_base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+                if (record.calling_convention == 0)
+                    missing = true;
+                else if (expected.calling_convention != 0 && record.calling_convention != expected.calling_convention)
+                    incompatible = true;
+            }
+            if (incompatible) {
+                out.calling_convention = TargetVerificationStatus::incompatible;
+                out.reasons.push_back("calling convention mismatch");
+            } else if (missing) {
+                out.calling_convention = TargetVerificationStatus::unverifiable;
+                out.reasons.push_back("a function has no calling convention");
+            } else {
+                out.calling_convention = TargetVerificationStatus::compatible;
+            }
+        }
+    }
+    return true;
+}
+
+bool verify_abi(const std::vector<uint8_t> &region, const TargetExpectation &expected, AbiVerificationReport &out,
+    std::string &error) {
+    return verify_abi(region.data(), region.size(), expected, out, error);
 }
 
 bool load_module_source(const std::string &path, AbiModule &module, std::string &error) {

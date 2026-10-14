@@ -162,6 +162,20 @@ struct MetadataTargetRecord {
     uint32_t flags;
 };
 
+// ABIX-STD lowering result, carried as an extension (kind = 4). Types are
+// referenced by their index in the type table. A lowering record lets a reader
+// discover that an adapter is required; it does not by itself execute anything.
+struct MetadataLoweringRecord {
+    uint32_t type_index;       // concrete instantiated type
+    uint32_t contract_index;   // canonical boundary type
+    uint32_t kind;             // LoweringKind
+    uint32_t status;           // LoweringStatus
+    uint32_t reason;           // LoweringReason
+    uint32_t pointer_field;
+    uint32_t length_field;
+    uint32_t reserved;
+};
+
 // Trailing extension directory: how optional contract tables are discovered.
 //
 // Layout (inside the desc section, after the symbol table):
@@ -184,6 +198,7 @@ constexpr uint32_t metadata_extension_version = 1;
 constexpr uint32_t metadata_extension_ownership = 1;
 constexpr uint32_t metadata_extension_error = 2;
 constexpr uint32_t metadata_extension_target = 3;
+constexpr uint32_t metadata_extension_lowering = 4;
 
 struct MetadataExtensionHeader {
     uint32_t version;
@@ -209,6 +224,7 @@ static_assert(sizeof(MetadataHashRecord) == 24, "MetadataHashRecord wire layout 
 static_assert(sizeof(MetadataOwnershipRecord) == 24, "MetadataOwnershipRecord wire layout changed");
 static_assert(sizeof(MetadataErrorRecord) == 32, "MetadataErrorRecord wire layout changed");
 static_assert(sizeof(MetadataTargetRecord) == 32, "MetadataTargetRecord wire layout changed");
+static_assert(sizeof(MetadataLoweringRecord) == 32, "MetadataLoweringRecord wire layout changed");
 static_assert(sizeof(MetadataExtensionHeader) == 16, "MetadataExtensionHeader wire layout changed");
 static_assert(sizeof(MetadataExtensionEntry) == 24, "MetadataExtensionEntry wire layout changed");
 
@@ -229,6 +245,17 @@ struct MetadataErrorContract {
     uint32_t value_parameter = UINT32_MAX;
 };
 
+// A decoded ABIX-STD lowering result (types referenced by table index).
+struct MetadataLoweringContract {
+    uint32_t type_index = 0;
+    uint32_t contract_index = 0;
+    LoweringKind kind = LoweringKind::sequence_view;
+    LoweringStatus status = LoweringStatus::unsupported;
+    LoweringReason reason = LoweringReason::ok;
+    uint32_t pointer_field = UINT32_MAX;
+    uint32_t length_field = UINT32_MAX;
+};
+
 // Reads the optional ownership contract records from a Metadata Region. Regions
 // without them yield an empty `out` (every interaction is `unspecified`); an
 // unknown contract version or a malformed record is reported as an error rather
@@ -243,6 +270,12 @@ bool read_error_contracts(
     const uint8_t *data, size_t size, std::vector<MetadataErrorContract> &out, std::string &error);
 bool read_error_contracts(
     const std::vector<uint8_t> &region, std::vector<MetadataErrorContract> &out, std::string &error);
+
+// Reads the optional ABIX-STD lowering results. Same rules as ownership.
+bool read_lowering_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataLoweringContract> &out, std::string &error);
+bool read_lowering_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataLoweringContract> &out, std::string &error);
 
 // Target platform description recovered from a region. `present` is false when
 // the region carries no target extension (all fields unknown).
@@ -276,6 +309,7 @@ struct TargetExpectation {
     uint32_t target_abi = 0;
     uint32_t pointer_bits = 0;
     uint32_t endianness = 0;
+    uint32_t calling_convention = 0;   // 0 = do not check
 };
 struct TargetVerification {
     TargetVerificationStatus status = TargetVerificationStatus::unverifiable;
@@ -285,6 +319,22 @@ bool verify_target_abi(
     const uint8_t *data, size_t size, const TargetExpectation &expected, TargetVerification &out, std::string &error);
 bool verify_target_abi(
     const std::vector<uint8_t> &region, const TargetExpectation &expected, TargetVerification &out, std::string &error);
+
+// Structured ABI verification: each dimension is reported independently so a
+// tool can say precisely what matched, what disagreed, and what could not be
+// checked from the region alone. Facts that need the actual binary or toolchain
+// (for example real field offsets in a compiled object) are NOT claimed here;
+// they belong to the build stage and are reported as unverifiable.
+struct AbiVerificationReport {
+    TargetVerificationStatus platform = TargetVerificationStatus::unverifiable;
+    TargetVerificationStatus layout = TargetVerificationStatus::unverifiable;
+    TargetVerificationStatus calling_convention = TargetVerificationStatus::unverifiable;
+    std::vector<std::string> reasons;
+};
+bool verify_abi(const uint8_t *data, size_t size, const TargetExpectation &expected, AbiVerificationReport &out,
+    std::string &error);
+bool verify_abi(const std::vector<uint8_t> &region, const TargetExpectation &expected, AbiVerificationReport &out,
+    std::string &error);
 
 struct MetadataOptions {
     BuildID build_id{};

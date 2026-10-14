@@ -261,6 +261,61 @@ struct ErrorContract {
     uint32_t flags = 0;
 };
 
+// ABIX-STD lowering: the result of matching a concrete instantiated type against
+// an ABIX-STD boundary contract. Instantiation and lowering are separate stages:
+// a successful instantiation does not by itself satisfy a contract.
+enum class LoweringKind : uint32_t {
+    sequence_view = 1,
+    string_view = 2
+};
+enum class LoweringStatus : uint32_t {
+    direct = 0,          // the concrete type is already the boundary entity
+    needs_adapter = 1,   // compatible shape, but a thin adapter must be generated
+    unsupported = 2      // cannot be lowered to the contract
+};
+// Why a lowering landed on its status. Recorded so tools can explain the
+// decision (amc check/diff, diagnostics, MCP/Agent) instead of only "incompatible".
+enum class LoweringReason : uint32_t {
+    ok = 0,
+    not_a_record,
+    field_count,           // not exactly two fields
+    missing_data,          // no pointer/contiguous-data field
+    missing_length,        // no unsigned length field
+    element_mismatch,      // pointee element differs from the declared element
+    mutability_mismatch,   // a mutable contract needs a non-const pointer
+    length_type,           // length is not an acceptable unsigned integer
+    layout                 // field order/offset/size differ from the canonical view
+};
+struct LoweringResult {
+    Hash128 type_id{};                     // the concrete instantiated type
+    Hash128 contract_type{};               // canonical boundary type (equal to type_id when direct)
+    uint32_t kind = 0;                     // LoweringKind
+    uint32_t status = 0;                   // LoweringStatus
+    uint32_t reason = 0;                   // LoweringReason
+    uint32_t pointer_field = UINT32_MAX;   // field index of the data pointer within type_id
+    uint32_t length_field = UINT32_MAX;    // field index of the length within type_id
+};
+
+// A container lowered to a sequence view through accessor functions, for example
+// a `std::vector<T>` exposing `data()` and `size()`. The container's internal
+// layout is never exposed; AMC generates a thin adapter that calls the accessors.
+struct ViewAdapter {
+    Hash128 source_type{};     // the container type
+    Hash128 target_type{};     // canonical sequence-view type
+    Hash128 data_accessor{};   // function signature: const T * (const Source *)
+    Hash128 size_accessor{};   // function signature: unsigned length (const Source *)
+};
+
+// A pointer type's pointee, recorded so element/contract matching can use ABI
+// identity (TypeID) instead of a spelling. Mutability is a separate qualifier,// not part of the base element identity:
+// the contract matcher checks it. A pointer without a pointee entry is matched by spelling as a fallback.
+constexpr uint32_t pointee_const = 1u << 0;
+struct PointeeRef {
+    Hash128 pointer{};
+    Hash128 pointee{};
+    uint32_t flags = 0;   // pointee_const when the pointed-to data is read-only
+};
+
 struct AbiModule {
     std::string package_name, package_version;
     uint32_t arch = 0, os = 0, target_abi = 0, compiler = 1, calling_convention = 0;
@@ -279,6 +334,9 @@ struct AbiModule {
     std::vector<OwnedType> owned;               // release-policy registry
     std::vector<OwnershipContract> contracts;   // per-interaction ownership modes
     std::vector<ErrorContract> errors;          // per-function error boundary
+    std::vector<LoweringResult> lowerings;      // ABIX-STD contract match results
+    std::vector<PointeeRef> pointees;           // pointer -> pointee TypeID
+    std::vector<ViewAdapter> view_adapters;     // container -> sequence-view accessors
     // Optional, debug-only: where each type was declared. Not part of ABI
     // identity (excluded from the artifact hash) — it exists so tools can
     // implement go-to-definition TypeID -> source declaration.
@@ -295,6 +353,25 @@ bool build_compatibility(const AbiModule &, const AbiModule &, AbiModule &, std:
 const char *compatibility_name(CompatibilityKind);
 bool validate(const AbiModule &, std::string &error);
 bool project_symbols(const AbiModule &, const std::vector<std::string> &symbols, AbiModule &, std::string &error);
+
+// ABIX-STD lowering: match a concrete instantiated type against the
+// `sequence-view` contract. Returns the result (never fails): `direct` when the
+// type is already the boundary entity, `needs_adapter` when the shape is
+// compatible but a thin adapter must be generated, `unsupported` otherwise.
+// The element is matched by pointee TypeID when `element_id` is set (and the
+// pointer has a recorded pointee), otherwise by `element_spelling`; empty means
+// "do not check the element". `contract_mutable` requires a non-const pointer.
+LoweringResult evaluate_sequence_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable);
+
+// Match a concrete type against the `string-view` contract: `{ data, length,
+// encoding }`, with the code unit matched by pointee TypeID.
+LoweringResult evaluate_string_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable);
+
+// Resolve a type spelling (for example `int`) to a TypeID by normalized name,
+// or a zero Hash128 when not found. `const int` and `int` resolve together.
+Hash128 find_type_id_by_spelling(const AbiModule &module, const std::string &spelling);
 
 bool write_abix(const AbiModule &, const std::string &path, std::string &error);
 bool read_abix(const std::string &path, AbiModule &, std::string &error);

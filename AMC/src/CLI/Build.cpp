@@ -258,6 +258,127 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
                 if (!endianness.empty())
                     full.endianness = endianness == "little" ? 1u : (endianness == "big" ? 2u : 0u);
             }
+            // ABIX-STD lowering: match each contracted instantiation against its
+            // contract. Instantiation succeeded already (the frontend did it);
+            // this decides whether the concrete type is the boundary entity
+            // (direct), needs a thin adapter, or cannot be lowered (rejected).
+            std::vector<std::pair<uint32_t, amc::Hash128>> canonical;   // kind -> direct canonical type
+            if (const auto *instantiations = config["instantiate"].as_array()) {
+                std::vector<amc::LoweringResult> results;
+                for (auto &&entry : *instantiations) {
+                    const auto *table = entry.as_table();
+                    if (!table) continue;
+                    const std::string contract = (*table)["contract"].value_or("");
+                    // `purpose` is the design's name for the same thing.
+                    const std::string purpose = (*table)["purpose"].value_or("");
+                    const std::string selected_contract = contract.empty() ? purpose : contract;
+                    if (selected_contract.empty()) continue;
+                    const bool string_view =
+                        selected_contract == "string-view" || selected_contract == "abix-std.string-view";
+                    if (!string_view
+                        && selected_contract != "sequence-view"
+                        && selected_contract != "abix-std.sequence-view") {
+                        error = "unsupported ABIX-STD contract: " + selected_contract;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    const std::string as = (*table)["as"].value_or("");
+                    amc::Hash128 type_id{};
+                    bool found = false;
+                    for (const auto &type : full.types)
+                        if (type.name == as) {
+                            type_id = type.id;
+                            found = true;
+                            break;
+                        }
+                    if (!found) {
+                        error = "[[instantiate]] contract references an unknown concrete type: " + as;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    const std::string element_name = (*table)["element"].value_or(std::string{});
+                    amc::Hash128 element_id{};
+                    if (!element_name.empty()) {
+                        element_id = amc::find_type_id_by_spelling(full, element_name);
+                        if (element_id == amc::Hash128{}) {
+                            error = "[[instantiate]] element type not found: " + element_name;
+                            return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                        }
+                    }
+                    const bool mutable_view = (*table)["mutable"].value_or(false);
+                    amc::LoweringResult result =
+                        string_view
+                            ? amc::evaluate_string_view(full, type_id, element_id, element_name, mutable_view)
+                            : amc::evaluate_sequence_view(full, type_id, element_id, element_name, mutable_view);
+                    if (result.status == static_cast<uint32_t>(amc::LoweringStatus::direct)) {
+                        bool replaced = false;
+                        for (auto &entry2 : canonical)
+                            if (entry2.first == result.kind) {
+                                entry2.second = result.type_id;
+                                replaced = true;
+                            }
+                        if (!replaced) canonical.emplace_back(result.kind, result.type_id);
+                    }
+                    results.push_back(result);
+                }
+                for (auto &result : results) {
+                    if (result.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)) {
+                        error = "an instantiation does not satisfy its ABIX-STD contract";
+                        return fail(amc::ErrorCategory::validation, "build", error, config_path.string());
+                    }
+                    if (result.status == static_cast<uint32_t>(amc::LoweringStatus::needs_adapter)) {
+                        amc::Hash128 target{};
+                        for (const auto &entry2 : canonical)
+                            if (entry2.first == result.kind) target = entry2.second;
+                        if (target == amc::Hash128{}) {
+                            error = "an ABIX-STD adapter requires a direct canonical instantiation";
+                            return fail(amc::ErrorCategory::validation, "build", error, config_path.string());
+                        }
+                        result.contract_type = target;
+                    }
+                    full.lowerings.push_back(result);
+                }
+            }
+            // Container -> sequence-view adapters (for example a vector-like type
+            // exposed through data()/size()). The container layout is not exposed.
+            if (const auto *views = config["view"].as_array()) {
+                for (auto &&entry : *views) {
+                    const auto *table = entry.as_table();
+                    if (!table) continue;
+                    const std::string type_name = (*table)["type"].value_or("");
+                    if (type_name.empty()) continue;
+                    const amc::Hash128 source = amc::find_type_id_by_spelling(full, type_name);
+                    if (source == amc::Hash128{}) {
+                        error = "[[view]] references an unknown type: " + type_name;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    amc::Hash128 target{};
+                    for (const auto &entry2 : canonical)
+                        if (entry2.first == static_cast<uint32_t>(amc::LoweringKind::sequence_view))
+                            target = entry2.second;
+                    if (target == amc::Hash128{}) {
+                        error = "[[view]] needs a direct sequence-view instantiation to target";
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    const std::string data_name = (*table)["data_accessor"].value_or("");
+                    const std::string size_name = (*table)["size_accessor"].value_or("");
+                    amc::Hash128 data_signature{}, size_signature{};
+                    for (const auto &function : full.functions) {
+                        if (function.name == data_name) data_signature = function.signature;
+                        if (function.name == size_name) size_signature = function.signature;
+                    }
+                    if (data_signature == amc::Hash128{} || size_signature == amc::Hash128{}) {
+                        error = "[[view]] accessors not found: " + data_name + " / " + size_name;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    full.view_adapters.push_back({source, target, data_signature, size_signature});
+                    amc::LoweringResult lowering;
+                    lowering.type_id = source;
+                    lowering.contract_type = target;
+                    lowering.kind = static_cast<uint32_t>(amc::LoweringKind::sequence_view);
+                    lowering.status = static_cast<uint32_t>(amc::LoweringStatus::needs_adapter);
+                    lowering.reason = static_cast<uint32_t>(amc::LoweringReason::layout);
+                    full.lowerings.push_back(lowering);
+                }
+            }
             for (const auto &spec : exports) {
                 const fs::path output = spec.output.is_absolute() ? spec.output : base / spec.output;
                 fs::create_directories(output.parent_path(), ec);

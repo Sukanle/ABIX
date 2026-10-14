@@ -35,6 +35,10 @@ constexpr uint32_t kContractEntrySize = 32;   // target(4) + target_index(4) + m
 constexpr uint32_t kErrorEntrySize =
     28;   // function(4) + status_source(4) + status_param(4) + success(8) + value(4) + flags(4)
 constexpr uint32_t kPlatformEntrySize = 8;   // pointer_bits(4) + endianness(4)
+constexpr uint32_t kLoweringEntrySize =
+    52;   // type_id(16) + contract_type(16) + kind(4) + status(4) + reason(4) + ptr(4) + len(4)
+constexpr uint32_t kPointeeEntrySize = 36;       // pointer(16) + pointee(16) + flags(4)
+constexpr uint32_t kViewAdapterEntrySize = 64;   // source(16) + target(16) + data(16) + size(16)
 
 enum Section : uint32_t {
     strings = 1,
@@ -54,7 +58,10 @@ enum Section : uint32_t {
     owned,
     contracts,
     errors,
-    platform
+    platform,
+    lowering,
+    pointees,
+    view_adapters
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -599,7 +606,248 @@ bool validate(const AbiModule &module, std::string &error) {
             return false;
         }
     }
+    for (const auto &record : module.lowerings) {
+        if (!find_type_by_id(module, record.type_id) || !find_type_by_id(module, record.contract_type)) {
+            error = "lowering references an unknown type";
+            return false;
+        }
+        if (record.kind > static_cast<uint32_t>(LoweringKind::string_view)
+            || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)) {
+            error = "invalid lowering record";
+            return false;
+        }
+    }
+    for (const auto &record : module.pointees) {
+        if (!find_type_by_id(module, record.pointer) || !find_type_by_id(module, record.pointee)) {
+            error = "pointee reference names an unknown type";
+            return false;
+        }
+    }
+    for (const auto &record : module.view_adapters) {
+        if (!find_type_by_id(module, record.source_type) || !find_type_by_id(module, record.target_type)) {
+            error = "view adapter names an unknown type";
+            return false;
+        }
+        const Hash128 accessors[] = {record.data_accessor, record.size_accessor};
+        for (const Hash128 &signature : accessors) {
+            bool found = false;
+            for (const auto &function : module.functions)
+                if (function.signature == signature) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                error = "view adapter names an unknown accessor";
+                return false;
+            }
+        }
+    }
     return true;
+}
+
+namespace {
+
+std::string normalise_spelling(const std::string &spelling) {
+    static const char * const qualifiers[] = {"const", "volatile", "struct", "class", "enum", "union"};
+    std::string out;
+    std::string token;
+    const auto flush = [&]() {
+        if (token.empty()) return;
+        bool qualifier = false;
+        for (const char *q : qualifiers)
+            if (token == q) {
+                qualifier = true;
+                break;
+            }
+        if (!qualifier) out += token;
+        token.clear();
+    };
+    for (const char c : spelling) {
+        if (std::isspace(static_cast<unsigned char>(c)) || c == '*' || c == '&') {
+            flush();
+            continue;
+        }
+        token += c;
+    }
+    flush();
+    return out;
+}
+
+bool spelling_is_const(const std::string &spelling) {
+    std::string token;
+    for (size_t i = 0; i <= spelling.size(); ++i) {
+        const char c = i < spelling.size() ? spelling[i] : ' ';
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (token == "const") return true;
+            token.clear();
+        } else {
+            token += c;
+        }
+    }
+    return false;
+}
+
+std::string pointer_pointee_spelling(const std::string &name) {
+    if (!name.empty() && name.back() == '*') return name.substr(0, name.size() - 1);
+    if (name.rfind("*const", 0) == 0) return name.substr(6);
+    if (name.rfind("*mut", 0) == 0) return name.substr(4);
+    if (!name.empty() && name[0] == '&') return name.rfind("&mut", 0) == 0 ? name.substr(4) : name.substr(1);
+    return name;
+}
+
+}   // namespace
+
+Hash128 find_type_id_by_spelling(const AbiModule &module, const std::string &spelling) {
+    const std::string wanted = normalise_spelling(spelling);
+    for (const auto &type : module.types) {
+        // Skip pointers: their normalized spelling strips `*`, so `int*` would
+        // otherwise shadow the `int` value type the caller asked for.
+        if (type.kind == TypeKind::pointer) continue;
+        if (normalise_spelling(type.name) == wanted) return type.id;
+    }
+    return Hash128{};
+}
+
+LoweringResult evaluate_view(const AbiModule &module, Hash128 type_id, LoweringKind kind, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(kind);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+
+    // sequence-view = { data, length }; string-view = { data, length, encoding }.
+    const uint32_t required_fields = kind == LoweringKind::string_view ? 3u : 2u;
+    uint32_t pointer_size = module.pointer_bits != 0 ? module.pointer_bits / 8 : 0;
+    int pointer_index = -1;
+    uint32_t visible = 0;
+    std::vector<uint32_t> others;
+    for (uint32_t i = 0; i < type->field_count; ++i) {
+        const auto &field = module.fields[type->field_begin + i];
+        if ((field.flags & field_base) != 0 || (field.flags & field_bitfield) != 0) continue;
+        ++visible;
+        const Type *field_type = find_type_by_id(module, field.type_id);
+        if (field_type && field_type->kind == TypeKind::pointer && pointer_index < 0) {
+            pointer_index = static_cast<int>(i);
+            if (pointer_size == 0) pointer_size = field_type->size;
+        } else {
+            others.push_back(i);
+        }
+    }
+    if (visible != required_fields) {
+        result.reason = static_cast<uint32_t>(LoweringReason::field_count);
+        return result;
+    }
+    if (pointer_index < 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::missing_data);
+        return result;
+    }
+    // The remaining fields, ordered by offset, are length [, encoding].
+    std::sort(others.begin(), others.end(), [&](uint32_t a, uint32_t b) {
+        return module.fields[type->field_begin + a].offset < module.fields[type->field_begin + b].offset;
+    });
+    if (others.size() != required_fields - 1) {
+        result.reason = static_cast<uint32_t>(LoweringReason::field_count);
+        return result;
+    }
+    result.pointer_field = static_cast<uint32_t>(pointer_index);
+    result.length_field = others[0];
+    const auto &pointer_field = module.fields[type->field_begin + result.pointer_field];
+    const auto &length_field = module.fields[type->field_begin + result.length_field];
+    const Type *pointer_type = find_type_by_id(module, pointer_field.type_id);
+    if (!pointer_type || pointer_size == 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::missing_data);
+        return result;
+    }
+
+    // The pointer's recorded pointee (identity + mutability qualifier), if any.
+    Hash128 pointee_id{};
+    uint32_t pointee_flags = 0;
+    bool have_ref = false;
+    for (const auto &ref : module.pointees)
+        if (ref.pointer == pointer_field.type_id) {
+            pointee_id = ref.pointee;
+            pointee_flags = ref.flags;
+            have_ref = true;
+            break;
+        }
+
+    // Element type: shape alone is not enough. Match the pointee by TypeID when
+    // the pointer records one (the principled path); otherwise fall back to the
+    // ABI spelling. `const float *` must not match `SequenceView<i32>`.
+    if (!(element_id == Hash128{}) || !element_spelling.empty()) {
+        bool match = true;
+        if (have_ref && !(element_id == Hash128{})) {
+            match = (pointee_id == element_id);
+        } else if (!element_spelling.empty()) {
+            match = normalise_spelling(pointer_pointee_spelling(pointer_type->name))
+                 == normalise_spelling(element_spelling);
+        }
+        if (!match) {
+            result.reason = static_cast<uint32_t>(LoweringReason::element_mismatch);
+            return result;
+        }
+    }
+    // Mutability is a separate qualifier, not part of element identity. Use the
+    // recorded qualifier when present; fall back to the spelling otherwise.
+    const bool is_const = have_ref ? (pointee_flags & pointee_const) != 0 : spelling_is_const(pointer_type->name);
+    if (contract_mutable && is_const) {
+        result.reason = static_cast<uint32_t>(LoweringReason::mutability_mismatch);
+        return result;
+    }
+    // Length (and, for a string view, the encoding) must be unsigned integers.
+    const Type *length_type = find_type_by_id(module, length_field.type_id);
+    if (!length_type
+        || (length_type->primitive_abi & 0xffu) != static_cast<uint32_t>(PrimitiveAbiKind::uint)
+        || length_type->size == 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::length_type);
+        return result;
+    }
+    uint32_t trailing = length_type->size;
+    if (kind == LoweringKind::string_view) {
+        const auto &encoding_field = module.fields[type->field_begin + others[1]];
+        const Type *encoding_type = find_type_by_id(module, encoding_field.type_id);
+        if (!encoding_type
+            || (encoding_type->primitive_abi & 0xffu) != static_cast<uint32_t>(PrimitiveAbiKind::uint)
+            || encoding_type->size == 0) {
+            result.reason = static_cast<uint32_t>(LoweringReason::length_type);
+            return result;
+        }
+        trailing += encoding_type->size;
+    }
+    (void)trailing;
+
+    // Canonical layout: data at 0, then length, then (string view) encoding.
+    // Trailing padding is allowed -- only the field order/offsets matter.
+    bool canonical = pointer_field.offset == 0 && length_field.offset == pointer_size;
+    if (canonical && kind == LoweringKind::string_view) {
+        const auto &encoding_field = module.fields[type->field_begin + others[1]];
+        canonical = encoding_field.offset == pointer_size + length_type->size;
+    }
+    if (canonical) {
+        result.status = static_cast<uint32_t>(LoweringStatus::direct);
+        result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    } else {
+        // The exact required fields are present with known layout; a thin
+        // representation adapter can reorder them.
+        result.status = static_cast<uint32_t>(LoweringStatus::needs_adapter);
+        result.reason = static_cast<uint32_t>(LoweringReason::layout);
+    }
+    return result;
+}
+
+LoweringResult evaluate_sequence_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable) {
+    return evaluate_view(module, type_id, LoweringKind::sequence_view, element_id, element_spelling, contract_mutable);
+}
+
+LoweringResult evaluate_string_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable) {
+    return evaluate_view(module, type_id, LoweringKind::string_view, element_id, element_spelling, contract_mutable);
 }
 
 bool project_symbols(
@@ -632,6 +880,9 @@ bool project_symbols(
     result.owned.clear();
     result.contracts.clear();
     result.errors.clear();
+    result.lowerings.clear();
+    result.pointees.clear();
+    result.view_adapters.clear();
     std::unordered_set<std::string> complete_type_ids;
     auto complete = [&](Hash128 id) { complete_type_ids.insert(hash_key(id)); };
     auto is_complete = [&](Hash128 id) { return complete_type_ids.count(hash_key(id)) != 0; };
@@ -734,6 +985,12 @@ bool project_symbols(
         projected.function_index = found->second;
         result.errors.push_back(projected);
     }
+    for (const auto &record : source.lowerings)
+        if (has_type(record.type_id)) result.lowerings.push_back(record);
+    for (const auto &record : source.pointees)
+        if (has_type(record.pointer) && has_type(record.pointee)) result.pointees.push_back(record);
+    for (const auto &record : source.view_adapters)
+        if (has_type(record.source_type) && has_type(record.target_type)) result.view_adapters.push_back(record);
     if (!symbols.empty() && result.types.empty() && result.functions.empty()) {
         error = "export symbols did not match any ABI declaration";
         return false;
@@ -1010,6 +1267,45 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         sections.push_back(std::move(platform_table));
     }
 
+    // Optional ABIX-STD lowering results. Excluded from ABI identity.
+    if (!module.lowerings.empty()) {
+        SectionData lowering_table{lowering, static_cast<uint32_t>(module.lowerings.size()), kLoweringEntrySize, 0, {}};
+        for (const auto &record : module.lowerings) {
+            put_hash(lowering_table.bytes, record.type_id);
+            put_hash(lowering_table.bytes, record.contract_type);
+            put_u32(lowering_table.bytes, record.kind);
+            put_u32(lowering_table.bytes, record.status);
+            put_u32(lowering_table.bytes, record.reason);
+            put_u32(lowering_table.bytes, record.pointer_field);
+            put_u32(lowering_table.bytes, record.length_field);
+        }
+        sections.push_back(std::move(lowering_table));
+    }
+
+    // Optional pointer -> pointee references. Excluded from ABI identity.
+    if (!module.pointees.empty()) {
+        SectionData pointee_table{pointees, static_cast<uint32_t>(module.pointees.size()), kPointeeEntrySize, 0, {}};
+        for (const auto &record : module.pointees) {
+            put_hash(pointee_table.bytes, record.pointer);
+            put_hash(pointee_table.bytes, record.pointee);
+            put_u32(pointee_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(pointee_table));
+    }
+
+    // Optional container -> sequence-view adapters (accessor based).
+    if (!module.view_adapters.empty()) {
+        SectionData adapter_table{
+            view_adapters, static_cast<uint32_t>(module.view_adapters.size()), kViewAdapterEntrySize, 0, {}};
+        for (const auto &record : module.view_adapters) {
+            put_hash(adapter_table.bytes, record.source_type);
+            put_hash(adapter_table.bytes, record.target_type);
+            put_hash(adapter_table.bytes, record.data_accessor);
+            put_hash(adapter_table.bytes, record.size_accessor);
+        }
+        sections.push_back(std::move(adapter_table));
+    }
+
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
     put_u16(bytes, kHashAlgorithm);
@@ -1132,6 +1428,9 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *contract_table = optional(contracts, kContractEntrySize);
     const auto *error_table = optional(errors, kErrorEntrySize);
     const auto *platform_table = optional(platform, kPlatformEntrySize);
+    const auto *lowering_table = optional(lowering, kLoweringEntrySize);
+    const auto *pointee_table = optional(pointees, kPointeeEntrySize);
+    const auto *view_adapter_table = optional(view_adapters, kViewAdapterEntrySize);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -1422,6 +1721,47 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
         if (!read_u32(bytes, platform_offset, module.pointer_bits, error)
             || !read_u32(bytes, platform_offset, module.endianness, error))
             return false;
+    }
+    size_t lowering_offset = lowering_table ? lowering_table->offset : 0;
+    for (uint32_t i = 0; lowering_table && i < lowering_table->count; ++i) {
+        LoweringResult record;
+        if (!read_hash(bytes, lowering_offset, record.type_id, error)
+            || !read_hash(bytes, lowering_offset, record.contract_type, error)
+            || !read_u32(bytes, lowering_offset, record.kind, error)
+            || !read_u32(bytes, lowering_offset, record.status, error)
+            || !read_u32(bytes, lowering_offset, record.reason, error)
+            || !read_u32(bytes, lowering_offset, record.pointer_field, error)
+            || !read_u32(bytes, lowering_offset, record.length_field, error)
+            || record.kind > static_cast<uint32_t>(LoweringKind::string_view)
+            || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)
+            || record.reason > static_cast<uint32_t>(LoweringReason::layout)) {
+            error = "invalid lowering record";
+            return false;
+        }
+        module.lowerings.push_back(record);
+    }
+    size_t pointee_offset = pointee_table ? pointee_table->offset : 0;
+    for (uint32_t i = 0; pointee_table && i < pointee_table->count; ++i) {
+        PointeeRef record;
+        if (!read_hash(bytes, pointee_offset, record.pointer, error)
+            || !read_hash(bytes, pointee_offset, record.pointee, error)
+            || !read_u32(bytes, pointee_offset, record.flags, error)) {
+            error = "invalid pointee record";
+            return false;
+        }
+        module.pointees.push_back(record);
+    }
+    size_t adapter_offset = view_adapter_table ? view_adapter_table->offset : 0;
+    for (uint32_t i = 0; view_adapter_table && i < view_adapter_table->count; ++i) {
+        ViewAdapter record;
+        if (!read_hash(bytes, adapter_offset, record.source_type, error)
+            || !read_hash(bytes, adapter_offset, record.target_type, error)
+            || !read_hash(bytes, adapter_offset, record.data_accessor, error)
+            || !read_hash(bytes, adapter_offset, record.size_accessor, error)) {
+            error = "invalid view adapter record";
+            return false;
+        }
+        module.view_adapters.push_back(record);
     }
     size_t descriptor_offset = descriptor_table->offset;
     uint16_t descriptor_algorithm = 0, descriptor_version = 0;
