@@ -160,6 +160,12 @@ bool valid_hash_kind(uint32_t value) { return value <= static_cast<uint32_t>(Has
 bool valid_hash_target(uint32_t value) { return value <= static_cast<uint32_t>(HashTargetKind::function); }
 bool valid_compatibility(uint32_t value) { return value <= static_cast<uint32_t>(CompatibilityKind::incompatible); }
 bool valid_map_opcode(uint8_t value) { return value <= static_cast<uint8_t>(MapOpcode::skip_field); }
+// `void` is a first-class primitive with no size. It is valid as a function
+// return type, so the size/align checks below deliberately skip it.
+bool is_void_type(const Type &type) {
+    return type.kind == TypeKind::primitive
+        && (type.primitive_abi & 0xffu) == static_cast<uint32_t>(PrimitiveAbiKind::void_);
+}
 
 }   // namespace
 
@@ -476,11 +482,10 @@ bool validate(const AbiModule &module, std::string &error) {
     error.clear();
     std::unordered_map<std::string, const Type *> type_by_id;
     for (const auto &type : module.types) {
+        const bool void_type = is_void_type(type);
         if (type.name.empty()
-            || type.size == 0
-            || type.align == 0
-            || (type.align & (type.align - 1)) != 0
-            || !valid_type_kind(static_cast<uint32_t>(type.kind))) {
+            || !valid_type_kind(static_cast<uint32_t>(type.kind))
+            || (!void_type && (type.size == 0 || type.align == 0 || (type.align & (type.align - 1)) != 0))) {
             error = "invalid type: " + type.name;
             return false;
         }
