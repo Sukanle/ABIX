@@ -249,6 +249,7 @@ void print_usage() {
         "  amc metadata --from-elf <binary> [--format bin|json] [-o <file>]\n"
         "  amc verify <contract.abix> <implementation.abix> [--format text|json]\n"
         "  amc verify -c <file>.abic.toml [-B <build_dir>] [--format text|json]\n"
+        "  amc target <file.abix|binary> [--expect arch=..,os=..,pointer_bits=..,endianness=..] [--format text|json]\n"
         "  amc diff <source.abix> <target.abix> [-o report.abix]\n"
         "  amc compatibility <source.abix> <target.abix>\n"
         "global options:\n"

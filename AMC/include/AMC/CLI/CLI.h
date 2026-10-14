@@ -50,7 +50,8 @@ bool dispatch_provider(const fs::path &provider, const char *capability, const f
 fs::path provider_executable(const fs::path &base_provider, const std::string &language);
 // Dispatch a provider `backend` capability, defaulting the output to
 // `amc_generated<extension>` when `destination` does not already carry it.
-int generate(const fs::path &provider, const fs::path &input, const fs::path &destination, const std::string &extension);
+int generate(
+    const fs::path &provider, const fs::path &input, const fs::path &destination, const std::string &extension);
 void print_usage();
 
 int cmd_context(char **args, int arg_count);
@@ -59,6 +60,7 @@ int cmd_adapter(char **args, int arg_count);
 int cmd_query(char **args, int arg_count);
 int cmd_symbols(char **args, int arg_count);
 int cmd_verify(char **args, int arg_count, const fs::path &provider);
+int cmd_target(char **args, int arg_count);
 int cmd_diff(char **args, int arg_count);
 int cmd_generate(char **args, int arg_count, const fs::path &provider);
 int cmd_frontend(char **args, int arg_count, const fs::path &provider);

@@ -149,6 +149,21 @@ def main() -> int:
             else:
                 check(False, "Zig consumer ran the native library", "zig consumer was not built")
 
+        # 9-10. Static target-ABI verification (the CI entry): the artifact's
+        #       recorded target is checked against an expected target.
+        if os.path.isfile(artifact):
+            expect = "arch=1,os=1,abi=1,pointer_bits=64,endianness=1,calling_convention=1"
+            result = run([amc, "target", artifact, "--expect", expect])
+            check(result.returncode == 0 and "platform: compatible" in result.stdout,
+                  "amc target verifies the artifact target",
+                  (result.stderr + result.stdout)[:2000])
+            result = run([amc, "target", artifact, "--expect", "arch=2"])
+            check(result.returncode == 1 and "platform: incompatible" in result.stdout,
+                  "amc target rejects a mismatched target",
+                  (result.stderr + result.stdout)[:2000])
+        else:
+            check(False, "amc target verifies the artifact target", "no artifact")
+
         print(f"\ninterop: {passed} passed, {failed} failed")
         return 0 if failed == 0 else 1
     finally:

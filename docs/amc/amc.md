@@ -152,6 +152,22 @@ amc verify contract.abix implementation.abix --format diagnostics
 `--format diagnostics` emits `file:line:column: error: ABI <kind> ...` lines
 using the contract's Source Origin, for editors and CI annotations.
 
+### `amc target`
+
+Prints the target platform recorded in an artifact (or embedded in a binary), or
+verifies it against an expected target — the static, CI-side counterpart to the
+runtime reader verification.
+
+```bash
+amc target file.abix                                          # describe
+amc target file.abix --expect arch=1,os=1,abi=1,pointer_bits=64,endianness=1
+amc target libfoo.so --expect arch=1 --format json
+```
+
+`platform`, `layout` and `calling_convention` are reported independently; an
+unknown fact is `unverifiable`, never `compatible`. The exit status is `1` when
+any checked dimension is `incompatible`.
+
 ### `amc generate`
 
 ```bash

@@ -91,6 +91,7 @@ int main(int argc, char **argv) {
     if (command == "query") return cmd_query(args, arg_count);
     if (command == "publish" || command == "fetch") return cmd_symbols(args, arg_count);
     if (command == "verify") return cmd_verify(args, arg_count, provider);
+    if (command == "target") return cmd_target(args, arg_count);
     if (command == "diff" || command == "compatibility") return cmd_diff(args, arg_count);
     if (command == "generate" || command == "backend") return cmd_generate(args, arg_count, provider);
     if (command == "frontend") return cmd_frontend(args, arg_count, provider);

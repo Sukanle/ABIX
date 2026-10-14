@@ -105,6 +105,20 @@ amc verify contract.abix implementation.abix --format diagnostics
 `--format diagnostics` 输出 `file:line:column: error: ABI <kind> ...`（使用契约的
 Source Origin），供编辑器/CI 使用。
 
+### `amc target`
+
+打印产物（或二进制内嵌）记录的目标平台，或对期望目标做校验——是运行期 reader 校验的
+静态 / CI 侧对应入口。
+
+```bash
+amc target file.abix                                          # 描述
+amc target file.abix --expect arch=1,os=1,abi=1,pointer_bits=64,endianness=1
+amc target libfoo.so --expect arch=1 --format json
+```
+
+`platform` / `layout` / `calling_convention` **独立报告**；未知事实为 `unverifiable`，
+绝不降级为 `compatible`。任一被检查维度为 `incompatible` 时退出码为 `1`。
+
 ### generate
 
 ```bash
