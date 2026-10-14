@@ -1,0 +1,40 @@
+[package]
+name = "cmdly_demo"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["cmdly_c.h"]
+symbols = [
+    "cmdly_terminal_create",
+    "cmdly_terminal_destroy",
+    "cmdly_completion_insert",
+    "cmdly_history_insert",
+    "cmdly_history_length",
+    "cmdly_read_line",
+    "cmdly_last_output",
+    "cmdly_on_key",
+]
+
+# Owner ABI: the handle is created and released by the library.
+[[owned]]
+type = "cmdly_terminal"
+create = "cmdly_terminal_create"
+destroy = "cmdly_terminal_destroy"
+
+[[contract]]
+function = "cmdly_terminal_create"
+returns = "owned"
+release = "cmdly_terminal_destroy"
+
+[[contract]]
+function = "cmdly_terminal_destroy"
+params = ["owned"]
+
+[[contract]]
+function = "cmdly_last_output"
+returns = "borrowed"
+
+[[export]]
+output = "cmdly_demo.abix"

@@ -2,11 +2,18 @@
 #include "AMC/Lang/Lang.h"
 #include "AMC/Core/Core.h"
 
+// The Clang resource directory detected at build time (`clang -print-resource-dir`).
+// It is injected by CMake for the `amc-cpp` target; empty if unavailable.
+#ifndef ABIX_CLANG_RESOURCE_DIR
+#  define ABIX_CLANG_RESOURCE_DIR ""
+#endif
+
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclTemplate.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/AST/Type.h>
 #include <clang/Basic/SourceManager.h>
 #include <clang/Options/OptionUtils.h>
 #include <clang/Tooling/CompilationDatabase.h>
@@ -223,6 +230,15 @@ private:
         // be the exported ABI entity even when the alias is not an explicit
         // export symbol.
         const std::string original = qt.getAsString();
+        // A typedef declared inside a class is a member typedef (for example
+        // `std::allocator<T>::allocator_type`). Its unqualified spelling must
+        // never become a global ABI type name, or generated code would emit
+        // `TypeTraits<::allocator_type>`, which is not valid at namespace scope.
+        // `getAs` looks through sugar (elaborated/qualified spellings), so this
+        // finds the typedef even when it is written as a member type.
+        bool member_typedef = false;
+        if (const auto *typedef_type = qt->getAs<clang::TypedefType>())
+            member_typedef = llvm::isa<clang::CXXRecordDecl>(typedef_type->getDecl()->getDeclContext());
         qt = qt.getCanonicalType();
         auto s = qt.getAsString();
         auto it = ids.find(s);
@@ -249,7 +265,7 @@ private:
         if (qt->getAs<clang::TemplateSpecializationType>()) {
             // When the specialization was reached through a typedef alias (for
             // example `abix_span_i32`), use the alias as the exported ABI name.
-            const bool alias_named = original != s && plain_identifier(original);
+            const bool alias_named = !member_typedef && original != s && plain_identifier(original);
             if (auto *record = qt->getAsCXXRecordDecl(); record && record->isCompleteDefinition()) {
                 add_record(record, alias_named ? original : std::string());
                 const auto found = ids.find(alias_named ? original : name(record));
@@ -280,8 +296,10 @@ private:
             // `LayoutHash` for `Hash128`) also differs from its canonical
             // spelling but is not an alias, and renaming the record after it
             // would produce a type name that is not valid in any namespace.
-            const bool alias_named = original != s && plain_identifier(original)
-                && llvm::isa<clang::ClassTemplateSpecializationDecl>(record);
+            const bool alias_named = !member_typedef
+                                  && original != s
+                                  && plain_identifier(original)
+                                  && llvm::isa<clang::ClassTemplateSpecializationDecl>(record);
             add_record(const_cast<clang::CXXRecordDecl *>(record), alias_named ? original : std::string());
             auto found = ids.find(alias_named ? original : record_key);
             if (found != ids.end()) {
@@ -635,14 +653,33 @@ int run_frontend(const char *config_path, const char *output_path) {
     // any dependency (including headers it does not otherwise know about). The
     // depfile is written next to the artifact as `<output>.d`.
     const std::string depfile = std::string(output_path) + ".d";
-    tool.appendArgumentsAdjuster([depfile](const clang::tooling::CommandLineArguments &cmd, llvm::StringRef) {
-        clang::tooling::CommandLineArguments out(cmd);
-        out.push_back("-MD");
-        out.push_back("-MF" + depfile);
-        out.push_back("-MT");
-        out.push_back(depfile);
-        return out;
-    });
+    const std::string resource_dir = ABIX_CLANG_RESOURCE_DIR;
+    tool.appendArgumentsAdjuster(
+        [depfile, resource_dir](const clang::tooling::CommandLineArguments &cmd, llvm::StringRef) {
+            clang::tooling::CommandLineArguments out;
+            // Always parse as C++. Without this a bare `.h` is treated as a C header
+            // and rejects `-std=c++17`. `cmd[0]` is the compiler word, so the `-x`
+            // selector must come after it (before the flags and the input).
+            if (!cmd.empty()) {
+                out.push_back(cmd[0]);
+                out.push_back("-x");
+                out.push_back("c++");
+                out.insert(out.end(), cmd.begin() + 1, cmd.end());
+            } else {
+                out = cmd;
+            }
+            // Point the driver at its builtin headers (<stddef.h>, ...). ClangTool
+            // does not locate the resource directory on its own, so a header that
+            // includes <stddef.h> fails with "file not found".
+            if (!resource_dir.empty()) out.push_back("-resource-dir=" + resource_dir);
+            // Report the include closure so AMC's instantiation cache can invalidate
+            // on any dependency (including headers it does not otherwise know about).
+            out.push_back("-MD");
+            out.push_back("-MF" + depfile);
+            out.push_back("-MT");
+            out.push_back(depfile);
+            return out;
+        });
     if (tool.run(&factory) != 0) {
         fmt::print(stderr, "clang analysis failed\n");
         return EXIT_FAILURE;
