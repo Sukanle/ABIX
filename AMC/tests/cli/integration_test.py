@@ -1525,6 +1525,11 @@ class TestRunner:
                 "int main() { return amc_generated::lua_contract.entry_count == 3 ? 0 : 1; }\n"
             )
         binary = os.path.join(self.build_dir, "lua_contract_check")
+        # Aue.h includes <lua.h>, so the compile needs the Lua include and link
+        # flags. Derive them from pkg-config like the dispatch test below; a
+        # keg-only Lua (Homebrew lua@5.4) is not on the default search path.
+        flags = self.run(["pkg-config", "--cflags", "--libs", "lua5.4"])
+        lua_flags = flags.stdout.split() if flags.returncode == 0 else ["-llua5.4"]
         compiled = self.run(
             [
                 "clang++",
@@ -1536,6 +1541,7 @@ class TestRunner:
                 "-o",
                 binary,
             ]
+            + lua_flags
         )
         if compiled.returncode != 0 or self.run([binary]).returncode != 0:
             self.fail("generated Lua contract failed to compile or validate")
