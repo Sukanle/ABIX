@@ -301,6 +301,14 @@ void emit_constants(Output &o, const Projector &p, const amc::Type &type) {
 
 void emit_record(Output &o, const Projector &p, const amc::Type &type) {
     const std::string &name = p.name_of(type.id);
+    // A record with no fields is opaque (a forward declaration): emit an
+    // explicitly sized, aligned byte blob instead of an empty struct.
+    if (type.field_count == 0) {
+        o.print("#[repr(C, align({}))]\n", type.align == 0 ? 1 : type.align);
+        o.print("pub struct {}([u8; {}]);\n", name, type.size == 0 ? 1 : type.size);
+        emit_constants(o, p, type);
+        return;
+    }
     // Natural alignment implied by the fields as projected. A larger recorded
     // alignment comes from an explicit `#[repr(C, align(N))]` and must be
     // re-emitted, otherwise the projected type would be under-aligned.
@@ -506,6 +514,58 @@ void emit_errors(Output &o, const Projector &p) {
     }
 }
 
+// ABIX-STD lowering adapters: when a concrete instantiated type is compatible
+// with a contract but not already the boundary entity, emit a thin conversion.
+// A successful instantiation is not by itself a contract match.
+void emit_lowerings(Output &o, const Projector &p) {
+    for (const auto &record : p.m.lowerings) {
+        if (record.status != static_cast<uint32_t>(amc::LoweringStatus::needs_adapter)) continue;
+        const int concrete = p.index_of(record.type_id);
+        const int canonical = p.index_of(record.contract_type);
+        if (concrete < 0 || canonical < 0) continue;
+        const amc::Type &source = p.m.types[static_cast<size_t>(concrete)];
+        const amc::Type &target = p.m.types[static_cast<size_t>(canonical)];
+        if (target.field_count < 2
+            || record.pointer_field >= source.field_count
+            || record.length_field >= source.field_count)
+            continue;
+        const std::string source_name = p.name_of(record.type_id);
+        const std::string target_name = p.name_of(record.contract_type);
+        const auto &target_data = p.m.fields[target.field_begin];
+        const auto &target_len = p.m.fields[target.field_begin + 1];
+        const auto &source_data = p.m.fields[source.field_begin + record.pointer_field];
+        const auto &source_len = p.m.fields[source.field_begin + record.length_field];
+        o.print("\n// ABIX-STD lowering adapter: {} -> {} (sequence-view).\n", source_name, target_name);
+        o.print("pub fn {}_to_{}(value: {}) -> {} {{\n", source_name, target_name, source_name, target_name);
+        o.print("    {} {{ {}: value.{}, {}: value.{} as _ }}\n", target_name, rust_field_ident(target_data.name),
+            rust_field_ident(source_data.name), rust_field_ident(target_len.name), rust_field_ident(source_len.name));
+        o.print("}}\n");
+    }
+}
+
+// Container adapters: lower a container to a sequence view through its accessor
+// functions, without exposing the container's internal layout.
+void emit_view_adapters(Output &o, const Projector &p) {
+    for (const auto &adapter : p.m.view_adapters) {
+        const int source = p.index_of(adapter.source_type);
+        const int target = p.index_of(adapter.target_type);
+        const amc::Function *data = p.function_by_signature(adapter.data_accessor);
+        const amc::Function *size = p.function_by_signature(adapter.size_accessor);
+        if (source < 0 || target < 0 || !data || !size) continue;
+        const amc::Type &target_type = p.m.types[static_cast<size_t>(target)];
+        if (target_type.field_count < 2) continue;
+        const std::string source_name = p.name_of(adapter.source_type);
+        const std::string target_name = p.name_of(adapter.target_type);
+        const auto &target_data = p.m.fields[target_type.field_begin];
+        const auto &target_len = p.m.fields[target_type.field_begin + 1];
+        o.print("\n// ABIX-STD container adapter: {} -> {} via accessors.\n", source_name, target_name);
+        o.print("pub unsafe fn {}_view(value: *const {}) -> {} {{\n", source_name, source_name, target_name);
+        o.print("    {} {{ {}: {}(value), {}: {}(value) as _ }}\n", target_name, rust_field_ident(target_data.name),
+            rust_ident(data->name), rust_field_ident(target_len.name), rust_ident(size->name));
+        o.print("}}\n");
+    }
+}
+
 void emit_abi_checks(Output &o, const Projector &p) {
     bool any = false;
     for (const auto &type : p.m.types) {
@@ -560,6 +620,7 @@ pub mod metadata {
     const SYMBOL_RECORD_SIZE: usize = 16;
     const OWNERSHIP_RECORD_SIZE: usize = 24;
     const ERROR_RECORD_SIZE: usize = 32;
+    const LOWERING_RECORD_SIZE: usize = 32;
     const EXTENSION_HEADER_SIZE: usize = 16;
     const EXTENSION_ENTRY_SIZE: usize = 24;
 
@@ -569,6 +630,19 @@ pub mod metadata {
     pub const EXTENSION_OWNERSHIP: u32 = 1;
     pub const EXTENSION_ERROR: u32 = 2;
     pub const EXTENSION_TARGET: u32 = 3;
+    pub const EXTENSION_LOWERING: u32 = 4;
+
+    // ABIX-STD lowering status / reason codes.
+    pub const LOWERING_DIRECT: u32 = 0;
+    pub const LOWERING_NEEDS_ADAPTER: u32 = 1;
+    pub const LOWERING_UNSUPPORTED: u32 = 2;
+    pub const LOWERING_REASON_OK: u32 = 0;
+    pub const LOWERING_REASON_FIELD_COUNT: u32 = 2;
+    pub const LOWERING_REASON_MISSING_DATA: u32 = 3;
+    pub const LOWERING_REASON_ELEMENT_MISMATCH: u32 = 5;
+    pub const LOWERING_REASON_MUTABILITY_MISMATCH: u32 = 6;
+    pub const LOWERING_REASON_LENGTH_TYPE: u32 = 7;
+    pub const LOWERING_REASON_LAYOUT: u32 = 8;
 
     // Target verification outcomes.
     pub const TARGET_COMPATIBLE: u32 = 0;
@@ -678,6 +752,18 @@ pub mod metadata {
         pub byte_size: u32,
     }
 
+    /// One ABIX-STD lowering result (types referenced by table index).
+    #[derive(Clone, Copy)]
+    pub struct LoweringRecord {
+        pub type_index: u32,
+        pub contract_index: u32,
+        pub kind: u32,
+        pub status: u32,   // LOWERING_*
+        pub reason: u32,   // LOWERING_REASON_*
+        pub pointer_field: u32,
+        pub length_field: u32,
+    }
+
     /// Target platform identity recorded in the region.
     #[derive(Clone, Copy)]
     pub struct TargetDescription {
@@ -698,6 +784,15 @@ pub mod metadata {
         pub target_abi: u32,
         pub pointer_bits: u32,
         pub endianness: u32,
+        pub calling_convention: u32,
+    }
+
+    /// Per-dimension ABI verification result (each is TARGET_*).
+    #[derive(Clone, Copy)]
+    pub struct AbiVerification {
+        pub platform: u32,
+        pub layout: u32,
+        pub calling_convention: u32,
     }
 
     fn u32_at(b: &[u8], o: usize) -> u32 {
@@ -931,6 +1026,37 @@ pub mod metadata {
                 .find(|r| r.function_index == function_index)
         }
 
+        pub fn lowering_count(&self) -> u32 {
+            self.extension(EXTENSION_LOWERING).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn lowering_at(&self, index: u32) -> Option<LoweringRecord> {
+            let ext = self.extension(EXTENSION_LOWERING)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * LOWERING_RECORD_SIZE;
+            if base + LOWERING_RECORD_SIZE > d.len() {
+                return None;
+            }
+            Some(LoweringRecord {
+                type_index: u32_at(d, base),
+                contract_index: u32_at(d, base + 4),
+                kind: u32_at(d, base + 8),
+                status: u32_at(d, base + 12),
+                reason: u32_at(d, base + 16),
+                pointer_field: u32_at(d, base + 20),
+                length_field: u32_at(d, base + 24),
+            })
+        }
+
+        pub fn find_lowering(&self, type_index: u32) -> Option<LoweringRecord> {
+            (0..self.lowering_count())
+                .filter_map(|i| self.lowering_at(i))
+                .find(|r| r.type_index == type_index)
+        }
+
         /// Target platform identity, or `None` when the region has none.
         pub fn target(&self) -> Option<TargetDescription> {
             let ext = self.extension(EXTENSION_TARGET)?;
@@ -998,6 +1124,107 @@ pub mod metadata {
             }
         }
 
+        fn type_size_by_id(&self, id: Hash128) -> Option<u32> {
+            (0..self.header.type_count).filter_map(|i| self.type_at(i)).find(|t| t.id == id).map(|t| t.size)
+        }
+
+        /// Structured ABI verification: platform / layout / calling convention,
+        /// each reported independently. Facts that need the compiled binary are
+        /// not claimed here and come back unverifiable.
+        pub fn verify_abi(&self, expected: TargetExpectation) -> AbiVerification {
+            let mut platform_incompatible = false;
+            let mut platform_unverifiable = false;
+            let mut pointer_bits = 0u32;
+            match self.target() {
+                None => platform_unverifiable = true,
+                Some(target) => {
+                    pointer_bits = target.pointer_bits;
+                    let mut compare = |want: u32, have: u32| {
+                        if want != 0 {
+                            if have == 0 {
+                                platform_unverifiable = true;
+                            } else if have != want {
+                                platform_incompatible = true;
+                            }
+                        }
+                    };
+                    compare(expected.arch, target.arch);
+                    compare(expected.os, target.os);
+                    compare(expected.target_abi, target.target_abi);
+                    compare(expected.pointer_bits, target.pointer_bits);
+                    compare(expected.endianness, target.endianness);
+                }
+            }
+
+            let mut layout_incompatible = false;
+            let mut layout_unverifiable = false;
+            let pointer_bytes = if pointer_bits != 0 { pointer_bits / 8 } else { 0 };
+            for i in 0..self.header.type_count {
+                if let Some(record) = self.type_at(i) {
+                    if record.kind == 3 {
+                        if pointer_bytes == 0 {
+                            layout_unverifiable = true;
+                        } else if record.size != pointer_bytes {
+                            layout_incompatible = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if !layout_incompatible {
+                for i in 0..self.header.field_count {
+                    if let Some(field) = self.field_at(i) {
+                        match (self.type_size_by_id(field.owner_type), self.type_size_by_id(field.type_id)) {
+                            (Some(owner), Some(field_size)) => {
+                                if field.offset > owner || field_size > owner - field.offset {
+                                    layout_incompatible = true;
+                                    break;
+                                }
+                            }
+                            _ => layout_unverifiable = true,
+                        }
+                    }
+                }
+            }
+
+            let mut cc_incompatible = false;
+            let mut cc_unverifiable = self.header.function_count == 0;
+            for i in 0..self.header.function_count {
+                if let Some(function) = self.function_at(i) {
+                    if function.calling_convention == 0 {
+                        cc_unverifiable = true;
+                    } else if expected.calling_convention != 0
+                        && function.calling_convention != expected.calling_convention
+                    {
+                        cc_incompatible = true;
+                    }
+                }
+            }
+
+            let platform = if platform_incompatible {
+                TARGET_INCOMPATIBLE
+            } else if platform_unverifiable {
+                TARGET_UNVERIFIABLE
+            } else {
+                TARGET_COMPATIBLE
+            };
+            let layout = if layout_incompatible {
+                TARGET_INCOMPATIBLE
+            } else if layout_unverifiable {
+                TARGET_UNVERIFIABLE
+            } else {
+                TARGET_COMPATIBLE
+            };
+            let calling_convention = if cc_incompatible {
+                TARGET_INCOMPATIBLE
+            } else if cc_unverifiable {
+                TARGET_UNVERIFIABLE
+            } else {
+                TARGET_COMPATIBLE
+            };
+            AbiVerification { platform, layout, calling_convention }
+        }
+
         pub fn name(&self, offset: u32) -> Option<&'a str> {
             if self.header.names_offset == 0 {
                 return None;
@@ -1015,6 +1242,11 @@ pub mod metadata {
             (0..self.header.type_count)
                 .filter_map(|i| self.type_at(i))
                 .find(|t| self.name(t.name_offset) == Some(name))
+        }
+
+        pub fn type_index_by_name(&self, name: &str) -> Option<u32> {
+            (0..self.header.type_count)
+                .find(|&i| self.type_at(i).and_then(|t| self.name(t.name_offset)) == Some(name))
         }
 
         pub fn find_type_by_id(&self, id: Hash128) -> Option<TypeRecord> {
@@ -1117,6 +1349,8 @@ std::string generate_projection(const amc::AbiModule &module) {
     emit_functions(o, projector);
     emit_owned(o, projector);
     emit_errors(o, projector);
+    emit_lowerings(o, projector);
+    emit_view_adapters(o, projector);
     emit_abi_checks(o, projector);
     std::string error;
     if (!emit_metadata_region(o, module, error)) fmt::print(stderr, "{}\n", error);

@@ -218,6 +218,13 @@ void emit_constants(Output &o, const Projector &p, const amc::Type &type) {
 }
 
 void emit_record(Output &o, const Projector &p, const amc::Type &type) {
+    if (type.field_count == 0) {
+        o.print("pub const {} = extern struct {{\n", p.decl_name(type.id));
+        o.print("    bytes: [{}]u8 align({}),\n", type.size == 0 ? 1 : type.size, type.align == 0 ? 1 : type.align);
+        o.print("}};\n");
+        emit_constants(o, p, type);
+        return;
+    }
     uint32_t natural = 1;
     for (uint32_t i = 0; i < type.field_count; ++i) {
         const int index = p.index_of(p.m.fields[type.field_begin + i].type_id);
