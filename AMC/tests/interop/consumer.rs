@@ -94,10 +94,66 @@ fn main() {
             target_abi: 1,
             pointer_bits: 64,
             endianness: 1,
+            calling_convention: 1,
         };
         assert_eq!(region.verify_target(expected), abi::metadata::TARGET_COMPATIBLE, "target compatible");
         let wrong = abi::metadata::TargetExpectation { arch: 2, ..Default::default() };
         assert_eq!(region.verify_target(wrong), abi::metadata::TARGET_INCOMPATIBLE, "target incompatible");
+
+        // Structured ABI verification: platform, layout and calling convention
+        // are reported independently, so a reader can tell what matched.
+        let abi = region.verify_abi(expected);
+        assert_eq!(abi.platform, abi::metadata::TARGET_COMPATIBLE, "abi platform");
+        assert_eq!(abi.layout, abi::metadata::TARGET_COMPATIBLE, "abi layout");
+        assert_eq!(abi.calling_convention, abi::metadata::TARGET_COMPATIBLE, "abi calling convention");
+
+        // ABIX-STD borrowed span (M3): a non-owning view over library memory.
+        // The consumer reads it and never releases it; `demo_sum` takes it by
+        // value and returns the total.
+        let span = demo_numbers();
+        assert_eq!(span.len, 5, "span len");
+        let mut manual: i64 = 0;
+        for i in 0..span.len {
+            manual += unsafe { *span.data.add(i as usize) } as i64;
+        }
+        assert_eq!(manual, 15, "span contents");
+        assert_eq!(demo_sum(span), 15, "demo_sum");
+
+        // A non-canonical view is lowered to the boundary entity by a generated
+        // adapter: instantiation succeeded, but it is not the ABIX-STD type.
+        let reversed = demo_numbers_rev();
+        let adapted = abix_view_rev_i32_to_abix_span_i32(reversed);
+        assert_eq!(adapted.len, 5, "adapted len");
+        assert_eq!(demo_sum(adapted), 15, "adapted sum");
+
+        // ABIX-STD string view (P0): borrowed, read-only UTF-8 text.
+        let greeting = demo_greeting();
+        assert_eq!(greeting.len, 5, "greeting len");
+        assert_eq!(greeting.encoding, 0, "greeting is utf8");
+        assert_eq!(demo_str_len(greeting), 5, "demo_str_len");
+
+        // A vector-like container lowered to a sequence view through accessors:
+        // zero-copy borrow, internal layout never exposed.
+        let buffer = demo_buffer_create();
+        assert!(!buffer.is_null(), "buffer created");
+        assert_eq!(demo_buffer_push(buffer, 7), 0);
+        assert_eq!(demo_buffer_push(buffer, 8), 0);
+        let buffer_view = DemoBuffer_view(buffer);
+        assert_eq!(buffer_view.len, 2, "buffer view len");
+        assert_eq!(demo_sum(buffer_view), 15, "buffer sum");
+        assert_eq!(demo_buffer_destroy(buffer), 0, "buffer destroyed");
+
+        // The lowering result is discoverable from the metadata region, read-only:
+        // the reader learns an adapter is required but never runs it implicitly.
+        let rev_index = region.type_index_by_name("abix_view_rev_i32").expect("rev type index");
+        let lowering = region.find_lowering(rev_index).expect("lowering record");
+        assert_eq!(lowering.status, abi::metadata::LOWERING_NEEDS_ADAPTER, "rev needs adapter");
+        assert_eq!(lowering.reason, abi::metadata::LOWERING_REASON_LAYOUT, "rev lowering reason");
+        assert_eq!(
+            lowering.contract_index,
+            region.type_index_by_name("abix_span_i32").expect("span type index"),
+            "lowering contract type"
+        );
 
         println!("interop ok: add=5 scale={scaled} div=5 err=1 types={}", region.header.type_count);
     }

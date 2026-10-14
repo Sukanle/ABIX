@@ -21,5 +21,20 @@ pub fn main() void {
     const rc = abi.demo_div(10, 2, &out);
     if (rc != 0 or out != 5) @panic("demo_div");
 
-    std.debug.print("zig interop ok: add={d} scale={d} out={d}\n", .{ sum, scaled, out });
+    // ABIX-STD borrowed span (M3): read the non-owning view the library hands out.
+    const span = abi.demo_numbers();
+    if (span.len != 5) @panic("span len");
+    var total: i64 = 0;
+    var i: usize = 0;
+    while (i < span.len) : (i += 1) total += span.data[i];
+    if (total != 15) @panic("span contents");
+    if (abi.demo_sum(span) != 15) @panic("demo_sum");
+
+    // ABIX-STD string view (P0): borrowed, read-only UTF-8 text.
+    const greeting = abi.demo_greeting();
+    if (greeting.len != 5) @panic("greeting len");
+    if (greeting.encoding != 0) @panic("greeting encoding");
+    if (abi.demo_str_len(greeting) != 5) @panic("demo_str_len");
+
+    std.debug.print("zig interop ok: add={d} scale={d} out={d} sum={d}\n", .{ sum, scaled, out, total });
 }

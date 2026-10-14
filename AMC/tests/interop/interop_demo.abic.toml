@@ -7,6 +7,10 @@ language = "cpp"
 flags = ["-std=c++17"]
 files = ["demo_api.hpp"]
 symbols = [
+    # The ABIX-STD contract types are intentionally NOT listed: AMC recognises
+    # them from the exported function signatures (the frontend records the
+    # typedef alias as the concrete ABI entity) and lowers them, so a contract
+    # type does not need an explicit export symbol.
     "DemoVec2",
     "demo_add",
     "demo_scale",
@@ -14,6 +18,16 @@ symbols = [
     "demo_vec2_destroy",
     "demo_div",
     "demo_live_count",
+    "demo_numbers",
+    "demo_sum",
+    "demo_numbers_rev",
+    "demo_greeting",
+    "demo_str_len",
+    "demo_buffer_create",
+    "demo_buffer_push",
+    "demo_buffer_data",
+    "demo_buffer_size",
+    "demo_buffer_destroy",
 ]
 
 [[owned]]
@@ -34,6 +48,48 @@ params = ["borrowed"]
 [[contract]]
 function = "demo_vec2_destroy"
 params = ["owned"]
+
+# ABIX-STD borrowed span (M3): the view is borrowed, not owned.
+[[contract]]
+function = "demo_numbers"
+returns = "borrowed"
+
+[[contract]]
+function = "demo_sum"
+params = ["borrowed"]
+
+# Generic instantiation (M3): the frontend instantiates the ABIX-STD template
+# and AMC records the concrete entity `abix_span_i32`.
+[[instantiate]]
+template = "abix_std::abix_span"
+args = ["int32_t"]
+as = "abix_span_i32"
+contract = "sequence-view"
+element = "int"
+
+# A non-canonical view: instantiation succeeds, but it is not the boundary
+# entity, so AMC lowers it to `abix_span_i32` with a generated adapter.
+[[instantiate]]
+template = "abix_std::abix_view_rev"
+args = ["int32_t"]
+as = "abix_view_rev_i32"
+contract = "sequence-view"
+element = "int"
+
+# ABIX-STD string view (P0): borrowed, read-only UTF-8 text.
+[[instantiate]]
+template = "abix_std::abix_str"
+args = ["char"]
+as = "abix_str_utf8"
+contract = "string-view"
+element = "char"
+
+# A vector-like container lowered to `abix_span_i32` through accessors. Its
+# internal layout is never exposed.
+[[view]]
+type = "DemoBuffer"
+data_accessor = "demo_buffer_data"
+size_accessor = "demo_buffer_size"
 
 # Error boundary: demo_div reports its status in the return value and writes the
 # result through parameter 2.

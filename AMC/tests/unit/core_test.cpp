@@ -13,9 +13,11 @@
 
 #include "ABIX/Runtime/Registry.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -700,6 +702,322 @@ int main() {
         check(amc::verify_target_abi(partial_region, expected, verdict, error)
                   && verdict.status == amc::TargetVerificationStatus::unverifiable,
             "unknown target field is unverifiable");
+    }
+
+    {
+        // ABIX-STD sequence-view lowering: shape alone is not compatibility.
+        amc::AbiModule m;
+        m.pointer_bits = 64;
+        const auto add_pointer = [&](const char *name) {
+            amc::Type t;
+            t.name = name;
+            t.kind = amc::TypeKind::pointer;
+            t.id = amc::hash_text(name, 0x54595045);
+            t.size = 8;
+            t.align = 8;
+            m.types.push_back(t);
+            return t.id;
+        };
+        const auto add_primitive = [&](const char *name, uint32_t width, amc::PrimitiveAbiKind kind) {
+            amc::Type t;
+            t.name = name;
+            t.kind = amc::TypeKind::primitive;
+            t.id = amc::hash_text(name, 0x54595045);
+            t.size = width;
+            t.align = width;
+            t.primitive_abi = amc::primitive_abi(width, kind);
+            m.types.push_back(t);
+            return t.id;
+        };
+        const auto add_record = [&](const char *name,
+                                    const std::vector<std::tuple<std::string, amc::Hash128, uint32_t>> &fields) {
+            amc::Type t;
+            t.name = name;
+            t.kind = amc::TypeKind::record;
+            t.id = amc::hash_text(name, 0x54595045);
+            t.align = 8;
+            t.field_begin = static_cast<uint32_t>(m.fields.size());
+            t.field_count = static_cast<uint32_t>(fields.size());
+            for (const auto &field : fields) {
+                m.fields.push_back({t.id, std::get<0>(field), std::get<1>(field), std::get<2>(field), 0});
+                t.size = std::max(t.size, std::get<2>(field) + 8);
+            }
+            m.types.push_back(t);
+            return t.id;
+        };
+        const auto int_id = add_primitive("int", 4, amc::PrimitiveAbiKind::sint);
+        const auto float_id = add_primitive("float", 4, amc::PrimitiveAbiKind::floating);
+        const auto u64 = add_primitive("unsigned long", 8, amc::PrimitiveAbiKind::uint);
+        const auto i64 = add_primitive("long", 8, amc::PrimitiveAbiKind::sint);
+        const auto int_ptr = add_pointer("const int*");
+        const auto float_ptr = add_pointer("const float*");
+        // Record the pointee so element matching is by TypeID, not spelling.
+        m.pointees.push_back({int_ptr, int_id, amc::pointee_const});
+        m.pointees.push_back({float_ptr, float_id, amc::pointee_const});
+        const auto span = add_record("span", {
+                                                 {"data", int_ptr, 0},
+                                                 { "len",     u64, 8}
+        });
+        const auto reversed = add_record("reversed", {
+                                                         { "len",     u64, 0},
+                                                         {"data", int_ptr, 8}
+        });
+        const auto wrong_element = add_record("wrong_element", {
+                                                                   {"data", float_ptr, 0},
+                                                                   { "len",       u64, 8}
+        });
+        const auto bad_length = add_record("bad_length", {
+                                                             {"data", int_ptr, 0},
+                                                             { "len",     i64, 8}
+        });
+        const auto extra_field =
+            add_record("extra_field", {
+                                          {"data", int_ptr,  0},
+                                          { "len",     u64,  8},
+                                          { "cap",     u64, 16}
+        });
+
+        const auto direct = amc::evaluate_sequence_view(m, span, int_id, "int", false);
+        check(direct.status == static_cast<uint32_t>(amc::LoweringStatus::direct), "span is a direct sequence view");
+
+        const auto element = amc::evaluate_sequence_view(m, wrong_element, int_id, "int", false);
+        check(element.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)
+                  && element.reason == static_cast<uint32_t>(amc::LoweringReason::element_mismatch),
+            "element mismatch is rejected (by pointee TypeID)");
+
+        const auto adapter = amc::evaluate_sequence_view(m, reversed, int_id, "int", false);
+        check(adapter.status == static_cast<uint32_t>(amc::LoweringStatus::needs_adapter),
+            "reversed layout needs an adapter");
+
+        const auto length = amc::evaluate_sequence_view(m, bad_length, int_id, "int", false);
+        check(length.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)
+                  && length.reason == static_cast<uint32_t>(amc::LoweringReason::length_type),
+            "non-unsigned length is rejected");
+
+        const auto extra = amc::evaluate_sequence_view(m, extra_field, int_id, "int", false);
+        check(extra.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)
+                  && extra.reason == static_cast<uint32_t>(amc::LoweringReason::field_count),
+            "an extra field is rejected");
+
+        const auto mutable_view = amc::evaluate_sequence_view(m, span, int_id, "int", true);
+        check(mutable_view.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)
+                  && mutable_view.reason == static_cast<uint32_t>(amc::LoweringReason::mutability_mismatch),
+            "a const pointer cannot satisfy a mutable contract");
+    }
+
+    {
+        // ABIX-STD string-view: { data, length, encoding }, code unit by TypeID.
+        amc::AbiModule m;
+        m.pointer_bits = 64;
+        const auto add_pointer = [&](const char *name) {
+            amc::Type t;
+            t.name = name;
+            t.kind = amc::TypeKind::pointer;
+            t.id = amc::hash_text(name, 0x54595045);
+            t.size = 8;
+            t.align = 8;
+            m.types.push_back(t);
+            return t.id;
+        };
+        const auto add_primitive = [&](const char *name, uint32_t width, amc::PrimitiveAbiKind kind) {
+            amc::Type t;
+            t.name = name;
+            t.kind = amc::TypeKind::primitive;
+            t.id = amc::hash_text(name, 0x54595045);
+            t.size = width;
+            t.align = width;
+            t.primitive_abi = amc::primitive_abi(width, kind);
+            m.types.push_back(t);
+            return t.id;
+        };
+        const auto add_record = [&](const char *name,
+                                    const std::vector<std::tuple<std::string, amc::Hash128, uint32_t>> &fields) {
+            amc::Type t;
+            t.name = name;
+            t.kind = amc::TypeKind::record;
+            t.id = amc::hash_text(name, 0x54595045);
+            t.align = 8;
+            t.field_begin = static_cast<uint32_t>(m.fields.size());
+            t.field_count = static_cast<uint32_t>(fields.size());
+            for (const auto &field : fields) {
+                m.fields.push_back({t.id, std::get<0>(field), std::get<1>(field), std::get<2>(field), 0});
+                t.size = std::max(t.size, std::get<2>(field) + 8);
+            }
+            m.types.push_back(t);
+            return t.id;
+        };
+        const auto ch = add_primitive("char", 1, amc::PrimitiveAbiKind::char_signed);
+        const auto ch_ptr = add_pointer("const char*");
+        m.pointees.push_back({ch_ptr, ch, amc::pointee_const});
+        const auto u64 = add_primitive("unsigned long", 8, amc::PrimitiveAbiKind::uint);
+        const auto u32 = add_primitive("unsigned int", 4, amc::PrimitiveAbiKind::uint);
+        const auto text = add_record("text", {
+                                                 {    "data", ch_ptr,  0},
+                                                 {     "len",    u64,  8},
+                                                 {"encoding",    u32, 16}
+        });
+        const auto no_encoding = add_record("no_encoding", {
+                                                               {"data", ch_ptr, 0},
+                                                               { "len",    u64, 8}
+        });
+
+        const auto direct = amc::evaluate_string_view(m, text, ch, "char", false);
+        check(direct.status == static_cast<uint32_t>(amc::LoweringStatus::direct), "string view is direct");
+
+        const auto missing = amc::evaluate_string_view(m, no_encoding, ch, "char", false);
+        check(missing.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)
+                  && missing.reason == static_cast<uint32_t>(amc::LoweringReason::field_count),
+            "string view without an encoding is rejected");
+
+        const auto wrong = amc::evaluate_string_view(m, text, u64, "unsigned long", false);
+        check(wrong.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)
+                  && wrong.reason == static_cast<uint32_t>(amc::LoweringReason::element_mismatch),
+            "string view code unit mismatch is rejected");
+    }
+
+    {
+        // The lowering result round-trips through the metadata region extension.
+        amc::AbiModule m;
+        m.package_name = "lower";
+        m.package_version = "1";
+        m.pointer_bits = 64;
+        amc::Type span;
+        span.name = "span";
+        span.kind = amc::TypeKind::record;
+        span.id = amc::hash_text("span", 0x54595045);
+        span.size = 16;
+        span.align = 8;
+        amc::Type rev;
+        rev.name = "rev";
+        rev.kind = amc::TypeKind::record;
+        rev.id = amc::hash_text("rev", 0x54595045);
+        rev.size = 16;
+        rev.align = 8;
+        m.types.push_back(span);
+        m.types.push_back(rev);
+        amc::LoweringResult lowering;
+        lowering.type_id = rev.id;
+        lowering.contract_type = span.id;
+        lowering.kind = static_cast<uint32_t>(amc::LoweringKind::sequence_view);
+        lowering.status = static_cast<uint32_t>(amc::LoweringStatus::needs_adapter);
+        lowering.reason = static_cast<uint32_t>(amc::LoweringReason::layout);
+        lowering.pointer_field = 1;
+        lowering.length_field = 0;
+        m.lowerings.push_back(lowering);
+
+        amc::MetadataOptions options;
+        std::vector<uint8_t> region;
+        std::string error;
+        check(amc::build_metadata_region(m, options, region, error), "build region with a lowering");
+        std::vector<amc::MetadataLoweringContract> lowerings;
+        check(amc::read_lowering_contracts(region, lowerings, error)
+                  && lowerings.size() == 1
+                  && lowerings[0].status == amc::LoweringStatus::needs_adapter
+                  && lowerings[0].reason == amc::LoweringReason::layout
+                  && lowerings[0].type_index == 1
+                  && lowerings[0].contract_index == 0,
+            "lowering round-trips through the region");
+
+        // A region with no lowering keeps the same bytes as before the extension.
+        amc::AbiModule bare;
+        bare.package_name = "bare";
+        bare.package_version = "1";
+        bare.types.push_back(span);
+        std::vector<uint8_t> bare_region;
+        check(amc::build_metadata_region(bare, options, bare_region, error), "build region without a lowering");
+        std::vector<amc::MetadataLoweringContract> none;
+        check(
+            amc::read_lowering_contracts(bare_region, none, error) && none.empty(), "no lowering means an empty read");
+    }
+
+    {
+        // Structured ABI verification: platform / layout / calling convention.
+        amc::AbiModule m;
+        m.package_name = "abi";
+        m.package_version = "1";
+        m.arch = 1;
+        m.os = 1;
+        m.target_abi = 1;
+        m.pointer_bits = 64;
+        m.endianness = 1;
+        amc::Type record;
+        record.name = "Foo";
+        record.kind = amc::TypeKind::record;
+        record.id = amc::hash_text("Foo", 0x54595045);
+        record.size = 16;
+        record.align = 8;
+        record.field_begin = 0;
+        record.field_count = 1;
+        amc::Type length;
+        length.name = "unsigned long";
+        length.kind = amc::TypeKind::primitive;
+        length.id = amc::hash_text("unsigned long", 0x54595045);
+        length.size = 8;
+        length.align = 8;
+        length.primitive_abi = amc::primitive_abi(8, amc::PrimitiveAbiKind::uint);
+        m.types.push_back(record);
+        m.types.push_back(length);
+        m.fields.push_back({record.id, "len", length.id, 0, 0});
+        amc::Function function;
+        function.name = "f";
+        function.return_type = length.id;
+        function.calling_convention = 1;
+        function.signature = amc::signature_hash(function);
+        m.functions.push_back(function);
+
+        amc::MetadataOptions options;
+        std::vector<uint8_t> region;
+        std::string error;
+        check(amc::build_metadata_region(m, options, region, error), "build region for ABI verification");
+
+        amc::TargetExpectation expected;
+        expected.arch = 1;
+        expected.os = 1;
+        expected.target_abi = 1;
+        expected.pointer_bits = 64;
+        expected.endianness = 1;
+        expected.calling_convention = 1;
+        amc::AbiVerificationReport report;
+        check(amc::verify_abi(region, expected, report, error)
+                  && report.platform == amc::TargetVerificationStatus::compatible
+                  && report.layout == amc::TargetVerificationStatus::compatible
+                  && report.calling_convention == amc::TargetVerificationStatus::compatible,
+            "ABI verification: all dimensions compatible");
+
+        amc::TargetExpectation wrong_arch = expected;
+        wrong_arch.arch = 2;
+        check(amc::verify_abi(region, wrong_arch, report, error)
+                  && report.platform == amc::TargetVerificationStatus::incompatible,
+            "ABI verification: platform incompatible");
+
+        amc::TargetExpectation wrong_cc = expected;
+        wrong_cc.calling_convention = 2;
+        check(amc::verify_abi(region, wrong_cc, report, error)
+                  && report.calling_convention == amc::TargetVerificationStatus::incompatible,
+            "ABI verification: calling convention incompatible");
+
+        // A region without a target description: platform is unverifiable.
+        amc::AbiModule bare;
+        bare.package_name = "bare";
+        bare.package_version = "1";
+        bare.types.push_back(record);
+        bare.types.push_back(length);
+        bare.fields.push_back({record.id, "len", length.id, 0, 0});
+        bare.functions.push_back(function);
+        std::vector<uint8_t> bare_region;
+        check(amc::build_metadata_region(bare, options, bare_region, error), "build bare region");
+        check(amc::verify_abi(bare_region, expected, report, error)
+                  && report.platform == amc::TargetVerificationStatus::unverifiable,
+            "ABI verification: missing target is unverifiable");
+
+        // A function without a calling convention: unverifiable, not compatible.
+        amc::AbiModule no_cc = m;
+        no_cc.functions[0].calling_convention = 0;
+        std::vector<uint8_t> no_cc_region;
+        check(amc::build_metadata_region(no_cc, options, no_cc_region, error), "build no-cc region");
+        check(amc::verify_abi(no_cc_region, expected, report, error)
+                  && report.calling_convention == amc::TargetVerificationStatus::unverifiable,
+            "ABI verification: missing calling convention is unverifiable");
     }
 
     if (failures != 0) {
