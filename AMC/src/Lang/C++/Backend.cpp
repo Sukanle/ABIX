@@ -4,6 +4,15 @@
 
 #include <fmt/os.h>
 
+#if defined(__APPLE__)
+// Used by the macOS helpers below to derive the Homebrew LLVM prefix from the
+// Clang resource directory; the lightweight provider header no longer drags
+// these in.
+#  include <llvm/ADT/SmallString.h>
+#  include <llvm/Support/Path.h>
+#  include <unistd.h>
+#endif
+
 #ifndef ABIX_CLANG_RESOURCE_DIR
 #  define ABIX_CLANG_RESOURCE_DIR ""
 #endif
