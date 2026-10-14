@@ -366,6 +366,12 @@ void emit_opaque(Output &o, const Projector &p, const amc::Type &type) {
 }
 
 void emit_type(Output &o, const Projector &p, const amc::Type &type) {
+    // An exposed type is an opaque handle for consumers: emit a sized blob so
+    // the fields are not accessible, even though the producer keeps the layout.
+    if ((type.flags & amc::type_opaque) != 0) {
+        emit_opaque(o, p, type);
+        return;
+    }
     switch (type.kind) {
         case amc::TypeKind::record:      emit_record(o, p, type); break;
         case amc::TypeKind::enumeration: emit_enumeration(o, p, type); break;
@@ -596,6 +602,9 @@ void emit_abi_checks(Output &o, const Projector &p) {
         const std::string &name = p.name_of(type.id);
         o.print("const _: () = assert!(core::mem::size_of::<{}>() == {});\n", name, type.size);
         o.print("const _: () = assert!(core::mem::align_of::<{}>() == {});\n", name, type.align == 0 ? 1 : type.align);
+        // An opaque handle is projected as a byte blob, so its fields have no
+        // Rust names to assert against.
+        if ((type.flags & amc::type_opaque) != 0) continue;
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = p.m.fields[type.field_begin + i];
             if (field.name.empty() || (field.flags & amc::field_base) != 0) continue;

@@ -81,6 +81,28 @@ bool config_load(const std::string &path, const std::string &expected_language, 
                 if (!decl.function.empty()) c.errors.push_back(std::move(decl));
             }
         }
+        if (auto *thunks = t["thunks"].as_table()) c.thunks_output = (*thunks)["output"].value_or("");
+        if (auto *expose = t["expose"].as_array()) {
+            for (auto &&entry : *expose) {
+                auto *table = entry.as_table();
+                if (!table) continue;
+                ExposeDecl decl;
+                decl.type = (*table)["type"].value_or("");
+                if (auto *methods = (*table)["methods"].as_array())
+                    for (auto &&value : *methods) {
+                        const std::string method = value.value_or("");
+                        if (!method.empty()) decl.methods.push_back(method);
+                    }
+                if (auto *ctor = (*table)["constructor"].as_array()) {
+                    decl.has_constructor = true;
+                    for (auto &&value : *ctor)
+                        decl.constructor.push_back(value.value_or(""));
+                }
+                decl.destructor = (*table)["destructor"].value_or(true);
+                decl.opaque = (*table)["opaque"].value_or(true);
+                if (!decl.type.empty()) c.exposed.push_back(std::move(decl));
+            }
+        }
         if (auto *instantiations = t["instantiate"].as_array()) {
             for (auto &&entry : *instantiations) {
                 auto *table = entry.as_table();

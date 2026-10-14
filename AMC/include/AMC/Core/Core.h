@@ -27,6 +27,10 @@ enum class TypeKind : uint32_t {
 // A template primary has metadata useful for dependency closure, but it is not
 // a concrete native C++ type that can receive a TypeTraits specialization.
 constexpr uint32_t type_template_primary = 1u << 0;
+// A type exposed as an opaque handle: a consumer language sees an explicitly
+// sized blob, never the fields. The producer still owns the real definition, so
+// "layout is describable" and "fields are accessible" stay separate.
+constexpr uint32_t type_opaque = 1u << 1;
 
 // Runtime ABI kind for primitive types, independent of the source spelling.
 // It captures how the type behaves at the binary boundary: signed/unsigned

@@ -49,10 +49,25 @@ struct InstantiateDecl {
     std::string as;                  // exported concrete name, e.g. "abix_span_i32"
 };
 
+// A request to expose a concrete type as a set of callable capabilities. The
+// frontend generates the C thunks (`abix_<Type>_<method>`) and records them as
+// ABI entities, so neither the producer nor the consumer writes an adapter.
+// Only public members are supported; the type is projected to consumers as an
+// opaque handle (`opaque`).
+struct ExposeDecl {
+    std::string type;                       // concrete type name, e.g. "Counter"
+    std::vector<std::string> methods;       // member function names to expose
+    std::vector<std::string> constructor;   // constructor parameter spellings (empty = default ctor)
+    bool has_constructor = false;           // a `constructor` key was present
+    bool destructor = true;                 // expose a destroy entry
+    bool opaque = true;                     // consumers see an opaque handle
+};
+
 struct Config {
     std::string language;
-    std::string db;       // compile_commands.json (optional)
-    std::string output;   // [[export]] output, if any
+    std::string db;              // compile_commands.json (optional)
+    std::string output;          // [[export]] output, if any
+    std::string thunks_output;   // [thunks] output: generated C thunk source
     std::vector<std::string> flags;
     std::vector<std::string> files;
     std::vector<std::string> symbols;
@@ -60,6 +75,7 @@ struct Config {
     std::vector<ContractDecl> contracts;           // [[contract]] ownership contracts
     std::vector<ErrorDecl> errors;                 // [[error]] error-boundary contracts
     std::vector<InstantiateDecl> instantiations;   // [[instantiate]] generic instantiations
+    std::vector<ExposeDecl> exposed;               // [[expose]] automatic capability generation
 };
 
 // A capability the provider exposes (e.g. "frontend", "backend").

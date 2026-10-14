@@ -401,6 +401,9 @@ int backend(const char *input, const char *output) {
                 "static_assert(alignof({0}) == ::amc_generated::{1}::align, "
                 "\"ABIX ABI check: align mismatch for {0}\");\n",
                 type.name, id);
+            // An exposed type is opaque and may hold private members, for which
+            // `offsetof` is ill-formed.
+            if ((type.flags & amc::type_opaque) != 0) continue;
             for (uint32_t i = 0; i < type.field_count; ++i) {
                 const auto &field = m.fields[type.field_begin + i];
                 if (!is_cpp_identifier(field.name)) continue;
