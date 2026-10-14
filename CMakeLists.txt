@@ -348,6 +348,11 @@ if(AMC_BUILD)
             add_test(NAME amc-cmdly-interop-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/cmdly_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            # P0 automation: expose a C++ class as capabilities with no
+            # hand-written adapter (auto thunks + metadata + Rust bindings).
+            add_test(NAME amc-expose-interop-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/expose_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")
         endif()
