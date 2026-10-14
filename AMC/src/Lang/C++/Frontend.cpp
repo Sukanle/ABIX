@@ -631,6 +631,31 @@ bool expose_thunks(
             if (type.id == id) return type.name;
         return {};
     };
+    // A boundary type is representable without an explicit contract when it is a
+    // scalar, a pointer, an enumeration, an array, an ABIX-STD boundary type, or
+    // a plain value record. STL types and template specializations are not:
+    // passing them raw across a C ABI is unsafe, so they require a contract (for
+    // example a StringView mapping) instead of guessing.
+    const auto representable = [&](amc::Hash128 id) -> bool {
+        for (const auto &type : module.types) {
+            if (!(type.id == id)) continue;
+            const std::string &name = type.name;
+            if (name.rfind("abix_", 0) == 0) return true;   // ABIX-STD boundary type
+            // STL types, template spellings and references must not cross the
+            // boundary raw (they need a contract such as a StringView mapping).
+            if (name.find("std::") != std::string::npos) return false;
+            if (name.find('<') != std::string::npos) return false;
+            if (name.find('&') != std::string::npos) return false;
+            return true;
+        }
+        return false;
+    };
+    // A recorded primitive may carry a C spelling (e.g. `_Bool`); the generated
+    // C++ thunk needs the C++ spelling.
+    const auto cpp_spelling = [](std::string name) {
+        if (name == "_Bool") return std::string("bool");
+        return name;
+    };
     const auto symbol_of = [](const std::string &name) {
         std::string out;
         for (const char c : name)
@@ -649,6 +674,50 @@ bool expose_thunks(
     std::string manifest;
     std::vector<std::string> interface_names;
 
+    // Automatic ABIX-STD contract mapping: when an exposed method uses an
+    // ABIX-STD boundary type, record its contract (SequenceView / StringView /
+    // Result) so a consumer knows the semantics, not just the layout.
+    std::vector<std::pair<amc::Hash128, uint32_t>> recorded_contracts;
+    const auto record_contract = [&](amc::Hash128 id) {
+        const std::string name = type_name(id);
+        amc::LoweringResult result;
+        if (name.rfind("abix_span_", 0) == 0)
+            result = amc::evaluate_sequence_view(module, id, amc::Hash128{}, "", false);
+        else if (name.rfind("abix_str_", 0) == 0)
+            result = amc::evaluate_string_view(module, id, amc::Hash128{}, "", false);
+        else if (name.rfind("abix_result_", 0) == 0)
+            result = amc::evaluate_result(module, id, amc::Hash128{}, "");
+        else
+            return;
+        for (const auto &seen : recorded_contracts)
+            if (seen.first == id && seen.second == result.kind) return;
+        recorded_contracts.emplace_back(id, result.kind);
+        module.lowerings.push_back(result);
+    };
+
+    // Methods may be inherited: collect a type's base classes so an exposed
+    // concrete type can list methods declared on a base (e.g. MemoryHistory's
+    // insert/length/clear come from History).
+    const auto collect_bases = [&](amc::Hash128 root) {
+        std::vector<amc::Hash128> out;
+        std::vector<amc::Hash128> work{root};
+        while (!work.empty()) {
+            const amc::Hash128 id = work.back();
+            work.pop_back();
+            for (const auto &type : module.types) {
+                if (!(type.id == id)) continue;
+                for (uint32_t i = 0; i < type.field_count; ++i) {
+                    const auto &field = module.fields[type.field_begin + i];
+                    if ((field.flags & amc::field_base) == 0) continue;
+                    if (std::find(out.begin(), out.end(), field.type_id) != out.end()) continue;
+                    out.push_back(field.type_id);
+                    work.push_back(field.type_id);
+                }
+            }
+        }
+        return out;
+    };
+
     for (const auto &expose : config.exposed) {
         amc::Type *record = nullptr;
         for (auto &type : module.types)
@@ -664,6 +733,11 @@ bool expose_thunks(
         const std::string cpp_type = record->name;
         const std::string symbol_type = symbol_of(record->name);
         if (expose.opaque) record->flags |= amc::type_opaque;
+        const std::vector<amc::Hash128> bases = collect_bases(type_id);
+        const auto is_method_of_type = [&](const amc::Function &function) {
+            if (function.owner_type == type_id) return true;
+            return std::find(bases.begin(), bases.end(), function.owner_type) != bases.end();
+        };
         const amc::Hash128 self_id = intern(cpp_type + "*", amc::TypeKind::pointer, pointer_size, pointer_size, 0);
 
         const auto register_thunk = [&](const std::string &name, amc::Hash128 ret,
@@ -692,6 +766,10 @@ bool expose_thunks(
                 const amc::Hash128 id = amc::find_type_id_by_spelling(module, spelling);
                 if (id == amc::Hash128{}) {
                     error = "[[expose]] constructor parameter type is unknown: " + spelling;
+                    return false;
+                }
+                if (!representable(id)) {
+                    error = "[[expose]] constructor parameter type needs a contract: " + spelling;
                     return false;
                 }
                 if (i != 0) {
@@ -726,7 +804,7 @@ bool expose_thunks(
         for (const auto &method : expose.methods) {
             const amc::Function *found = nullptr;
             for (const auto &function : module.functions) {
-                if (!(function.owner_type == type_id)) continue;
+                if (!is_method_of_type(function)) continue;
                 if (function.name == method
                     || function.name.size() > method.size()
                            && function.name.compare(function.name.size() - method.size(), method.size(), method) == 0
@@ -739,8 +817,27 @@ bool expose_thunks(
                 error = "[[expose]] references an unknown method: " + expose.type + "::" + method;
                 return false;
             }
+            if (!representable(found->return_type)) {
+                error = "[[expose]] "
+                      + expose.type
+                      + "::"
+                      + method
+                      + " return type needs a contract: "
+                      + type_name(found->return_type);
+                return false;
+            }
+            for (const auto &parameter : found->parameters)
+                if (!representable(parameter.type_id)) {
+                    error = "[[expose]] "
+                          + expose.type
+                          + "::"
+                          + method
+                          + " parameter type needs a contract: "
+                          + type_name(parameter.type_id);
+                    return false;
+                }
             const bool returns_void = found->return_type == void_id;
-            std::string return_spelling = returns_void ? "void" : type_name(found->return_type);
+            std::string return_spelling = returns_void ? "void" : cpp_spelling(type_name(found->return_type));
             std::string params = cpp_type + "* self";
             std::string args;
             std::vector<std::pair<std::string, amc::Hash128>> signature = {
@@ -749,7 +846,7 @@ bool expose_thunks(
             for (size_t i = 0; i < found->parameters.size(); ++i) {
                 const auto &parameter = found->parameters[i];
                 const std::string name = parameter.name.empty() ? "arg" + std::to_string(i) : parameter.name;
-                params += ", " + type_name(parameter.type_id) + " " + name;
+                params += ", " + cpp_spelling(type_name(parameter.type_id)) + " " + name;
                 if (i != 0) args += ", ";
                 args += name;
                 signature.emplace_back(name, parameter.type_id);
@@ -760,6 +857,11 @@ bool expose_thunks(
                 std::string("    ") + (returns_void ? "" : "return ") + "self->" + method + "(" + args + ");\n}\n";
             const std::string symbol = "abix_" + symbol_type + "_" + method;
             exposed_methods.push_back({symbol, register_thunk(symbol, found->return_type, signature)});
+            // Record the ABIX-STD contracts of the boundary types in this
+            // signature (span -> SequenceView, str -> StringView, result).
+            record_contract(found->return_type);
+            for (const auto &parameter : found->parameters)
+                record_contract(parameter.type_id);
         }
         source += "\n";
 

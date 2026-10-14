@@ -356,6 +356,17 @@ void emit_alias(Output &o, const Projector &p, const amc::Type &type) {
     o.print("pub type {} = {};\n", p.name_of(type.id), underlying);
 }
 
+// A type a consumer should not reconstruct: STL types, template spellings and
+// references require an explicit contract (StringView, Opaque, ...) rather than
+// a guessed Rust struct. ABIX-STD boundary types (abix_*) are projected.
+static bool is_projectable_name(const std::string &name) {
+    if (name.rfind("abix_", 0) == 0) return true;
+    if (name.find("std::") != std::string::npos) return false;
+    if (name.find('<') != std::string::npos) return false;
+    if (name.find('&') != std::string::npos) return false;
+    return true;
+}
+
 void emit_opaque(Output &o, const Projector &p, const amc::Type &type) {
     // Arrays (the element type is not part of the ABI record) and other
     // unmodelled aggregates project to an explicitly sized, explicitly aligned
@@ -594,6 +605,7 @@ void emit_abi_checks(Output &o, const Projector &p) {
     bool any = false;
     for (const auto &type : p.m.types) {
         if (type.kind != amc::TypeKind::record || type.name.empty()) continue;
+        if (!is_projectable_name(type.name)) continue;
         if (!is_rust_identifier(p.name_of(type.id))) continue;
         if (!any) {
             o.print("\n// Compile-time ABI assertions: a layout drift is a compile error.\n");
@@ -1604,6 +1616,12 @@ std::string generate_projection(const amc::AbiModule &module) {
 
     for (const auto &type : module.types) {
         o.print("\n");
+        // A consumer must not reconstruct an STL/template/reference type; emit
+        // it as an opaque blob instead of a guessed Rust struct.
+        if (!is_projectable_name(type.name)) {
+            emit_opaque(o, projector, type);
+            continue;
+        }
         emit_type(o, projector, type);
     }
     emit_functions(o, projector);
