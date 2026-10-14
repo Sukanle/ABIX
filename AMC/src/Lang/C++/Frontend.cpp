@@ -356,7 +356,7 @@ private:
         module.types.push_back(t);
         // Record the pointee AFTER registering this pointer, so a self-referential
         // type (a node with a pointer to itself) terminates instead of recursing.
-        if (is_pointer) {
+        if (is_pointer && !pointee_type->isFunctionType() && !pointee_type->isVoidType()) {
             const amc::Hash128 pointee_id = add_type(pointee_type);
             const uint32_t flags = pointee_type.isConstQualified() ? amc::pointee_const : 0u;
             if (!(pointee_id == amc::Hash128{})) module.pointees.push_back({t.id, pointee_id, flags});

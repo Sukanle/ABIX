@@ -233,6 +233,26 @@ type, layout, borrowing lifetime and invalidation conditions allow; otherwise it
 uses `Opaque` or an explicit copy. Nothing is claimed to be zero-copy merely
 because a name or an API looks similar.
 
+The P0 contracts (sequence view, string view, opaque handle, ownership, error
+boundary) and the P1 contracts (optional, result, callback, range) are each
+matched by **capability** — shape plus element `TypeID` — never by name:
+
+- `optional` = `{ discriminant: bool/u8; payload: T }`;
+- `result`   = `{ status: int; payload: T }` (reuses the error-boundary idea);
+- `callback` = `{ function entry; opaque context }`;
+- `range`    = a non-contiguous container exposed through length + indexed-access
+  accessors (no contiguous-memory assumption).
+
+A non-template contract type (for example a callback struct) is declared with
+`[[contract-type]]`; a container lowered through accessors uses `[[view]]`
+(contiguous) or `[[range]]` (iteration).
+
+P2 types (map, set, deque, complex graphs, language-specific containers) get
+**no unified implementation**: they are declared `opaque` (`[[contract-type]]
+contract = "opaque"`) and used through exported accessor operations, or through a
+`[[view]]` / `[[range]]` adapter, or an explicit copy. An `opaque` handle is a
+normal exported type whose layout consumers must not rely on.
+
 ## 10. Target
 
 A module records `arch`, `os`, `target_abi`, `compiler`, the module-level
@@ -281,6 +301,10 @@ in an object file, aggregate parameter classification, hidden return pointers �
 are **not** claimed by region verification; they belong to the build stage and
 come back `unverifiable` here. Region-internal `layout` checks prove the metadata
 is self-consistent, not that it matches a particular binary.
+
+The CLI exposes this as `amc target <file.abix|binary> [--expect arch=..,os=..]`:
+it prints the recorded target, or verifies it and reports each dimension
+independently (exit `1` when any is incompatible).
 
 ## 11. Canonical Representation
 

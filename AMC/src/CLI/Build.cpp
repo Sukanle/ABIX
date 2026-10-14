@@ -273,14 +273,6 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
                     const std::string purpose = (*table)["purpose"].value_or("");
                     const std::string selected_contract = contract.empty() ? purpose : contract;
                     if (selected_contract.empty()) continue;
-                    const bool string_view =
-                        selected_contract == "string-view" || selected_contract == "abix-std.string-view";
-                    if (!string_view
-                        && selected_contract != "sequence-view"
-                        && selected_contract != "abix-std.sequence-view") {
-                        error = "unsupported ABIX-STD contract: " + selected_contract;
-                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
-                    }
                     const std::string as = (*table)["as"].value_or("");
                     amc::Hash128 type_id{};
                     bool found = false;
@@ -304,10 +296,21 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
                         }
                     }
                     const bool mutable_view = (*table)["mutable"].value_or(false);
-                    amc::LoweringResult result =
-                        string_view
-                            ? amc::evaluate_string_view(full, type_id, element_id, element_name, mutable_view)
-                            : amc::evaluate_sequence_view(full, type_id, element_id, element_name, mutable_view);
+                    amc::LoweringResult result;
+                    if (selected_contract == "sequence-view" || selected_contract == "abix-std.sequence-view")
+                        result = amc::evaluate_sequence_view(full, type_id, element_id, element_name, mutable_view);
+                    else if (selected_contract == "string-view" || selected_contract == "abix-std.string-view")
+                        result = amc::evaluate_string_view(full, type_id, element_id, element_name, mutable_view);
+                    else if (selected_contract == "optional" || selected_contract == "abix-std.optional")
+                        result = amc::evaluate_optional(full, type_id, element_id, element_name);
+                    else if (selected_contract == "result" || selected_contract == "abix-std.result")
+                        result = amc::evaluate_result(full, type_id, element_id, element_name);
+                    else if (selected_contract == "callback" || selected_contract == "abix-std.callback")
+                        result = amc::evaluate_callback(full, type_id);
+                    else {
+                        error = "unsupported ABIX-STD contract: " + selected_contract;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
                     if (result.status == static_cast<uint32_t>(amc::LoweringStatus::direct)) {
                         bool replaced = false;
                         for (auto &entry2 : canonical)
@@ -374,6 +377,68 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
                     lowering.type_id = source;
                     lowering.contract_type = target;
                     lowering.kind = static_cast<uint32_t>(amc::LoweringKind::sequence_view);
+                    lowering.status = static_cast<uint32_t>(amc::LoweringStatus::needs_adapter);
+                    lowering.reason = static_cast<uint32_t>(amc::LoweringReason::layout);
+                    full.lowerings.push_back(lowering);
+                }
+            }
+            // Non-template contract types (for example a callback struct).
+            if (const auto *types = config["contract-type"].as_array()) {
+                for (auto &&entry : *types) {
+                    const auto *table = entry.as_table();
+                    if (!table) continue;
+                    const std::string type_name = (*table)["type"].value_or("");
+                    if (type_name.empty()) continue;
+                    const std::string contract = (*table)["contract"].value_or("");
+                    const amc::Hash128 source = amc::find_type_id_by_spelling(full, type_name);
+                    if (source == amc::Hash128{}) {
+                        error = "[[contract-type]] references an unknown type: " + type_name;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    amc::LoweringResult result;
+                    if (contract == "callback" || contract == "abix-std.callback")
+                        result = amc::evaluate_callback(full, source);
+                    else if (contract == "opaque" || contract == "abix-std.opaque")
+                        result = amc::evaluate_opaque(full, source);
+                    else {
+                        error = "unsupported ABIX-STD contract: " + contract;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    if (result.status == static_cast<uint32_t>(amc::LoweringStatus::unsupported)) {
+                        error = "a contract type does not satisfy its ABIX-STD contract";
+                        return fail(amc::ErrorCategory::validation, "build", error, config_path.string());
+                    }
+                    full.lowerings.push_back(result);
+                }
+            }
+            // Non-contiguous containers exposed as an iterable range.
+            if (const auto *ranges = config["range"].as_array()) {
+                for (auto &&entry : *ranges) {
+                    const auto *table = entry.as_table();
+                    if (!table) continue;
+                    const std::string type_name = (*table)["type"].value_or("");
+                    if (type_name.empty()) continue;
+                    const amc::Hash128 source = amc::find_type_id_by_spelling(full, type_name);
+                    if (source == amc::Hash128{}) {
+                        error = "[[range]] references an unknown type: " + type_name;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    const std::string size_name = (*table)["size_accessor"].value_or("");
+                    const std::string at_name = (*table)["at_accessor"].value_or("");
+                    amc::Hash128 size_signature{}, at_signature{};
+                    for (const auto &function : full.functions) {
+                        if (function.name == size_name) size_signature = function.signature;
+                        if (function.name == at_name) at_signature = function.signature;
+                    }
+                    if (size_signature == amc::Hash128{} || at_signature == amc::Hash128{}) {
+                        error = "[[range]] accessors not found: " + size_name + " / " + at_name;
+                        return fail(amc::ErrorCategory::config, "build", error, config_path.string());
+                    }
+                    full.range_adapters.push_back({source, size_signature, at_signature});
+                    amc::LoweringResult lowering;
+                    lowering.type_id = source;
+                    lowering.contract_type = source;
+                    lowering.kind = static_cast<uint32_t>(amc::LoweringKind::range);
                     lowering.status = static_cast<uint32_t>(amc::LoweringStatus::needs_adapter);
                     lowering.reason = static_cast<uint32_t>(amc::LoweringReason::layout);
                     full.lowerings.push_back(lowering);

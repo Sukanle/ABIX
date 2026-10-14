@@ -8,6 +8,7 @@
 
 #include <new>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -103,6 +104,75 @@ DEMO_API uint64_t demo_buffer_size(const struct DemoBuffer *buffer) {
 
 DEMO_API int32_t demo_buffer_destroy(struct DemoBuffer *buffer) {
     delete buffer;
+    return 0;
+}
+
+DEMO_API abix_optional_i32 demo_optional(int32_t present) {
+    return abix_optional_i32{present ? uint8_t{1} : uint8_t{0}, present ? 42 : 0};
+}
+
+DEMO_API abix_result_i32 demo_result(int32_t value) {
+    return abix_result_i32{value >= 0 ? 0 : 1, value >= 0 ? value * 2 : 0};
+}
+
+DEMO_API int32_t demo_callback_invoke(void *context) { return context ? *static_cast<int32_t *>(context) : 0; }
+
+DEMO_API abix_callback demo_callback() {
+    static int32_t payload = 7;
+    return abix_callback{&demo_callback_invoke, &payload};
+}
+
+struct DemoSet {
+    std::vector<int32_t> values;
+};
+
+DEMO_API struct DemoSet *demo_set_create() { return new (std::nothrow) DemoSet{}; }
+
+DEMO_API int32_t demo_set_insert(struct DemoSet *set, int32_t value) {
+    if (!set) return 1;
+    set->values.push_back(value);
+    return 0;
+}
+
+DEMO_API uint64_t demo_set_size(const struct DemoSet *set) {
+    return set ? static_cast<uint64_t>(set->values.size()) : 0;
+}
+
+DEMO_API int32_t demo_set_at(const struct DemoSet *set, uint64_t index) {
+    return (set && index < set->values.size()) ? set->values[static_cast<size_t>(index)] : 0;
+}
+
+DEMO_API int32_t demo_set_destroy(struct DemoSet *set) {
+    delete set;
+    return 0;
+}
+
+struct DemoMap {
+    std::unordered_map<int32_t, int32_t> entries;
+};
+
+DEMO_API struct DemoMap *demo_map_create() { return new (std::nothrow) DemoMap{}; }
+
+DEMO_API int32_t demo_map_put(struct DemoMap *map, int32_t key, int32_t value) {
+    if (!map) return 1;
+    map->entries[key] = value;
+    return 0;
+}
+
+DEMO_API int32_t demo_map_get(const struct DemoMap *map, int32_t key, int32_t *out) {
+    if (!map || !out) return 1;
+    const auto found = map->entries.find(key);
+    if (found == map->entries.end()) return 2;
+    *out = found->second;
+    return 0;
+}
+
+DEMO_API uint64_t demo_map_size(const struct DemoMap *map) {
+    return map ? static_cast<uint64_t>(map->entries.size()) : 0;
+}
+
+DEMO_API int32_t demo_map_destroy(struct DemoMap *map) {
+    delete map;
     return 0;
 }
 

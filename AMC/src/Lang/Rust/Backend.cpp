@@ -566,6 +566,24 @@ void emit_view_adapters(Output &o, const Projector &p) {
     }
 }
 
+// Range adapters: a non-contiguous container exposed as length + indexed access,
+// without assuming contiguous memory.
+void emit_range_adapters(Output &o, const Projector &p) {
+    for (const auto &adapter : p.m.range_adapters) {
+        const int source = p.index_of(adapter.source_type);
+        const amc::Function *size = p.function_by_signature(adapter.size_accessor);
+        const amc::Function *at = p.function_by_signature(adapter.at_accessor);
+        if (source < 0 || !size || !at) continue;
+        const std::string source_name = p.name_of(adapter.source_type);
+        o.print("\n// ABIX-STD range adapter: {} (length + indexed access).\n", source_name);
+        o.print("pub unsafe fn {}_len(value: *const {}) -> u64 {{\n", source_name, source_name);
+        o.print("    {}(value) as _\n}}\n", rust_ident(size->name));
+        o.print("pub unsafe fn {}_at(value: *const {}, index: u64) -> {} {{\n", source_name, source_name,
+            p.field_type(at->return_type));
+        o.print("    {}(value, index as _)\n}}\n", rust_ident(at->name));
+    }
+}
+
 void emit_abi_checks(Output &o, const Projector &p) {
     bool any = false;
     for (const auto &type : p.m.types) {
@@ -1351,6 +1369,7 @@ std::string generate_projection(const amc::AbiModule &module) {
     emit_errors(o, projector);
     emit_lowerings(o, projector);
     emit_view_adapters(o, projector);
+    emit_range_adapters(o, projector);
     emit_abi_checks(o, projector);
     std::string error;
     if (!emit_metadata_region(o, module, error)) fmt::print(stderr, "{}\n", error);

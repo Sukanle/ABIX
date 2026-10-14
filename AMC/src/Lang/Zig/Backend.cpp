@@ -170,12 +170,14 @@ public:
             pointee = n.rfind("&mut", 0) == 0 ? n.substr(4) : n.substr(1);
             is_const = n.rfind("&mut", 0) != 0;
         } else {
-            return "[*c]anyopaque";
+            return "?*anyopaque";
         }
         if (pointee.find('*') != std::string::npos || pointee.find('&') != std::string::npos)
-            return is_const ? "[*c]const anyopaque" : "[*c]anyopaque";
+            return is_const ? "?*const anyopaque" : "?*anyopaque";
         const std::string base = resolve_spelling(pointee);
-        if (base.empty() || base == "void") return is_const ? "[*c]const anyopaque" : "[*c]anyopaque";
+        // Zig 0.16 rejects `[*c]anyopaque`; opaque pointees use a nullable pointer.
+        if (base.empty() || base == "void" || base == "anyopaque")
+            return is_const ? "?*const anyopaque" : "?*anyopaque";
         return (is_const ? "[*c]const " : "[*c]") + base;
     }
 

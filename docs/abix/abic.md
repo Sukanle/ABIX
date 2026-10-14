@@ -173,7 +173,7 @@ exception/panic must not cross the ABI boundary. See
 | `template` | string | Generic entity name (may be qualified, e.g. `abix_std::abix_span`) |
 | `args` | string[] | Canonical type arguments, e.g. `["int32_t"]` |
 | `as` | string | Exported name of the concrete entity (also emitted as a source alias) |
-| `contract` | string | ABIX-STD contract to lower to: `sequence-view` or `string-view` (optional; `purpose` is an accepted alias) |
+| `contract` | string | ABIX-STD contract to lower to: `sequence-view`, `string-view`, `optional` or `result` (optional; `purpose` is an accepted alias) |
 | `element` | string | Element spelling the contract requires, e.g. `int` (optional; matched against the pointer's pointee `TypeID`) |
 | `mutable` | bool | Require a non-const data pointer (optional, default `false`) |
 
@@ -198,6 +198,28 @@ Lowers a container to the sequence view through accessors (for example a
 `std::vector<T>`'s `data()`/`size()`), without exposing its internal layout. AMC
 generates a thin adapter; the borrow lifetime and invalidation conditions remain
 part of the caller's contract.
+
+### `[[contract-type]]` — a non-template contract type
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Concrete type (e.g. `abix_callback`, `DemoMap`) |
+| `contract` | string | ABIX-STD contract: `callback` or `opaque` |
+
+For contract types that are not templates (a callback struct, or an opaque Map /
+Set handle), so no `[[instantiate]]` is needed. An `opaque` type is used through
+accessor operations; its layout is not consumed.
+
+### `[[range]]` — iterable range adapter
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Container type (its layout stays opaque) |
+| `size_accessor` | string | Function returning the element count |
+| `at_accessor` | string | Function returning element `index` |
+
+Exposes a non-contiguous container as an iterable range (length + indexed
+access) without assuming contiguous memory.
 
 ### `[target]`
 

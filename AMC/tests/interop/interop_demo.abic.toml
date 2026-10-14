@@ -28,6 +28,20 @@ symbols = [
     "demo_buffer_data",
     "demo_buffer_size",
     "demo_buffer_destroy",
+    "demo_optional",
+    "demo_result",
+    "demo_callback",
+    "demo_callback_invoke",
+    "demo_set_create",
+    "demo_set_insert",
+    "demo_set_size",
+    "demo_set_at",
+    "demo_set_destroy",
+    "demo_map_create",
+    "demo_map_put",
+    "demo_map_get",
+    "demo_map_size",
+    "demo_map_destroy",
 ]
 
 [[owned]]
@@ -90,6 +104,40 @@ element = "char"
 type = "DemoBuffer"
 data_accessor = "demo_buffer_data"
 size_accessor = "demo_buffer_size"
+
+# ABIX-STD P1 contracts.
+[[instantiate]]
+template = "abix_std::abix_optional"
+args = ["int32_t"]
+as = "abix_optional_i32"
+contract = "optional"
+element = "int"
+
+[[instantiate]]
+template = "abix_std::abix_result"
+args = ["int32_t"]
+as = "abix_result_i32"
+contract = "result"
+element = "int"
+
+[[contract-type]]
+type = "abix_callback"
+contract = "callback"
+
+# P2: Map / Set are opaque handles used through accessors, not unified containers.
+[[contract-type]]
+type = "DemoMap"
+contract = "opaque"
+
+[[contract-type]]
+type = "DemoSet"
+contract = "opaque"
+
+# A non-contiguous container exposed as an iterable range.
+[[range]]
+type = "DemoSet"
+size_accessor = "demo_set_size"
+at_accessor = "demo_set_at"
 
 # Error boundary: demo_div reports its status in the return value and writes the
 # result through parameter 2.

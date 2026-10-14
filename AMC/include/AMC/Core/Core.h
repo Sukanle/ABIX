@@ -266,7 +266,12 @@ struct ErrorContract {
 // a successful instantiation does not by itself satisfy a contract.
 enum class LoweringKind : uint32_t {
     sequence_view = 1,
-    string_view = 2
+    string_view = 2,
+    optional = 3,
+    result = 4,
+    callback = 5,
+    range = 6,
+    opaque = 7
 };
 enum class LoweringStatus : uint32_t {
     direct = 0,          // the concrete type is already the boundary entity
@@ -306,6 +311,14 @@ struct ViewAdapter {
     Hash128 size_accessor{};   // function signature: unsigned length (const Source *)
 };
 
+// A non-contiguous container exposed as an iterable range through accessors: a
+// length plus indexed access. No contiguous-memory assumption.
+struct RangeAdapter {
+    Hash128 source_type{};
+    Hash128 size_accessor{};   // function signature: unsigned length (const Source *)
+    Hash128 at_accessor{};     // function signature: T (const Source *, unsigned index)
+};
+
 // A pointer type's pointee, recorded so element/contract matching can use ABI
 // identity (TypeID) instead of a spelling. Mutability is a separate qualifier,// not part of the base element identity:
 // the contract matcher checks it. A pointer without a pointee entry is matched by spelling as a fallback.
@@ -337,6 +350,7 @@ struct AbiModule {
     std::vector<LoweringResult> lowerings;      // ABIX-STD contract match results
     std::vector<PointeeRef> pointees;           // pointer -> pointee TypeID
     std::vector<ViewAdapter> view_adapters;     // container -> sequence-view accessors
+    std::vector<RangeAdapter> range_adapters;   // container -> iterable range accessors
     // Optional, debug-only: where each type was declared. Not part of ABI
     // identity (excluded from the artifact hash) — it exists so tools can
     // implement go-to-definition TypeID -> source declaration.
@@ -368,6 +382,17 @@ LoweringResult evaluate_sequence_view(const AbiModule &module, Hash128 type_id, 
 // encoding }`, with the code unit matched by pointee TypeID.
 LoweringResult evaluate_string_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
     const std::string &element_spelling, bool contract_mutable);
+
+// P1 contracts (value layouts matched by shape + element TypeID).
+LoweringResult evaluate_optional(
+    const AbiModule &module, Hash128 type_id, Hash128 element_id, const std::string &element_spelling);
+LoweringResult evaluate_result(
+    const AbiModule &module, Hash128 type_id, Hash128 element_id, const std::string &element_spelling);
+LoweringResult evaluate_callback(const AbiModule &module, Hash128 type_id);
+
+// Mark a type as an intentionally opaque handle (Map / Set / Deque / custom
+// containers): its layout is not exposed and it is used through accessors.
+LoweringResult evaluate_opaque(const AbiModule &module, Hash128 type_id);
 
 // Resolve a type spelling (for example `int`) to a TypeID by normalized name,
 // or a zero Hash128 when not found. `const int` and `int` resolve together.

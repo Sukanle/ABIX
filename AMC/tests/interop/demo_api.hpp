@@ -2,8 +2,11 @@
 
 #include <stdint.h>
 
-#include "../../../ABIX/STD/Span.h"     // abix_span_i32 — the ABIX-STD borrowed span
-#include "../../../ABIX/STD/String.h"   // abix_str_utf8 — the ABIX-STD string view
+#include "../../../ABIX/STD/Span.h"       // abix_span_i32 — the ABIX-STD borrowed span
+#include "../../../ABIX/STD/String.h"     // abix_str_utf8 — the ABIX-STD string view
+#include "../../../ABIX/STD/Optional.h"   // abix_optional_i32 — the ABIX-STD optional
+#include "../../../ABIX/STD/Result.h"     // abix_result_i32 — the ABIX-STD result
+#include "../../../ABIX/STD/Callback.h"   // abix_callback — the ABIX-STD callback
 
 // Public C ABI of the interop demo.
 //
@@ -72,6 +75,30 @@ DEMO_API int32_t demo_buffer_push(struct DemoBuffer *buffer, int32_t value);
 DEMO_API const int32_t *demo_buffer_data(const struct DemoBuffer *buffer);
 DEMO_API uint64_t demo_buffer_size(const struct DemoBuffer *buffer);
 DEMO_API int32_t demo_buffer_destroy(struct DemoBuffer *buffer);
+
+// ABIX-STD P1 contracts: optional, result and callback.
+DEMO_API abix_optional_i32 demo_optional(int32_t present);
+DEMO_API abix_result_i32 demo_result(int32_t value);
+DEMO_API abix_callback demo_callback();
+DEMO_API int32_t demo_callback_invoke(void *context);
+
+// A non-contiguous container exposed as an iterable range (P1): length plus
+// indexed access, without assuming contiguous memory.
+struct DemoSet;
+DEMO_API struct DemoSet *demo_set_create();
+DEMO_API int32_t demo_set_insert(struct DemoSet *set, int32_t value);
+DEMO_API uint64_t demo_set_size(const struct DemoSet *set);
+DEMO_API int32_t demo_set_at(const struct DemoSet *set, uint64_t index);
+DEMO_API int32_t demo_set_destroy(struct DemoSet *set);
+
+// A Map exposed as an opaque handle (P2): no unified container type, only
+// accessor operations over the handle.
+struct DemoMap;
+DEMO_API struct DemoMap *demo_map_create();
+DEMO_API int32_t demo_map_put(struct DemoMap *map, int32_t key, int32_t value);
+DEMO_API int32_t demo_map_get(const struct DemoMap *map, int32_t key, int32_t *out);
+DEMO_API uint64_t demo_map_size(const struct DemoMap *map);
+DEMO_API int32_t demo_map_destroy(struct DemoMap *map);
 
 #ifdef __cplusplus
 }

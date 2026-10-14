@@ -88,6 +88,17 @@ function = "demo_numbers"
 returns = "borrowed"
 ```
 
+## P1 契约
+
+P1 增加四个契约，均按能力匹配（形状 + 元素 `TypeID`）：
+
+| 契约       | 布局 / 能力                                          |
+| ---------- | ---------------------------------------------------- |
+| `optional` | `{ discriminant: bool/u8; payload: T }`              |
+| `result`   | `{ status: int; payload: T }`（复用错误边界）        |
+| `callback` | `{ 函数入口; opaque context }`                       |
+| `range`    | 非连续容器，经长度 + 索引访问 accessor 暴露          |
+
 实例化与契约匹配是两件事：`abix_span<int32_t>` 实例化成功，并不等于它满足 ABIX-STD 的
 `SequenceView<i32>` 契约；AMC 需证明兼容，或生成薄适配器。声明契约后，AMC 会对具体类型
 做 lowering：

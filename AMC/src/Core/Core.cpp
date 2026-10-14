@@ -37,8 +37,9 @@ constexpr uint32_t kErrorEntrySize =
 constexpr uint32_t kPlatformEntrySize = 8;   // pointer_bits(4) + endianness(4)
 constexpr uint32_t kLoweringEntrySize =
     52;   // type_id(16) + contract_type(16) + kind(4) + status(4) + reason(4) + ptr(4) + len(4)
-constexpr uint32_t kPointeeEntrySize = 36;       // pointer(16) + pointee(16) + flags(4)
-constexpr uint32_t kViewAdapterEntrySize = 64;   // source(16) + target(16) + data(16) + size(16)
+constexpr uint32_t kPointeeEntrySize = 36;        // pointer(16) + pointee(16) + flags(4)
+constexpr uint32_t kViewAdapterEntrySize = 64;    // source(16) + target(16) + data(16) + size(16)
+constexpr uint32_t kRangeAdapterEntrySize = 48;   // source(16) + size(16) + at(16)
 
 enum Section : uint32_t {
     strings = 1,
@@ -61,7 +62,8 @@ enum Section : uint32_t {
     platform,
     lowering,
     pointees,
-    view_adapters
+    view_adapters,
+    range_adapters
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -611,7 +613,7 @@ bool validate(const AbiModule &module, std::string &error) {
             error = "lowering references an unknown type";
             return false;
         }
-        if (record.kind > static_cast<uint32_t>(LoweringKind::string_view)
+        if (record.kind > static_cast<uint32_t>(LoweringKind::opaque)
             || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)) {
             error = "invalid lowering record";
             return false;
@@ -638,6 +640,25 @@ bool validate(const AbiModule &module, std::string &error) {
                 }
             if (!found) {
                 error = "view adapter names an unknown accessor";
+                return false;
+            }
+        }
+    }
+    for (const auto &record : module.range_adapters) {
+        if (!find_type_by_id(module, record.source_type)) {
+            error = "range adapter names an unknown type";
+            return false;
+        }
+        const Hash128 accessors[] = {record.size_accessor, record.at_accessor};
+        for (const Hash128 &signature : accessors) {
+            bool found = false;
+            for (const auto &function : module.functions)
+                if (function.signature == signature) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                error = "range adapter names an unknown accessor";
                 return false;
             }
         }
@@ -850,6 +871,164 @@ LoweringResult evaluate_string_view(const AbiModule &module, Hash128 type_id, Ha
     return evaluate_view(module, type_id, LoweringKind::string_view, element_id, element_spelling, contract_mutable);
 }
 
+namespace {
+
+bool byte_discriminant(const Type *type) {
+    if (!type || type->kind != TypeKind::primitive) return false;
+    const uint32_t kind = type->primitive_abi & 0xffu;
+    return kind == static_cast<uint32_t>(PrimitiveAbiKind::bool_)
+        || kind == static_cast<uint32_t>(PrimitiveAbiKind::uchar)
+        || kind == static_cast<uint32_t>(PrimitiveAbiKind::char8)
+        || (kind == static_cast<uint32_t>(PrimitiveAbiKind::uint) && type->size == 1);
+}
+
+bool integer_status(const Type *type) {
+    if (!type || type->kind != TypeKind::primitive) return false;
+    const uint32_t kind = type->primitive_abi & 0xffu;
+    return (kind == static_cast<uint32_t>(PrimitiveAbiKind::sint)
+               || kind == static_cast<uint32_t>(PrimitiveAbiKind::uint))
+        && type->size >= 4;
+}
+
+// Shared matcher for the `optional` and `result` value layouts:
+//   optional = { discriminant: bool/u8; payload: T }
+//   result   = { status: int;        payload: T }
+LoweringResult evaluate_pair(const AbiModule &module, Hash128 type_id, LoweringKind kind, Hash128 element_id,
+    const std::string &element_spelling, bool discriminant_is_bool) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(kind);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+
+    int discriminant_index = -1, payload_index = -1;
+    uint32_t visible = 0;
+    for (uint32_t i = 0; i < type->field_count; ++i) {
+        const auto &field = module.fields[type->field_begin + i];
+        if ((field.flags & field_base) != 0 || (field.flags & field_bitfield) != 0) continue;
+        ++visible;
+        const Type *field_type = find_type_by_id(module, field.type_id);
+        if (discriminant_index < 0
+            && (discriminant_is_bool ? byte_discriminant(field_type) : integer_status(field_type)))
+            discriminant_index = static_cast<int>(i);
+        else
+            payload_index = static_cast<int>(i);
+    }
+    if (visible != 2) {
+        result.reason = static_cast<uint32_t>(LoweringReason::field_count);
+        return result;
+    }
+    if (discriminant_index < 0 || payload_index < 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::missing_data);
+        return result;
+    }
+    result.pointer_field = static_cast<uint32_t>(discriminant_index);
+    result.length_field = static_cast<uint32_t>(payload_index);
+    const auto &discriminant_field = module.fields[type->field_begin + static_cast<uint32_t>(discriminant_index)];
+    const auto &payload_field = module.fields[type->field_begin + static_cast<uint32_t>(payload_index)];
+    const Type *discriminant_type = find_type_by_id(module, discriminant_field.type_id);
+    const Type *payload_type = find_type_by_id(module, payload_field.type_id);
+
+    // Payload matches the declared element by TypeID (or, failing that, spelling).
+    if (!(element_id == Hash128{})) {
+        if (!(payload_field.type_id == element_id)) {
+            result.reason = static_cast<uint32_t>(LoweringReason::element_mismatch);
+            return result;
+        }
+    } else if (!element_spelling.empty()) {
+        if (!payload_type || normalise_spelling(payload_type->name) != normalise_spelling(element_spelling)) {
+            result.reason = static_cast<uint32_t>(LoweringReason::element_mismatch);
+            return result;
+        }
+    }
+    const uint32_t payload_align = payload_type ? (payload_type->align == 0 ? 1 : payload_type->align) : 1;
+    const uint32_t expected_offset = (discriminant_type->size + payload_align - 1) / payload_align * payload_align;
+    if (discriminant_field.offset == 0 && payload_field.offset == expected_offset) {
+        result.status = static_cast<uint32_t>(LoweringStatus::direct);
+        result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    } else {
+        result.status = static_cast<uint32_t>(LoweringStatus::needs_adapter);
+        result.reason = static_cast<uint32_t>(LoweringReason::layout);
+    }
+    return result;
+}
+
+}   // namespace
+
+LoweringResult evaluate_optional(
+    const AbiModule &module, Hash128 type_id, Hash128 element_id, const std::string &element_spelling) {
+    return evaluate_pair(module, type_id, LoweringKind::optional, element_id, element_spelling, true);
+}
+
+LoweringResult evaluate_result(
+    const AbiModule &module, Hash128 type_id, Hash128 element_id, const std::string &element_spelling) {
+    return evaluate_pair(module, type_id, LoweringKind::result, element_id, element_spelling, false);
+}
+
+LoweringResult evaluate_callback(const AbiModule &module, Hash128 type_id) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(LoweringKind::callback);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+
+    // { function entry, opaque context }: exactly two pointer fields.
+    int first = -1, second = -1;
+    uint32_t visible = 0;
+    for (uint32_t i = 0; i < type->field_count; ++i) {
+        const auto &field = module.fields[type->field_begin + i];
+        if ((field.flags & field_base) != 0 || (field.flags & field_bitfield) != 0) continue;
+        ++visible;
+        const Type *field_type = find_type_by_id(module, field.type_id);
+        if (!field_type || field_type->kind != TypeKind::pointer) continue;
+        if (first < 0)
+            first = static_cast<int>(i);
+        else if (second < 0)
+            second = static_cast<int>(i);
+    }
+    if (visible != 2 || first < 0 || second < 0) {
+        result.reason =
+            static_cast<uint32_t>(visible != 2 ? LoweringReason::field_count : LoweringReason::missing_data);
+        return result;
+    }
+    result.pointer_field = static_cast<uint32_t>(first);
+    result.length_field = static_cast<uint32_t>(second);
+    const auto &first_field = module.fields[type->field_begin + static_cast<uint32_t>(first)];
+    const auto &second_field = module.fields[type->field_begin + static_cast<uint32_t>(second)];
+    if (first_field.offset == 0 && second_field.offset == 8) {
+        result.status = static_cast<uint32_t>(LoweringStatus::direct);
+        result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    } else {
+        result.status = static_cast<uint32_t>(LoweringStatus::needs_adapter);
+        result.reason = static_cast<uint32_t>(LoweringReason::layout);
+    }
+    return result;
+}
+
+LoweringResult evaluate_opaque(const AbiModule &module, Hash128 type_id) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(LoweringKind::opaque);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+    // An opaque handle is used through accessors; its layout is not consumed.
+    result.status = static_cast<uint32_t>(LoweringStatus::direct);
+    result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    return result;
+}
+
 bool project_symbols(
     const AbiModule &source, const std::vector<std::string> &symbols, AbiModule &result, std::string &error) {
     if (!validate(source, error)) return false;
@@ -883,6 +1062,7 @@ bool project_symbols(
     result.lowerings.clear();
     result.pointees.clear();
     result.view_adapters.clear();
+    result.range_adapters.clear();
     std::unordered_set<std::string> complete_type_ids;
     auto complete = [&](Hash128 id) { complete_type_ids.insert(hash_key(id)); };
     auto is_complete = [&](Hash128 id) { return complete_type_ids.count(hash_key(id)) != 0; };
@@ -991,6 +1171,8 @@ bool project_symbols(
         if (has_type(record.pointer) && has_type(record.pointee)) result.pointees.push_back(record);
     for (const auto &record : source.view_adapters)
         if (has_type(record.source_type) && has_type(record.target_type)) result.view_adapters.push_back(record);
+    for (const auto &record : source.range_adapters)
+        if (has_type(record.source_type)) result.range_adapters.push_back(record);
     if (!symbols.empty() && result.types.empty() && result.functions.empty()) {
         error = "export symbols did not match any ABI declaration";
         return false;
@@ -1306,6 +1488,18 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         sections.push_back(std::move(adapter_table));
     }
 
+    // Optional container -> iterable range adapters (accessor based).
+    if (!module.range_adapters.empty()) {
+        SectionData range_table{
+            range_adapters, static_cast<uint32_t>(module.range_adapters.size()), kRangeAdapterEntrySize, 0, {}};
+        for (const auto &record : module.range_adapters) {
+            put_hash(range_table.bytes, record.source_type);
+            put_hash(range_table.bytes, record.size_accessor);
+            put_hash(range_table.bytes, record.at_accessor);
+        }
+        sections.push_back(std::move(range_table));
+    }
+
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
     put_u16(bytes, kHashAlgorithm);
@@ -1431,6 +1625,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *lowering_table = optional(lowering, kLoweringEntrySize);
     const auto *pointee_table = optional(pointees, kPointeeEntrySize);
     const auto *view_adapter_table = optional(view_adapters, kViewAdapterEntrySize);
+    const auto *range_adapter_table = optional(range_adapters, kRangeAdapterEntrySize);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -1732,7 +1927,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             || !read_u32(bytes, lowering_offset, record.reason, error)
             || !read_u32(bytes, lowering_offset, record.pointer_field, error)
             || !read_u32(bytes, lowering_offset, record.length_field, error)
-            || record.kind > static_cast<uint32_t>(LoweringKind::string_view)
+            || record.kind > static_cast<uint32_t>(LoweringKind::opaque)
             || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)
             || record.reason > static_cast<uint32_t>(LoweringReason::layout)) {
             error = "invalid lowering record";
@@ -1762,6 +1957,17 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             return false;
         }
         module.view_adapters.push_back(record);
+    }
+    size_t range_offset = range_adapter_table ? range_adapter_table->offset : 0;
+    for (uint32_t i = 0; range_adapter_table && i < range_adapter_table->count; ++i) {
+        RangeAdapter record;
+        if (!read_hash(bytes, range_offset, record.source_type, error)
+            || !read_hash(bytes, range_offset, record.size_accessor, error)
+            || !read_hash(bytes, range_offset, record.at_accessor, error)) {
+            error = "invalid range adapter record";
+            return false;
+        }
+        module.range_adapters.push_back(record);
     }
     size_t descriptor_offset = descriptor_table->offset;
     uint16_t descriptor_algorithm = 0, descriptor_version = 0;

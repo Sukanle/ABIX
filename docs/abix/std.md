@@ -62,6 +62,17 @@ size_accessor = "demo_buffer_size"
 AMC generates a thin adapter (`DemoBuffer_view(value) -> abix_span_i32`) that
 calls the accessors; the container's internal layout is never exposed.
 
+## P1 contracts
+
+P1 adds four contracts, each matched by capability (shape + element `TypeID`):
+
+| Contract   | Layout / capability                                  |
+| ---------- | ---------------------------------------------------- |
+| `optional` | `{ discriminant: bool/u8; payload: T }`              |
+| `result`   | `{ status: int; payload: T }` (reuses error boundary) |
+| `callback` | `{ function entry; opaque context }`                 |
+| `range`    | non-contiguous container via length + indexed access |
+
 ## First primitive: borrowed span
 
 The ABIX-STD span is written as a source-level template:

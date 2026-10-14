@@ -143,6 +143,43 @@ fn main() {
         assert_eq!(demo_sum(buffer_view), 15, "buffer sum");
         assert_eq!(demo_buffer_destroy(buffer), 0, "buffer destroyed");
 
+        // ABIX-STD P1 contracts: optional, result and callback.
+        let present = demo_optional(1);
+        assert_eq!(present.has_value, 1, "optional present");
+        assert_eq!(present.value, 42, "optional value");
+        assert_eq!(demo_optional(0).has_value, 0, "optional absent");
+
+        let ok = demo_result(5);
+        assert_eq!(ok.status, 0, "result ok status");
+        assert_eq!(ok.value, 10, "result value");
+        assert_eq!(demo_result(-1).status, 1, "result error status");
+
+        let callback = demo_callback();
+        assert!(!callback.invoke.is_null(), "callback invoke");
+        assert!(!callback.context.is_null(), "callback context");
+
+        // ABIX-STD P1 range: length + indexed access, no contiguous assumption.
+        let set = demo_set_create();
+        assert!(!set.is_null(), "set created");
+        assert_eq!(demo_set_insert(set, 3), 0);
+        assert_eq!(demo_set_insert(set, 4), 0);
+        assert_eq!(DemoSet_len(set), 2, "range len");
+        assert_eq!(DemoSet_at(set, 0), 3, "range at 0");
+        assert_eq!(DemoSet_at(set, 1), 4, "range at 1");
+        assert_eq!(demo_set_destroy(set), 0, "set destroyed");
+
+        // P2: a Map via an opaque handle + accessors (no unified container).
+        let map = demo_map_create();
+        assert!(!map.is_null(), "map created");
+        assert_eq!(demo_map_put(map, 1, 10), 0);
+        assert_eq!(demo_map_put(map, 2, 20), 0);
+        assert_eq!(demo_map_size(map), 2, "map size");
+        let mut out: core::ffi::c_int = 0;
+        assert_eq!(demo_map_get(map, 1, &mut out), 0, "map get ok");
+        assert_eq!(out, 10, "map get value");
+        assert_eq!(demo_map_get(map, 99, &mut out), 2, "map get missing");
+        assert_eq!(demo_map_destroy(map), 0, "map destroyed");
+
         // The lowering result is discoverable from the metadata region, read-only:
         // the reader learns an adapter is required but never runs it implicitly.
         let rev_index = region.type_index_by_name("abix_view_rev_i32").expect("rev type index");

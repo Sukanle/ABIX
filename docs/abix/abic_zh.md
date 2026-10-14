@@ -169,7 +169,7 @@ output = "build/mylib.abix"
 | `template` | string | 泛型实体名（可带限定，如 `abix_std::abix_span`） |
 | `args` | string[] | 规范类型实参，如 `["int32_t"]` |
 | `as` | string | 具体实体的导出名（同时作为源码别名生成） |
-| `contract` | string | 要 lower 到的 ABIX-STD 契约：`sequence-view` 或 `string-view`（可选） |
+| `contract` | string | 要 lower 到的 ABIX-STD 契约：`sequence-view`、`string-view`、`optional` 或 `result`（可选） |
 | `element` | string | 契约要求的元素拼写，如 `int`（可选；按指针 pointee 的 `TypeID` 匹配） |
 | `mutable` | bool | 要求非常量数据指针（可选，默认 `false`） |
 
@@ -189,6 +189,26 @@ ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` �
 
 通过 accessor 把容器 lower 成连续序列视图（例如 `std::vector<T>` 的 `data()`/`size()`），
 不暴露内部布局。AMC 生成薄适配器；借用生命周期与失效条件仍属于调用方契约。
+
+### `[[contract-type]]` — 非模板契约类型
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 具体类型（如 `abix_callback`、`DemoMap`） |
+| `contract` | string | ABIX-STD 契约：`callback` 或 `opaque` |
+
+用于非模板的契约类型（回调结构体，或 opaque 的 Map/Set 句柄），无需 `[[instantiate]]`。
+`opaque` 类型经 accessor 操作使用，不消费其布局。
+
+### `[[range]]` — 可迭代范围适配
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `type` | string | 容器类型（其布局保持 opaque） |
+| `size_accessor` | string | 返回元素个数的函数 |
+| `at_accessor` | string | 返回下标 `index` 处元素的函数 |
+
+把非连续容器暴露为可迭代范围（长度 + 索引访问），不假设连续内存。
 
 ### `[target]`
 
