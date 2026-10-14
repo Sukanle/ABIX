@@ -51,7 +51,7 @@ symbols = ["math::add", "math::Point"]
 output = "build/math_api.abix"
 ```
 
-A module may also declare optional **contracts** (M1). They are semantic
+A module may also declare optional **contracts**. They are semantic
 contracts, not layout facts, and never change `TypeID`/`LayoutHash`:
 
 ```toml

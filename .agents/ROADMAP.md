@@ -55,9 +55,8 @@ same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]`
 typed pointers / `comptime` layout assertions). It validates that ABIX IR is
 reusable: the same artifact drives both the Rust and the Zig projection, and
 `AMC/tests/interop/` builds one native library and runs both consumers against
-it. M1 (the C++ → ABIX → Rust closed loop, with ownership, error-boundary and
-target contracts in an optional metadata-region extension directory) is complete;
-see [`memory/10-已完成任务.md`](../memory/10-已完成任务.md).
+it. The C++ → ABIX → Rust closed loop (with ownership, error-boundary and target
+contracts in an optional metadata-region extension directory) is complete.
 
 ### P0 — stabilize and validate
 
