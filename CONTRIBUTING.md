@@ -119,6 +119,25 @@ CMake re-run `clang -print-resource-dir`:
 cmake -B build/Release -S . -U ABIX_CLANG_EXECUTABLE -U ABIX_CLANG_RESOURCE_DIR
 ```
 
+## Branching
+
+ABIX is developed per platform and integrated only when consistent across
+platforms. A change may enter `devel` only if it builds and links on every
+supported platform; platform-specific details (linker, CRT, ELF/Mach-O/PE
+dynamic-library loading, symbol visibility, calling conventions) stay on the
+platform branch.
+
+| Branch | Role |
+|--------|------|
+| `main` | latest stable; moves forward from a fully verified `devel` |
+| `release/x.y.z` | frozen stable line; tags `vX.Y.Z` must be platform-consistent |
+| `devel` | unified integration branch (platform-neutral) |
+| `devel-Linux` / `devel-macOS` / `devel-Windows` | per-platform development lines |
+
+Work on your platform branch, merge completed units into `devel` and resolve the
+platform differences there, and let `devel` promote to `main` / releases once
+every available platform is green. Windows is not supported yet.
+
 ## Guidelines
 
 - Keep the build green: run `ctest` before opening a pull request.
