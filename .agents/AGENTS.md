@@ -121,6 +121,51 @@ docs/    specification and design
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
 your change.
 
+### Branch model and cross-platform workflow
+
+Golden rule: **a change reaches `devel` only when it works on every supported
+platform.** Platform differences in C++ are easy to get subtly wrong — the
+linker, the CRT, dynamic-library loading (ELF / Mach-O / PE), symbol visibility
+and calling conventions all differ. Once such a difference lands in `devel`, it
+blocks promoting `devel` to `main` and cutting a release, so keep the divergence
+in the platform branches.
+
+Platform support today: **Linux and macOS**; **Windows is not available yet**
+(its branch exists but is not building). `devel` and release refs must be
+reproducible on every *available* platform.
+
+| Branch | Role |
+|--------|------|
+| `main` | latest stable; only moves forward from a fully verified `devel` |
+| `release/x.y.z` | a frozen stable line; tags `vX.Y.Z` must be platform-consistent |
+| `devel` | unified integration branch; only cross-platform-verified changes land here |
+| `devel-Linux` | Linux development line |
+| `devel-macOS` | macOS development line |
+| `devel-Windows` | Windows development line (not building yet) |
+
+Workflow:
+
+1. Develop on your platform branch (`devel-Linux` / `devel-macOS` /
+   `devel-Windows`).
+2. When a unit is complete, merge it into `devel` and resolve platform
+   differences **there**; do not leave `#ifdef`-style divergence to rot in a
+   platform branch.
+3. `devel` stays platform-neutral. If a change cannot compile or link on a
+   platform, it belongs in that platform's branch, not in `devel`.
+4. `main` and `release/x.y.z` receive only `devel`/release merges that pass every
+   available platform. Never tag or branch a release before it is verified
+   consistent across platforms.
+
+Agent rules:
+
+- When you touch build files, the linker, dynamic-library loading, CRT/allocator
+  boundaries, symbol visibility, or any `_WIN32` / `__APPLE__` path, state in
+  the change which platforms you verified.
+- Never push platform-specific work directly to `devel` or `main`; push it to a
+  platform branch, then merge.
+- Do not move `main`, create a release branch, or create a version tag unless
+  explicitly asked; release operations require full platform consistency.
+
 ---
 
 ## 3. Documentation Authority
