@@ -206,6 +206,9 @@ if(AMC_BUILD)
             AMC/src/ljson/dragonbox.c)
         target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include
                                                          ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include/ljson)
+        # Core.cpp / Error.cpp use fmt; every libabix-* library links this one, so
+        # a PUBLIC link here also supplies the include directory to its dependents.
+        target_link_libraries(libabix-format PUBLIC fmt::fmt)
         # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep the rest of the project on C++17 and
         # compile only these files as C23.
         set_target_properties(libabix-format PROPERTIES C_STANDARD 23 C_STANDARD_REQUIRED ON)
