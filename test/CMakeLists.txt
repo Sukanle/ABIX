@@ -31,6 +31,11 @@ abi_add_test(rcu_config_test)
 abi_add_test(concurrency_test)
 abi_add_test(bootstrap_test)
 abi_add_test(metadata_registry_test)
+abi_add_test(interface_dispatch_test)
+abi_add_test(interface_module_test)
+abi_add_test(owner_abi_test)
+abi_add_test(interface_dll_test)
+abi_add_test(owner_dll_test)
 abi_add_test(hash_test)
 abi_add_test(compatibility_test)
 abi_add_test(map_test)
@@ -53,7 +58,9 @@ foreach(
     edge_stdcall_dll
     hotcache_dll
     closed_dll
-    closed_dll_v2)
+    closed_dll_v2
+    interface_dll
+    owner_dll)
     add_custom_command(
         TARGET test_all
         POST_BUILD

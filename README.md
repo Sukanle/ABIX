@@ -216,6 +216,7 @@ form is the `.abix` artifact:
 - [`docs/abix/abix.md`](docs/abix/abix.md) — the canonical `.abix` artifact
 - [`docs/abix/abic.md`](docs/abix/abic.md) — the `.abic.toml` build configuration
 - [`docs/abix/metadata_modes.md`](docs/abix/metadata_modes.md) — the three metadata modes
+- [`docs/abix/interface.md`](docs/abix/interface.md) — the ABIX Interface layer (non-intrusive polymorphism)
 
 ---
 

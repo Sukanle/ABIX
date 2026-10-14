@@ -233,7 +233,7 @@ int generate(
 void print_usage() {
     fmt::print(stderr,
         "usage:\n"
-        "  amc build -c <file>.abic.toml [-B <build_dir>]\n"
+        "  amc build -c <file>.abic.toml [-B <build_dir>] [--cache <dir>] [--deps <files>]\n"
         "  amc generate <file>.abix -l cpp|lua|rust|zig -o <directory|file>\n"
         "  amc validate <file>.abix\n"
         "  amc inspect <file>.abix\n"
@@ -252,6 +252,7 @@ void print_usage() {
         "  amc target <file.abix|binary> [--expect arch=..,os=..,pointer_bits=..,endianness=..] [--format text|json]\n"
         "  amc diff <source.abix> <target.abix> [-o report.abix]\n"
         "  amc compatibility <source.abix> <target.abix>\n"
+        "  amc cache <dir> [--verify|--clear] [--format text|json]\n"
         "global options:\n"
         "  --error-format text|json   structured error envelope (default text)\n");
 }

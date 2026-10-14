@@ -146,6 +146,19 @@ function = "demo_div"
 success = 0
 value = 2
 
+# Non-intrusive polymorphism: an interface is an independent, named, versioned
+# contract; DemoVec2 implements it through adapters. No language's private
+# vtable layout is used.
+[[interface]]
+name = "IVectorMath"
+version = 1
+methods = ["demo_add", "demo_scale"]
+
+[[implements]]
+interface = "IVectorMath"
+type = "DemoVec2"
+methods = ["demo_add", "demo_scale"]
+
 # Target platform facts, carried into the region for runtime verification.
 [target]
 arch = 1

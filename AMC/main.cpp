@@ -93,6 +93,7 @@ int main(int argc, char **argv) {
     if (command == "verify") return cmd_verify(args, arg_count, provider);
     if (command == "target") return cmd_target(args, arg_count);
     if (command == "diff" || command == "compatibility") return cmd_diff(args, arg_count);
+    if (command == "cache") return cmd_cache(args, arg_count);
     if (command == "generate" || command == "backend") return cmd_generate(args, arg_count, provider);
     if (command == "frontend") return cmd_frontend(args, arg_count, provider);
     if (command == "build") return cmd_build(args, arg_count, provider);

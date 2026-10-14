@@ -639,6 +639,11 @@ pub mod metadata {
     const OWNERSHIP_RECORD_SIZE: usize = 24;
     const ERROR_RECORD_SIZE: usize = 32;
     const LOWERING_RECORD_SIZE: usize = 32;
+    const INTERFACE_RECORD_SIZE: usize = 40;
+    const INTERFACE_METHOD_RECORD_SIZE: usize = 72;
+    const INTERFACE_PARAMETER_RECORD_SIZE: usize = 8;
+    const INTERFACE_IMPLEMENTATION_RECORD_SIZE: usize = 48;
+    const METHOD_BINDING_RECORD_SIZE: usize = 56;
     const EXTENSION_HEADER_SIZE: usize = 16;
     const EXTENSION_ENTRY_SIZE: usize = 24;
 
@@ -651,6 +656,12 @@ pub mod metadata {
     pub const EXTENSION_LOWERING: u32 = 4;
     pub const EXTENSION_VIEW: u32 = 5;
     pub const EXTENSION_RANGE: u32 = 6;
+    // Non-intrusive interface contract family.
+    pub const EXTENSION_INTERFACE: u32 = 7;
+    pub const EXTENSION_INTERFACE_METHOD: u32 = 8;
+    pub const EXTENSION_IMPLEMENTATION: u32 = 9;
+    pub const EXTENSION_METHOD_BINDING: u32 = 10;
+    pub const EXTENSION_INTERFACE_PARAMETER: u32 = 11;
 
     // ABIX-STD lowering status / reason codes.
     pub const LOWERING_DIRECT: u32 = 0;
@@ -799,6 +810,49 @@ pub mod metadata {
         pub size_accessor: u32,
         pub at_accessor: u32,
         pub semantics: u32,
+    }
+
+    /// A named, versioned interface contract. Identity is the content hash
+    /// `id`; method identity is (`id`, slot), never a compiler vtable slot.
+    #[derive(Clone, Copy)]
+    pub struct InterfaceRecord {
+        pub id: Hash128,
+        pub version: u32,
+        pub method_begin: u32,
+        pub method_count: u32,
+        pub flags: u32,
+        pub name_offset: u32,
+    }
+    /// One interface method. Parameters live in the interface-parameter table
+    /// addressed by `parameter_begin` / `parameter_count`.
+    #[derive(Clone, Copy)]
+    pub struct InterfaceMethodRecord {
+        pub interface_id: Hash128,
+        pub signature: Hash128,
+        pub return_type: Hash128,
+        pub slot: u32,
+        pub flags: u32,
+        pub parameter_begin: u32,
+        pub parameter_count: u32,
+    }
+    /// A concrete type's implementation of an interface.
+    #[derive(Clone, Copy)]
+    pub struct InterfaceImplementationRecord {
+        pub interface_id: Hash128,
+        pub concrete_type: Hash128,
+        pub binding_begin: u32,
+        pub binding_count: u32,
+        pub flags: u32,
+    }
+    /// How one interface method is reached on one concrete type. The adapter is
+    /// named by its signature; no private vtable is exposed.
+    #[derive(Clone, Copy)]
+    pub struct MethodBindingRecord {
+        pub interface_id: Hash128,
+        pub method_signature: Hash128,
+        pub native_function: Hash128,
+        pub slot: u32,
+        pub flags: u32,
     }
 
     /// Target platform identity recorded in the region.
@@ -1136,6 +1190,121 @@ pub mod metadata {
                 size_accessor: u32_at(d, base + 4),
                 at_accessor: u32_at(d, base + 8),
                 semantics: u32_at(d, base + 12),
+            })
+        }
+
+        pub fn interface_count(&self) -> u32 {
+            self.extension(EXTENSION_INTERFACE).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn interface_at(&self, index: u32) -> Option<InterfaceRecord> {
+            let ext = self.extension(EXTENSION_INTERFACE)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * INTERFACE_RECORD_SIZE;
+            if base + INTERFACE_RECORD_SIZE > d.len() {
+                return None;
+            }
+            Some(InterfaceRecord {
+                id: hash_at(d, base),
+                version: u32_at(d, base + 16),
+                method_begin: u32_at(d, base + 20),
+                method_count: u32_at(d, base + 24),
+                flags: u32_at(d, base + 28),
+                name_offset: u32_at(d, base + 32),
+            })
+        }
+
+        pub fn find_interface(&self, id: Hash128) -> Option<InterfaceRecord> {
+            (0..self.interface_count())
+                .filter_map(|i| self.interface_at(i))
+                .find(|r| r.id == id)
+        }
+
+        pub fn interface_method_count(&self) -> u32 {
+            self.extension(EXTENSION_INTERFACE_METHOD).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn interface_method_at(&self, index: u32) -> Option<InterfaceMethodRecord> {
+            let ext = self.extension(EXTENSION_INTERFACE_METHOD)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * INTERFACE_METHOD_RECORD_SIZE;
+            if base + INTERFACE_METHOD_RECORD_SIZE > d.len() {
+                return None;
+            }
+            Some(InterfaceMethodRecord {
+                interface_id: hash_at(d, base),
+                signature: hash_at(d, base + 16),
+                return_type: hash_at(d, base + 32),
+                slot: u32_at(d, base + 48),
+                flags: u32_at(d, base + 52),
+                parameter_begin: u32_at(d, base + 60),
+                parameter_count: u32_at(d, base + 64),
+            })
+        }
+
+        /// Type-table index of an interface method parameter, or `None`.
+        pub fn interface_method_parameter(&self, index: u32) -> Option<u32> {
+            let ext = self.extension(EXTENSION_INTERFACE_PARAMETER)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * INTERFACE_PARAMETER_RECORD_SIZE;
+            if base + INTERFACE_PARAMETER_RECORD_SIZE > d.len() {
+                return None;
+            }
+            Some(u32_at(d, base))
+        }
+
+        pub fn interface_implementation_count(&self) -> u32 {
+            self.extension(EXTENSION_IMPLEMENTATION).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn interface_implementation_at(&self, index: u32) -> Option<InterfaceImplementationRecord> {
+            let ext = self.extension(EXTENSION_IMPLEMENTATION)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * INTERFACE_IMPLEMENTATION_RECORD_SIZE;
+            if base + INTERFACE_IMPLEMENTATION_RECORD_SIZE > d.len() {
+                return None;
+            }
+            Some(InterfaceImplementationRecord {
+                interface_id: hash_at(d, base),
+                concrete_type: hash_at(d, base + 16),
+                binding_begin: u32_at(d, base + 32),
+                binding_count: u32_at(d, base + 36),
+                flags: u32_at(d, base + 40),
+            })
+        }
+
+        pub fn method_binding_count(&self) -> u32 {
+            self.extension(EXTENSION_METHOD_BINDING).map(|e| e.count).unwrap_or(0)
+        }
+
+        pub fn method_binding_at(&self, index: u32) -> Option<MethodBindingRecord> {
+            let ext = self.extension(EXTENSION_METHOD_BINDING)?;
+            if index >= ext.count {
+                return None;
+            }
+            let d = self.desc();
+            let base = ext.byte_offset as usize + index as usize * METHOD_BINDING_RECORD_SIZE;
+            if base + METHOD_BINDING_RECORD_SIZE > d.len() {
+                return None;
+            }
+            Some(MethodBindingRecord {
+                interface_id: hash_at(d, base),
+                method_signature: hash_at(d, base + 16),
+                native_function: hash_at(d, base + 32),
+                slot: u32_at(d, base + 48),
+                flags: u32_at(d, base + 52),
             })
         }
 

@@ -41,6 +41,15 @@ constexpr uint32_t kPointeeEntrySize = 36;         // pointer(16) + pointee(16) 
 constexpr uint32_t kViewAdapterEntrySize = 64;     // source(16) + target(16) + data(16) + size(16)
 constexpr uint32_t kRangeAdapterEntrySize = 48;    // source(16) + size(16) + at(16)
 constexpr uint32_t kInstantiationEntrySize = 32;   // request(16) + type(16)
+constexpr uint32_t kInterfaceEntrySize =
+    40;   // id(16) + name_off(4) + name_len(4) + version(4) + method_begin(4) + method_count(4) + flags(4)
+constexpr uint32_t kInterfaceMethodEntrySize =
+    72;   // interface_id(16) + name_off(4) + name_len(4) + signature(16) + return(16) + param_begin(4) +
+          // param_count(4) + slot(4) + flags(4)
+constexpr uint32_t kImplementationEntrySize = 44;   // interface_id(16) + concrete_type(16) + binding_begin(4) +
+                                                    // binding_count(4) + flags(4)
+constexpr uint32_t kMethodBindingEntrySize =
+    56;   // interface_id(16) + method_signature(16) + native(16) + slot(4) + flags(4)
 
 enum Section : uint32_t {
     strings = 1,
@@ -65,7 +74,11 @@ enum Section : uint32_t {
     pointees,
     view_adapters,
     range_adapters,
-    instantiations
+    instantiations,
+    interfaces,
+    interface_methods,
+    implementations,
+    method_bindings
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -175,6 +188,28 @@ Hash128 signature_hash(const Function &function) {
     for (const auto &parameter : function.parameters)
         input += std::to_string(parameter.type_id.lo) + std::to_string(parameter.type_id.hi);
     return hash_text(input, 0x5349474e41545552ULL);
+}
+
+Hash128 method_signature_hash(const InterfaceMethod &method) {
+    Function function;
+    function.name = method.name;
+    function.return_type = method.return_type;
+    function.parameters = method.parameters;
+    return signature_hash(function);
+}
+
+Hash128 interface_hash(const InterfaceRecord &interface, const std::vector<InterfaceMethod> &methods) {
+    std::vector<const InterfaceMethod *> ordered;
+    for (uint32_t i = 0; i < interface.method_count; ++i) {
+        const InterfaceMethod &method = methods[interface.method_begin + i];
+        ordered.push_back(&method);
+    }
+    std::sort(ordered.begin(), ordered.end(),
+        [](const InterfaceMethod *a, const InterfaceMethod *b) { return a->slot < b->slot; });
+    std::string input = "ABIX-INTERFACE:" + interface.name + ":" + std::to_string(interface.version);
+    for (const auto *method : ordered)
+        input += ":" + std::to_string(method->signature.lo) + ":" + std::to_string(method->signature.hi);
+    return hash_text(input, 0x494e544552464143ULL);
 }
 
 namespace {
@@ -671,6 +706,116 @@ bool validate(const AbiModule &module, std::string &error) {
             return false;
         }
     }
+    // Non-intrusive interface contracts. Identity is a content hash, methods are
+    // identified by (interface id, slot), and a signature mismatch is rejected
+    // rather than tolerated: name or shape alone never implies compatibility.
+    std::unordered_map<std::string, const InterfaceRecord *> interface_by_id;
+    for (const auto &record : module.interfaces) {
+        if (record.name.empty() || record.id == Hash128{}) {
+            error = "invalid interface: " + record.name;
+            return false;
+        }
+        if (!interface_by_id.emplace(hash_key(record.id), &record).second) {
+            error = "duplicate interface id: " + record.name;
+            return false;
+        }
+        if (record.method_count == 0
+            || record.method_begin > module.interface_methods.size()
+            || record.method_count > module.interface_methods.size() - record.method_begin) {
+            error = "interface method range is out of bounds: " + record.name;
+            return false;
+        }
+        std::unordered_set<uint32_t> slots;
+        for (uint32_t i = 0; i < record.method_count; ++i) {
+            const auto &method = module.interface_methods[record.method_begin + i];
+            if (method.interface_id == Hash128{} || !(method.interface_id == record.id)) {
+                error = "interface method has a mismatched interface id";
+                return false;
+            }
+            if (method.name.empty() || method.signature == Hash128{}) {
+                error = "interface method has no name or signature";
+                return false;
+            }
+            if (type_by_id.count(hash_key(method.return_type)) == 0) {
+                error = "interface method references an unknown return type: " + method.name;
+                return false;
+            }
+            for (const auto &parameter : method.parameters)
+                if (type_by_id.count(hash_key(parameter.type_id)) == 0) {
+                    error = "interface method parameter references an unknown type";
+                    return false;
+                }
+            if (!slots.insert(method.slot).second) {
+                error = "duplicate interface method slot: " + record.name;
+                return false;
+            }
+        }
+    }
+    uint32_t claimed_methods = 0;
+    for (const auto &record : module.interfaces)
+        claimed_methods += record.method_count;
+    if (claimed_methods != module.interface_methods.size()) {
+        error = "interface method records are not claimed by any interface";
+        return false;
+    }
+    for (const auto &implementation : module.implementations) {
+        const auto interface = interface_by_id.find(hash_key(implementation.interface_id));
+        if (interface == interface_by_id.end()) {
+            error = "implementation references an unknown interface";
+            return false;
+        }
+        if (!find_type_by_id(module, implementation.concrete_type)) {
+            error = "implementation references an unknown concrete type";
+            return false;
+        }
+        if (implementation.binding_begin > module.method_bindings.size()
+            || implementation.binding_count > module.method_bindings.size() - implementation.binding_begin) {
+            error = "implementation binding range is out of bounds";
+            return false;
+        }
+        const InterfaceRecord *contract = interface->second;
+        std::unordered_set<uint32_t> bound_slots;
+        for (uint32_t i = 0; i < implementation.binding_count; ++i) {
+            const auto &binding = module.method_bindings[implementation.binding_begin + i];
+            if (!(binding.interface_id == implementation.interface_id)) {
+                error = "method binding interface id does not match its implementation";
+                return false;
+            }
+            bool slot_ok = false;
+            for (uint32_t m = 0; m < contract->method_count; ++m) {
+                const auto &method = module.interface_methods[contract->method_begin + m];
+                if (method.slot == binding.slot) {
+                    if (!(method.signature == binding.method_signature)) {
+                        error = "method binding signature does not match the interface method";
+                        return false;
+                    }
+                    slot_ok = true;
+                    break;
+                }
+            }
+            if (!slot_ok) {
+                error = "method binding references an unknown interface slot";
+                return false;
+            }
+            if (!(binding.native_function == Hash128{})) {
+                bool found = false;
+                for (const auto &function : module.functions)
+                    if (function.signature == binding.native_function) {
+                        found = true;
+                        break;
+                    }
+                if (!found) {
+                    error = "method binding references an unknown native function";
+                    return false;
+                }
+            }
+            bound_slots.insert(binding.slot);
+        }
+        if (bound_slots.size() != contract->method_count) {
+            error = "implementation does not bind every interface method";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1072,6 +1217,10 @@ bool project_symbols(
     result.view_adapters.clear();
     result.range_adapters.clear();
     result.instantiations.clear();
+    result.interfaces.clear();
+    result.interface_methods.clear();
+    result.implementations.clear();
+    result.method_bindings.clear();
     std::unordered_set<std::string> complete_type_ids;
     auto complete = [&](Hash128 id) { complete_type_ids.insert(hash_key(id)); };
     auto is_complete = [&](Hash128 id) { return complete_type_ids.count(hash_key(id)) != 0; };
@@ -1184,6 +1333,56 @@ bool project_symbols(
         if (has_type(record.source_type)) result.range_adapters.push_back(record);
     for (const auto &record : source.instantiations)
         if (has_type(record.type)) result.instantiations.push_back(record);
+    // Interfaces survive projection when every type they mention survives; their
+    // methods are re-based. An implementation survives only when its interface,
+    // its concrete type and every bound native function survive, so a projected
+    // module never carries a dangling binding.
+    std::unordered_set<std::string> kept_interfaces;
+    for (const auto &record : source.interfaces) {
+        bool keep = true;
+        for (uint32_t i = 0; i < record.method_count && keep; ++i) {
+            const auto &method = source.interface_methods[record.method_begin + i];
+            if (!has_type(method.return_type)) keep = false;
+            for (const auto &parameter : method.parameters)
+                if (!has_type(parameter.type_id)) keep = false;
+        }
+        if (!keep) continue;
+        InterfaceRecord projected = record;
+        projected.method_begin = static_cast<uint32_t>(result.interface_methods.size());
+        for (uint32_t i = 0; i < record.method_count; ++i)
+            result.interface_methods.push_back(source.interface_methods[record.method_begin + i]);
+        kept_interfaces.insert(hash_key(projected.id));
+        result.interfaces.push_back(projected);
+    }
+    for (const auto &implementation : source.implementations) {
+        if (kept_interfaces.count(hash_key(implementation.interface_id)) == 0) continue;
+        if (!has_type(implementation.concrete_type)) continue;
+        std::vector<MethodBinding> bindings;
+        bool keep = true;
+        for (uint32_t i = 0; i < implementation.binding_count; ++i) {
+            const auto &binding = source.method_bindings[implementation.binding_begin + i];
+            if (!(binding.native_function == Hash128{})) {
+                bool found = false;
+                for (const auto &function : result.functions)
+                    if (function.signature == binding.native_function) {
+                        found = true;
+                        break;
+                    }
+                if (!found) {
+                    keep = false;
+                    break;
+                }
+            }
+            bindings.push_back(binding);
+        }
+        if (!keep) continue;
+        InterfaceImplementation projected = implementation;
+        projected.binding_begin = static_cast<uint32_t>(result.method_bindings.size());
+        projected.binding_count = static_cast<uint32_t>(bindings.size());
+        for (auto &binding : bindings)
+            result.method_bindings.push_back(binding);
+        result.implementations.push_back(projected);
+    }
     if (!symbols.empty() && result.types.empty() && result.functions.empty()) {
         error = "export symbols did not match any ABI declaration";
         return false;
@@ -1236,12 +1435,27 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
     }
     for (const auto &source : module.sources)
         intern(source.file);
+    for (const auto &record : module.interfaces)
+        intern(record.name);
     std::vector<Parameter> all_parameters;
     std::vector<uint32_t> parameter_begins;
     for (const auto &function : module.functions) {
         intern(function.name);
         parameter_begins.push_back(static_cast<uint32_t>(all_parameters.size()));
         for (const auto &parameter : function.parameters) {
+            intern(parameter.name);
+            all_parameters.push_back(parameter);
+        }
+    }
+    // Interface method parameters share the global parameter table. They are
+    // appended after the function parameters, so function parameter indices are
+    // unaffected.
+    std::vector<uint32_t> method_parameter_begins;
+    method_parameter_begins.reserve(module.interface_methods.size());
+    for (const auto &method : module.interface_methods) {
+        intern(method.name);
+        method_parameter_begins.push_back(static_cast<uint32_t>(all_parameters.size()));
+        for (const auto &parameter : method.parameters) {
             intern(parameter.name);
             all_parameters.push_back(parameter);
         }
@@ -1522,6 +1736,65 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         sections.push_back(std::move(instantiation_table));
     }
 
+    // Optional non-intrusive interface contract: identity, methods and
+    // implementation bindings. Excluded from ABI identity; unknown to old
+    // readers, which skip the optional sections.
+    if (!module.interfaces.empty()) {
+        SectionData interface_table{
+            interfaces, static_cast<uint32_t>(module.interfaces.size()), kInterfaceEntrySize, 0, {}};
+        for (const auto &record : module.interfaces) {
+            put_hash(interface_table.bytes, record.id);
+            put_u32(interface_table.bytes, string_offsets.at(record.name));
+            put_u32(interface_table.bytes, static_cast<uint32_t>(record.name.size()));
+            put_u32(interface_table.bytes, record.version);
+            put_u32(interface_table.bytes, record.method_begin);
+            put_u32(interface_table.bytes, record.method_count);
+            put_u32(interface_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(interface_table));
+    }
+    if (!module.interface_methods.empty()) {
+        SectionData method_table{interface_methods, static_cast<uint32_t>(module.interface_methods.size()),
+            kInterfaceMethodEntrySize, 0, {}};
+        for (uint32_t i = 0; i < module.interface_methods.size(); ++i) {
+            const auto &method = module.interface_methods[i];
+            put_hash(method_table.bytes, method.interface_id);
+            put_u32(method_table.bytes, string_offsets.at(method.name));
+            put_u32(method_table.bytes, static_cast<uint32_t>(method.name.size()));
+            put_hash(method_table.bytes, method.signature);
+            put_hash(method_table.bytes, method.return_type);
+            put_u32(method_table.bytes, method_parameter_begins[i]);
+            put_u32(method_table.bytes, static_cast<uint32_t>(method.parameters.size()));
+            put_u32(method_table.bytes, method.slot);
+            put_u32(method_table.bytes, method.flags);
+        }
+        sections.push_back(std::move(method_table));
+    }
+    if (!module.implementations.empty()) {
+        SectionData implementation_table{
+            implementations, static_cast<uint32_t>(module.implementations.size()), kImplementationEntrySize, 0, {}};
+        for (const auto &record : module.implementations) {
+            put_hash(implementation_table.bytes, record.interface_id);
+            put_hash(implementation_table.bytes, record.concrete_type);
+            put_u32(implementation_table.bytes, record.binding_begin);
+            put_u32(implementation_table.bytes, record.binding_count);
+            put_u32(implementation_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(implementation_table));
+    }
+    if (!module.method_bindings.empty()) {
+        SectionData binding_table{
+            method_bindings, static_cast<uint32_t>(module.method_bindings.size()), kMethodBindingEntrySize, 0, {}};
+        for (const auto &record : module.method_bindings) {
+            put_hash(binding_table.bytes, record.interface_id);
+            put_hash(binding_table.bytes, record.method_signature);
+            put_hash(binding_table.bytes, record.native_function);
+            put_u32(binding_table.bytes, record.slot);
+            put_u32(binding_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(binding_table));
+    }
+
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
     put_u16(bytes, kHashAlgorithm);
@@ -1649,6 +1922,10 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *view_adapter_table = optional(view_adapters, kViewAdapterEntrySize);
     const auto *range_adapter_table = optional(range_adapters, kRangeAdapterEntrySize);
     const auto *instantiation_table = optional(instantiations, kInstantiationEntrySize);
+    const auto *interface_table = optional(interfaces, kInterfaceEntrySize);
+    const auto *interface_method_table = optional(interface_methods, kInterfaceMethodEntrySize);
+    const auto *implementation_table = optional(implementations, kImplementationEntrySize);
+    const auto *method_binding_table = optional(method_bindings, kMethodBindingEntrySize);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -2001,6 +2278,72 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             return false;
         }
         module.instantiations.push_back(record);
+    }
+    size_t interface_offset = interface_table ? interface_table->offset : 0;
+    for (uint32_t i = 0; interface_table && i < interface_table->count; ++i) {
+        InterfaceRecord record;
+        uint32_t name_offset = 0, name_length = 0;
+        if (!read_hash(bytes, interface_offset, record.id, error)
+            || !read_u32(bytes, interface_offset, name_offset, error)
+            || !read_u32(bytes, interface_offset, name_length, error)
+            || !read_u32(bytes, interface_offset, record.version, error)
+            || !read_u32(bytes, interface_offset, record.method_begin, error)
+            || !read_u32(bytes, interface_offset, record.method_count, error)
+            || !read_u32(bytes, interface_offset, record.flags, error)
+            || !read_string(name_offset, name_length, record.name)) {
+            error = "invalid interface record";
+            return false;
+        }
+        module.interfaces.push_back(std::move(record));
+    }
+    size_t interface_method_offset = interface_method_table ? interface_method_table->offset : 0;
+    for (uint32_t i = 0; interface_method_table && i < interface_method_table->count; ++i) {
+        InterfaceMethod method;
+        uint32_t name_offset = 0, name_length = 0, parameter_begin = 0, parameter_count = 0;
+        if (!read_hash(bytes, interface_method_offset, method.interface_id, error)
+            || !read_u32(bytes, interface_method_offset, name_offset, error)
+            || !read_u32(bytes, interface_method_offset, name_length, error)
+            || !read_hash(bytes, interface_method_offset, method.signature, error)
+            || !read_hash(bytes, interface_method_offset, method.return_type, error)
+            || !read_u32(bytes, interface_method_offset, parameter_begin, error)
+            || !read_u32(bytes, interface_method_offset, parameter_count, error)
+            || !read_u32(bytes, interface_method_offset, method.slot, error)
+            || !read_u32(bytes, interface_method_offset, method.flags, error)
+            || parameter_begin > all_parameters.size()
+            || parameter_count > all_parameters.size() - parameter_begin
+            || !read_string(name_offset, name_length, method.name)) {
+            error = "invalid interface method record";
+            return false;
+        }
+        method.parameters.insert(method.parameters.end(), all_parameters.begin() + parameter_begin,
+            all_parameters.begin() + parameter_begin + parameter_count);
+        module.interface_methods.push_back(std::move(method));
+    }
+    size_t implementation_offset = implementation_table ? implementation_table->offset : 0;
+    for (uint32_t i = 0; implementation_table && i < implementation_table->count; ++i) {
+        InterfaceImplementation record;
+        if (!read_hash(bytes, implementation_offset, record.interface_id, error)
+            || !read_hash(bytes, implementation_offset, record.concrete_type, error)
+            || !read_u32(bytes, implementation_offset, record.binding_begin, error)
+            || !read_u32(bytes, implementation_offset, record.binding_count, error)
+            || !read_u32(bytes, implementation_offset, record.flags, error)) {
+            error = "invalid interface implementation record";
+            return false;
+        }
+        module.implementations.push_back(record);
+    }
+    size_t binding_offset = method_binding_table ? method_binding_table->offset : 0;
+    for (uint32_t i = 0; method_binding_table && i < method_binding_table->count; ++i) {
+        MethodBinding record;
+        if (!read_hash(bytes, binding_offset, record.interface_id, error)
+            || !read_hash(bytes, binding_offset, record.method_signature, error)
+            || !read_hash(bytes, binding_offset, record.native_function, error)
+            || !read_u32(bytes, binding_offset, record.slot, error)
+            || !read_u32(bytes, binding_offset, record.flags, error)) {
+            error = "invalid method binding record";
+            return false;
+        }
+        module.method_bindings.push_back(record);
     }
     size_t descriptor_offset = descriptor_table->offset;
     uint16_t descriptor_algorithm = 0, descriptor_version = 0;

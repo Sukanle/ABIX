@@ -271,7 +271,8 @@ public:
     }
 
     bool is_loaded() const noexcept {
-        return _c && util::load_acquire(&_c->state) == static_cast<uint32_t>(rcu::State::active)
+        return _c
+            && util::load_acquire(&_c->state) == static_cast<uint32_t>(rcu::State::active)
             && util::load_acquire(&_c->image) != nullptr;
     }
     const runtime::Table *get_table() const noexcept {
@@ -284,6 +285,11 @@ public:
         auto *img = util::load_acquire(&_c->image);
         return img ? img->module : nullptr;
     }
+
+    // Resolve a raw exported symbol from the loaded module. This is the fixed
+    // entry point path (for example the ABIX Interface discovery entry); it does
+    // not go through the name+sig table.
+    void *resolve(const char *name) const noexcept { return detail::resolve_symbol(module(), name); }
 
     Image *image_acquire() const noexcept { return _c ? util::load_acquire(&_c->image) : nullptr; }
 
@@ -305,9 +311,7 @@ public:
     void set_timeout_policy(rcu::TimeoutPolicy policy) noexcept {
         if (_c) _c->timeout_policy = policy;
     }
-    rcu::TimeoutPolicy timeout_policy() const noexcept {
-        return _c ? _c->timeout_policy : rcu::TimeoutPolicy::Safe;
-    }
+    rcu::TimeoutPolicy timeout_policy() const noexcept { return _c ? _c->timeout_policy : rcu::TimeoutPolicy::Safe; }
 
 private:
     static SharedPtr<Control> make_control() noexcept {

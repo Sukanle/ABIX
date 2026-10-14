@@ -132,6 +132,12 @@ bool build_metadata_region(
     std::vector<uint32_t> symbol_names(module.symbols.size());
     for (size_t i = 0; i < module.symbols.size(); ++i)
         symbol_names[i] = add_name(module.symbols[i].name);
+    std::vector<uint32_t> interface_names(module.interfaces.size());
+    for (size_t i = 0; i < module.interfaces.size(); ++i)
+        interface_names[i] = add_name(module.interfaces[i].name);
+    std::vector<uint32_t> interface_method_names(module.interface_methods.size());
+    for (size_t i = 0; i < module.interface_methods.size(); ++i)
+        interface_method_names[i] = add_name(module.interface_methods[i].name);
 
     // --- desc ----------------------------------------------------------
     std::vector<uint8_t> desc;
@@ -300,6 +306,61 @@ bool build_metadata_region(
             continue;
         append_record(range_records, &record, sizeof(record));
     }
+    std::vector<uint8_t> interface_records;
+    for (size_t i = 0; i < module.interfaces.size(); ++i) {
+        const auto &record = module.interfaces[i];
+        MetadataInterfaceRecord out{};
+        out.interface_id = record.id;
+        out.version = record.version;
+        out.method_begin = record.method_begin;
+        out.method_count = record.method_count;
+        out.flags = record.flags;
+        out.name_offset = interface_names[i];
+        append_record(interface_records, &out, sizeof(out));
+    }
+    std::vector<uint8_t> interface_method_records;
+    std::vector<uint8_t> interface_parameter_records;
+    uint32_t interface_parameter_begin = 0;
+    for (size_t i = 0; i < module.interface_methods.size(); ++i) {
+        const auto &method = module.interface_methods[i];
+        MetadataInterfaceMethodRecord out{};
+        out.interface_id = method.interface_id;
+        out.signature = method.signature;
+        out.return_type = method.return_type;
+        out.slot = method.slot;
+        out.flags = method.flags;
+        out.name_offset = interface_method_names[i];
+        out.parameter_begin = interface_parameter_begin;
+        out.parameter_count = static_cast<uint32_t>(method.parameters.size());
+        append_record(interface_method_records, &out, sizeof(out));
+        for (const auto &parameter : method.parameters) {
+            MetadataInterfaceParameterRecord param{};
+            param.type_index = type_index_of(parameter.type_id);
+            param.flags = parameter.flags;
+            append_record(interface_parameter_records, &param, sizeof(param));
+        }
+        interface_parameter_begin += out.parameter_count;
+    }
+    std::vector<uint8_t> implementation_records;
+    for (const auto &implementation : module.implementations) {
+        MetadataInterfaceImplementationRecord out{};
+        out.interface_id = implementation.interface_id;
+        out.concrete_type = implementation.concrete_type;
+        out.binding_begin = implementation.binding_begin;
+        out.binding_count = implementation.binding_count;
+        out.flags = implementation.flags;
+        append_record(implementation_records, &out, sizeof(out));
+    }
+    std::vector<uint8_t> binding_records;
+    for (const auto &binding : module.method_bindings) {
+        MetadataMethodBindingRecord out{};
+        out.interface_id = binding.interface_id;
+        out.method_signature = binding.method_signature;
+        out.native_function = binding.native_function;
+        out.slot = binding.slot;
+        out.flags = binding.flags;
+        append_record(binding_records, &out, sizeof(out));
+    }
     std::vector<PendingExtension> pending;
     if (!ownership_records.empty())
         pending.push_back(
@@ -316,6 +377,24 @@ bool build_metadata_region(
     if (!range_records.empty())
         pending.push_back({metadata_extension_range, 1,
             static_cast<uint32_t>(range_records.size() / sizeof(MetadataRangeAdapterRecord)), &range_records});
+    if (!interface_records.empty())
+        pending.push_back({metadata_extension_interface, 1,
+            static_cast<uint32_t>(interface_records.size() / sizeof(MetadataInterfaceRecord)), &interface_records});
+    if (!interface_method_records.empty())
+        pending.push_back({metadata_extension_interface_method, 1,
+            static_cast<uint32_t>(interface_method_records.size() / sizeof(MetadataInterfaceMethodRecord)),
+            &interface_method_records});
+    if (!interface_parameter_records.empty())
+        pending.push_back({metadata_extension_interface_parameter, 1,
+            static_cast<uint32_t>(interface_parameter_records.size() / sizeof(MetadataInterfaceParameterRecord)),
+            &interface_parameter_records});
+    if (!implementation_records.empty())
+        pending.push_back({metadata_extension_implementation, 1,
+            static_cast<uint32_t>(implementation_records.size() / sizeof(MetadataInterfaceImplementationRecord)),
+            &implementation_records});
+    if (!binding_records.empty())
+        pending.push_back({metadata_extension_method_binding, 1,
+            static_cast<uint32_t>(binding_records.size() / sizeof(MetadataMethodBindingRecord)), &binding_records});
     if (!pending.empty()) {
         const uint64_t directory_begin = desc.size();
         const uint64_t entries_begin = directory_begin + sizeof(MetadataExtensionHeader);
@@ -977,6 +1056,192 @@ bool read_range_adapters(const uint8_t *data, size_t size, std::vector<MetadataR
 bool read_range_adapters(
     const std::vector<uint8_t> &region, std::vector<MetadataRangeAdapter> &out, std::string &error) {
     return read_range_adapters(region.data(), region.size(), out, error);
+}
+
+bool read_interface_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataInterfaceContract> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_interface, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1) {
+        error = "unsupported interface contract version";
+        return false;
+    }
+    if (byte_size != static_cast<size_t>(count) * sizeof(MetadataInterfaceRecord)) {
+        error = "interface extension size mismatch";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataInterfaceRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        MetadataInterfaceContract contract;
+        contract.id = record.interface_id;
+        contract.version = record.version;
+        contract.method_begin = record.method_begin;
+        contract.method_count = record.method_count;
+        out.push_back(contract);
+    }
+    return true;
+}
+
+bool read_interface_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataInterfaceContract> &out, std::string &error) {
+    return read_interface_contracts(region.data(), region.size(), out, error);
+}
+
+bool read_interface_methods(
+    const uint8_t *data, size_t size, std::vector<MetadataInterfaceMethod> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(data, size, header, metadata_extension_interface_method, present, version, count, records,
+            byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1 || byte_size != static_cast<size_t>(count) * sizeof(MetadataInterfaceMethodRecord)) {
+        error = "malformed interface method extension";
+        return false;
+    }
+    bool params_present = false;
+    uint32_t params_version = 0, params_count = 0;
+    const uint8_t *params = nullptr;
+    size_t params_size = 0;
+    if (!find_extension(data, size, header, metadata_extension_interface_parameter, params_present, params_version,
+            params_count, params, params_size, error))
+        return false;
+    if (params_present
+        && (params_version != 1
+            || params_size != static_cast<size_t>(params_count) * sizeof(MetadataInterfaceParameterRecord))) {
+        error = "malformed interface parameter extension";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataInterfaceMethodRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.return_type == Hash128{}) {
+            error = "interface method has no return type";
+            return false;
+        }
+        MetadataInterfaceMethod method;
+        method.interface_id = record.interface_id;
+        method.signature = record.signature;
+        method.return_type = record.return_type;
+        method.slot = record.slot;
+        method.flags = record.flags;
+        if (record.parameter_count > 0) {
+            if (!params_present
+                || record.parameter_begin > params_count
+                || record.parameter_count > params_count - record.parameter_begin) {
+                error = "interface method parameter range is out of bounds";
+                return false;
+            }
+            for (uint32_t p = 0; p < record.parameter_count; ++p) {
+                MetadataInterfaceParameterRecord param{};
+                std::memcpy(
+                    &param, params + static_cast<size_t>(record.parameter_begin + p) * sizeof(param), sizeof(param));
+                if (param.type_index >= header.type_count) {
+                    error = "interface method parameter type index is out of range";
+                    return false;
+                }
+                method.parameter_types.push_back(param.type_index);
+                method.parameter_flags.push_back(param.flags);
+            }
+        }
+        out.push_back(std::move(method));
+    }
+    return true;
+}
+
+bool read_interface_methods(
+    const std::vector<uint8_t> &region, std::vector<MetadataInterfaceMethod> &out, std::string &error) {
+    return read_interface_methods(region.data(), region.size(), out, error);
+}
+
+bool read_interface_implementations(
+    const uint8_t *data, size_t size, std::vector<MetadataInterfaceImplementation> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_implementation, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1 || byte_size != static_cast<size_t>(count) * sizeof(MetadataInterfaceImplementationRecord)) {
+        error = "malformed interface implementation extension";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataInterfaceImplementationRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        if (record.concrete_type == Hash128{}) {
+            error = "interface implementation has no concrete type";
+            return false;
+        }
+        MetadataInterfaceImplementation implementation;
+        implementation.interface_id = record.interface_id;
+        implementation.concrete_type = record.concrete_type;
+        implementation.binding_begin = record.binding_begin;
+        implementation.binding_count = record.binding_count;
+        out.push_back(implementation);
+    }
+    return true;
+}
+
+bool read_interface_implementations(
+    const std::vector<uint8_t> &region, std::vector<MetadataInterfaceImplementation> &out, std::string &error) {
+    return read_interface_implementations(region.data(), region.size(), out, error);
+}
+
+bool read_method_bindings(
+    const uint8_t *data, size_t size, std::vector<MetadataMethodBinding> &out, std::string &error) {
+    out.clear();
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool present = false;
+    uint32_t version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(
+            data, size, header, metadata_extension_method_binding, present, version, count, records, byte_size, error))
+        return false;
+    if (!present) return true;
+    if (version != 1 || byte_size != static_cast<size_t>(count) * sizeof(MetadataMethodBindingRecord)) {
+        error = "malformed method binding extension";
+        return false;
+    }
+    for (uint32_t i = 0; i < count; ++i) {
+        MetadataMethodBindingRecord record{};
+        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        MetadataMethodBinding binding;
+        binding.interface_id = record.interface_id;
+        binding.method_signature = record.method_signature;
+        binding.native_function = record.native_function;
+        binding.slot = record.slot;
+        binding.flags = record.flags;
+        out.push_back(binding);
+    }
+    return true;
+}
+
+bool read_method_bindings(
+    const std::vector<uint8_t> &region, std::vector<MetadataMethodBinding> &out, std::string &error) {
+    return read_method_bindings(region.data(), region.size(), out, error);
 }
 
 bool read_target_description(const uint8_t *data, size_t size, TargetDescription &out, std::string &error) {

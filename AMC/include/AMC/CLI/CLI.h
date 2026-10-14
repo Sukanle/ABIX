@@ -8,6 +8,7 @@
 #include <toml++/toml.h>
 
 #include "AMC/Core/Adapter.h"
+#include "AMC/Core/Cache.h"
 #include "AMC/Core/Context.h"
 #include "AMC/Core/Core.h"
 #include "AMC/Core/ELF.h"
@@ -62,6 +63,7 @@ int cmd_symbols(char **args, int arg_count);
 int cmd_verify(char **args, int arg_count, const fs::path &provider);
 int cmd_target(char **args, int arg_count);
 int cmd_diff(char **args, int arg_count);
+int cmd_cache(char **args, int arg_count);
 int cmd_generate(char **args, int arg_count, const fs::path &provider);
 int cmd_frontend(char **args, int arg_count, const fs::path &provider);
 int cmd_build(char **args, int arg_count, const fs::path &provider);

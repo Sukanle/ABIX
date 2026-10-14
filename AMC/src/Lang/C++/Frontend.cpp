@@ -625,6 +625,18 @@ int run_frontend(const char *config_path, const char *output_path) {
     Factory factory(wanted, module);
     clang::tooling::ClangTool tool(*db, tool_files);
     if (!anchor_path.empty()) tool.mapVirtualFile(anchor_path, anchor);
+    // Report the include closure so AMC's instantiation cache can invalidate on
+    // any dependency (including headers it does not otherwise know about). The
+    // depfile is written next to the artifact as `<output>.d`.
+    const std::string depfile = std::string(output_path) + ".d";
+    tool.appendArgumentsAdjuster([depfile](const clang::tooling::CommandLineArguments &cmd, llvm::StringRef) {
+        clang::tooling::CommandLineArguments out(cmd);
+        out.push_back("-MD");
+        out.push_back("-MF" + depfile);
+        out.push_back("-MT");
+        out.push_back(depfile);
+        return out;
+    });
     if (tool.run(&factory) != 0) {
         fmt::print(stderr, "clang analysis failed\n");
         return EXIT_FAILURE;

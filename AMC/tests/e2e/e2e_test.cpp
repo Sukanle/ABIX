@@ -653,6 +653,72 @@ void test_abix_v4_section_directory(TestResult &r) {
     cleanup(path);
 }
 
+void test_abix_interface_sections(TestResult &r) {
+    std::cerr << "[abix_interface_sections]\n";
+    const auto path = tmp_path("interface_sections.abix");
+    cleanup(path);
+
+    amc::AbiModule module;
+    module.package_name = "iface";
+    module.package_version = "1";
+    const auto i32 = make_primitive("int", 4, 4);
+    const auto renderer = make_record("Renderer", 8, 8, 0, 0);
+    module.types.push_back(i32);
+    module.types.push_back(renderer);
+    module.functions.push_back(make_func("draw", i32.id,
+        {
+            {"w", i32.id, 0}
+    }));
+    module.functions.push_back(make_func("Renderer_draw", i32.id,
+        {
+            {"w", i32.id, 0}
+    }));
+
+    amc::InterfaceRecord iface;
+    iface.name = "IRenderer";
+    iface.version = 1;
+    iface.method_begin = 0;
+    iface.method_count = 1;
+    amc::InterfaceMethod method;
+    method.name = "draw";
+    method.signature = module.functions[0].signature;
+    method.return_type = i32.id;
+    method.parameters = module.functions[0].parameters;
+    method.slot = 0;
+    module.interface_methods.push_back(method);
+    iface.id = amc::interface_hash(iface, module.interface_methods);
+    module.interface_methods[0].interface_id = iface.id;
+    module.interfaces.push_back(iface);
+    amc::MethodBinding binding;
+    binding.interface_id = iface.id;
+    binding.method_signature = module.interface_methods[0].signature;
+    binding.slot = 0;
+    binding.native_function = module.functions[1].signature;
+    module.method_bindings.push_back(binding);
+    module.implementations.push_back({iface.id, renderer.id, 0, 1, 0});
+
+    std::string error;
+    AMC_TEST(r, amc::write_abix(module, path, error), "write interface artifact");
+    const auto bytes = read_bytes(path);
+    if (bytes.size() >= 20 + 17 * 24) {
+        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(17), "interface artifact section count");
+        const uint32_t expected_ids[] = {24, 25, 26, 27};
+        const uint32_t expected_sizes[] = {40, 72, 44, 56};
+        for (size_t i = 0; i < 4; ++i) {
+            const size_t entry = 20 + (13 + i) * 24;
+            AMC_CHECK(r, read_le_u32(bytes, entry), expected_ids[i], "interface section id");
+            AMC_CHECK(r, read_le_u32(bytes, entry + 16), expected_sizes[i], "interface section entry size");
+            AMC_CHECK(r, read_le_u32(bytes, entry + 20), uint32_t(0), "interface section is optional");
+        }
+    }
+    amc::AbiModule loaded;
+    AMC_TEST(r, amc::read_abix(path, loaded, error), "read interface artifact");
+    AMC_CHECK(r, loaded.interfaces.size(), size_t(1), "loaded interface count");
+    AMC_CHECK(r, loaded.interface_methods.size(), size_t(1), "loaded interface method count");
+    AMC_CHECK(r, loaded.method_bindings.size(), size_t(1), "loaded method binding count");
+    cleanup(path);
+}
+
 void test_compatibility_and_map_ir(TestResult &r) {
     std::cerr << "[compatibility_and_map_ir]\n";
     amc::AbiModule source, target, report;
@@ -1370,6 +1436,7 @@ int main() {
     test_abix_nonexistent(r);
     test_abix_write_cannot_open(r);
     test_abix_v4_section_directory(r);
+    test_abix_interface_sections(r);
     test_compatibility_and_map_ir(r);
     test_primitive_identity_is_abi_based(r);
     test_compatibility_matches_primitives_by_abi(r);

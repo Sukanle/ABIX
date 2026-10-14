@@ -144,6 +144,8 @@ abi_add_dll(edge_stdcall_dll)
 abi_add_dll(hotcache_dll)
 abi_add_dll(closed_dll)
 abi_add_dll(closed_dll_v2)
+abi_add_dll(interface_dll)
+abi_add_dll(owner_dll)
 
 include_directories(${SKL_ABIX_INC_DIR})
 include_directories(${SKL_ABIX_INC_DIR}/mics)
@@ -228,7 +230,8 @@ if(AMC_BUILD)
                                     AMC/src/Core/Materialize.cpp AMC/src/Core/Context.cpp AMC/src/Core/Query.cpp)
         target_link_libraries(libabix-metadata PUBLIC libabix-abi)
 
-        add_library(libabix-tools STATIC AMC/src/Core/Adapter.cpp AMC/src/Core/Lua.cpp AMC/src/Core/Symbol.cpp)
+        add_library(libabix-tools STATIC AMC/src/Core/Adapter.cpp AMC/src/Core/Lua.cpp AMC/src/Core/Symbol.cpp
+                                        AMC/src/Core/Cache.cpp)
         target_link_libraries(libabix-tools PUBLIC libabix-metadata)
 
         # The libabix-* objects are linked into the LLDB plugin, which is a shared object, so they must be position
@@ -287,7 +290,8 @@ if(AMC_BUILD)
             AMC/src/CLI/Verify.cpp
             AMC/src/CLI/Diff.cpp
             AMC/src/CLI/Generate.cpp
-            AMC/src/CLI/Build.cpp)
+            AMC/src/CLI/Build.cpp
+            AMC/src/CLI/Cache.cpp)
         target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc PRIVATE amc-core tomlplusplus::tomlplusplus)
         add_executable(amc-dump AMC/src/Tool/Dump/Dump.cpp AMC/src/Tool/Dump/Json.cpp AMC/src/Tool/Dump/Text.cpp)

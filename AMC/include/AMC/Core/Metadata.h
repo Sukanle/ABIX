@@ -193,6 +193,48 @@ struct MetadataRangeAdapterRecord {
     uint32_t flags;
 };
 
+// Non-intrusive interface contracts (kind = 7 identity, 8 methods, 9
+// implementations, 10 method bindings, 11 method parameters). Interfaces are
+// independent of any compiler vtable: method identity is (interface id, slot)
+// and a binding names the native adapter by signature, never a vtable slot.
+struct MetadataInterfaceRecord {
+    Hash128 interface_id;
+    uint32_t version;
+    uint32_t method_begin;
+    uint32_t method_count;
+    uint32_t flags;
+    uint32_t name_offset;
+};
+struct MetadataInterfaceMethodRecord {
+    Hash128 interface_id;
+    Hash128 signature;
+    Hash128 return_type;
+    uint32_t slot;
+    uint32_t flags;
+    uint32_t name_offset;
+    uint32_t parameter_begin;
+    uint32_t parameter_count;
+};
+struct MetadataInterfaceParameterRecord {
+    uint32_t type_index;
+    uint32_t flags;
+};
+struct MetadataInterfaceImplementationRecord {
+    Hash128 interface_id;
+    Hash128 concrete_type;
+    uint32_t binding_begin;
+    uint32_t binding_count;
+    uint32_t flags;
+    uint32_t reserved;
+};
+struct MetadataMethodBindingRecord {
+    Hash128 interface_id;
+    Hash128 method_signature;
+    Hash128 native_function;   // adapter signature, or zero when resolved elsewhere
+    uint32_t slot;
+    uint32_t flags;
+};
+
 // Trailing extension directory: how optional contract tables are discovered.
 //
 // Layout (inside the desc section, after the symbol table):
@@ -218,6 +260,13 @@ constexpr uint32_t metadata_extension_target = 3;
 constexpr uint32_t metadata_extension_lowering = 4;
 constexpr uint32_t metadata_extension_view = 5;
 constexpr uint32_t metadata_extension_range = 6;
+// Non-intrusive polymorphism. The interface contract family spans several
+// kinds so each table keeps a fixed record shape.
+constexpr uint32_t metadata_extension_interface = 7;
+constexpr uint32_t metadata_extension_interface_method = 8;
+constexpr uint32_t metadata_extension_implementation = 9;
+constexpr uint32_t metadata_extension_method_binding = 10;
+constexpr uint32_t metadata_extension_interface_parameter = 11;
 
 // Semantics of an accessor adapter, as a contract flag (not a layout fact).
 constexpr uint32_t metadata_adapter_borrowed = 1u << 0;   // view over live data
@@ -251,6 +300,12 @@ static_assert(sizeof(MetadataTargetRecord) == 32, "MetadataTargetRecord wire lay
 static_assert(sizeof(MetadataLoweringRecord) == 32, "MetadataLoweringRecord wire layout changed");
 static_assert(sizeof(MetadataViewAdapterRecord) == 24, "MetadataViewAdapterRecord wire layout changed");
 static_assert(sizeof(MetadataRangeAdapterRecord) == 16, "MetadataRangeAdapterRecord wire layout changed");
+static_assert(sizeof(MetadataInterfaceRecord) == 40, "MetadataInterfaceRecord wire layout changed");
+static_assert(sizeof(MetadataInterfaceMethodRecord) == 72, "MetadataInterfaceMethodRecord wire layout changed");
+static_assert(sizeof(MetadataInterfaceParameterRecord) == 8, "MetadataInterfaceParameterRecord wire layout changed");
+static_assert(
+    sizeof(MetadataInterfaceImplementationRecord) == 48, "MetadataInterfaceImplementationRecord wire layout changed");
+static_assert(sizeof(MetadataMethodBindingRecord) == 56, "MetadataMethodBindingRecord wire layout changed");
 static_assert(sizeof(MetadataExtensionHeader) == 16, "MetadataExtensionHeader wire layout changed");
 static_assert(sizeof(MetadataExtensionEntry) == 24, "MetadataExtensionEntry wire layout changed");
 
@@ -297,6 +352,37 @@ struct MetadataRangeAdapter {
     uint32_t semantics = metadata_adapter_borrowed;
 };
 
+// Decoded non-intrusive interface contracts. Types and parameters are given as
+// type-table indices, matching the region's file-local reference model.
+struct MetadataInterfaceContract {
+    Hash128 id{};
+    uint32_t version = 1;
+    uint32_t method_begin = 0;
+    uint32_t method_count = 0;
+};
+struct MetadataInterfaceMethod {
+    Hash128 interface_id{};
+    Hash128 signature{};
+    Hash128 return_type{};
+    uint32_t slot = 0;
+    uint32_t flags = 0;
+    std::vector<uint32_t> parameter_types;   // type table indices
+    std::vector<uint32_t> parameter_flags;
+};
+struct MetadataInterfaceImplementation {
+    Hash128 interface_id{};
+    Hash128 concrete_type{};
+    uint32_t binding_begin = 0;
+    uint32_t binding_count = 0;
+};
+struct MetadataMethodBinding {
+    Hash128 interface_id{};
+    Hash128 method_signature{};
+    Hash128 native_function{};
+    uint32_t slot = 0;
+    uint32_t flags = 0;
+};
+
 // Reads the optional ownership contract records from a Metadata Region. Regions
 // without them yield an empty `out` (every interaction is `unspecified`); an
 // unknown contract version or a malformed record is reported as an error rather
@@ -326,6 +412,27 @@ bool read_view_adapters(const std::vector<uint8_t> &region, std::vector<Metadata
 bool read_range_adapters(const uint8_t *data, size_t size, std::vector<MetadataRangeAdapter> &out, std::string &error);
 bool read_range_adapters(
     const std::vector<uint8_t> &region, std::vector<MetadataRangeAdapter> &out, std::string &error);
+
+// Reads the optional non-intrusive interface contract (identity, methods,
+// implementations, method bindings). Same rules as ownership: an absent
+// extension yields an empty result, an unknown version or malformed record is
+// an error. Method parameters are decoded alongside their method.
+bool read_interface_contracts(
+    const uint8_t *data, size_t size, std::vector<MetadataInterfaceContract> &out, std::string &error);
+bool read_interface_contracts(
+    const std::vector<uint8_t> &region, std::vector<MetadataInterfaceContract> &out, std::string &error);
+bool read_interface_methods(
+    const uint8_t *data, size_t size, std::vector<MetadataInterfaceMethod> &out, std::string &error);
+bool read_interface_methods(
+    const std::vector<uint8_t> &region, std::vector<MetadataInterfaceMethod> &out, std::string &error);
+bool read_interface_implementations(
+    const uint8_t *data, size_t size, std::vector<MetadataInterfaceImplementation> &out, std::string &error);
+bool read_interface_implementations(
+    const std::vector<uint8_t> &region, std::vector<MetadataInterfaceImplementation> &out, std::string &error);
+bool read_method_bindings(
+    const uint8_t *data, size_t size, std::vector<MetadataMethodBinding> &out, std::string &error);
+bool read_method_bindings(
+    const std::vector<uint8_t> &region, std::vector<MetadataMethodBinding> &out, std::string &error);
 
 // Target platform description recovered from a region. `present` is false when
 // the region carries no target extension (all fields unknown).

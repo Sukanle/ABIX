@@ -90,6 +90,23 @@ fn main() {
         assert!(region.range_adapter_count() >= 1, "range adapter in region");
         assert_eq!(region.view_adapter_at(0).unwrap().semantics, 1, "view is borrowed");
 
+        // Non-intrusive polymorphism: the interface contract, its methods and
+        // the concrete implementation bindings are discoverable from the region
+        // without reading any C++ private vtable.
+        assert!(region.interface_count() >= 1, "interface in region");
+        let iface = region.interface_at(0).expect("interface record");
+        assert_eq!(iface.method_count, 2, "interface method count");
+        assert_eq!(region.interface_method_count(), iface.method_count, "interface methods in region");
+        let first_method = region.interface_method_at(0).expect("interface method");
+        assert!(first_method.signature.lo != 0 || first_method.signature.hi != 0, "method signature present");
+        assert!(first_method.parameter_count >= 1, "method parameters recorded");
+        assert!(region.interface_implementation_count() >= 1, "interface implementation in region");
+        let implementation = region.interface_implementation_at(0).expect("implementation");
+        assert_eq!(implementation.binding_count, 2, "implementation binds every method");
+        assert!(region.method_binding_count() >= 2, "method bindings in region");
+        let binding = region.method_binding_at(0).expect("method binding");
+        assert!(binding.native_function.lo != 0 || binding.native_function.hi != 0, "native adapter recorded");
+
         // Target platform verification, read from the same region.
         let target = region.target().expect("target description");
         assert_eq!(target.pointer_bits, 64, "pointer width");

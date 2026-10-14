@@ -337,6 +337,67 @@ struct PointeeRef {
     uint32_t flags = 0;   // pointee_const when the pointed-to data is read-only
 };
 
+// Non-intrusive polymorphism: an interface is an independent cross-language
+// contract, not a class hierarchy and not any compiler's native vtable. A
+// concrete type implements an interface through generated adapters; the
+// interface identity, method identity and implementation binding are separate
+// facts (see `plan.md` 3.5/3.6):
+//   * Interface Identity  — the named, versioned contract (this record's id);
+//   * Method Identity     — (interface_id, slot), with the signature verified
+//                           independently, so a name or a matching shape never
+//                           by itself makes two interfaces compatible;
+//   * Implementation      — how one concrete type reaches each method.
+// Like ownership, these are contracts, not layout facts, so they never feed
+// the layout/ABI identity.
+constexpr uint32_t interface_method_virtual = 1u << 0;   // adapted from a native virtual method
+
+// One method contract inside an interface. Identity is (interface_id, slot);
+// `signature` is the method ABI hash and is validated independently of the
+// slot. The parameters/return type are carried so a consumer can build the
+// call without reading the provider's private vtable.
+struct InterfaceMethod {
+    Hash128 interface_id{};
+    std::string name;
+    Hash128 signature{};
+    Hash128 return_type{};
+    std::vector<Parameter> parameters;
+    uint32_t slot = 0;   // stable dispatch slot, unique within the interface
+    uint32_t flags = 0;
+};
+
+// A named, versioned interface contract. `id` is a content hash over the
+// canonical interface name, version and ordered method signatures, so two
+// interfaces that merely share a shape (or a name) stay distinct.
+struct InterfaceRecord {
+    Hash128 id{};
+    std::string name;
+    uint32_t version = 1;
+    uint32_t method_begin = 0;
+    uint32_t method_count = 0;
+    uint32_t flags = 0;
+};
+
+// How one interface method is reached on one concrete type. `native_function`
+// is the signature of the generated/native adapter (or zero when the binding
+// is resolved by another mechanism); it never exposes a private vtable slot.
+struct MethodBinding {
+    Hash128 interface_id{};
+    Hash128 method_signature{};
+    uint32_t slot = 0;
+    Hash128 native_function{};
+    uint32_t flags = 0;
+};
+
+// A concrete type's implementation of an interface, and the range of method
+// bindings that realise it.
+struct InterfaceImplementation {
+    Hash128 interface_id{};
+    Hash128 concrete_type{};
+    uint32_t binding_begin = 0;
+    uint32_t binding_count = 0;
+    uint32_t flags = 0;
+};
+
 struct AbiModule {
     std::string package_name, package_version;
     uint32_t arch = 0, os = 0, target_abi = 0, compiler = 1, calling_convention = 0;
@@ -360,6 +421,12 @@ struct AbiModule {
     std::vector<ViewAdapter> view_adapters;            // container -> sequence-view accessors
     std::vector<RangeAdapter> range_adapters;          // container -> iterable range accessors
     std::vector<InstantiationRecord> instantiations;   // instantiation request identity -> concrete type
+    // Non-intrusive polymorphism. Independent contracts, not layout facts, so
+    // they are excluded from ABI identity.
+    std::vector<InterfaceRecord> interfaces;                // interface identity registry
+    std::vector<InterfaceMethod> interface_methods;         // interface method contracts
+    std::vector<InterfaceImplementation> implementations;   // concrete type -> interface
+    std::vector<MethodBinding> method_bindings;             // method slot -> native adapter
     // Optional, debug-only: where each type was declared. Not part of ABI
     // identity (excluded from the artifact hash) — it exists so tools can
     // implement go-to-definition TypeID -> source declaration.
@@ -369,6 +436,13 @@ struct AbiModule {
 Hash128 hash_text(std::string_view text, uint64_t domain);
 Hash128 layout_hash(const Type &, const std::vector<Field> &);
 Hash128 signature_hash(const Function &);
+// Stable interface identity: canonical name + version + ordered method
+// signatures. Name and shape both contribute, so two interfaces with the same
+// methods but different names (or versions) are distinct identities.
+Hash128 interface_hash(const InterfaceRecord &, const std::vector<InterfaceMethod> &);
+// The ABI signature hash of one interface method, derived the same way as a
+// function signature (name + return type + parameter types).
+Hash128 method_signature_hash(const InterfaceMethod &);
 std::vector<uint8_t> canonical_bytes(const AbiModule &);
 Hash128 abi_hash(const AbiModule &);
 std::vector<HashRecord> hash_table(const AbiModule &);

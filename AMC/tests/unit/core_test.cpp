@@ -1,4 +1,5 @@
 #include "AMC/Core/Adapter.h"
+#include "AMC/Core/Cache.h"
 #include "AMC/Core/Context.h"
 #include "AMC/Core/Core.h"
 #include "AMC/Core/ELF.h"
@@ -14,11 +15,19 @@
 #include "ABIX/Runtime/Registry.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <vector>
+
+#if !defined(_WIN32)
+#  include <sys/wait.h>
+#  include <unistd.h>
+#endif
 
 namespace {
 
@@ -355,6 +364,39 @@ int main() {
         built.set("x", 1);
         built.set("y", "text");
         check(built.dump() == "{\"x\":1,\"y\":\"text\"}", "json serialize object");
+
+        // Regression: Json(unsigned) must serialize as decimal. The library's
+        // JSON_LHEX node printed `0x..`, which its own parser (hex disabled)
+        // could not read back.
+        amc::Json unsigned_value = amc::Json::object();
+        unsigned_value.set("count", static_cast<unsigned>(64));
+        const std::string unsigned_dump = unsigned_value.dump();
+        check(unsigned_dump == "{\"count\":64}", "json unsigned serializes as decimal");
+        amc::Json unsigned_round;
+        check(amc::parse_json(unsigned_dump, unsigned_round, error)
+                  && unsigned_round.find("count") != nullptr
+                  && unsigned_round.find("count")->as_number() == 64,
+            "json unsigned round-trips");
+
+        // Regression: a find() result must stay valid across later find() calls
+        // on the same object, including keys that are prefixes of one another.
+        amc::Json many = amc::Json::object();
+        many.set("schema", std::string("S"));
+        many.set("schema_version", std::string("SV"));
+        many.set("request", std::string("R"));
+        many.set("request_id", std::string("RI"));
+        const amc::Json *schema = many.find("schema");
+        const amc::Json *schema_version = many.find("schema_version");
+        const amc::Json *request = many.find("request");
+        const amc::Json *request_id = many.find("request_id");
+        check(schema != nullptr && schema_version != nullptr && request != nullptr && request_id != nullptr,
+            "json find finds every key");
+        check(schema->as_string() == "S"
+                  && schema_version->as_string() == "SV"
+                  && request->as_string() == "R"
+                  && request_id->as_string() == "RI",
+            "json find results are stable across later finds");
+        check(many.find("missing") == nullptr, "json find returns null for an absent key");
     }
 
     // --- region -> module -------------------------------------------------
@@ -1018,6 +1060,408 @@ int main() {
         check(amc::verify_abi(no_cc_region, expected, report, error)
                   && report.calling_convention == amc::TargetVerificationStatus::unverifiable,
             "ABI verification: missing calling convention is unverifiable");
+    }
+
+    {
+        // Non-intrusive interface contract: interface identity, method identity
+        // and implementation binding round-trip through .abix and the metadata
+        // region without exposing any language's private vtable.
+        auto make_primitive = [](const std::string &name, uint32_t size) {
+            amc::Type type;
+            type.name = name;
+            type.kind = amc::TypeKind::primitive;
+            type.id = amc::hash_text(name, 0x54595045);
+            type.size = size;
+            type.align = size;
+            type.primitive_abi =
+                amc::primitive_abi(size * 8, amc::PrimitiveAbiKind::sint, amc::FloatFormat::none, true);
+            return type;
+        };
+        amc::AbiModule m;
+        m.package_name = "iface";
+        m.package_version = "1";
+        m.pointer_bits = 64;
+        m.types.push_back(make_primitive("int32_t", 4));
+        amc::Type renderer = make_type("Renderer", 8, 8);
+        m.types.push_back(renderer);
+        const amc::Hash128 i32 = m.types[0].id;
+        auto make_function = [&](const std::string &name, amc::Hash128 owner) {
+            amc::Function function;
+            function.name = name;
+            function.owner_type = owner;
+            function.return_type = i32;
+            function.parameters = {
+                { "width", i32, 0},
+                {"height", i32, 0}
+            };
+            function.signature = amc::signature_hash(function);
+            return function;
+        };
+        m.functions.push_back(make_function("draw", amc::Hash128{}));
+        m.functions.push_back(make_function("resize", amc::Hash128{}));
+        m.functions.push_back(make_function("Renderer_draw", renderer.id));
+        m.functions.push_back(make_function("Renderer_resize", renderer.id));
+
+        amc::InterfaceRecord iface;
+        iface.name = "IRenderer";
+        iface.version = 1;
+        iface.method_begin = 0;
+        iface.method_count = 2;
+        for (uint32_t i = 0; i < 2; ++i) {
+            amc::InterfaceMethod method;
+            method.name = m.functions[i].name;
+            method.signature = m.functions[i].signature;
+            method.return_type = m.functions[i].return_type;
+            method.parameters = m.functions[i].parameters;
+            method.slot = i;
+            m.interface_methods.push_back(method);
+        }
+        iface.id = amc::interface_hash(iface, m.interface_methods);
+        for (auto &method : m.interface_methods)
+            method.interface_id = iface.id;
+        m.interfaces.push_back(iface);
+
+        amc::InterfaceImplementation impl;
+        impl.interface_id = iface.id;
+        impl.concrete_type = renderer.id;
+        impl.binding_begin = 0;
+        impl.binding_count = 2;
+        for (uint32_t i = 0; i < 2; ++i) {
+            amc::MethodBinding binding;
+            binding.interface_id = iface.id;
+            binding.slot = m.interface_methods[i].slot;
+            binding.method_signature = m.interface_methods[i].signature;
+            binding.native_function = m.functions[2 + i].signature;
+            m.method_bindings.push_back(binding);
+        }
+        m.implementations.push_back(impl);
+
+        std::string error;
+        check(amc::validate(m, error), "interface module validates");
+        // Identity depends on name+version+signatures, so a rename is a new
+        // interface even though the shape is identical.
+        amc::InterfaceRecord renamed = iface;
+        renamed.name = "IOther";
+        check(!(amc::interface_hash(renamed, m.interface_methods) == iface.id), "interface identity includes the name");
+        amc::InterfaceRecord bumped = iface;
+        bumped.version = 2;
+        check(
+            !(amc::interface_hash(bumped, m.interface_methods) == iface.id), "interface identity includes the version");
+
+        check(amc::write_abix(m, "amc_iface_test.abix", error), "write_abix interface");
+        amc::AbiModule loaded;
+        check(amc::read_abix("amc_iface_test.abix", loaded, error), "read_abix interface");
+        check(loaded.interfaces.size() == 1
+                  && loaded.interfaces[0].id == iface.id
+                  && loaded.interface_methods.size() == 2
+                  && loaded.implementations.size() == 1
+                  && loaded.method_bindings.size() == 2
+                  && loaded.method_bindings[0].native_function == m.functions[2].signature,
+            "interface round-trips through .abix");
+
+        amc::MetadataOptions options;
+        std::vector<uint8_t> region;
+        check(amc::build_metadata_region(m, options, region, error), "build region with an interface");
+        std::vector<amc::MetadataInterfaceContract> contracts;
+        std::vector<amc::MetadataInterfaceMethod> methods;
+        std::vector<amc::MetadataInterfaceImplementation> impls;
+        std::vector<amc::MetadataMethodBinding> bindings;
+        check(amc::read_interface_contracts(region, contracts, error)
+                  && contracts.size() == 1
+                  && contracts[0].id == iface.id
+                  && contracts[0].method_count == 2,
+            "interface identity round-trips through the region");
+        check(amc::read_interface_methods(region, methods, error)
+                  && methods.size() == 2
+                  && methods[0].parameter_types.size() == 2
+                  && methods[0].return_type == i32,
+            "interface methods round-trip through the region");
+        check(amc::read_interface_implementations(region, impls, error)
+                  && impls.size() == 1
+                  && impls[0].concrete_type == renderer.id,
+            "interface implementation round-trips through the region");
+        check(amc::read_method_bindings(region, bindings, error)
+                  && bindings.size() == 2
+                  && bindings[0].native_function == m.functions[2].signature,
+            "method bindings round-trip through the region");
+
+        // A region with no interface reads empty.
+        amc::AbiModule bare;
+        bare.package_name = "bare";
+        bare.package_version = "1";
+        bare.types.push_back(m.types[0]);
+        std::vector<uint8_t> bare_region;
+        check(amc::build_metadata_region(bare, options, bare_region, error), "build bare interface region");
+        std::vector<amc::MetadataInterfaceContract> none;
+        check(amc::read_interface_contracts(bare_region, none, error) && none.empty(),
+            "no interface means an empty region read");
+
+        // A signature mismatch between a binding and its interface method is
+        // rejected rather than tolerated.
+        amc::AbiModule bad = m;
+        bad.method_bindings[1].method_signature = m.functions[2].signature;
+        check(!amc::validate(bad, error), "binding signature mismatch is rejected");
+
+        // An implementation that does not bind every method is rejected.
+        amc::AbiModule partial = m;
+        partial.implementations[0].binding_count = 1;
+        check(!amc::validate(partial, error), "incomplete implementation is rejected");
+
+        // Projection preserves the contract when its types survive.
+        amc::AbiModule projected_all;
+        check(amc::project_symbols(m, {}, projected_all, error)
+                  && projected_all.interfaces.size() == 1
+                  && projected_all.interface_methods.size() == 2
+                  && projected_all.method_bindings.size() == 2,
+            "empty projection keeps the interface contract");
+        std::remove("amc_iface_test.abix");
+    }
+
+    {
+        // M3.4: instantiation request cache. Identity is layered, and a build
+        // key covers every input that can change the reusable product.
+        auto make_request = [](const std::string &tmpl, std::vector<std::string> args) {
+            amc::InstantiationRequest request;
+            request.template_name = tmpl;
+            request.arguments = std::move(args);
+            request.arch = 1;
+            request.os = 1;
+            request.target_abi = 1;
+            request.pointer_bits = 64;
+            return request;
+        };
+        auto make_inputs = [&](const amc::InstantiationRequest &request) {
+            amc::InstantiationBuildInputs inputs;
+            inputs.request = request;
+            inputs.source_digest = amc::digest_text("source-v1", amc::digest_domain_source);
+            inputs.toolchain = amc::digest_text("clang-19", amc::digest_domain_toolchain);
+            inputs.build_options = amc::digest_text("-O2", amc::digest_domain_options);
+            return inputs;
+        };
+
+        const auto request = make_request("abix_span", {"int32_t"});
+        const auto same_shape = make_request("abix_span", {"int32_t"});
+        const auto reordered = make_request("abix_span", {"float", "int32_t"});
+        const auto other_template = make_request("abix_array", {"int32_t"});
+        auto retargeted = request;
+        retargeted.pointer_bits = 32;
+        auto qualified = make_request("abix_span", {"const int32_t *"});
+
+        check(amc::instantiation_request_id(request) == amc::instantiation_request_id(same_shape),
+            "same request has one identity");
+        check(!(amc::instantiation_request_id(request) == amc::instantiation_request_id(other_template))
+                  && !(amc::instantiation_request_id(request) == amc::instantiation_request_id(reordered)),
+            "template or argument order changes the request identity");
+        check(!(amc::instantiation_request_id(request) == amc::instantiation_request_id(retargeted)),
+            "target changes the request identity");
+        // A spelling that canonicalises to the same argument is one request.
+        check(amc::instantiation_request_id(request) == amc::instantiation_request_id(qualified),
+            "equivalent normalised arguments share the request identity");
+        // Same template, different target: same template signature, distinct request.
+        check(amc::instantiation_template_signature(request) == amc::instantiation_template_signature(retargeted)
+                  && !(amc::instantiation_request_id(request) == amc::instantiation_request_id(retargeted)),
+            "template signature is target-agnostic");
+
+        // Build key covers every reuse-decision input.
+        const auto base = make_inputs(request);
+        check(amc::instantiation_build_key(base) == amc::instantiation_build_key(make_inputs(same_shape)),
+            "identical build inputs share a build key");
+        auto source_changed = base;
+        source_changed.source_digest = amc::digest_text("source-v2", amc::digest_domain_source);
+        auto toolchain_changed = base;
+        toolchain_changed.toolchain = amc::digest_text("clang-20", amc::digest_domain_toolchain);
+        auto options_changed = base;
+        options_changed.build_options = amc::digest_text("-O3", amc::digest_domain_options);
+        auto protocol_changed = base;
+        protocol_changed.protocol_version = 2;
+        auto schema_changed = base;
+        schema_changed.schema_version = 2;
+        check(!(amc::instantiation_build_key(base) == amc::instantiation_build_key(source_changed))
+                  && !(amc::instantiation_build_key(base) == amc::instantiation_build_key(toolchain_changed))
+                  && !(amc::instantiation_build_key(base) == amc::instantiation_build_key(options_changed))
+                  && !(amc::instantiation_build_key(base) == amc::instantiation_build_key(protocol_changed))
+                  && !(amc::instantiation_build_key(base) == amc::instantiation_build_key(schema_changed)),
+            "build key changes with source, toolchain, options, protocol or schema");
+
+        // A scratch cache directory.
+        const auto root =
+            std::filesystem::temp_directory_path()
+            / ("amc_cache_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        amc::InstantiationCache cache(root.string());
+        std::string error;
+        const std::vector<std::pair<std::string, std::string>> artifacts = {
+            {"module.abix", "ARTIFACT-A"}
+        };
+
+        check(cache.lookup(base).status == amc::CacheStatus::miss
+                  && cache.lookup(base).reason == std::string(amc::cache_reason_not_found),
+            "empty cache misses with not_found");
+        check(cache.store(base, artifacts, error), "store an instantiation product");
+        const auto hit = cache.lookup(base);
+        check(hit.status == amc::CacheStatus::hit
+                  && hit.reason == std::string(amc::cache_reason_hit)
+                  && hit.artifacts.size() == 1
+                  && hit.artifacts[0].name == "module.abix",
+            "repeated build hits the cache");
+        check(cache.verify(hit.build_key, error), "committed entry verifies");
+        check(cache.entries() == 1, "one committed entry");
+
+        // Only export alias changes: not part of request identity, so it is the
+        // same request and hits. (The alias lives in the exported symbol layer.)
+        check(cache.lookup(make_inputs(make_request("abix_span", {"int32_t"}))).status == amc::CacheStatus::hit,
+            "an alias-only change is not a new instantiation request");
+
+        // Each input change yields a miss with a precise reason.
+        auto reason_for = [&](const amc::InstantiationBuildInputs &inputs) {
+            return cache.lookup(inputs).status == amc::CacheStatus::miss ? cache.lookup(inputs).reason : std::string();
+        };
+        check(reason_for(source_changed) == std::string(amc::cache_reason_source_digest_changed),
+            "dependency change invalidates with source_digest_changed");
+        check(reason_for(toolchain_changed) == std::string(amc::cache_reason_toolchain_changed),
+            "toolchain change invalidates with toolchain_changed");
+        check(reason_for(options_changed) == std::string(amc::cache_reason_build_options_changed),
+            "build option change invalidates with build_options_changed");
+        check(reason_for(make_inputs(retargeted)) == std::string(amc::cache_reason_target_changed),
+            "target change invalidates with target_changed");
+        check(reason_for(protocol_changed) == std::string(amc::cache_reason_protocol_version_changed),
+            "protocol change invalidates with protocol_version_changed");
+        check(reason_for(schema_changed) == std::string(amc::cache_reason_schema_version_changed),
+            "schema change invalidates with schema_version_changed");
+
+        // A corrupted artifact is rejected, then repaired by the next store.
+        const auto entry = std::filesystem::path(hit.directory);
+        {
+            std::ofstream corrupt(entry / "module.abix", std::ios::binary | std::ios::trunc);
+            corrupt << "TAMPERED";
+        }
+        check(cache.lookup(base).status == amc::CacheStatus::corrupted
+                  && cache.lookup(base).reason == std::string(amc::cache_reason_corrupted_artifact),
+            "a corrupted artifact is rejected");
+        check(!cache.verify(hit.build_key, error), "corrupted entry fails verification");
+        check(cache.store(base, artifacts, error) && cache.lookup(base).status == amc::CacheStatus::hit,
+            "a corrupt entry is replaced by a re-store");
+
+        // A malformed manifest is reported rather than trusted.
+        {
+            std::ofstream corrupt(entry / "manifest.json", std::ios::binary | std::ios::trunc);
+            corrupt << "{ not json";
+        }
+        check(cache.lookup(base).status == amc::CacheStatus::invalid_manifest, "a malformed manifest is reported");
+        check(cache.store(base, artifacts, error), "re-store replaces a malformed manifest");
+
+        // Unsafe artifact names never touch the filesystem.
+        check(!cache.store(base,
+                  {
+                      {"../escape", "x"}
+        },
+                  error),
+            "an unsafe artifact name is refused");
+
+        check(cache.clear() >= 1 && cache.entries() == 0, "cache can be cleared");
+        std::error_code cleanup_error;
+        std::filesystem::remove_all(root, cleanup_error);
+
+        // Concurrent writers of a fresh key must leave one complete, verifiable
+        // entry, never a partial or mixed product.
+        {
+            const auto concurrent_root = std::filesystem::path(root.string() + "_concurrent");
+            amc::InstantiationCache concurrent(concurrent_root.string());
+            std::string local_error;
+            std::vector<std::thread> writers;
+            for (int i = 0; i < 8; ++i) {
+                writers.emplace_back([&, i] {
+                    const std::string content = "WRITER-" + std::to_string(i);
+                    std::string thread_error;
+                    amc::InstantiationCache per_thread(concurrent_root.string());
+                    (void)per_thread.store(base,
+                        {
+                            {"module.abix", content}
+                    },
+                        thread_error);
+                });
+            }
+            for (auto &writer : writers)
+                writer.join();
+            check(concurrent.verify(amc::instantiation_build_key(base), local_error),
+                "concurrent writers leave a verifiable entry");
+            const auto after = concurrent.lookup(base);
+            check(after.status == amc::CacheStatus::hit && after.artifacts.size() == 1 && concurrent.entries() == 1,
+                "concurrent writers leave one consistent entry");
+            std::filesystem::remove_all(concurrent_root, cleanup_error);
+        }
+
+        // A recorded dependency (the frontend's include closure) invalidates the
+        // entry when it changes, without the cache key listing it.
+        {
+            const auto dep_root = std::filesystem::path(root.string() + "_deps");
+            std::filesystem::create_directories(dep_root);
+            const auto dep_file = dep_root / "dep.hpp";
+            { std::ofstream(dep_file) << "v1"; }
+            amc::InstantiationCache dependency_cache(dep_root.string());
+            const auto dependency_for = [&](const std::string &content) {
+                return std::vector<amc::CacheDependency>{
+                    {dep_file.string(),
+                     amc::digest_bytes(content.data(), content.size(), amc::digest_domain_dependency)}
+                };
+            };
+            std::string dependency_error;
+            check(dependency_cache.store(base,
+                      {
+                          {"module.abix", "C"}
+            },
+                      dependency_for("v1"), dependency_error),
+                "store with a dependency closure");
+            check(dependency_cache.lookup(base).status == amc::CacheStatus::hit, "unchanged dependency hits");
+            { std::ofstream(dep_file, std::ios::app) << "more"; }
+            check(dependency_cache.lookup(base).status == amc::CacheStatus::miss
+                      && dependency_cache.lookup(base).reason == std::string(amc::cache_reason_dependency_changed),
+                "a changed dependency invalidates the entry");
+            check(dependency_cache.store(base,
+                      {
+                          {"module.abix", "C2"}
+            },
+                      dependency_for("v1more"), dependency_error)
+                      && dependency_cache.lookup(base).status == amc::CacheStatus::hit,
+                "re-store refreshes the dependency closure");
+            std::filesystem::remove_all(dep_root, cleanup_error);
+        }
+
+#if !defined(_WIN32)
+        // Cross-process writers of a fresh key: temporary directories must be
+        // process-unique, and the committed entry must remain one complete,
+        // verifiable product rather than a mix.
+        {
+            const auto process_root = std::filesystem::path(root.string() + "_proc");
+            std::vector<pid_t> children;
+            for (int i = 0; i < 4; ++i) {
+                const pid_t pid = fork();
+                if (pid == 0) {
+                    amc::InstantiationCache child_cache(process_root.string());
+                    std::string child_error;
+                    const std::string content = "PROC-" + std::to_string(i);
+                    (void)child_cache.store(base,
+                        {
+                            {"module.abix", content}
+                    },
+                        child_error);
+                    _exit(0);
+                }
+                if (pid > 0) children.push_back(pid);
+            }
+            for (const pid_t pid : children) {
+                int status = 0;
+                waitpid(pid, &status, 0);
+                check(WIFEXITED(status) && WEXITSTATUS(status) == 0, "cache child exits cleanly");
+            }
+            amc::InstantiationCache process_cache(process_root.string());
+            check(process_cache.entries() == 1, "cross-process writers leave one entry");
+            check(process_cache.verify(amc::instantiation_build_key(base), error), "cross-process entry verifies");
+            const auto process_hit = process_cache.lookup(base);
+            check(process_hit.status == amc::CacheStatus::hit && process_hit.artifacts.size() == 1,
+                "cross-process entry is a consistent hit");
+            std::filesystem::remove_all(process_root, cleanup_error);
+        }
+#endif
     }
 
     if (failures != 0) {
