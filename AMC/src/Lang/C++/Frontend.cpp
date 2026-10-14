@@ -274,8 +274,14 @@ private:
             const auto record_key = qt.getAsString();
             // A typedef alias of an instantiation (`abix_span_i32`) names the
             // concrete ABI entity; record it under the alias so it can be
-            // lowered without an explicit export symbol.
-            const bool alias_named = original != s && plain_identifier(original);
+            // lowered without an explicit export symbol. Restrict this to class
+            // template specializations: a nested type or a plain typedef spelled
+            // unqualified inside its scope (e.g. `reader` inside `Domain`, or
+            // `LayoutHash` for `Hash128`) also differs from its canonical
+            // spelling but is not an alias, and renaming the record after it
+            // would produce a type name that is not valid in any namespace.
+            const bool alias_named = original != s && plain_identifier(original)
+                && llvm::isa<clang::ClassTemplateSpecializationDecl>(record);
             add_record(const_cast<clang::CXXRecordDecl *>(record), alias_named ? original : std::string());
             auto found = ids.find(alias_named ? original : record_key);
             if (found != ids.end()) {
