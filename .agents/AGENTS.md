@@ -128,7 +128,7 @@ platform.** Platform differences in C++ are easy to get subtly wrong — the
 linker, the CRT, dynamic-library loading (ELF / Mach-O / PE), symbol visibility
 and calling conventions all differ. Once such a difference lands in `devel`, it
 blocks promoting `devel` to `main` and cutting a release, so keep the divergence
-in the platform branches.
+in the platform branches and gate promotion through staged test branches.
 
 Platform support today: **Linux and macOS**; **Windows is not available yet**
 (its branch exists but is not building). `devel` and release refs must be
@@ -138,21 +138,26 @@ reproducible on every *available* platform.
 |--------|------|
 | `main` | latest stable; only moves forward from a fully verified `devel` |
 | `release/x.y.z` | a frozen stable line; tags `vX.Y.Z` must be platform-consistent |
-| `devel` | unified integration branch; only cross-platform-verified changes land here |
+| `devel` | unified integration branch; only changes that pass on **all** available platforms land here |
+| `devel-Beta` | promotion stage: an `devel-Alpha` that passed its platform tests merges here for the next/broader test round |
+| `devel-Alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
 | `devel-Linux` | Linux development line |
 | `devel-macOS` | macOS development line |
 | `devel-Windows` | Windows development line (not building yet) |
 
-Workflow:
+Promotion pipeline: **platform → `devel-Alpha` → `devel-Beta` → `devel`**
 
 1. Develop on your platform branch (`devel-Linux` / `devel-macOS` /
    `devel-Windows`).
-2. When a unit is complete, merge it into `devel` and resolve platform
-   differences **there**; do not leave `#ifdef`-style divergence to rot in a
-   platform branch.
-3. `devel` stays platform-neutral. If a change cannot compile or link on a
-   platform, it belongs in that platform's branch, not in `devel`.
-4. `main` and `release/x.y.z` receive only `devel`/release merges that pass every
+2. When a unit is complete, merge it into `devel-Alpha` and resolve platform
+   differences **there**; run the tests on the platforms Alpha supports. Do not
+   leave `#ifdef`-style divergence to rot in a platform branch.
+3. Once `devel-Alpha` passes, merge it into `devel-Beta` for the next, broader
+   test round.
+4. Only when **every available platform passes** on `devel-Beta` is it merged
+   into `devel`. A platform-specific fix that cannot build elsewhere stays in its
+   platform branch, never in `devel`.
+5. `main` and `release/x.y.z` receive only `devel`/release merges that pass every
    available platform. Never tag or branch a release before it is verified
    consistent across platforms.
 
@@ -161,8 +166,9 @@ Agent rules:
 - When you touch build files, the linker, dynamic-library loading, CRT/allocator
   boundaries, symbol visibility, or any `_WIN32` / `__APPLE__` path, state in
   the change which platforms you verified.
-- Never push platform-specific work directly to `devel` or `main`; push it to a
-  platform branch, then merge.
+- Never push platform-specific work directly to `devel`, `devel-Beta` or `main`;
+  push it to a platform branch, promote it through `devel-Alpha` → `devel-Beta`
+  → `devel`.
 - Do not move `main`, create a release branch, or create a version tag unless
   explicitly asked; release operations require full platform consistency.
 
