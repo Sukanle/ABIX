@@ -26,6 +26,13 @@ fn main() {
         let err = abix_Metrics_divide(metrics.as_ptr(), 10, 0);
         assert_eq!(err.status, 1, "result error");
 
+        // The `[[error]]` semantics of an `abix_result_*` return are bound
+        // automatically: the backend turns the aggregate into a typed Result.
+        assert_eq!(abix_Metrics_divide_result(metrics.as_ptr(), 10, 2), Ok(5), "typed result ok");
+        let typed = abix_Metrics_divide_result(metrics.as_ptr(), 10, 0);
+        assert!(typed.is_err(), "typed result error");
+        assert_eq!(typed.unwrap_err().0, 1, "typed error status");
+
         let region = abi::metadata::Region::open(&abi::AMC_METADATA_REGION).expect("region");
         assert!(region.lowering_count() >= 3, "contracts recorded: {}", region.lowering_count());
     }
