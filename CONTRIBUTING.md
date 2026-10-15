@@ -130,7 +130,7 @@ platform branch and are promoted through staged test branches.
 | Branch | Role |
 |--------|------|
 | `main` | latest stable; moves forward from a fully verified `devel` |
-| `release/x.y.z` | frozen stable line; tags `vX.Y.Z` must be platform-consistent |
+| `vX.Y.x` | frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
 | `devel` | unified integration branch; only all-platform-verified changes land here |
 | `devel-beta` | promotion stage: a tested `devel-alpha` merges here for the next test round |
 | `devel-alpha` | integration/test stage: completed platform work merges here first |
