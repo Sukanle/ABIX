@@ -29,6 +29,7 @@
 #include "ABIX/Interface/Module.h"           // IWYU pragma: keep
 #include "ABIX/Interface/ModuleRegistry.h"   // IWYU pragma: keep
 #include "ABIX/Interface/Owner.h"            // IWYU pragma: keep
+#include "ABIX/Interface/Proxy.h"            // IWYU pragma: keep
 #include "ABIX/Interface/Ref.h"              // IWYU pragma: keep
 #include "ABIX/Interface/Registry.h"         // IWYU pragma: keep
 

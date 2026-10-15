@@ -65,8 +65,10 @@ public:
             if (slot >= MaxMethods) return InterfaceStatus::method_capacity_exceeded;
             if (slot + 1 > highest) highest = slot + 1;
         }
-        for (uint32_t i = 0; i < method_count; ++i)
+        for (uint32_t i = 0; i < method_count; ++i) {
             _entries[methods[i].slot] = methods[i].entry;
+            _signatures[methods[i].slot] = methods[i].signature;
+        }
         _object = object;
         _interface_id = interface_id;
         _version = version;
@@ -95,6 +97,34 @@ public:
     // Number of slots spanned by the implementation (highest bound slot + 1).
     uint32_t method_count() const noexcept { return _method_count; }
 
+    // The method ABI signature recorded at `slot`, or a zero hash when the slot
+    // is unbound. Callers compare it against the interface contract they expect
+    // before trusting a cached entry point.
+    InterfaceMethodHash signature(uint32_t slot) const noexcept {
+        return slot < _method_count ? _signatures[slot] : InterfaceMethodHash{};
+    }
+
+    // Verify that `slot` is bound and that its recorded signature matches the
+    // expected one (a zero `expected` means "do not check the signature").
+    // Returns `method_not_found` for an unbound slot and `signature_mismatch`
+    // when the bound method's signature differs, so a call through the assumed
+    // function type is refused rather than performed unsafely.
+    InterfaceStatus verify(uint32_t slot, InterfaceMethodHash expected) const noexcept {
+        if (slot >= _method_count || _entries[slot] == 0) return InterfaceStatus::method_not_found;
+        if (!(expected == InterfaceMethodHash{}) && !(_signatures[slot] == expected))
+            return InterfaceStatus::signature_mismatch;
+        return InterfaceStatus::ok;
+    }
+
+    // Fetch a slot's entry point only after verifying its signature. `out` is
+    // set to nullptr on failure.
+    template<typename Fn>
+    InterfaceStatus method(Fn &out, uint32_t slot, InterfaceMethodHash expected) const noexcept {
+        const InterfaceStatus status = verify(slot, expected);
+        out = status == InterfaceStatus::ok ? method<Fn>(slot) : nullptr;
+        return status;
+    }
+
 private:
     void reset() noexcept {
         _object = nullptr;
@@ -102,8 +132,10 @@ private:
         _version = 0;
         _method_count = 0;
         _resolved = false;
-        for (size_t i = 0; i < (MaxMethods == 0 ? 1 : MaxMethods); ++i)
+        for (size_t i = 0; i < (MaxMethods == 0 ? 1 : MaxMethods); ++i) {
             _entries[i] = 0;
+            _signatures[i] = InterfaceMethodHash{};
+        }
     }
 
     void *_object = nullptr;
@@ -112,6 +144,7 @@ private:
     uint32_t _method_count = 0;
     bool _resolved = false;
     uintptr_t _entries[MaxMethods == 0 ? 1 : MaxMethods]{};
+    InterfaceMethodHash _signatures[MaxMethods == 0 ? 1 : MaxMethods]{};
 };
 
 // Query convenience: resolve an interface handle for one object. Returns the
