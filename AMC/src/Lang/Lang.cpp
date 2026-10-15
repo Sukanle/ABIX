@@ -116,6 +116,17 @@ bool config_load(const std::string &path, const std::string &expected_language, 
                 if (!decl.template_name.empty()) c.instantiations.push_back(std::move(decl));
             }
         }
+        if (auto *adapts = t["adapt"].as_array()) {
+            for (auto &&entry : *adapts) {
+                auto *table = entry.as_table();
+                if (!table) continue;
+                AdaptDecl decl;
+                decl.native = (*table)["native"].value_or("");
+                decl.target = (*table)["target"].value_or("");
+                decl.element = (*table)["element"].value_or("");
+                if (!decl.native.empty()) c.adaptations.push_back(std::move(decl));
+            }
+        }
         // `compile_commands` / `flags` are optional: a source-level frontend
         // (e.g. Rust's `#[repr(C)]` extractor) needs no build flags, and the
         // C++ frontend falls back to a fixed compilation database.

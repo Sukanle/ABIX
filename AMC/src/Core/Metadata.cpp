@@ -901,7 +901,7 @@ bool read_error_contracts(
     for (uint32_t i = 0; i < count; ++i) {
         MetadataErrorRecord record{};
         std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
-        if (record.status_source > static_cast<uint32_t>(StatusSource::parameter)) {
+        if (record.status_source > static_cast<uint32_t>(StatusSource::return_field)) {
             error = "invalid error contract record";
             return false;
         }

@@ -491,9 +491,48 @@ void emit_errors(Output &o, const Projector &p) {
     o.print("\n// Error-boundary wrappers: a C status code becomes a typed Result.\n");
     for (const auto &record : p.m.errors) {
         if (record.function_index >= p.m.functions.size()) continue;
+        const amc::Function &function = p.m.functions[record.function_index];
+        const std::string function_rust = rust_ident(function.name);
+        const std::string error_type = pascal_ident(function.name) + "Error";
+        if (record.status_source == amc::StatusSource::return_field) {
+            // A Result return: the status and value are fields of the returned
+            // record, so no out-parameter is involved.
+            const int result_index = p.index_of(function.return_type);
+            if (result_index < 0) continue;
+            const amc::Type &result = p.m.types[static_cast<size_t>(result_index)];
+            if (result.kind != amc::TypeKind::record) continue;
+            if (record.status_parameter >= result.field_count || record.value_parameter >= result.field_count) continue;
+            const amc::Field &status_field = p.m.fields[result.field_begin + record.status_parameter];
+            const amc::Field &value_field = p.m.fields[result.field_begin + record.value_parameter];
+            const std::string status_rust = p.field_type(status_field.type_id);
+            const std::string value_rust = p.field_type(value_field.type_id);
+            const std::string status_access = rust_field_ident(status_field.name);
+            const std::string value_access = rust_field_ident(value_field.name);
+
+            std::string params, call_args;
+            for (size_t i = 0; i < function.parameters.size(); ++i) {
+                const auto &parameter = function.parameters[i];
+                const std::string parameter_name =
+                    parameter.name.empty() ? fmt::format("arg{}", i) : rust_field_ident(parameter.name);
+                if (i != 0) {
+                    params += ", ";
+                    call_args += ", ";
+                }
+                params += fmt::format("{}: {}", parameter_name, p.field_type(parameter.type_id));
+                call_args += parameter_name;
+            }
+            o.print("#[derive(Clone, Copy, PartialEq, Eq, Debug)]\n");
+            o.print("pub struct {}(pub {});\n", error_type, status_rust);
+            o.print("impl {} {{\n    pub const SUCCESS: {} = {};\n}}\n", error_type, status_rust, record.success_value);
+            o.print("pub fn {}({}) -> Result<{}, {}> {{\n", function_rust + "_result", params, value_rust, error_type);
+            o.print("    let result = unsafe {{ {}({}) }};\n", function_rust, call_args);
+            o.print("    if result.{} == {}::SUCCESS {{\n", status_access, error_type);
+            o.print("        Ok(result.{})\n", value_access);
+            o.print("    }} else {{\n        Err({}(result.{}))\n    }}\n}}\n", error_type, status_access);
+            continue;
+        }
         if (record.status_source != amc::StatusSource::return_value) continue;   // v1: return-value status only
         if (record.value_parameter == UINT32_MAX) continue;
-        const amc::Function &function = p.m.functions[record.function_index];
         if (record.value_parameter >= function.parameters.size()) continue;
         const int value_index = p.index_of(function.parameters[record.value_parameter].type_id);
         if (value_index < 0) continue;
@@ -501,8 +540,6 @@ void emit_errors(Output &o, const Projector &p) {
         if (value_type.kind != amc::TypeKind::pointer) continue;
         const std::string value_rust = p.pointer_pointee_rust(value_type);
         const std::string status_rust = p.field_type(function.return_type);
-        const std::string function_rust = rust_ident(function.name);
-        const std::string error_type = pascal_ident(function.name) + "Error";
 
         std::string params, call_args;
         for (size_t i = 0; i < function.parameters.size(); ++i) {

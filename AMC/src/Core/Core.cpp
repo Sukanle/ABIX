@@ -640,12 +640,22 @@ bool validate(const AbiModule &module, std::string &error) {
             return false;
         }
         const auto &function = module.functions[contract.function_index];
-        if (contract.status_source == StatusSource::parameter
-            && contract.status_parameter >= function.parameters.size()) {
+        if (contract.status_source == StatusSource::return_field) {
+            // The returned record carries the status/value as fields.
+            const Type *result = find_type_by_id(module, function.return_type);
+            const uint32_t fields = (result != nullptr && result->kind == TypeKind::record) ? result->field_count : 0u;
+            if (contract.status_parameter >= fields
+                || (contract.value_parameter != UINT32_MAX && contract.value_parameter >= fields)) {
+                error = "error contract result field is out of range";
+                return false;
+            }
+        } else if (contract.status_source == StatusSource::parameter
+                   && contract.status_parameter >= function.parameters.size()) {
             error = "error contract status parameter is out of range";
             return false;
-        }
-        if (contract.value_parameter != UINT32_MAX && contract.value_parameter >= function.parameters.size()) {
+        } else if (contract.status_source == StatusSource::return_value
+                   && contract.value_parameter != UINT32_MAX
+                   && contract.value_parameter >= function.parameters.size()) {
             error = "error contract value parameter is out of range";
             return false;
         }
@@ -2208,7 +2218,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
             || !read_u64(bytes, error_offset, success, error)
             || !read_u32(bytes, error_offset, record.value_parameter, error)
             || !read_u32(bytes, error_offset, record.flags, error)
-            || status > static_cast<uint32_t>(StatusSource::parameter)) {
+            || status > static_cast<uint32_t>(StatusSource::return_field)) {
             error = "invalid error contract record";
             return false;
         }

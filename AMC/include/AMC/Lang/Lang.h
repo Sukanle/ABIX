@@ -63,6 +63,19 @@ struct ExposeDecl {
     bool opaque = true;                     // consumers see an opaque handle
 };
 
+// A declared native↔ABIX-STD parameter adaptation. An STL type must not cross
+// the boundary raw (ABI-SPEC §18 requires an explicit mapping), so a native
+// parameter type is declared against an ABIX-STD boundary type; the language
+// frontend knows how to marshal that native kind onto the boundary, and
+// `[[expose]]` then adapts any method that takes it instead of refusing it.
+// Only parameters are adapted: a return value mapped to a borrowed view would
+// dangle, so returns still require their own contract.
+struct AdaptDecl {
+    std::string native;    // canonical native kind: std::string | std::string_view | std::vector | std::span
+    std::string target;    // ABIX-STD boundary type, e.g. abix_str_utf8 / abix_span_i32
+    std::string element;   // element spelling, required for std::vector / std::span
+};
+
 struct Config {
     std::string language;
     std::string db;              // compile_commands.json (optional)
@@ -75,6 +88,7 @@ struct Config {
     std::vector<ContractDecl> contracts;           // [[contract]] ownership contracts
     std::vector<ErrorDecl> errors;                 // [[error]] error-boundary contracts
     std::vector<InstantiateDecl> instantiations;   // [[instantiate]] generic instantiations
+    std::vector<AdaptDecl> adaptations;            // [[adapt]] native↔ABIX-STD parameter mappings
     std::vector<ExposeDecl> exposed;               // [[expose]] automatic capability generation
 };
 
