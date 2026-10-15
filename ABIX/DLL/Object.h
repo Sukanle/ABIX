@@ -156,17 +156,12 @@ public:
             unlock_writer();
             return false;
         }
+        // The name+sig table is optional: a module may expose only ABIX
+        // Interface capabilities through the fixed `abix_module_query_v1` entry.
         auto getter =
             reinterpret_cast<const runtime::Table *(*)(void)>(detail::resolve_symbol(m, SKL_ABIX_TABLE_GETTER));
-        if (!getter) {
-            ABIX_LOG_ERROR("Object::load: abi_get_table not found in '%s'", path);
-            detail::unload_module(m);
-            last_error() = CallError::load_failed;
-            unlock_writer();
-            return false;
-        }
-        const auto *t = getter();
-        if (!t || t->magic != SKL_ABIX_TABLE_MAGIC || t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION) {
+        const runtime::Table *t = getter ? getter() : nullptr;
+        if (t && (t->magic != SKL_ABIX_TABLE_MAGIC || t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION)) {
             ABIX_LOG_ERROR("Object::load: bad table magic/version in '%s'", path);
             detail::unload_module(m);
             last_error() = CallError::load_failed;
@@ -181,11 +176,11 @@ public:
             unlock_writer();
             return false;
         }
-        if (t->count >= SKL_ABIX_HASH_THRESHOLD) img->index.build(*t);
+        if (t && t->count >= SKL_ABIX_HASH_THRESHOLD) img->index.build(*t);
         util::store_release(&_c->image, img);
         util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::active));
         last_error() = CallError::none;
-        ABIX_LOG_INFO("Object::load: loaded '%s' (%u entries)", path, t->count);
+        ABIX_LOG_INFO("Object::load: loaded '%s' (%u entries)", path, t ? t->count : 0u);
         unlock_writer();
         return true;
     }
@@ -232,14 +227,8 @@ public:
         }
         auto getter =
             reinterpret_cast<const runtime::Table *(*)()>(detail::resolve_symbol(new_m, SKL_ABIX_TABLE_GETTER));
-        if (!getter) {
-            ABIX_LOG_ERROR("Object::reload: abi_get_table not found in '%s'", path);
-            detail::unload_module(new_m);
-            last_error() = CallError::load_failed;
-            return false;
-        }
-        const auto *new_t = getter();
-        if (!new_t || new_t->magic != SKL_ABIX_TABLE_MAGIC || new_t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION) {
+        const runtime::Table *new_t = getter ? getter() : nullptr;
+        if (new_t && (new_t->magic != SKL_ABIX_TABLE_MAGIC || new_t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION)) {
             ABIX_LOG_ERROR("Object::reload: bad table magic/version in '%s'", path);
             detail::unload_module(new_m);
             last_error() = CallError::load_failed;
@@ -253,7 +242,7 @@ public:
             last_error() = CallError::load_failed;
             return false;
         }
-        if (new_t->count >= SKL_ABIX_HASH_THRESHOLD) new_img->index.build(*new_t);
+        if (new_t && new_t->count >= SKL_ABIX_HASH_THRESHOLD) new_img->index.build(*new_t);
 
         lock_writer();
         auto *old_img = util::exchange_acq_rel(&_c->image, new_img);
@@ -266,7 +255,7 @@ public:
         }
 
         last_error() = CallError::none;
-        ABIX_LOG_INFO("Object::reload: reloaded '%s' (%u entries)", path, new_t->count);
+        ABIX_LOG_INFO("Object::reload: reloaded '%s' (%u entries)", path, new_t ? new_t->count : 0u);
         return true;
     }
 

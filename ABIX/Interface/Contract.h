@@ -81,6 +81,9 @@ enum class InterfaceStatus : uint32_t {
     method_not_found,
     // The method table has a slot above the handle's capacity.
     method_capacity_exceeded,
+    // The bound method's recorded signature differs from the expected one, so a
+    // call through the assumed function type would be unsafe.
+    signature_mismatch,
 };
 
 constexpr const char *to_string(InterfaceStatus status) noexcept {
@@ -93,6 +96,7 @@ constexpr const char *to_string(InterfaceStatus status) noexcept {
         case InterfaceStatus::version_mismatch:         return "version_mismatch";
         case InterfaceStatus::method_not_found:         return "method_not_found";
         case InterfaceStatus::method_capacity_exceeded: return "method_capacity_exceeded";
+        case InterfaceStatus::signature_mismatch:       return "signature_mismatch";
     }
     return "unknown";
 }

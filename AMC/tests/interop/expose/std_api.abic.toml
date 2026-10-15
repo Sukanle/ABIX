@@ -1,0 +1,20 @@
+[package]
+name = "expose_std"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["std_api.hpp"]
+symbols = ["Metrics"]
+
+[[expose]]
+type = "Metrics"
+methods = ["sum", "text_length", "divide"]
+constructor = []
+
+[thunks]
+output = "std_thunks.cpp"
+
+[[export]]
+output = "expose_std.abix"

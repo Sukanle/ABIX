@@ -124,9 +124,21 @@ order is significant. A function whose return type is zero is invalid.
 
 A function may carry an optional **error-boundary contract** describing how it
 reports success/failure and where the result value is carried: the status source
-(the return value or a parameter), the status value that means success, and the
-parameter holding the result. It lets a consumer turn a bare C status code into a
-typed result (`Result<T, E>`).
+(the return value, a parameter, or a field of a returned aggregate), the status
+value that means success, and where the result is carried. It lets a consumer
+turn a bare C status code into a typed result (`Result<T, E>`).
+
+The status source is one of:
+
+- `return_value` — the whole return value is the status, and the result is a
+  parameter (or the return value itself);
+- `parameter` — a parameter carries the status, and the return value is the
+  result;
+- `return_field` — the return value is an aggregate carrying the status in one
+  field and the value in another (the ABIX-STD `Result` layout); the recorded
+  status/value indices are field indices within the returned record. This is how
+  an `abix_result_*` return binds to the error boundary without an
+  out-parameter.
 
 The contract is a **semantic contract, not a layout fact**: it does not change
 `TypeID`, `LayoutHash` or `ABIHash`, and a module without it is fully valid
@@ -671,3 +683,76 @@ ABI-compatible with the current target.
 When a concrete type matches no ABIX-STD contract, AMC does not force an ABI: it
 requires an explicit mapping, uses an `Opaque` handle, or rejects the
 instantiation.
+
+A **native parameter type** (for example `std::string`, `std::vector<T>`) is
+handled the same way: it must not cross the boundary raw. A frontend records an
+explicit mapping from the native type onto an ABIX-STD boundary type (for the C++
+frontend, an `[[adapt]]` declaration), and only then does it generate a thunk
+whose parameter is the boundary type plus the marshalling step. The mapping is
+**parameters only**: a return value lowered to a borrowed view would dangle, so
+returns keep their own contract. The generated adapter is really compiled and
+linked; a recorded mapping alone never triggers a runtime conversion.
+
+## 19. Interface Contract
+
+An **interface** is a named, versioned, independent contract for
+non-intrusive polymorphism. It is not a class hierarchy and not any compiler's
+vtable: a provider keeps its own object layout, inheritance and virtual
+functions, and a generated adapter realises each interface method. Implementing
+an interface never requires modifying the provider type.
+
+### 19.1 Identity
+
+Identity is layered and MUST NOT be conflated:
+
+| Identity | Describes |
+| -------- | --------- |
+| Interface identity (`InterfaceId`) | A content hash over the interface **name**, **version** and **ordered method signatures** |
+| Method identity | `(interface_id, slot)`, with the method signature verified independently |
+| Implementation binding | How one concrete type reaches each slot, through an adapter |
+
+An interface identity is never a class name and never a vtable address. Because
+the ordered method signatures participate in the hash, **reordering or editing a
+method changes the identity**: a stale consumer can never silently call the wrong
+method — it simply does not match.
+
+The interface contract is a **semantic contract, not a layout fact**: it does
+not participate in `TypeID`, `LayoutHash` or `ABIHash`, and a module without
+interfaces is fully valid.
+
+### 19.2 Slot stability and versioning
+
+- Within one interface version, a slot's meaning is **fixed**.
+- Changing the method set (adding, removing, reordering or re-signing a method)
+  MUST be expressed as a **new version**, which yields a new identity. An existing
+  `(name, version)` is never mutated in place and its identity is never reused.
+- A consumer requests a version explicitly, or requests "newest" (`0`). A missing
+  requested version is reported as `version_mismatch`, distinct from an unknown
+  interface (`interface_not_found`).
+
+### 19.3 Signature verification
+
+Method identity is `(interface_id, slot)`, but the **method signature is checked
+separately**: a matching slot alone never proves the function type is correct.
+A consumer that intends to call a slot through a concrete function type must
+verify the recorded method signature against the signature its contract expects.
+A mismatch is refused (`signature_mismatch`) rather than called unsafely; an
+unbound slot is `method_not_found`. Once verified, a resolved adapter may be
+cached and called natively — binding happens at setup time, never per call.
+
+### 19.4 Dispatch artifacts
+
+An interface is realised at the boundary through a provider-owned adapter table:
+each entry names a signature and an entry point whose first argument is the
+object handle. The consumer resolves once and thereafter performs a plain native
+indirect call. Runtime dispatch is never a per-call lookup, a name comparison or
+a type inspection.
+
+### 19.5 Discovery manifest
+
+A provider exposes one fixed entry (`abix_module_query_v1`) returning a
+versioned, self-describing manifest. The platform export table is consulted for
+that entry only; no mangled name is decoded and no interface meaning is inferred
+from a symbol. A consumer validates the manifest (version, bounds, non-zero ids,
+duplicate slot rejection) before registering anything; a malformed or unknown
+manifest fails clearly rather than being guessed at.

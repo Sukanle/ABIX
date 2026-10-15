@@ -2,11 +2,18 @@
 #include "AMC/Lang/Lang.h"
 #include "AMC/Core/Core.h"
 
+// The Clang resource directory detected at build time (`clang -print-resource-dir`).
+// It is injected by CMake for the `amc-cpp` target; empty if unavailable.
+#ifndef ABIX_CLANG_RESOURCE_DIR
+#  define ABIX_CLANG_RESOURCE_DIR ""
+#endif
+
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclTemplate.h>
 #include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/AST/Type.h>
 #include <clang/Basic/SourceManager.h>
 #include <clang/Options/OptionUtils.h>
 #include <clang/Tooling/CompilationDatabase.h>
@@ -17,8 +24,9 @@
 
 #include <fmt/base.h>
 
-#include <filesystem>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
 
 namespace amc::lang::cpp {
 namespace {
@@ -130,12 +138,112 @@ std::string primitive_abi_key(clang::ASTContext &ctx, clang::QualType qt, uint32
     return {};
 }
 
+// The native C++ kinds an `[[adapt]]` may declare. Each maps a canonical STL
+// spelling onto an ABIX-STD boundary contract through a generated adapter.
+enum class NativeKind : uint32_t {
+    none = 0,
+    string = 1,        // std::string        -> string-view (owned copy in the adapter)
+    string_view = 2,   // std::string_view   -> string-view (borrowed)
+    vector = 3,        // std::vector<T>     -> sequence-view (owned copy in the adapter)
+    span = 4           // std::span<const T> -> sequence-view (borrowed)
+};
+
+// One recorded native↔ABIX-STD parameter adaptation. The function keeps the
+// native parameter type (the method's real signature); `[[expose]]` substitutes
+// the boundary type in the generated thunk and emits the marshalling step. This
+// is a frontend working set consumed by `expose_thunks`; it is not serialized
+// and never feeds ABI identity.
+struct NativeAdapt {
+    amc::Hash128 native_type{};     // recorded native parameter type
+    amc::Hash128 boundary_type{};   // ABIX-STD boundary type (filled by expose)
+    amc::Hash128 element_id{};      // element/value type for a sequence view
+    uint32_t kind = 0;              // NativeKind
+    std::string element;            // element spelling (sequence views)
+    std::string target;             // declared boundary type name
+};
+
+NativeKind native_kind_of(const std::string &name) {
+    if (name == "std::string") return NativeKind::string;
+    if (name == "std::string_view") return NativeKind::string_view;
+    if (name == "std::vector") return NativeKind::vector;
+    if (name == "std::span") return NativeKind::span;
+    return NativeKind::none;
+}
+
+// Normalize a type spelling for element matching: drop whitespace and the
+// qualifiers that do not change the element's ABI identity.
+std::string normalise_element(const std::string &spelling) {
+    std::string out;
+    std::string token;
+    const auto flush = [&] {
+        if (token.empty()) return;
+        if (token != "const" && token != "class" && token != "struct" && token != "volatile" && token != "typename") {
+            if (!out.empty()) out += ' ';
+            out += token;
+        }
+        token.clear();
+    };
+    for (const char c : spelling) {
+        if (std::isspace(static_cast<unsigned char>(c)) || c == '&') {
+            flush();
+            continue;
+        }
+        token += c;
+    }
+    flush();
+    return out;
+}
+
+// The native type name recorded for a native parameter (distinct per element,
+// so `std::vector<int>` and `std::vector<float>` never collapse onto one type).
+std::string native_type_name(NativeKind kind, const std::string &element) {
+    switch (kind) {
+        case NativeKind::string:      return "std::string";
+        case NativeKind::string_view: return "std::string_view";
+        case NativeKind::vector:      return "std::vector<" + element + ">";
+        case NativeKind::span:        return "std::span<" + element + ">";
+        default:                      return {};
+    }
+}
+
+// Parse a fixed-width integer spelling (`int32_t`, `uint16_t`, ...) into its
+// byte size and signedness. Returns false when the spelling is not one, so the
+// matcher never guesses at an element type it cannot prove.
+bool fixed_width_int(const std::string &spelling, uint32_t &size, bool &is_signed) {
+    struct Entry {
+        const char *name;
+        uint32_t size;
+        bool is_signed;
+    };
+    static constexpr Entry kEntries[] = {
+        {  "int8_t", 1,  true},
+        { "uint8_t", 1, false},
+        { "int16_t", 2,  true},
+        {"uint16_t", 2, false},
+        { "int32_t", 4,  true},
+        {"uint32_t", 4, false},
+        { "int64_t", 8,  true},
+        {"uint64_t", 8, false},
+    };
+    const std::string name = normalise_element(spelling);
+    for (const auto &entry : kEntries)
+        if (name == entry.name) {
+            size = entry.size;
+            is_signed = entry.is_signed;
+            return true;
+        }
+    return false;
+}
+
 class Extractor : public clang::RecursiveASTVisitor<Extractor> {
 public:
-    Extractor(clang::ASTContext &c, const std::set<std::string> &wanted, amc::AbiModule &m)
+    Extractor(clang::ASTContext &c, const std::set<std::string> &wanted, amc::AbiModule &m,
+        const std::vector<amc::lang::AdaptDecl> &a, std::vector<NativeAdapt> &out)
         : ctx(c)
         , wanted(wanted)
-        , module(m) {}
+        , module(m)
+        , adapts(a)
+        , adaptations(out) {}
     bool VisitRecordDecl(clang::RecordDecl *d) {
         auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(d);
         if (!cxx
@@ -144,6 +252,7 @@ public:
             || (!selected(d) && !has_selected_member(cxx)))
             return true;
         add_record(cxx);
+        add_inherited_methods(cxx);
         return true;
     }
     bool VisitEnumDecl(clang::EnumDecl *d) {
@@ -164,6 +273,8 @@ private:
     clang::ASTContext &ctx;
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
+    const std::vector<amc::lang::AdaptDecl> &adapts;
+    std::vector<NativeAdapt> &adaptations;
     std::unordered_map<std::string, amc::Hash128> ids;
     // Dedup keyed by ABI descriptor, so spellings that share an ABI (e.g.
     // `long` / `long long`) collapse onto one type record with one TypeID.
@@ -223,6 +334,15 @@ private:
         // be the exported ABI entity even when the alias is not an explicit
         // export symbol.
         const std::string original = qt.getAsString();
+        // A typedef declared inside a class is a member typedef (for example
+        // `std::allocator<T>::allocator_type`). Its unqualified spelling must
+        // never become a global ABI type name, or generated code would emit
+        // `TypeTraits<::allocator_type>`, which is not valid at namespace scope.
+        // `getAs` looks through sugar (elaborated/qualified spellings), so this
+        // finds the typedef even when it is written as a member type.
+        bool member_typedef = false;
+        if (const auto *typedef_type = qt->getAs<clang::TypedefType>())
+            member_typedef = llvm::isa<clang::CXXRecordDecl>(typedef_type->getDecl()->getDeclContext());
         qt = qt.getCanonicalType();
         auto s = qt.getAsString();
         auto it = ids.find(s);
@@ -249,7 +369,7 @@ private:
         if (qt->getAs<clang::TemplateSpecializationType>()) {
             // When the specialization was reached through a typedef alias (for
             // example `abix_span_i32`), use the alias as the exported ABI name.
-            const bool alias_named = original != s && plain_identifier(original);
+            const bool alias_named = !member_typedef && original != s && plain_identifier(original);
             if (auto *record = qt->getAsCXXRecordDecl(); record && record->isCompleteDefinition()) {
                 add_record(record, alias_named ? original : std::string());
                 const auto found = ids.find(alias_named ? original : name(record));
@@ -280,8 +400,10 @@ private:
             // `LayoutHash` for `Hash128`) also differs from its canonical
             // spelling but is not an alias, and renaming the record after it
             // would produce a type name that is not valid in any namespace.
-            const bool alias_named = original != s && plain_identifier(original)
-                && llvm::isa<clang::ClassTemplateSpecializationDecl>(record);
+            const bool alias_named = !member_typedef
+                                  && original != s
+                                  && plain_identifier(original)
+                                  && llvm::isa<clang::ClassTemplateSpecializationDecl>(record);
             add_record(const_cast<clang::CXXRecordDecl *>(record), alias_named ? original : std::string());
             auto found = ids.find(alias_named ? original : record_key);
             if (found != ids.end()) {
@@ -510,6 +632,133 @@ private:
         record_source(t.id, d->getLocation());
         module.fields.push_back({t.id, "underlying", underlying, 0, 0});
     }
+    // Record methods an exposed type inherits from a base class. The exposed
+    // type's own declarations are recorded through `wanted` (`X::m`); a method
+    // declared on a base `B` (`B::m`) is not, so walk the base chain and record
+    // any method whose name is one of the type's requested methods. A name a
+    // more-derived class already declares shadows the base one (the thunk calls
+    // `self->name`, so name lookup picks the override anyway).
+    void add_inherited_methods(clang::CXXRecordDecl *d) {
+        const std::string prefix = name(d) + "::";
+        std::vector<std::string> methods;
+        for (const auto &symbol : wanted)
+            if (symbol.compare(0, prefix.size(), prefix) == 0) methods.push_back(symbol.substr(prefix.size()));
+        if (methods.empty() || !d->isCompleteDefinition()) return;
+        std::set<std::string> shadowed;
+        for (const auto *method : d->methods())
+            shadowed.insert(method->getNameAsString());
+        std::vector<clang::CXXRecordDecl *> work;
+        for (const auto &base : d->bases())
+            if (auto *base_record = base.getType()->getAsCXXRecordDecl()) work.push_back(base_record);
+        while (!work.empty()) {
+            clang::CXXRecordDecl *base = work.back();
+            work.pop_back();
+            const std::string base_name = name(base);
+            for (const auto *method : base->methods()) {
+                const std::string method_name = method->getNameAsString();
+                if (std::find(methods.begin(), methods.end(), method_name) == methods.end()) continue;
+                if (shadowed.count(method_name) != 0) continue;
+                const std::string qualified = base_name + "::" + method_name;
+                bool recorded = false;
+                for (const auto &function : module.functions)
+                    if (function.name == qualified) {
+                        recorded = true;
+                        break;
+                    }
+                if (!recorded) add_function(const_cast<clang::CXXMethodDecl *>(method));
+            }
+            for (const auto *method : base->methods())
+                shadowed.insert(method->getNameAsString());
+            for (const auto &up : base->bases())
+                if (auto *up_record = up.getType()->getAsCXXRecordDecl()) work.push_back(up_record);
+        }
+    }
+
+    // Record a native (STL) type by its canonical spelling, so a parameter type
+    // that must not cross the boundary raw still has a stable identity for the
+    // diagnosis and the adaptation record.
+    amc::Hash128 register_native_type(const std::string &record_name) {
+        auto found = ids.find(record_name);
+        if (found != ids.end()) return found->second;
+        amc::Type t;
+        t.name = record_name;
+        t.kind = amc::TypeKind::record;
+        t.id = amc::hash_text(record_name, 0x54595045);
+        t.size = t.align = 1;
+        ids.emplace(record_name, t.id);
+        module.types.push_back(std::move(t));
+        return module.types.back().id;
+    }
+
+    // Detect whether a parameter type is a native type with a declared
+    // `[[adapt]]`. The mapping is explicit (ABI-SPEC §18): an STL type is never
+    // adapted unless a matching declaration exists. `element` is the sequence
+    // value type for a vector/span; read-only borrowed views only, so a
+    // non-const lvalue reference or a mutable `std::span<T>` is not adapted
+    // (writing back through a borrowed view is not modelled).
+    bool detect_native(
+        clang::QualType qt, const amc::lang::AdaptDecl *&decl, NativeKind &kind, clang::QualType &element) {
+        decl = nullptr;
+        kind = NativeKind::none;
+        const bool lvalue_ref = qt->isLValueReferenceType();
+        if (lvalue_ref && !qt.getNonReferenceType().isConstQualified()) return false;
+        const clang::QualType value = qt.getNonReferenceType().getUnqualifiedType();
+        const auto *record = value->getAsCXXRecordDecl();
+        if (record == nullptr) return false;
+        const std::string qualified = record->getQualifiedNameAsString();
+        NativeKind candidate = NativeKind::none;
+        if (qualified == "std::basic_string")
+            candidate = NativeKind::string;
+        else if (qualified == "std::basic_string_view")
+            candidate = NativeKind::string_view;
+        else if (qualified == "std::vector")
+            candidate = NativeKind::vector;
+        else if (qualified == "std::span")
+            candidate = NativeKind::span;
+        else
+            return false;
+        const auto *spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record);
+        if (spec == nullptr) return false;
+        const auto &args = spec->getTemplateArgs();
+        if (args.size() < 1 || args[0].getKind() != clang::TemplateArgument::Type) return false;
+        if (candidate == NativeKind::string || candidate == NativeKind::string_view) {
+            // The code unit must be C `char`; the boundary view is UTF-8 bytes.
+            const clang::QualType unit = args[0].getAsType().getUnqualifiedType();
+            if (!unit->isCharType() || ctx.getTypeSize(unit) != 8) return false;
+            element = unit;
+        } else {
+            const clang::QualType value_type = args[0].getAsType();
+            if (candidate == NativeKind::span && !value_type.isConstQualified()) return false;
+            element = value_type.getUnqualifiedType();
+        }
+        for (const auto &adapt : adapts) {
+            if (native_kind_of(adapt.native) != candidate) continue;
+            if ((candidate == NativeKind::vector || candidate == NativeKind::span)
+                && !element_matches(adapt.element, element))
+                continue;
+            decl = &adapt;
+            kind = candidate;
+            return true;
+        }
+        return false;
+    }
+
+    // An element spelling matches by normalized spelling (sugared or canonical),
+    // or by the ABI of a fixed-width integer alias (`int32_t` matches `int`).
+    bool element_matches(const std::string &declared, clang::QualType element) const {
+        if (declared.empty()) return false;
+        if (normalise_element(declared) == normalise_element(element.getAsString())
+            || normalise_element(declared) == normalise_element(element.getCanonicalType().getAsString()))
+            return true;
+        uint32_t size = 0;
+        bool is_signed = false;
+        if (!fixed_width_int(declared, size, is_signed)) return false;
+        const clang::QualType canonical = element.getCanonicalType();
+        return canonical->isIntegerType()
+            && ctx.getTypeSize(canonical) / 8 == size
+            && canonical->isSignedIntegerType() == is_signed;
+    }
+
     void add_function(clang::FunctionDecl *d) {
         amc::Function f;
         if (const auto *method = llvm::dyn_cast<clang::CXXMethodDecl>(d)) {
@@ -525,7 +774,21 @@ private:
         for (auto *p : d->parameters()) {
             amc::Parameter q;
             q.name = p->getNameAsString();
-            q.type_id = add_type(p->getType());
+            const amc::lang::AdaptDecl *decl = nullptr;
+            NativeKind kind = NativeKind::none;
+            clang::QualType element;
+            if (detect_native(p->getType(), decl, kind, element)) {
+                NativeAdapt adapt;
+                adapt.kind = static_cast<uint32_t>(kind);
+                adapt.element = element.getAsString();
+                adapt.element_id = add_type(element);
+                adapt.target = decl->target;
+                adapt.native_type = register_native_type(native_type_name(kind, adapt.element));
+                adaptations.push_back(std::move(adapt));
+                q.type_id = adaptations.back().native_type;
+            } else {
+                q.type_id = add_type(p->getType());
+            }
             f.parameters.push_back(q);
         }
         f.signature = amc::signature_hash(f);
@@ -534,42 +797,526 @@ private:
 };
 class Consumer : public clang::ASTConsumer {
 public:
-    Consumer(const std::set<std::string> &w, amc::AbiModule &m)
+    Consumer(const std::set<std::string> &w, amc::AbiModule &m, const std::vector<amc::lang::AdaptDecl> &a,
+        std::vector<NativeAdapt> &out)
         : wanted(w)
-        , module(m) {}
+        , module(m)
+        , adapts(a)
+        , adaptations(out) {}
     void HandleTranslationUnit(clang::ASTContext &c) override {
-        Extractor x(c, wanted, module);
+        Extractor x(c, wanted, module, adapts, adaptations);
         x.TraverseDecl(c.getTranslationUnitDecl());
     }
 
 private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
+    const std::vector<amc::lang::AdaptDecl> &adapts;
+    std::vector<NativeAdapt> &adaptations;
 };
 class Action : public clang::ASTFrontendAction {
 public:
-    Action(const std::set<std::string> &w, amc::AbiModule &m)
+    Action(const std::set<std::string> &w, amc::AbiModule &m, const std::vector<amc::lang::AdaptDecl> &a,
+        std::vector<NativeAdapt> &out)
         : wanted(w)
-        , module(m) {}
+        , module(m)
+        , adapts(a)
+        , adaptations(out) {}
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &, clang::StringRef) override {
-        return std::make_unique<Consumer>(wanted, module);
+        return std::make_unique<Consumer>(wanted, module, adapts, adaptations);
     }
 
 private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
+    const std::vector<amc::lang::AdaptDecl> &adapts;
+    std::vector<NativeAdapt> &adaptations;
 };
 class Factory : public clang::tooling::FrontendActionFactory {
 public:
-    Factory(const std::set<std::string> &w, amc::AbiModule &m)
+    Factory(const std::set<std::string> &w, amc::AbiModule &m, const std::vector<amc::lang::AdaptDecl> &a,
+        std::vector<NativeAdapt> &out)
         : wanted(w)
-        , module(m) {}
-    std::unique_ptr<clang::FrontendAction> create() override { return std::make_unique<Action>(wanted, module); }
+        , module(m)
+        , adapts(a)
+        , adaptations(out) {}
+    std::unique_ptr<clang::FrontendAction> create() override {
+        return std::make_unique<Action>(wanted, module, adapts, adaptations);
+    }
 
 private:
     const std::set<std::string> &wanted;
     amc::AbiModule &module;
+    const std::vector<amc::lang::AdaptDecl> &adapts;
+    std::vector<NativeAdapt> &adaptations;
 };
+// P0 automatic capability generation: emit C thunks that expose selected
+// methods of a concrete type, then register them as ABI entities so any
+// consumer backend can bind them. The producer compiles the generated source
+// into its module; neither side writes an adapter by hand.
+//
+// Only public members are supported, and only representations the bridge can
+// express: a parameter or return type that is not a known, layout-safe type is
+// rejected rather than guessed at.
+bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std::vector<NativeAdapt> &adaptations,
+    const std::filesystem::path &base, std::string &error) {
+    if (config.exposed.empty()) return true;
+    if (config.thunks_output.empty()) {
+        error = "[[expose]] requires a [thunks] output path";
+        return false;
+    }
+    for (const auto &adapt : config.adaptations) {
+        const NativeKind kind = native_kind_of(adapt.native);
+        if (kind == NativeKind::none) {
+            error = "[[adapt]] native kind is not supported: " + adapt.native;
+            return false;
+        }
+        if (adapt.target.empty()) {
+            error = "[[adapt]] requires a boundary target type";
+            return false;
+        }
+        if ((kind == NativeKind::vector || kind == NativeKind::span) && adapt.element.empty()) {
+            error = "[[adapt]] requires an element spelling for " + adapt.native;
+            return false;
+        }
+    }
+    uint32_t pointer_size = 8;
+    for (const auto &type : module.types)
+        if (type.kind == amc::TypeKind::pointer) {
+            pointer_size = type.size;
+            break;
+        }
+    const auto intern = [&](const std::string &name, amc::TypeKind kind, uint32_t size, uint32_t align,
+                            uint32_t primitive) -> amc::Hash128 {
+        for (const auto &type : module.types)
+            if (type.name == name) return type.id;
+        amc::Type type;
+        type.name = name;
+        type.kind = kind;
+        type.size = size;
+        type.align = align;
+        type.primitive_abi = primitive;
+        type.id = amc::hash_text(name, 0x54595045);
+        module.types.push_back(std::move(type));
+        return module.types.back().id;
+    };
+    const amc::Hash128 void_id =
+        intern("void", amc::TypeKind::primitive, 0, 1, amc::primitive_abi(0, amc::PrimitiveAbiKind::void_));
+    const auto type_name = [&](amc::Hash128 id) -> std::string {
+        for (const auto &type : module.types)
+            if (type.id == id) return type.name;
+        return {};
+    };
+    // Synthesize the ABIX-STD boundary type an adapted parameter is marshalled
+    // onto, when the module does not already declare it. The layout mirrors
+    // `ABIX/STD/{String,Span}.h` (the generated thunk includes the real header,
+    // so the compiled parameter type is the header's); a consumer projects the
+    // boundary by name. An existing type of the same name is reused untouched.
+    const auto ensure_pointer = [&](const std::string &name, amc::Hash128 pointee) -> amc::Hash128 {
+        const amc::Hash128 id = intern(name, amc::TypeKind::pointer, pointer_size, pointer_size, 0);
+        for (const auto &ref : module.pointees)
+            if (ref.pointer == id) return id;
+        module.pointees.push_back({id, pointee, amc::pointee_const});
+        return id;
+    };
+    const amc::Hash128 len_id =
+        intern("unsigned long", amc::TypeKind::primitive, 8, 8, amc::primitive_abi(8, amc::PrimitiveAbiKind::uint));
+    const amc::Hash128 encoding_id =
+        intern("unsigned int", amc::TypeKind::primitive, 4, 4, amc::primitive_abi(4, amc::PrimitiveAbiKind::uint));
+    const auto ensure_boundary = [&](NativeAdapt &adapt) -> amc::Hash128 {
+        for (const auto &type : module.types)
+            if (type.name == adapt.target) return type.id;
+        const bool string_view = adapt.kind == static_cast<uint32_t>(NativeKind::string)
+                              || adapt.kind == static_cast<uint32_t>(NativeKind::string_view);
+        const std::string element = adapt.element.empty() ? "char" : adapt.element;
+        const amc::Hash128 data_id = ensure_pointer("const " + element + "*", adapt.element_id);
+        amc::Type type;
+        type.name = adapt.target;
+        type.kind = amc::TypeKind::record;
+        type.id = amc::hash_text(type.name, 0x54595045);
+        type.field_begin = static_cast<uint32_t>(module.fields.size());
+        module.fields.push_back({type.id, "data", data_id, 0, 0});
+        module.fields.push_back({type.id, "len", len_id, pointer_size, 0});
+        uint32_t end = pointer_size + 8;
+        if (string_view) {
+            module.fields.push_back({type.id, "encoding", encoding_id, pointer_size + 8, 0});
+            end = pointer_size + 12;
+        }
+        type.field_count = static_cast<uint32_t>(module.fields.size()) - type.field_begin;
+        type.align = pointer_size;
+        type.size = (end + pointer_size - 1) / pointer_size * pointer_size;
+        std::vector<amc::Field> layout_fields(
+            module.fields.begin() + type.field_begin, module.fields.begin() + type.field_begin + type.field_count);
+        type.layout_hash = amc::layout_hash(type, layout_fields);
+        module.types.push_back(std::move(type));
+        return module.types.back().id;
+    };
+    // The C++ expression that marshals one boundary value at the call site.
+    const auto adapt_expression = [&](const NativeAdapt &adapt, const std::string &arg) -> std::string {
+        switch (static_cast<NativeKind>(adapt.kind)) {
+            case NativeKind::string:      return "std::string(" + arg + ".data, " + arg + ".len)";
+            case NativeKind::string_view: return "std::string_view(" + arg + ".data, " + arg + ".len)";
+            case NativeKind::vector:
+                return "std::vector<" + adapt.element + ">(" + arg + ".data, " + arg + ".data + " + arg + ".len)";
+            case NativeKind::span: return "std::span<const " + adapt.element + ">(" + arg + ".data, " + arg + ".len)";
+            default:               return arg;
+        }
+    };
+    // Adaptation lookups are by the recorded native parameter type.
+    const auto find_adapt = [&](amc::Hash128 native) -> NativeAdapt * {
+        for (auto &adapt : adaptations)
+            if (adapt.native_type == native) return &adapt;
+        return nullptr;
+    };
+    // A boundary type is representable without an explicit contract when it is a
+    // scalar, a pointer, an enumeration, an array, an ABIX-STD boundary type, or
+    // a plain value record. STL types and template specializations are not:
+    // passing them raw across a C ABI is unsafe, so they require a contract (for
+    // example a StringView mapping) instead of guessing.
+    const auto representable = [&](amc::Hash128 id) -> bool {
+        for (const auto &type : module.types) {
+            if (!(type.id == id)) continue;
+            const std::string &name = type.name;
+            if (name.rfind("abix_", 0) == 0) return true;   // ABIX-STD boundary type
+            // STL types, template spellings and references must not cross the
+            // boundary raw (they need a contract such as a StringView mapping).
+            if (name.find("std::") != std::string::npos) return false;
+            if (name.find('<') != std::string::npos) return false;
+            if (name.find('&') != std::string::npos) return false;
+            return true;
+        }
+        return false;
+    };
+    // A recorded primitive may carry a C spelling (e.g. `_Bool`); the generated
+    // C++ thunk needs the C++ spelling.
+    const auto cpp_spelling = [](std::string name) {
+        if (name == "_Bool") return std::string("bool");
+        return name;
+    };
+    const auto symbol_of = [](const std::string &name) {
+        std::string out;
+        for (const char c : name)
+            out += (std::isalnum(static_cast<unsigned char>(c)) != 0) ? c : '_';
+        return out;
+    };
+
+    std::string source =
+        "// Generated by `amc` - C thunks exposing C++ types as ABIX capabilities.\n"
+        "// Build artifact: compile it into the producing module. Do not edit.\n"
+        "#include \"ABIX/Interface/Interface.h\"\n";
+    // A declared native↔ABIX-STD adaptation needs the boundary header for the
+    // spelling it puts in the thunk signature.
+    bool wants_string = false, wants_span = false;
+    for (const auto &adapt : config.adaptations) {
+        const NativeKind kind = native_kind_of(adapt.native);
+        if (kind == NativeKind::string || kind == NativeKind::string_view) wants_string = true;
+        if (kind == NativeKind::vector || kind == NativeKind::span) wants_span = true;
+    }
+    if (wants_string) source += "#include \"ABIX/STD/String.h\"\n";
+    if (wants_span) source += "#include \"ABIX/STD/Span.h\"\n";
+    for (const auto &file : config.files)
+        source += "#include \"" + file + "\"\n";
+    source += "\n";
+    // Interface manifest glue (discovered through `abix_module_query_v1`).
+    std::string manifest;
+    std::vector<std::string> interface_names;
+
+    // Automatic ABIX-STD contract mapping: when an exposed method uses an
+    // ABIX-STD boundary type, record its contract (SequenceView / StringView /
+    // Result) so a consumer knows the semantics, not just the layout.
+    std::vector<std::pair<amc::Hash128, uint32_t>> recorded_contracts;
+    const auto record_contract = [&](amc::Hash128 id) -> amc::LoweringResult {
+        const std::string name = type_name(id);
+        amc::LoweringResult result;
+        if (name.rfind("abix_span_", 0) == 0)
+            result = amc::evaluate_sequence_view(module, id, amc::Hash128{}, "", false);
+        else if (name.rfind("abix_str_", 0) == 0)
+            result = amc::evaluate_string_view(module, id, amc::Hash128{}, "", false);
+        else if (name.rfind("abix_result_", 0) == 0)
+            result = amc::evaluate_result(module, id, amc::Hash128{}, "");
+        else
+            return {};
+        for (const auto &seen : recorded_contracts)
+            if (seen.first == id && seen.second == result.kind) return result;
+        recorded_contracts.emplace_back(id, result.kind);
+        module.lowerings.push_back(result);
+        return result;
+    };
+
+    // Methods may be inherited: collect a type's base classes so an exposed
+    // concrete type can list methods declared on a base (e.g. MemoryHistory's
+    // insert/length/clear come from History).
+    const auto collect_bases = [&](amc::Hash128 root) {
+        std::vector<amc::Hash128> out;
+        std::vector<amc::Hash128> work{root};
+        while (!work.empty()) {
+            const amc::Hash128 id = work.back();
+            work.pop_back();
+            for (const auto &type : module.types) {
+                if (!(type.id == id)) continue;
+                for (uint32_t i = 0; i < type.field_count; ++i) {
+                    const auto &field = module.fields[type.field_begin + i];
+                    if ((field.flags & amc::field_base) == 0) continue;
+                    if (std::find(out.begin(), out.end(), field.type_id) != out.end()) continue;
+                    out.push_back(field.type_id);
+                    work.push_back(field.type_id);
+                }
+            }
+        }
+        return out;
+    };
+
+    for (const auto &expose : config.exposed) {
+        amc::Type *record = nullptr;
+        for (auto &type : module.types)
+            if (type.name == expose.type || type.name == "::" + expose.type) {
+                record = &type;
+                break;
+            }
+        if (record == nullptr) {
+            error = "[[expose]] references an unknown type: " + expose.type;
+            return false;
+        }
+        const amc::Hash128 type_id = record->id;
+        const std::string cpp_type = record->name;
+        const std::string symbol_type = symbol_of(record->name);
+        if (expose.opaque) record->flags |= amc::type_opaque;
+        const std::vector<amc::Hash128> bases = collect_bases(type_id);
+        // A base subobject is part of the exposed opaque handle: project it as an
+        // opaque blob too, never reconstructing its (possibly STL-heavy) layout.
+        for (auto &type : module.types)
+            if (std::find(bases.begin(), bases.end(), type.id) != bases.end()) type.flags |= amc::type_opaque;
+        const auto is_method_of_type = [&](const amc::Function &function) {
+            if (function.owner_type == type_id) return true;
+            return std::find(bases.begin(), bases.end(), function.owner_type) != bases.end();
+        };
+        const amc::Hash128 self_id = intern(cpp_type + "*", amc::TypeKind::pointer, pointer_size, pointer_size, 0);
+
+        const auto register_thunk = [&](const std::string &name, amc::Hash128 ret,
+                                        const std::vector<std::pair<std::string, amc::Hash128>> &params) {
+            amc::Function function;
+            function.name = name;
+            function.calling_convention = 1;   // cdecl
+            function.return_type = ret;
+            for (const auto &parameter : params) {
+                amc::Parameter p;
+                p.name = parameter.first;
+                p.type_id = parameter.second;
+                function.parameters.push_back(std::move(p));
+            }
+            function.signature = amc::signature_hash(function);
+            module.functions.push_back(std::move(function));
+            return module.functions.back().signature;
+        };
+
+        amc::Hash128 create_sig{}, destroy_sig{};
+        if (expose.has_constructor) {
+            std::string params, args;
+            std::vector<std::pair<std::string, amc::Hash128>> signature;
+            for (size_t i = 0; i < expose.constructor.size(); ++i) {
+                const std::string &spelling = expose.constructor[i];
+                const amc::Hash128 id = amc::find_type_id_by_spelling(module, spelling);
+                if (id == amc::Hash128{}) {
+                    error = "[[expose]] constructor parameter type is unknown: " + spelling;
+                    return false;
+                }
+                if (!representable(id)) {
+                    error = "[[expose]] constructor parameter type needs a contract: " + spelling;
+                    return false;
+                }
+                if (i != 0) {
+                    params += ", ";
+                    args += ", ";
+                }
+                const std::string name = "arg" + std::to_string(i);
+                params += spelling + " " + name;
+                args += name;
+                signature.emplace_back(name, id);
+            }
+            source += "extern \"C\" " + cpp_type + "* abix_" + symbol_type + "_create(" + params + ") {\n";
+            source += "    return new " + cpp_type + "(" + args + ");\n}\n";
+            create_sig = register_thunk("abix_" + symbol_type + "_create", self_id, signature);
+        }
+        if (expose.destructor) {
+            source += "extern \"C\" void abix_" + symbol_type + "_destroy(" + cpp_type + "* self) {\n";
+            source += "    delete self;\n}\n";
+            destroy_sig = register_thunk("abix_" + symbol_type + "_destroy", void_id,
+                {
+                    {"self", self_id}
+            });
+        }
+        if (!(create_sig == amc::Hash128{}) && !(destroy_sig == amc::Hash128{}))
+            module.owned.push_back({type_id, create_sig, destroy_sig, 0});
+
+        struct ExposedMethod {
+            std::string symbol;
+            amc::Hash128 signature;
+        };
+        std::vector<ExposedMethod> exposed_methods;
+        for (const auto &method : expose.methods) {
+            const amc::Function *found = nullptr;
+            for (const auto &function : module.functions) {
+                if (!is_method_of_type(function)) continue;
+                if (function.name == method
+                    || function.name.size() > method.size()
+                           && function.name.compare(function.name.size() - method.size(), method.size(), method) == 0
+                           && function.name[function.name.size() - method.size() - 1] == ':') {
+                    found = &function;
+                    break;
+                }
+            }
+            if (found == nullptr) {
+                error = "[[expose]] references an unknown method: " + expose.type + "::" + method;
+                return false;
+            }
+            if (!representable(found->return_type)) {
+                error = "[[expose]] "
+                      + expose.type
+                      + "::"
+                      + method
+                      + " return type needs a contract: "
+                      + type_name(found->return_type);
+                return false;
+            }
+            for (const auto &parameter : found->parameters) {
+                NativeAdapt *adapt = find_adapt(parameter.type_id);
+                if (adapt != nullptr) {
+                    // A declared native↔ABIX-STD adaptation: the thunk takes the
+                    // boundary type and marshals it. Record the boundary contract
+                    // and the adaptation as a needs_adapter lowering, once.
+                    if (adapt->boundary_type == amc::Hash128{}) {
+                        adapt->boundary_type = ensure_boundary(*adapt);
+                        record_contract(adapt->boundary_type);
+                        amc::LoweringResult lowering;
+                        lowering.type_id = adapt->native_type;
+                        lowering.contract_type = adapt->boundary_type;
+                        const bool string_view = adapt->kind == static_cast<uint32_t>(NativeKind::string)
+                                              || adapt->kind == static_cast<uint32_t>(NativeKind::string_view);
+                        lowering.kind = static_cast<uint32_t>(
+                            string_view ? amc::LoweringKind::string_view : amc::LoweringKind::sequence_view);
+                        lowering.status = static_cast<uint32_t>(amc::LoweringStatus::needs_adapter);
+                        lowering.reason = static_cast<uint32_t>(amc::LoweringReason::layout);
+                        module.lowerings.push_back(lowering);
+                    }
+                    continue;
+                }
+                if (!representable(parameter.type_id)) {
+                    error = "[[expose]] "
+                          + expose.type
+                          + "::"
+                          + method
+                          + " parameter type needs a contract: "
+                          + type_name(parameter.type_id);
+                    return false;
+                }
+            }
+            const bool returns_void = found->return_type == void_id;
+            std::string return_spelling = returns_void ? "void" : cpp_spelling(type_name(found->return_type));
+            std::string params = cpp_type + "* self";
+            std::string args;
+            std::vector<std::pair<std::string, amc::Hash128>> signature = {
+                {"self", self_id}
+            };
+            for (size_t i = 0; i < found->parameters.size(); ++i) {
+                const auto &parameter = found->parameters[i];
+                const std::string name = parameter.name.empty() ? "arg" + std::to_string(i) : parameter.name;
+                const NativeAdapt *adapt = find_adapt(parameter.type_id);
+                const amc::Hash128 param_type = adapt != nullptr ? adapt->boundary_type : parameter.type_id;
+                params += ", " + cpp_spelling(type_name(param_type)) + " " + name;
+                if (i != 0) args += ", ";
+                args += adapt != nullptr ? adapt_expression(*adapt, name) : name;
+                signature.emplace_back(name, param_type);
+            }
+            source +=
+                "extern \"C\" " + return_spelling + " abix_" + symbol_type + "_" + method + "(" + params + ") {\n";
+            source +=
+                std::string("    ") + (returns_void ? "" : "return ") + "self->" + method + "(" + args + ");\n}\n";
+            const std::string symbol = "abix_" + symbol_type + "_" + method;
+            const amc::Hash128 thunk_signature = register_thunk(symbol, found->return_type, signature);
+            const uint32_t thunk_index = static_cast<uint32_t>(module.functions.size() - 1);
+            exposed_methods.push_back({symbol, thunk_signature});
+            // Record the ABIX-STD contracts of the boundary types in this
+            // signature (span -> SequenceView, str -> StringView, result).
+            const amc::LoweringResult return_contract = record_contract(found->return_type);
+            for (const auto &parameter : found->parameters)
+                record_contract(parameter.type_id);
+            // A `abix_result_*` return binds to the error boundary: the status and
+            // value are fields of the returned record, so a consumer can turn the
+            // C aggregate into a typed Result without inspecting a bare integer.
+            if (type_name(found->return_type).rfind("abix_result_", 0) == 0
+                && return_contract.status != static_cast<uint32_t>(amc::LoweringStatus::unsupported)) {
+                amc::ErrorContract contract;
+                contract.function_index = thunk_index;
+                contract.status_source = amc::StatusSource::return_field;
+                contract.status_parameter = return_contract.pointer_field;
+                contract.value_parameter = return_contract.length_field;
+                contract.success_value = 0;
+                module.errors.push_back(contract);
+            }
+        }
+        source += "\n";
+
+        // One interface per exposed type: each method binds its thunk by a
+        // stable slot, so the runtime bus can dispatch without a vtable.
+        if (!exposed_methods.empty()) {
+            const amc::Hash128 interface_id = amc::hash_text("abix-interface:" + cpp_type, 0x494e5446ULL);
+            const auto hex = [](uint64_t v) { return std::to_string(v) + "ULL"; };
+            const std::string methods_array = "abix_" + symbol_type + "_methods";
+            manifest += "const skl::abix::poly::InterfaceMethod " + methods_array + "[] = {\n";
+            for (size_t i = 0; i < exposed_methods.size(); ++i) {
+                manifest += "    {{"
+                          + hex(exposed_methods[i].signature.lo)
+                          + ", "
+                          + hex(exposed_methods[i].signature.hi)
+                          + "}, skl::abix::poly::interface_entry(&"
+                          + exposed_methods[i].symbol
+                          + "), "
+                          + std::to_string(i)
+                          + ", 0},\n";
+            }
+            manifest += "};\n";
+            const std::string interface_name = "abix_" + symbol_type + "_interface";
+            manifest += "const skl::abix::poly::InterfaceManifestEntry "
+                      + interface_name
+                      + " = {{"
+                      + hex(interface_id.lo)
+                      + ", "
+                      + hex(interface_id.hi)
+                      + "}, 1, 0, "
+                      + methods_array
+                      + ", "
+                      + std::to_string(exposed_methods.size())
+                      + ", 0};\n";
+            interface_names.push_back(interface_name);
+        }
+    }
+
+    if (!interface_names.empty()) {
+        manifest += "namespace {\nconst skl::abix::poly::InterfaceManifestEntry abix_module_interfaces[] = {\n";
+        for (const auto &name : interface_names)
+            manifest += "    " + name + ",\n";
+        manifest += "};\nconst skl::abix::poly::ModuleManifest abix_module_manifest = {\n"
+                    "    skl::abix::poly::abix_manifest_version, 1, 0, "
+                  + std::to_string(interface_names.size())
+                  + ", abix_module_interfaces, 0, 0, nullptr};\n}\n"
+                    "SKL_ABIX_DEFINE_MODULE_QUERY(&abix_module_manifest)\n";
+    }
+    source += manifest;
+
+    const std::filesystem::path path = base / config.thunks_output;
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        error = "cannot write thunk source: " + path.string();
+        return false;
+    }
+    out.write(source.data(), static_cast<std::streamsize>(source.size()));
+    if (!out) {
+        error = "cannot write thunk source: " + path.string();
+        return false;
+    }
+    return true;
+}
+
 }   // namespace
 
 int run_frontend(const char *config_path, const char *output_path) {
@@ -598,6 +1345,13 @@ int run_frontend(const char *config_path, const char *output_path) {
         return EXIT_FAILURE;
     }
     std::set<std::string> wanted(c.symbols.begin(), c.symbols.end());
+    // An exposed type and its methods must be recorded even when they are not
+    // explicit export symbols: the generator needs their layout and signatures.
+    for (const auto &expose : c.exposed) {
+        wanted.insert(expose.type);
+        for (const auto &method : expose.methods)
+            wanted.insert(expose.type + "::" + method);
+    }
     amc::AbiModule module;
     module.package_name = "cpp";
 
@@ -628,23 +1382,47 @@ int run_frontend(const char *config_path, const char *output_path) {
         tool_files = {anchor_path};
     }
 
-    Factory factory(wanted, module);
+    std::vector<NativeAdapt> adaptations;
+    Factory factory(wanted, module, c.adaptations, adaptations);
     clang::tooling::ClangTool tool(*db, tool_files);
     if (!anchor_path.empty()) tool.mapVirtualFile(anchor_path, anchor);
     // Report the include closure so AMC's instantiation cache can invalidate on
     // any dependency (including headers it does not otherwise know about). The
     // depfile is written next to the artifact as `<output>.d`.
     const std::string depfile = std::string(output_path) + ".d";
-    tool.appendArgumentsAdjuster([depfile](const clang::tooling::CommandLineArguments &cmd, llvm::StringRef) {
-        clang::tooling::CommandLineArguments out(cmd);
-        out.push_back("-MD");
-        out.push_back("-MF" + depfile);
-        out.push_back("-MT");
-        out.push_back(depfile);
-        return out;
-    });
+    const std::string resource_dir = ABIX_CLANG_RESOURCE_DIR;
+    tool.appendArgumentsAdjuster(
+        [depfile, resource_dir](const clang::tooling::CommandLineArguments &cmd, llvm::StringRef) {
+            clang::tooling::CommandLineArguments out;
+            // Always parse as C++. Without this a bare `.h` is treated as a C header
+            // and rejects `-std=c++17`. `cmd[0]` is the compiler word, so the `-x`
+            // selector must come after it (before the flags and the input).
+            if (!cmd.empty()) {
+                out.push_back(cmd[0]);
+                out.push_back("-x");
+                out.push_back("c++");
+                out.insert(out.end(), cmd.begin() + 1, cmd.end());
+            } else {
+                out = cmd;
+            }
+            // Point the driver at its builtin headers (<stddef.h>, ...). ClangTool
+            // does not locate the resource directory on its own, so a header that
+            // includes <stddef.h> fails with "file not found".
+            if (!resource_dir.empty()) out.push_back("-resource-dir=" + resource_dir);
+            // Report the include closure so AMC's instantiation cache can invalidate
+            // on any dependency (including headers it does not otherwise know about).
+            out.push_back("-MD");
+            out.push_back("-MF" + depfile);
+            out.push_back("-MT");
+            out.push_back(depfile);
+            return out;
+        });
     if (tool.run(&factory) != 0) {
         fmt::print(stderr, "clang analysis failed\n");
+        return EXIT_FAILURE;
+    }
+    if (!expose_thunks(module, c, adaptations, base, e)) {
+        fmt::print(stderr, "{}\n", e);
         return EXIT_FAILURE;
     }
     if (!amc::write_abix(module, output_path, e)) {

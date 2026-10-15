@@ -356,6 +356,17 @@ void emit_alias(Output &o, const Projector &p, const amc::Type &type) {
     o.print("pub type {} = {};\n", p.name_of(type.id), underlying);
 }
 
+// A type a consumer should not reconstruct: STL types, template spellings and
+// references require an explicit contract (StringView, Opaque, ...) rather than
+// a guessed Rust struct. ABIX-STD boundary types (abix_*) are projected.
+static bool is_projectable_name(const std::string &name) {
+    if (name.rfind("abix_", 0) == 0) return true;
+    if (name.find("std::") != std::string::npos) return false;
+    if (name.find('<') != std::string::npos) return false;
+    if (name.find('&') != std::string::npos) return false;
+    return true;
+}
+
 void emit_opaque(Output &o, const Projector &p, const amc::Type &type) {
     // Arrays (the element type is not part of the ABI record) and other
     // unmodelled aggregates project to an explicitly sized, explicitly aligned
@@ -366,6 +377,12 @@ void emit_opaque(Output &o, const Projector &p, const amc::Type &type) {
 }
 
 void emit_type(Output &o, const Projector &p, const amc::Type &type) {
+    // An exposed type is an opaque handle for consumers: emit a sized blob so
+    // the fields are not accessible, even though the producer keeps the layout.
+    if ((type.flags & amc::type_opaque) != 0) {
+        emit_opaque(o, p, type);
+        return;
+    }
     switch (type.kind) {
         case amc::TypeKind::record:      emit_record(o, p, type); break;
         case amc::TypeKind::enumeration: emit_enumeration(o, p, type); break;
@@ -474,9 +491,48 @@ void emit_errors(Output &o, const Projector &p) {
     o.print("\n// Error-boundary wrappers: a C status code becomes a typed Result.\n");
     for (const auto &record : p.m.errors) {
         if (record.function_index >= p.m.functions.size()) continue;
+        const amc::Function &function = p.m.functions[record.function_index];
+        const std::string function_rust = rust_ident(function.name);
+        const std::string error_type = pascal_ident(function.name) + "Error";
+        if (record.status_source == amc::StatusSource::return_field) {
+            // A Result return: the status and value are fields of the returned
+            // record, so no out-parameter is involved.
+            const int result_index = p.index_of(function.return_type);
+            if (result_index < 0) continue;
+            const amc::Type &result = p.m.types[static_cast<size_t>(result_index)];
+            if (result.kind != amc::TypeKind::record) continue;
+            if (record.status_parameter >= result.field_count || record.value_parameter >= result.field_count) continue;
+            const amc::Field &status_field = p.m.fields[result.field_begin + record.status_parameter];
+            const amc::Field &value_field = p.m.fields[result.field_begin + record.value_parameter];
+            const std::string status_rust = p.field_type(status_field.type_id);
+            const std::string value_rust = p.field_type(value_field.type_id);
+            const std::string status_access = rust_field_ident(status_field.name);
+            const std::string value_access = rust_field_ident(value_field.name);
+
+            std::string params, call_args;
+            for (size_t i = 0; i < function.parameters.size(); ++i) {
+                const auto &parameter = function.parameters[i];
+                const std::string parameter_name =
+                    parameter.name.empty() ? fmt::format("arg{}", i) : rust_field_ident(parameter.name);
+                if (i != 0) {
+                    params += ", ";
+                    call_args += ", ";
+                }
+                params += fmt::format("{}: {}", parameter_name, p.field_type(parameter.type_id));
+                call_args += parameter_name;
+            }
+            o.print("#[derive(Clone, Copy, PartialEq, Eq, Debug)]\n");
+            o.print("pub struct {}(pub {});\n", error_type, status_rust);
+            o.print("impl {} {{\n    pub const SUCCESS: {} = {};\n}}\n", error_type, status_rust, record.success_value);
+            o.print("pub fn {}({}) -> Result<{}, {}> {{\n", function_rust + "_result", params, value_rust, error_type);
+            o.print("    let result = unsafe {{ {}({}) }};\n", function_rust, call_args);
+            o.print("    if result.{} == {}::SUCCESS {{\n", status_access, error_type);
+            o.print("        Ok(result.{})\n", value_access);
+            o.print("    }} else {{\n        Err({}(result.{}))\n    }}\n}}\n", error_type, status_access);
+            continue;
+        }
         if (record.status_source != amc::StatusSource::return_value) continue;   // v1: return-value status only
         if (record.value_parameter == UINT32_MAX) continue;
-        const amc::Function &function = p.m.functions[record.function_index];
         if (record.value_parameter >= function.parameters.size()) continue;
         const int value_index = p.index_of(function.parameters[record.value_parameter].type_id);
         if (value_index < 0) continue;
@@ -484,8 +540,6 @@ void emit_errors(Output &o, const Projector &p) {
         if (value_type.kind != amc::TypeKind::pointer) continue;
         const std::string value_rust = p.pointer_pointee_rust(value_type);
         const std::string status_rust = p.field_type(function.return_type);
-        const std::string function_rust = rust_ident(function.name);
-        const std::string error_type = pascal_ident(function.name) + "Error";
 
         std::string params, call_args;
         for (size_t i = 0; i < function.parameters.size(); ++i) {
@@ -588,6 +642,7 @@ void emit_abi_checks(Output &o, const Projector &p) {
     bool any = false;
     for (const auto &type : p.m.types) {
         if (type.kind != amc::TypeKind::record || type.name.empty()) continue;
+        if (!is_projectable_name(type.name)) continue;
         if (!is_rust_identifier(p.name_of(type.id))) continue;
         if (!any) {
             o.print("\n// Compile-time ABI assertions: a layout drift is a compile error.\n");
@@ -596,6 +651,9 @@ void emit_abi_checks(Output &o, const Projector &p) {
         const std::string &name = p.name_of(type.id);
         o.print("const _: () = assert!(core::mem::size_of::<{}>() == {});\n", name, type.size);
         o.print("const _: () = assert!(core::mem::align_of::<{}>() == {});\n", name, type.align == 0 ? 1 : type.align);
+        // An opaque handle is projected as a byte blob, so its fields have no
+        // Rust names to assert against.
+        if ((type.flags & amc::type_opaque) != 0) continue;
         for (uint32_t i = 0; i < type.field_count; ++i) {
             const auto &field = p.m.fields[type.field_begin + i];
             if (field.name.empty() || (field.flags & amc::field_base) != 0) continue;
@@ -1595,6 +1653,12 @@ std::string generate_projection(const amc::AbiModule &module) {
 
     for (const auto &type : module.types) {
         o.print("\n");
+        // A consumer must not reconstruct an STL/template/reference type; emit
+        // it as an opaque blob instead of a guessed Rust struct.
+        if (!is_projectable_name(type.name)) {
+            emit_opaque(o, projector, type);
+            continue;
+        }
         emit_type(o, projector, type);
     }
     emit_functions(o, projector);

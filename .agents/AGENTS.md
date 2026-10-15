@@ -137,7 +137,7 @@ reproducible on every *available* platform.
 | Branch | Role |
 |--------|------|
 | `main` | latest stable; only moves forward from a fully verified `devel` |
-| `release/x.y.z` | a frozen stable line; tags `vX.Y.Z` must be platform-consistent |
+| `vX.Y.x` | a frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
 | `devel` | unified integration branch; only changes that pass on **all** available platforms land here |
 | `devel-beta` | promotion stage: a `devel-alpha` that passed its platform tests merges here for the next/broader test round |
 | `devel-alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
@@ -157,7 +157,7 @@ Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**
 4. Only when **every available platform passes** on `devel-beta` is it merged
    into `devel`. A platform-specific fix that cannot build elsewhere stays in its
    platform branch, never in `devel`.
-5. `main` and `release/x.y.z` receive only `devel`/release merges that pass every
+5. `main` and `vX.Y.x` receive only `devel`/release merges that pass every
    available platform. Never tag or branch a release before it is verified
    consistent across platforms.
 

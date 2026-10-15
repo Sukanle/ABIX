@@ -94,6 +94,23 @@ def main() -> int:
               "amc generate -l rust produced amc_generated.rs",
               (result.stderr.strip() if result else "skipped (no artifact)")[:2000])
 
+        # 3b. The same artifact projects to a C++ header. The interface contract
+        #     must surface its identity, version, slot enum and adapter typedefs,
+        #     so a consumer can declare `IVectorMath` without a private vtable.
+        cpp_header = os.path.join(work, "amc_generated.hpp")
+        result = run([amc, "generate", artifact, "-l", "cpp", "-o", cpp_header]) if os.path.isfile(artifact) else None
+        if result is not None and result.returncode == 0 and os.path.isfile(cpp_header):
+            header = open(cpp_header, encoding="utf-8").read()
+            check("kIVectorMathInterface" in header and "kIVectorMathVersion" in header,
+                  "amc generate -l cpp emitted the interface identity")
+            check("enum class IVectorMathSlot" in header and "demo_add = 0" in header and "demo_scale = 1" in header,
+                  "amc generate -l cpp emitted the interface slot enum")
+            check("IVectorMath_demo_scale_fn" in header and "(*)(const struct DemoVec2*, double)" in header,
+                  "amc generate -l cpp emitted the interface method typedefs")
+        else:
+            check(False, "amc generate -l cpp produced the interface projection",
+                  (result.stderr.strip() if result else "skipped (no artifact)")[:2000])
+
         # 4. Compile the Rust consumer against the generated projection. The
         #    `abix_link` cfg turns the projection's `#[link(name = ...)]` on, so
         #    the symbols are resolved against the native library at link time

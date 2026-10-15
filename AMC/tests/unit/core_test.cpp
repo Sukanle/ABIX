@@ -1218,6 +1218,49 @@ int main() {
     }
 
     {
+        // `void` is a first-class primitive with no size; a function may return
+        // it. The size/align requirement is skipped for it, and it survives both
+        // serialization paths.
+        amc::AbiModule m;
+        m.package_name = "void_test";
+        m.package_version = "1";
+        amc::Type void_type;
+        void_type.name = "void";
+        void_type.kind = amc::TypeKind::primitive;
+        void_type.id = amc::hash_text("void", 0x54595045);
+        void_type.size = 0;
+        void_type.align = 1;
+        void_type.primitive_abi = amc::primitive_abi(0, amc::PrimitiveAbiKind::void_);
+        m.types.push_back(void_type);
+        amc::Function ping;
+        ping.name = "ping";
+        ping.return_type = void_type.id;
+        ping.signature = amc::signature_hash(ping);
+        m.functions.push_back(ping);
+
+        std::string error;
+        check(amc::validate(m, error), "a void return type validates");
+        check(amc::write_abix(m, "amc_void_test.abix", error), "write a void module");
+        amc::AbiModule loaded;
+        check(amc::read_abix("amc_void_test.abix", loaded, error), "read a void module");
+        check(loaded.types.size() == 1
+                  && loaded.functions.size() == 1
+                  && loaded.types[0].size == 0
+                  && loaded.functions[0].return_type == void_type.id,
+            "void round-trips through .abix");
+
+        amc::MetadataOptions options;
+        std::vector<uint8_t> region;
+        check(amc::build_metadata_region(m, options, region, error), "build a region with void");
+        amc::AbiModule from_region;
+        check(amc::module_from_region(region, from_region, error)
+                  && from_region.types.size() == 1
+                  && from_region.types[0].size == 0,
+            "void round-trips through the metadata region");
+        std::remove("amc_void_test.abix");
+    }
+
+    {
         // M3.4: instantiation request cache. Identity is layered, and a build
         // key covers every input that can change the reusable product.
         auto make_request = [](const std::string &tmpl, std::vector<std::string> args) {
