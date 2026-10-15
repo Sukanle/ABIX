@@ -158,13 +158,16 @@ reader must not infer `borrowed` or `owned`. See
 | Field | Type | Description |
 |------|------|------|
 | `function` | string | Function whose status/result the contract describes |
-| `status` | string | `return` (default) or `parameter` |
+| `status` | string | `return` (default) or `parameter`; also `return_field` when the return value is an aggregate (emitted automatically for an `abix_result_*` return) |
 | `success` | int | Status value that means success (default `0`) |
 | `value` | int | Parameter index carrying the result value (omit when the return value is the result) |
 
 It lets a backend turn a bare C status code into a typed result; a language-native
 exception/panic must not cross the ABI boundary. See
-[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1.
+[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1. With `status = return_field`
+the status and value are fields of the returned record: when `[[expose]]` emits a
+thunk that returns `abix_result_*` it records `return_field` with the status and
+value field indices, so a consumer gets a typed `Result` for the exposed method.
 
 ### `[[instantiate]]` — generic instantiation
 
@@ -220,6 +223,84 @@ accessor operations; its layout is not consumed.
 
 Exposes a non-contiguous container as an iterable range (length + indexed
 access) without assuming contiguous memory.
+
+### `[[expose]]` — automatic capability generation
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Concrete type to expose (e.g. `cmdly::MemoryHistory`) |
+| `methods` | string[] | Member function names to expose (inherited methods included) |
+| `constructor` | string[] | Constructor parameter spellings (omit/empty = default constructor) |
+| `destructor` | bool | Emit a destroy entry (default `true`) |
+| `opaque` | bool | Consumers see an opaque handle (default `true`) |
+
+The C++ frontend emits `abix_<Type>_create/_destroy/_<method>` **thunks** and
+records them as ABI entities, so neither the producer nor the consumer writes an
+adapter by hand. Only public members are supported, and only representations the
+bridge can express: a parameter or return type that is not a known, layout-safe
+type is rejected (`... needs a contract`) rather than guessed at. A signature
+that mentions an ABIX-STD boundary type (`abix_span_*`, `abix_str_*`,
+`abix_result_*`) records the matching contract automatically; a native STL
+parameter type needs an explicit `[[adapt]]` mapping. An `abix_result_*` return
+binds to the error boundary automatically (see `[[error]]`).
+
+### `[thunks]` — generated thunk source
+
+| Field | Type | Description |
+|------|------|------|
+| `output` | string | Path of the generated C thunk source (compiled into the producer) |
+
+Required when `[[expose]]` is present.
+
+### `[[adapt]]` — native↔ABIX-STD parameter adaptation
+
+| Field | Type | Description |
+|------|------|------|
+| `native` | string | Native kind: `std::string`, `std::string_view`, `std::vector` or `std::span` |
+| `target` | string | ABIX-STD boundary type the parameter is marshalled onto (e.g. `abix_str_utf8`, `abix_span_i32`) |
+| `element` | string | Element spelling for `std::vector`/`std::span` (e.g. `int32_t`); ignored otherwise |
+
+An STL type must not cross the boundary raw (see
+[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18): a declared mapping is required
+before `[[expose]]` will adapt a method that takes it. On a match the generated
+thunk takes the boundary type and marshals it onto the native type
+(`std::string(data, len)`, `std::vector<T>(data, data + len)`, ...); the adapter
+is generated and linked, never inferred. Only **parameters** are adapted — a
+return value mapped to a borrowed view would dangle, so returns still need their
+own contract. A non-const lvalue reference and a mutable `std::span<T>` are not
+adapted (writing back through a borrowed view is not modelled).
+
+### `[[interface]]` — a named interface contract
+
+| Field | Type | Description |
+|------|------|------|
+| `name` | string | Interface name (part of its identity) |
+| `version` | int | Interface version (default `1`) |
+| `methods` | string[] | Interface methods, **in slot order**; each names an already-recorded function whose signature becomes that method's contract |
+
+The interface identity is a content hash over the name, version and ordered
+method signatures — not a class name and not a vtable address. It is a **contract,
+not a layout fact**: it never feeds `TypeID` / `LayoutHash` / `ABIHash`. See
+[`interface.md`](interface.md).
+
+### `[[implements]]` — bind a concrete type to an interface
+
+| Field | Type | Description |
+|------|------|------|
+| `interface` | string | The `[[interface]]` this implementation satisfies |
+| `type` | string | The concrete type implementing it |
+| `methods` | string[] | In slot order, the recorded adapter function bound to each interface method; its count must equal the interface's method count |
+
+The binding maps `(interface_id, slot)` to an adapter function signature; the
+adapter's first parameter is the object handle. ABIX standardises no private
+vtable: a provider keeps its own layout and virtual functions, and the adapter is
+the only bridge. `amc generate -l cpp` projects each interface as
+`k<Name>Interface`, `k<Name>Version`, `enum class <Name>Slot`, a
+`<Name>_<method>_fn` typedef, a `Traits` struct (id / version / slots / expected
+signatures) and — when every method takes the object handle first — an
+`InterfaceProxy<Traits>`-derived proxy class, so a consumer can declare, bind and
+call the interface without touching the provider's layout. See
+[`interface.md`](interface.md) and ABI-SPEC §19.
 
 ### `[target]`
 
