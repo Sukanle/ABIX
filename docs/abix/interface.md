@@ -631,11 +631,11 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | Symbol | Type | Description |
 |------|------|------|
 | `ModuleState` | enum | `loading` / `active` / `draining` / `unloaded`; `to_string` gives the name |
-| `ModuleControl` | struct | The loader-owned lifecycle token: `id`, `name`, `state`, `leases`. Kept outside the registry so the loader can tie it to the platform module handle |
+| `ModuleControl` | struct | The loader-owned lifecycle token: `id`, `name`, `state`, `leases`, plus the platform `module_handle` and the `pin`/`unpin` hooks. Kept outside the registry so the loader can tie it to the platform module handle |
 | `next_module_instance_id()` | `ModuleInstanceId` | Monotonic; never reused |
 | `module_state(control)` | `ModuleState` | Reads the current state |
 | `activate_module(control)` | `bool` | `loading → active` (CAS); `false` when not loading |
-| `try_acquire_lease(control)` | `bool` | Acquires only while `active`; the state is re-checked after the increment so a concurrent `begin_unload` cannot be missed |
+| `try_acquire_lease(control)` | `bool` | Acquires only while `active`; the state is re-checked after the increment so a concurrent `begin_unload` cannot be missed. Takes an OS-level reference (`pin`) so the module stays mapped while the lease is held |
 | `release_lease(control)` | `void` | Releases one lease |
 | `begin_unload(control)` | `bool` | Stops admitting new leases (enters `draining`); `true` if already draining/unloaded, `false` if never activated |
 | `wait_for_idle(control, max_spins = 1000000)` | `bool` | Waits until every lease is released; bounded so a leaked lease cannot hang a caller forever |
@@ -646,6 +646,19 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 A lease is held for the duration of an active call or a live object handle. This
 is what makes a cached method binding safe: the binding stays valid exactly as
 long as the caller holds a lease.
+
+**OS-level pinning.** When the loader binds the platform identity
+(`Discovery.h` → `bind_module_platform`), the first lease calls `pin` and the
+last calls `unpin`: on Windows `pin` resolves the module base address with
+`GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)` and `unpin` calls
+`FreeLibrary`; on POSIX `pin` re-opens the module by its load path
+(`dlopen(path)`, which increments the reference count without re-running
+initializers) and `unpin` calls `dlclose`. A held lease therefore **directly
+blocks** `FreeLibrary`/`dlclose` at the OS level, not only through the state
+machine — an owner that unloads while a lease is held cannot map the module out.
+The reference is taken once across all leases and needs the loader-owned
+`module_path`, so the loader must keep the `Object` (and its path) alive while
+leases are held.
 
 ### `ModuleRegistry.h` — dynamically discovered module interfaces
 

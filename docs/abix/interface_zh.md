@@ -587,11 +587,11 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | 符号 | 类型 | 说明 |
 |------|------|------|
 | `ModuleState` | enum | `loading` / `active` / `draining` / `unloaded`；`to_string` 给出名字 |
-| `ModuleControl` | struct | 加载方拥有的生命周期令牌：`id`、`name`、`state`、`leases`。留在加载方，使其能与平台模块句柄绑定 |
+| `ModuleControl` | struct | 加载方拥有的生命周期令牌：`id`、`name`、`state`、`leases`，以及平台 `module_handle` 与 `pin`/`unpin` 钩子。留在加载方，使其能与平台模块句柄绑定 |
 | `next_module_instance_id()` | `ModuleInstanceId` | 单调递增，永不复用 |
 | `module_state(control)` | `ModuleState` | 读取当前状态 |
 | `activate_module(control)` | `bool` | `loading → active`（CAS）；非 loading 返回 `false` |
-| `try_acquire_lease(control)` | `bool` | 仅在 `active` 时租用；递增后**再次**检查状态，避免与并发 `begin_unload` 竞态 |
+| `try_acquire_lease(control)` | `bool` | 仅在 `active` 时租用；递增后**再次**检查状态，避免与并发 `begin_unload` 竞态。成功时取一次 OS 级引用（`pin`），使模块在租约期间保持映射 |
 | `release_lease(control)` | `void` | 释放一次租约 |
 | `begin_unload(control)` | `bool` | 停止接受新租约（进入 `draining`）；已 draining/unloaded 返回 `true`，从未激活返回 `false` |
 | `wait_for_idle(control, max_spins = 1000000)` | `bool` | 等待所有租约释放；有上界，避免泄漏的租约永久挂起调用方 |
@@ -601,6 +601,15 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 
 租约在活跃调用或存活对象句柄期间持有，这正是缓存方法绑定安全的原因：调用方持有租约的期间，
 绑定有效。
+
+**OS 级固定（pinning）**：当加载方绑定平台身份（`Discovery.h` →
+`bind_module_platform`）后，**首个**租约调用 `pin`、**末个**租约调用 `unpin`：Windows 上
+`pin` 以 `GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)` 解析模块基址、
+`unpin` 调用 `FreeLibrary`；POSIX 上 `pin` 按加载路径重新 `dlopen(path)`（只增加引用计数、
+不重跑初始化），`unpin` 调用 `dlclose`。因此持有的租约在 **OS 层直接阻止**
+`FreeLibrary`/`dlclose`，而不仅靠状态机——即使拥有者在持有租约时卸载，也无法把模块解除
+映射。该引用在所有租约期间只取一次，依赖加载方持有的 `module_path`，因此加载方需在租约
+存续期间保持 `Object`（及其路径）存活。
 
 ### `ModuleRegistry.h` —— 动态模块接口注册表
 

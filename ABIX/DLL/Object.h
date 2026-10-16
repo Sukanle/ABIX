@@ -24,8 +24,10 @@
 #include "ABIX/Util/Atomic.h"
 #include "ABIX/Util/Log.h"
 #include <new>
+#include <string>
 #ifdef SKL_ABIX_WINDOWS
 #  include <libloaderapi.h>
+#  include <winnt.h>
 #endif
 
 namespace skl::abix::dll {
@@ -180,6 +182,7 @@ public:
         util::store_release(&_c->image, img);
         util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::active));
         last_error() = CallError::none;
+        _path = path;
         ABIX_LOG_INFO("Object::load: loaded '%s' (%u entries)", path, t ? t->count : 0u);
         unlock_writer();
         return true;
@@ -255,6 +258,7 @@ public:
         }
 
         last_error() = CallError::none;
+        _path = path;
         ABIX_LOG_INFO("Object::reload: reloaded '%s' (%u entries)", path, new_t ? new_t->count : 0u);
         return true;
     }
@@ -274,6 +278,11 @@ public:
         auto *img = util::load_acquire(&_c->image);
         return img ? img->module : nullptr;
     }
+
+    // The load path (owned by the Object; stable while it is alive). Used to
+    // take a second OS-level reference on POSIX, where a dlopen handle alone
+    // cannot re-open the object.
+    const char *module_path() const noexcept { return _path.empty() ? nullptr : _path.c_str(); }
 
     // Resolve a raw exported symbol from the loaded module. This is the fixed
     // entry point path (for example the ABIX Interface discovery entry); it does
@@ -331,6 +340,7 @@ private:
     }
 
     SharedPtr<Control> _c;
+    std::string _path;
 };
 
 }   // namespace skl::abix::dll

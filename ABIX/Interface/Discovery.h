@@ -34,6 +34,52 @@ struct DiscoveryResult {
     bool ok() const noexcept { return manifest == ManifestStatus::ok && registration == ModuleStatus::ok; }
 };
 
+namespace detail {
+
+// Take/remove one OS-level reference to the module so a held lease blocks
+// FreeLibrary/dlclose at the OS level. Windows resolves the base address with
+// GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS (which increments the reference count);
+// POSIX re-opens the object by path (which increments the count without
+// re-running initializers). A single reference is held across all leases: it is
+// taken when the first lease is acquired and dropped when the last is released.
+inline bool pin_module(ModuleControl &control) noexcept {
+#ifdef SKL_ABIX_WINDOWS
+    if (control.module_handle == nullptr) return false;
+    HMODULE pinned = nullptr;
+    return GetModuleHandleExA(
+               GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCSTR>(control.module_handle), &pinned)
+        != 0;
+#else
+    if (control.module_path == nullptr) return false;
+    control.pin_state = dlopen(control.module_path, RTLD_NOW | RTLD_LOCAL);
+    return control.pin_state != nullptr;
+#endif
+}
+
+inline void unpin_module(ModuleControl &control) noexcept {
+#ifdef SKL_ABIX_WINDOWS
+    if (control.module_handle != nullptr) FreeLibrary(reinterpret_cast<HMODULE>(control.module_handle));
+#else
+    if (control.pin_state != nullptr) {
+        dlclose(control.pin_state);
+        control.pin_state = nullptr;
+    }
+#endif
+}
+
+}   // namespace detail
+
+// Bind the loaded module's platform identity to the lifecycle control so leases
+// can hold an OS-level reference. The loader (this discovery step) is the only
+// place that knows the handle and path, which is why ModuleControl stays out of
+// the registry.
+inline void bind_module_platform(ModuleControl &control, const dll::Object &module) noexcept {
+    control.module_handle = module.module();
+    control.module_path = module.module_path();
+    control.pin = &detail::pin_module;
+    control.unpin = &detail::unpin_module;
+}
+
 // Resolve `abix_module_query_v1` from a loaded module, validate it, and register
 // its interfaces. `control` is the lifecycle control for this load; it becomes
 // active on success. A missing entry, an unknown manifest version, a malformed
@@ -55,6 +101,7 @@ inline DiscoveryResult discover_module(const dll::Object &module, ModuleControl 
         result.registration = ModuleStatus::invalid_manifest;
         return result;
     }
+    bind_module_platform(control, module);
     result.registration = registry.register_module(control, *result.queried);
     return result;
 }
