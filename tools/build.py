@@ -141,26 +141,19 @@ def main() -> None:
     if not variants_script.exists():
         raise SystemExit(f"Variant build script not found: {variants_script}")
     print(f"\n== Running variant build: {variants_script} ==")
-    result = subprocess.run(
-        [sys.executable, str(variants_script), "--build-type", args.build_type]
-    )
+    variants_cmd = [
+        sys.executable,
+        str(variants_script),
+        "--build-type",
+        args.build_type,
+    ]
+    if sys.platform == "win32" and args.with_msvc:
+        variants_cmd.append("--with-msvc")
+        if args.vs_path:
+            variants_cmd.extend(["--vs-path", args.vs_path])
+    result = subprocess.run(variants_cmd)
     if result.returncode != 0:
         raise SystemExit(f"Variant build failed, exit code {result.returncode}")
-
-    if sys.platform == "win32" and args.with_msvc:
-        msvc_script = CURRENT_DIR / "build_msvc_variants.ps1"
-        if not msvc_script.exists():
-            print(f"  [Warning] MSVC variant script not found: {msvc_script}")
-        else:
-            print(f"\n== Running MSVC variant build: {msvc_script} ==")
-            msvc_cmd = ["powershell", "-File", str(msvc_script)]
-            if args.vs_path:
-                msvc_cmd.extend(["-VsPath", args.vs_path])
-            result = subprocess.run(msvc_cmd)
-            if result.returncode != 0:
-                print(
-                    "  [Warning] MSVC variant build failed (can be ignored if VS is not installed), cross-CRT tests will be skipped"
-                )
 
     if should_test:
         print("\n== Running tests ==")
