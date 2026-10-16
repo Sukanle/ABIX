@@ -11,3 +11,4 @@
 #include "logging_test.cpp"
 #include "rcu_config_test.cpp"
 #include "concurrency_test.cpp"
+#include "atomic_test.cpp"

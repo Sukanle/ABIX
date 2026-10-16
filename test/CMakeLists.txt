@@ -39,6 +39,7 @@ abi_add_test(owner_dll_test)
 abi_add_test(hash_test)
 abi_add_test(compatibility_test)
 abi_add_test(map_test)
+abi_add_test(atomic_test)
 
 # --- Unity build: all tests in a single executable ---
 add_executable(test_all ${TEST_SRC_DIR}/test_all.cpp)
