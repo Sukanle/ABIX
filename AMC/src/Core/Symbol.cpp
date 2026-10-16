@@ -45,12 +45,18 @@ bool read_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build
     switch (detect_binary_format(data, size)) {
         case BinaryFormat::elf: return read_gnu_build_id(data, size, build_id, error);
         case BinaryFormat::macho: return read_macho_uuid(data, size, build_id, error);
+        case BinaryFormat::pe:
+            // PE has no GNU build id; the symbol-server key would come from the
+            // PDB GUID in the debug directory, which is not implemented yet.
+            error = "PE images have no GNU build id";
+            build_id.clear();
+            return false;
         case BinaryFormat::unknown:
-            error = "not a supported binary (expected ELF or Mach-O)";
+            error = "not a supported binary (expected ELF, Mach-O or PE)";
             build_id.clear();
             return false;
     }
-    error = "not a supported binary (expected ELF or Mach-O)";
+    error = "not a supported binary (expected ELF, Mach-O or PE)";
     build_id.clear();
     return false;
 }
