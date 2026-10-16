@@ -131,9 +131,9 @@ and calling conventions all differ. Once such a difference lands in `devel`, it
 blocks promoting `devel` to `main` and cutting a release, so keep the divergence
 in the platform branches and gate promotion through staged test branches.
 
-Platform support today: **Linux and macOS**; **Windows is not available yet**
-(its branch exists but is not building). `devel` and release refs must be
-reproducible on every *available* platform.
+Platform support today: **Linux, macOS and Windows**. On Windows the project
+builds with the MSYS2 UCRT64 toolchain (GCC or Clang). `devel` and release refs
+must be reproducible on every supported platform.
 
 | Branch | Role |
 |--------|------|
@@ -144,7 +144,7 @@ reproducible on every *available* platform.
 | `devel-alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
 | `devel-linux` | Linux development line |
 | `devel-macos` | macOS development line |
-| `devel-windows` | Windows development line (not building yet) |
+| `devel-windows` | Windows development line |
 
 Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**
 

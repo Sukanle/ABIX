@@ -27,9 +27,9 @@ and shows the core operations: inspect, query, diff, verify and generate.
 
 ## 1. Requirements
 
-> **Platform support:** Linux and macOS are supported today. **Windows is not
-> available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
-> tests are still being validated, so please build and evaluate on Linux or macOS.
+> **Platform support:** Linux, macOS and Windows are supported; Windows builds use
+> the MSYS2 UCRT64 toolchain (GCC or Clang). See
+> [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64).
 
 * C++17 or later
 * CMake 3.20+

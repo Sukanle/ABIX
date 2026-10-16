@@ -6,7 +6,8 @@
 
 > [项目 README](README_zh.md) 是入口。本文件导航 `docs/` 目录。
 
-> **平台支持：** 目前支持 Linux 与 macOS。**Windows 暂不可用。**
+> **平台支持：** 支持 Linux、macOS 与 Windows；Windows（MSYS2 UCRT64）环境见
+> [`../CONTRIBUTING.md`](../CONTRIBUTING.md#windows-msys2-ucrt64)。
 
 ```mermaid
 graph TD

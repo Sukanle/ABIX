@@ -9,8 +9,8 @@
 > `__declspec(allocate)`), and AMC reads the region back through the capability
 > layer ([binary-image.md](binary-image.md), `ABIX/Binary/PE.h`). Verified with
 > both clang++ and cl.exe, including `amc metadata --from-elf` and `amc publish`
-> (CodeView GUID + Age). ABIX does not yet build *on* Windows, but PE images are
-> fully handled by the toolchain.
+> (CodeView GUID + Age). ABIX builds on Windows with the MSYS2 UCRT64 toolchain,
+> and PE images are handled end to end.
 
 <details>
 
