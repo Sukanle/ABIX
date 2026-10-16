@@ -90,6 +90,7 @@ How ABIX and AMC work internally.
 | [runtime.md](architecture/runtime.md) | [runtime_zh.md](architecture/runtime_zh.md) | runtime responsibilities, registry, execution model |
 | [compatibility.md](architecture/compatibility.md) | [compatibility_zh.md](architecture/compatibility_zh.md) | TypeID / LayoutHash / BuildID / MetadataID |
 | [elf-inspection.md](architecture/elf-inspection.md) | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | inspecting ABIX metadata sections in ELF / Mach-O binaries |
+| [pe-inspection.md](architecture/pe-inspection.md) | [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | designing the ABIX private header for Windows PE images |
 
 ## AI
 

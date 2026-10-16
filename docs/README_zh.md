@@ -89,6 +89,7 @@ ABIX 和 AMC 内部工作原理。
 | [runtime_zh.md](architecture/runtime_zh.md) | [runtime.md](architecture/runtime.md) | 运行时职责、注册表、执行模型 |
 | [compatibility_zh.md](architecture/compatibility_zh.md) | [compatibility.md](architecture/compatibility.md) | TypeID / LayoutHash / BuildID / MetadataID |
 | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | [elf-inspection.md](architecture/elf-inspection.md) | 在 ELF / Mach-O 二进制中检查 ABIX 元数据节区 |
+| [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | [pe-inspection.md](architecture/pe-inspection.md) | Windows PE 镜像的 ABIX 私有头设计 |
 
 ## AI
 
