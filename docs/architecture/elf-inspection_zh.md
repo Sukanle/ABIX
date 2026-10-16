@@ -145,12 +145,12 @@ python3 tools/test_amc_elf-pe.py --keep    # 保留临时文件供检查
 
 - **Linux / ELF**：ELF64 小端序（x86_64 / aarch64），thin 镜像。
 - **macOS / Mach-O**：64 位小端序 Mach-O（arm64），thin 镜像。
-- **Windows / PE**：尚未实现；容器设计见 [pe-inspection_zh.md](pe-inspection_zh.md)。
+- **Windows / PE**：`.abix` / `.abix.n` 节区；读取与发射均已实现——见 [pe-inspection_zh.md](pe-inspection_zh.md)。
 
 ## 限制
 
 - **字节序**：目前 ELF 与 Mach-O **仅支持小端序**。大端支持暂时不实现，待未来出现明确的网络 / RPC 需求时再补充。
 - **macOS 硬件**：支持 Apple Silicon（arm64）。**暂不支持 Intel Mac（x86_64 macOS）**——没有对应设备用于验证，因此在具备测试设备前不在支持范围内。
 - **Mach-O 镜像**必须为 thin（单一架构）；暂不解析 universal / fat 二进制。
-- **跨平台目标**：Windows（PE）、macOS（Mach-O）、Linux（ELF）。PE/COFF 解析尚未实现；建议的 PE 容器见 [pe-inspection_zh.md](pe-inspection_zh.md)。
+- **跨平台目标**：Windows（PE）、macOS（Mach-O）、Linux（ELF）。PE/COFF 的解析与发射均已实现；见 [pe-inspection_zh.md](pe-inspection_zh.md)。
 - `.abix.names` 包含 `const char*` 指针；实际字符串在 `.rodata` / `__TEXT,__cstring` 中。使用 `strings <binary> | grep -i amc` 查找。

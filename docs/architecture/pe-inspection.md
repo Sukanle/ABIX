@@ -4,12 +4,13 @@
   <a href="pe-inspection_zh.md">中文</a> · English
 </p>
 
-> **Status: reading implemented; emission pending.** AMC locates and reads the PE
-> `.abix` region through the capability layer ([binary-image.md](binary-image.md),
-> `ABIX/Binary/PE.h`). Emitting the section from `amc generate` (the
-> `__attribute__` / `#pragma section` snippets below) and the automated PE test
-> are the remaining pieces. Platform support is Linux + macOS; Windows is not
-> available yet.
+> **Status: implemented.** `amc generate -l cpp` emits the `.abix` / `.abix.n`
+> sections for `_WIN32` (GNU/clang attributes and MSVC `#pragma section` +
+> `__declspec(allocate)`), and AMC reads the region back through the capability
+> layer ([binary-image.md](binary-image.md), `ABIX/Binary/PE.h`). Verified with
+> both clang++ and cl.exe, including `amc metadata --from-elf` and `amc publish`
+> (CodeView GUID + Age). ABIX does not yet build *on* Windows, but PE images are
+> fully handled by the toolchain.
 
 <details>
 
@@ -267,10 +268,9 @@ amc metadata app.abix -o region.abixmeta
 
 ## Limitations
 
-- **Emission pending.** Reading works — `detect_binary_format` and
-  `find_binary_section` handle ELF, Mach-O and PE through the
-  [BinaryImage layer](binary-image.md); `amc generate` does not yet emit the
-  `.abix` section into a PE image.
+- **PE is implemented.** `amc generate -l cpp` emits `.abix` / `.abix.n`, and
+  `detect_binary_format` / `find_binary_section` / `amc metadata` / `amc publish`
+  read them back (see the [BinaryImage layer](binary-image.md)).
 - **PE32+ first.** 64-bit PE (`0x20B`) is the primary target; PE32 (`0x10B`) is
   structurally supported because the region is pointer-free and word-size
   agnostic.

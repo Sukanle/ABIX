@@ -4,11 +4,12 @@
   中文 · <a href="pe-inspection.md">English</a>
 </p>
 
-> **状态：读取已实现；写入待办。** AMC 已通过能力层
-> （[binary-image_zh.md](binary-image_zh.md)，`ABIX/Binary/PE.h`）定位并读取 PE 的
-> `.abix` region。用 `amc generate` 发射该节区（下文的 `__attribute__` /
-> `#pragma section` 片段）以及 PE 自动化测试仍待补。平台支持为 Linux + macOS，
-> Windows 尚不可用。
+> **状态：已实现。** `amc generate -l cpp` 会为 `_WIN32` 发射 `.abix` / `.abix.n`
+> 节区（GNU/clang 属性，以及 MSVC 的 `#pragma section` + `__declspec(allocate)`）；
+> AMC 再经能力层（[binary-image_zh.md](binary-image_zh.md)，`ABIX/Binary/PE.h`）
+> 读回 region。已用 clang++ 与 cl.exe 验证，覆盖 `amc metadata --from-elf` 与
+> `amc publish`（CodeView GUID + Age）。ABIX 目前尚不能在 Windows 上构建自身，但
+> PE 镜像已被工具链完整处理。
 
 <details>
 
@@ -239,9 +240,9 @@ amc metadata app.abix -o region.abixmeta
 
 ## 限制
 
-- **写入待办。** 读取已可用——`detect_binary_format` 与 `find_binary_section` 经
-  [BinaryImage 层](binary-image_zh.md) 支持 ELF、Mach-O 与 PE；`amc generate` 尚未把
-  `.abix` 节区发射进 PE 镜像。
+- **PE 已实现。** `amc generate -l cpp` 会发射 `.abix` / `.abix.n`，
+  `detect_binary_format` / `find_binary_section` / `amc metadata` / `amc publish`
+  可读回（见 [BinaryImage 层](binary-image_zh.md)）。
 - **先做 PE32+。** 64 位 PE（`0x20B`）是主目标；PE32（`0x10B`）在结构上被支持，因为
   Region 无指针且与字长无关。
 - **仅小端**，与 ELF/Mach-O 一致。
