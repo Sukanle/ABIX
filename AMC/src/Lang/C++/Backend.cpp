@@ -373,19 +373,35 @@ int backend(const char *input, const char *output) {
     // unreferenced variable entirely, which would silently make the names
     // un-strippable because they were never emitted.
     //
-    // Mach-O section names are limited to 16 bytes and require an explicit
-    // segment, so macOS uses "__DATA,__abix_names" instead of the ELF spelling.
+    // Section attributes differ per container: ELF uses the dot-separated
+    // spelling; Mach-O requires a segment and a <=16-byte name; PE section names
+    // are 8 bytes and MSVC needs `#pragma section` + `__declspec(allocate)`
+    // instead of an attribute.
     if (!m.types.empty()) {
         o.print(
             "#if defined(__APPLE__)\n"
-            "__attribute__((used, section(\"__DATA,__abix_names\")))\n"
-            "#elif defined(__GNUC__) || defined(__clang__)\n"
-            "__attribute__((used, section(\".abix.names\")))\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "__attribute__((used, section(\"__DATA,__abix_names\"))) inline constexpr const char *amc_type_names[]\n"
+            "#elif defined(_WIN32) && defined(_MSC_VER)\n"
+            "#  pragma section(\".abix.n\", read)\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "extern \"C\" __declspec(selectany) __declspec(allocate(\".abix.n\")) const char *const amc_type_names[]\n"
+            "#elif defined(_WIN32)\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "__attribute__((used, section(\".abix.n\"))) inline constexpr const char *amc_type_names[]\n"
+            "#else\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "__attribute__((used, section(\".abix.names\"))) inline constexpr const char *amc_type_names[]\n"
             "#endif\n"
-            "inline constexpr const char *amc_type_names[] = {{\n");
+            "SKL_ABIX_NAMES_DECL = {{\n");
         for (const auto &type : m.types)
             o.print("    {},\n", cpp_string(type.name));
-        o.print("}};\n");
+        o.print(
+            "}};\n"
+            "#if defined(_WIN32) && defined(_MSC_VER)\n"
+            "// selectany + /INCLUDE keep the section past /OPT:REF despite being unreferenced.\n"
+            "#  pragma comment(linker, \"/INCLUDE:amc_type_names\")\n"
+            "#endif\n");
     }
 
     // ABIX Metadata Region (AI-PM): the self-describing, pointer-free image of
@@ -401,22 +417,46 @@ int backend(const char *input, const char *output) {
             fmt::print(stderr, "{}\n", metadata_error);
             return 1;
         }
+        const uint32_t region_size_value = static_cast<uint32_t>(region.size());
         o.print(
             "\n// ABIX Metadata Region: manifest + desc + hash + names (offset-based).\n"
             "#if defined(__APPLE__)\n"
-            "__attribute__((used, section(\"__DATA,__abix_metadata\"), aligned(8)))\n"
-            "#elif defined(__GNUC__) || defined(__clang__)\n"
-            "__attribute__((used, section(\".abix.metadata\"), aligned(8)))\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "__attribute__((used, section(\"__DATA,__abix_metadata\"), aligned(8))) inline constexpr unsigned char "
+            "amc_metadata_region[]\n"
+            "#elif defined(_WIN32) && defined(_MSC_VER)\n"
+            "#  pragma section(\".abix\", read)\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "extern \"C\" __declspec(selectany) __declspec(allocate(\".abix\")) const unsigned char "
+            "amc_metadata_region[]\n"
+            "#elif defined(_WIN32)\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "__attribute__((used, section(\".abix\"), aligned(8))) inline constexpr unsigned char amc_metadata_region[]\n"
+            "#else\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "__attribute__((used, section(\".abix.metadata\"), aligned(8))) inline constexpr unsigned char "
+            "amc_metadata_region[]\n"
             "#endif\n"
-            "inline constexpr unsigned char amc_metadata_region[{}] = {{\n",
-            region.size());
+            "SKL_ABIX_METADATA_DECL = {{\n"
+            "#if defined(_WIN32)\n"
+            "    // AbixPeHeader (24 B): magic, version, size, flags, region_offset, region_size, reserved.\n"
+            "    0x41,0x42,0x49,0x58, 0x01,0x00, 0x18,0x00, 0x00,0x00,0x00,0x00,\n"
+            "    0x18,0x00,0x00,0x00, 0x{:02x},0x{:02x},0x{:02x},0x{:02x}, 0x00,0x00,0x00,0x00,\n"
+            "#endif\n",
+            region_size_value & 0xff, (region_size_value >> 8) & 0xff, (region_size_value >> 16) & 0xff,
+            (region_size_value >> 24) & 0xff);
         for (size_t i = 0; i < region.size(); ++i) {
             if (i % 12 == 0) o.print("    ");
             o.print("0x{:02x},", region[i]);
             if (i % 12 == 11 || i + 1 == region.size()) o.print("\n");
         }
-        o.print("}};\n");
-        o.print("inline constexpr size_t amc_metadata_region_size = {};\n", region.size());
+        o.print(
+            "}};\n"
+            "#if defined(_WIN32) && defined(_MSC_VER)\n"
+            "// selectany + /INCLUDE keep the section past /OPT:REF despite being unreferenced.\n"
+            "#  pragma comment(linker, \"/INCLUDE:amc_metadata_region\")\n"
+            "#endif\n");
+        o.print("inline constexpr size_t amc_metadata_region_size = sizeof(amc_metadata_region);\n");
     }
 
     for (size_t i = 0; i < m.maps.size(); ++i) {
