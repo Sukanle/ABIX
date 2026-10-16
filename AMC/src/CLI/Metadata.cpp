@@ -13,9 +13,16 @@ namespace amc::cli {
 
 namespace {
 void write_bytes(const fs::path &path, const std::vector<uint8_t> &bytes, const char *stage, int &rc) {
+    // Binary mode: the region is a binary image and the Windows CRT text mode
+    // would translate 0x0A into 0x0D 0x0A and corrupt it.
     try {
-        auto out = fmt::output_file(path.string());
-        out.print("{}", fmt::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            rc = fail(amc::ErrorCategory::io, stage, "cannot write output", path.string());
+            return;
+        }
+        out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        if (!out.good()) rc = fail(amc::ErrorCategory::io, stage, "cannot write output", path.string());
     } catch (const std::exception &e) {
         rc = fail(amc::ErrorCategory::io, stage, "cannot write output", path.string(), e.what());
     }

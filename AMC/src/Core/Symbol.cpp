@@ -186,9 +186,19 @@ bool publish_symbol(const std::string &root, std::string_view key, const std::ve
         error = "cannot create symbol store directory: " + ec.message();
         return false;
     }
+    // Binary mode: the symbol artifact is a binary image and the Windows CRT
+    // text mode would translate 0x0A into 0x0D 0x0A.
     try {
-        auto output = fmt::output_file(stored_path);
-        output.print("{}", fmt::string_view(reinterpret_cast<const char *>(artifact.data()), artifact.size()));
+        std::ofstream output(stored_path, std::ios::binary | std::ios::trunc);
+        if (!output) {
+            error = "cannot write symbol artifact: " + stored_path;
+            return false;
+        }
+        output.write(reinterpret_cast<const char *>(artifact.data()), static_cast<std::streamsize>(artifact.size()));
+        if (!output.good()) {
+            error = "cannot write symbol artifact: " + stored_path;
+            return false;
+        }
     } catch (const std::exception &e) {
         error = "cannot write symbol artifact: " + stored_path + ": " + e.what();
         return false;

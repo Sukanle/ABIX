@@ -1829,9 +1829,19 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
                 bytes[entry_offset + field * 4 + byte] = static_cast<uint8_t>(values[field] >> (byte * 8));
         bytes.insert(bytes.end(), section.bytes.begin(), section.bytes.end());
     }
+    // The artifact is a binary image: open in binary mode so the Windows CRT
+    // does not translate 0x0A into 0x0D 0x0A and corrupt the section directory.
     try {
-        auto output = fmt::output_file(path);
-        output.print("{}", fmt::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        if (!output) {
+            error = "cannot write output: " + path;
+            return false;
+        }
+        output.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        if (!output.good()) {
+            error = "cannot write output: " + path;
+            return false;
+        }
     } catch (const std::exception &e) {
         error = "cannot write output: " + path + ": " + e.what();
         return false;
