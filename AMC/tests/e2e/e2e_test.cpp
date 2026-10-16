@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -29,7 +30,9 @@ struct TestResult {
 
 #define AMC_CHECK(r, a, b, msg) AMC_TEST(r, (a) == (b), msg << ": " << (a) << " != " << (b))
 
-std::string tmp_path(const char *name) { return std::string("/tmp/amc_e2e_") + name; }
+std::string tmp_path(const char *name) {
+    return (std::filesystem::temp_directory_path() / (std::string("amc_e2e_") + name)).string();
+}
 
 void cleanup(const std::string &path) { std::remove(path.c_str()); }
 

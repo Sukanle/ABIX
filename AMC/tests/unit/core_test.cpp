@@ -303,7 +303,8 @@ int main() {
 
         const std::string root = "amc_symbol_test_store";
         const std::string key = "deadbeef";
-        check(contains(amc::symbol_store_path(root, key, ".abix"), "de/adbeef.abix"), "symbol store path layout");
+        const std::string expected_tail = (std::filesystem::path("de") / "adbeef.abix").string();
+        check(contains(amc::symbol_store_path(root, key, ".abix"), expected_tail), "symbol store path layout");
 
         const std::vector<uint8_t> artifact = {1, 2, 3, 4};
         std::string stored;
