@@ -91,7 +91,8 @@ ABIX/    header-only ABI model + runtime, organised by layer:
          Runtime/ (Registry.h, Type.h, TypeSig.h, Search.h, Function.h),
          DLL/ (Object.h, Function.h, FnSig.h, Export.h, *Ptr.h),
          RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
-         Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h)
+         Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h),
+         Binary/ (BinaryImage.h + ELF/MachO/PE adapters — capability layer)
 AMC/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
@@ -110,7 +111,7 @@ docs/    specification and design
 | ABI runtime | `ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
 | DLL binding | `ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
 | Adapter dispatch | `ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
-| ELF/Mach-O reader | `AMC/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
+| Binary reader | `ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by `AMC/core/` | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
 | Metadata Region | `AMC/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
 | ABI adapter | `AMC/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
 | Symbol store | `AMC/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |

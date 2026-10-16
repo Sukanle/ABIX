@@ -91,6 +91,7 @@ How ABIX and AMC work internally.
 | [compatibility.md](architecture/compatibility.md) | [compatibility_zh.md](architecture/compatibility_zh.md) | TypeID / LayoutHash / BuildID / MetadataID |
 | [elf-inspection.md](architecture/elf-inspection.md) | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | inspecting ABIX metadata sections in ELF / Mach-O binaries |
 | [pe-inspection.md](architecture/pe-inspection.md) | [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | designing the ABIX private header for Windows PE images |
+| [binary-image.md](architecture/binary-image.md) | [binary-image_zh.md](architecture/binary-image_zh.md) | the BinaryImage capability layer over ELF / Mach-O / PE |
 
 ## AI
 

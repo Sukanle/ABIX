@@ -4,10 +4,11 @@
   中文 · <a href="pe-inspection.md">English</a>
 </p>
 
-> **状态：设计稿。** PE/COFF 读取器尚未实现。当前 AMC 只在 **ELF** 与 **Mach-O**
-> 上嵌入和读取 Metadata Region（见 [elf-inspection_zh.md](elf-inspection_zh.md)）；
-> 本文定义 Windows **PE** 容器，供后续实现遵循。平台支持为 Linux + macOS，Windows
-> 尚不可用。
+> **状态：读取已实现；写入待办。** AMC 已通过能力层
+> （[binary-image_zh.md](binary-image_zh.md)，`ABIX/Binary/PE.h`）定位并读取 PE 的
+> `.abix` region。用 `amc generate` 发射该节区（下文的 `__attribute__` /
+> `#pragma section` 片段）以及 PE 自动化测试仍待补。平台支持为 Linux + macOS，
+> Windows 尚不可用。
 
 <details>
 
@@ -70,6 +71,7 @@ struct AbixPeHeader {              // 24 字节
     uint32_t flags;                // bit0 = NAMES_SECTION_PRESENT
     uint32_t region_offset;        // 相对节区起点；24
     uint32_t region_size;          // Metadata Region 字节长度
+    uint32_t reserved;             // 0（保持 region_offset 8 字节对齐）
 };
 ```
 
@@ -237,8 +239,9 @@ amc metadata app.abix -o region.abixmeta
 
 ## 限制
 
-- **尚未实现。** 本文是设计；`detect_binary_format` 与 `find_binary_section` 目前
-  只处理 ELF 与 Mach-O。
+- **写入待办。** 读取已可用——`detect_binary_format` 与 `find_binary_section` 经
+  [BinaryImage 层](binary-image_zh.md) 支持 ELF、Mach-O 与 PE；`amc generate` 尚未把
+  `.abix` 节区发射进 PE 镜像。
 - **先做 PE32+。** 64 位 PE（`0x20B`）是主目标；PE32（`0x10B`）在结构上被支持，因为
   Region 无指针且与字长无关。
 - **仅小端**，与 ELF/Mach-O 一致。

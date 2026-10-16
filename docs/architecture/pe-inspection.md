@@ -4,11 +4,12 @@
   <a href="pe-inspection_zh.md">中文</a> · English
 </p>
 
-> **Status: design.** The PE/COFF reader is not implemented yet. Today AMC embeds
-> and reads the Metadata Region on **ELF** and **Mach-O** only (see
-> [elf-inspection.md](elf-inspection.md)); this document specifies the Windows
-> **PE** container so the implementation can follow it. Platform support is
-> Linux + macOS; Windows is not available yet.
+> **Status: reading implemented; emission pending.** AMC locates and reads the PE
+> `.abix` region through the capability layer ([binary-image.md](binary-image.md),
+> `ABIX/Binary/PE.h`). Emitting the section from `amc generate` (the
+> `__attribute__` / `#pragma section` snippets below) and the automated PE test
+> are the remaining pieces. Platform support is Linux + macOS; Windows is not
+> available yet.
 
 <details>
 
@@ -79,6 +80,7 @@ struct AbixPeHeader {              // 24 bytes
     uint32_t flags;                // bit0 = NAMES_SECTION_PRESENT
     uint32_t region_offset;        // from the section start; 24
     uint32_t region_size;          // Metadata Region byte length
+    uint32_t reserved;             // 0 (keeps region_offset 8-byte aligned)
 };
 ```
 
@@ -265,8 +267,10 @@ amc metadata app.abix -o region.abixmeta
 
 ## Limitations
 
-- **Not implemented yet.** This document is the design; `detect_binary_format`
-  and `find_binary_section` currently handle ELF and Mach-O only.
+- **Emission pending.** Reading works — `detect_binary_format` and
+  `find_binary_section` handle ELF, Mach-O and PE through the
+  [BinaryImage layer](binary-image.md); `amc generate` does not yet emit the
+  `.abix` section into a PE image.
 - **PE32+ first.** 64-bit PE (`0x20B`) is the primary target; PE32 (`0x10B`) is
   structurally supported because the region is pointer-free and word-size
   agnostic.
