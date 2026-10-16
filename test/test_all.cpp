@@ -12,3 +12,4 @@
 #include "rcu_config_test.cpp"
 #include "concurrency_test.cpp"
 #include "atomic_test.cpp"
+#include "binary_image_test.cpp"
