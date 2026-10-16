@@ -51,8 +51,18 @@ def is_symlink_to_clang(path: str) -> bool:
     return "clang" in target.lower() or os.path.basename(target).startswith("clang")
 
 
+def variants_dir(build_type: str) -> Path:
+    """Stage directory for the cross-toolchain variants.
+
+    The Catch2 suites look for `./variants/<tag>/<dll>/...` relative to their
+    working directory, which is `<build>/<build_type>/bin` for both ctest and
+    tools/build.py.
+    """
+    return PROJECT_ROOT / "build" / build_type / "bin" / "variants"
+
+
 def build_one(compiler: str, tag: str, build_type: str) -> None:
-    out_dir = PROJECT_ROOT / "build" / build_type / "variants" / tag
+    out_dir = variants_dir(build_type) / tag / "version_dll"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "version_dll.dll"
     src = PROJECT_ROOT / "dlls" / "version_dll.cpp"
@@ -200,9 +210,14 @@ def run_msvc(cmd: list[str], env: dict[str, str]) -> None:
 
 
 def build_msvc_variant(
-    cl: str, env: dict[str, str], dll_name: str, src_name: str, link_libs: list[str]
+    cl: str,
+    env: dict[str, str],
+    dll_name: str,
+    src_name: str,
+    link_libs: list[str],
+    build_type: str,
 ) -> Path:
-    out_dir = PROJECT_ROOT / "variants" / MSVC_TAG / dll_name
+    out_dir = variants_dir(build_type) / MSVC_TAG / dll_name
     out_dir.mkdir(parents=True, exist_ok=True)
     src = PROJECT_ROOT / "dlls" / f"{src_name}.cpp"
     obj = out_dir / f"{src_name}.obj"
@@ -232,16 +247,11 @@ def build_msvc_variant(
 
     for suffix in (".obj", ".exp", ".lib"):
         (out_dir / f"{src_name}{suffix}").unlink(missing_ok=True)
-
-    stage = PROJECT_ROOT / "build" / "plugins" / "variants" / MSVC_TAG / dll_name
-    stage.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(dll, stage / f"{dll_name}.dll")
     print(f"    Generated: {dll}")
-    print(f"    Copied to: {stage}")
     return dll
 
 
-def build_msvc_variants(vs_path: str | None) -> None:
+def build_msvc_variants(vs_path: str | None, build_type: str) -> None:
     """Build the MSVC cross-toolchain variants. Windows only."""
     print("\n== MSVC cross-toolchain variants ==")
     try:
@@ -267,7 +277,7 @@ def build_msvc_variants(vs_path: str | None) -> None:
 
     for dll_name, src_name, link_libs in MSVC_VARIANTS:
         try:
-            build_msvc_variant(cl, environment, dll_name, src_name, link_libs)
+            build_msvc_variant(cl, environment, dll_name, src_name, link_libs, build_type)
         except RuntimeError as exc:
             print(
                 f"  [Warning] {dll_name} build failed ({exc}); "
@@ -310,7 +320,7 @@ def main() -> None:
         build_one(clang, "tool_y", args.build_type)
 
     if sys.platform == "win32" and args.with_msvc:
-        build_msvc_variants(args.vs_path or None)
+        build_msvc_variants(args.vs_path or None, args.build_type)
 
     print("== Variant build complete ==")
 
