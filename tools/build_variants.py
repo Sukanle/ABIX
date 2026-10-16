@@ -25,9 +25,10 @@ CLANG_FALLBACKS = [
 
 # Windows-only cross-toolchain variant built with the MSVC toolchain (cl.exe).
 MSVC_TAG = "msvc_x64"
+# (dll name, source name, extra link libraries)
 MSVC_VARIANTS = [
-    ("version_dll", "version_dll"),
-    ("resource_dll", "resource_dll"),
+    ("version_dll", "version_dll", []),
+    ("resource_dll", "resource_dll", ["ws2_32.lib"]),
 ]
 # Entries injected by an MSYS2/MinGW shell must not leak into the MSVC build:
 # the MinGW headers/libraries conflict with the Visual C++ runtime.
@@ -153,11 +154,16 @@ def msvc_environment(vs_path: str) -> dict[str, str]:
     finally:
         os.unlink(script)
 
+    # `cmd`'s `set` echoes each variable with whatever case the parent process
+    # used (`Path` vs `PATH`), so normalise the names: Windows environment
+    # lookup is case-insensitive and the caller indexes INCLUDE/LIB/PATH in
+    # upper case. Lines like `=C:=...` (drive-local variables) are skipped.
     environment: dict[str, str] = {}
     for line in result.stdout.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            environment[key] = value
+        key, separator, value = line.partition("=")
+        if not separator or not key:
+            continue
+        environment[key.upper()] = value
     if result.returncode != 0 or "INCLUDE" not in environment:
         raise RuntimeError("could not obtain the Visual C++ environment")
     return environment
@@ -194,7 +200,7 @@ def run_msvc(cmd: list[str], env: dict[str, str]) -> None:
 
 
 def build_msvc_variant(
-    cl: str, env: dict[str, str], dll_name: str, src_name: str
+    cl: str, env: dict[str, str], dll_name: str, src_name: str, link_libs: list[str]
 ) -> Path:
     out_dir = PROJECT_ROOT / "variants" / MSVC_TAG / dll_name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -222,7 +228,7 @@ def build_msvc_variant(
         ],
         env,
     )
-    run_msvc([cl, "/nologo", str(obj), f"/Fe{dll}", "/LD"], env)
+    run_msvc([cl, "/nologo", str(obj), f"/Fe{dll}", "/LD", *link_libs], env)
 
     for suffix in (".obj", ".exp", ".lib"):
         (out_dir / f"{src_name}{suffix}").unlink(missing_ok=True)
@@ -259,9 +265,9 @@ def build_msvc_variants(vs_path: str | None) -> None:
         return
     print(f"  cl: {cl}")
 
-    for dll_name, src_name in MSVC_VARIANTS:
+    for dll_name, src_name, link_libs in MSVC_VARIANTS:
         try:
-            build_msvc_variant(cl, environment, dll_name, src_name)
+            build_msvc_variant(cl, environment, dll_name, src_name, link_libs)
         except RuntimeError as exc:
             print(
                 f"  [Warning] {dll_name} build failed ({exc}); "
