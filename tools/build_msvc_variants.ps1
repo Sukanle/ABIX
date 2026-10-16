@@ -1,6 +1,5 @@
 param(
-    [string]$VsInstanceId   = "fdfdfdfd",
-    [string]$VsPath         = "C:\Microsoft Visual Studio\2022\Community"
+    [string]$VsPath
 )
 $ErrorActionPreference = "Stop"
 
@@ -10,10 +9,21 @@ $DllSrc  = Join-Path $Root "dlls"
 $Variant = Join-Path $Root "variants"
 $Tag     = "msvc_x64"
 
+# Locate Visual Studio with vswhere (the newest installation wins). An explicit
+# -VsPath argument overrides discovery.
+if (-not $VsPath) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found: $vswhere" }
+    $VsPath = & $vswhere -latest -property installationPath | Select-Object -First 1
+    if (-not $VsPath) { throw "vswhere could not locate a Visual Studio installation" }
+}
+$VsPath = $VsPath.Trim()
+Write-Host "== Visual Studio: $VsPath =="
+
 $devshell = Join-Path $VsPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
 if (-not (Test-Path $devshell)) { throw "VsDevShell not found: $devshell" }
 Import-Module $devshell
-Enter-VsDevShell $VsInstanceId -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' 2>&1 | Out-Null
+Enter-VsDevShell -VsInstallPath $VsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' 2>&1 | Out-Null
 if (-not $env:VCINSTALLDIR) { throw "VC environment not obtained after Enter-VsDevShell (VCINSTALLDIR is empty)" }
 
 $env:INCLUDE = (($env:INCLUDE -split ';') | Where-Object { $_ -and $_ -notmatch 'msys2|mingw|ucrt64' }) -join ';'
