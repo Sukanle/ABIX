@@ -122,6 +122,7 @@ AI 和 Agent 集成。
 | [type-model_zh.md](development/type-model_zh.md) | [type-model.md](development/type-model.md) | ABI 事实与源语言类型的边界，以及逐 target 生成模型 |
 | [competitors_zh.md](development/competitors_zh.md) | [competitors.md](development/competitors.md) | 竞品分析 |
 | [roadmap_zh.md](development/roadmap_zh.md) | [roadmap.md](development/roadmap.md) | 范围与排期 |
+| [testing_zh.md](development/testing_zh.md) | [testing.md](development/testing.md) | 完整测试流程、各层目的与预期结果 |
 
 ## 生态
 

@@ -123,6 +123,7 @@ Project design, comparison, and roadmap.
 | [type-model.md](development/type-model.md) | [type-model_zh.md](development/type-model_zh.md) | ABI facts vs source-language types, and the per-target generation model |
 | [competitors.md](development/competitors.md) | [competitors_zh.md](development/competitors_zh.md) | competitive landscape analysis |
 | [roadmap.md](development/roadmap.md) | [roadmap_zh.md](development/roadmap_zh.md) | scope and sequencing |
+| [testing.md](development/testing.md) | [testing_zh.md](development/testing_zh.md) | the complete test flow, per-tier purpose and expected results |
 
 ## Ecosystem
 
