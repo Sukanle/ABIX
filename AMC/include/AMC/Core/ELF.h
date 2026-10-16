@@ -51,6 +51,7 @@ bool read_binary_sections(const uint8_t *data, size_t size, std::vector<BinarySe
 
 bool read_elf_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error);
 bool read_macho_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error);
+bool read_pe_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error);
 
 // Translates a canonical ABIX section name in the ELF spelling (".abix.metadata")
 // to the native spelling of `format`. Mach-O section names are limited to 16
@@ -71,6 +72,8 @@ bool find_binary_section(
 bool find_elf_section(
     const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error);
 bool find_macho_section(
+    const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error);
+bool find_pe_section(
     const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error);
 
 }   // namespace amc

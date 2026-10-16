@@ -117,6 +117,22 @@ bool read_macho_sections(const uint8_t *data, size_t size, std::vector<BinarySec
     return true;
 }
 
+bool read_pe_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error) {
+    error.clear();
+    if (!binary::is_pe(data, size)) {
+        error = "not a PE image";
+        return false;
+    }
+    binary::BinaryImage image;
+    if (!binary::parse_binary_image(data, size, image, error)) return false;
+    if (image.format() != binary::Format::pe) {
+        error = "not a PE image";
+        return false;
+    }
+    collect_sections(image, sections);
+    return true;
+}
+
 bool read_binary_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error) {
     binary::BinaryImage image;
     if (!binary::parse_binary_image(data, size, image, error)) {
@@ -154,6 +170,22 @@ bool find_macho_section(
     if (!binary::parse_binary_image(data, size, image, error)) return false;
     if (image.format() != binary::Format::macho) {
         error = "not a Mach-O file";
+        return false;
+    }
+    return find_in_sections(image.sections(), name, data, size, content, error);
+}
+
+bool find_pe_section(
+    const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error) {
+    error.clear();
+    if (!binary::is_pe(data, size)) {
+        error = "not a PE image";
+        return false;
+    }
+    binary::BinaryImage image;
+    if (!binary::parse_binary_image(data, size, image, error)) return false;
+    if (image.format() != binary::Format::pe) {
+        error = "not a PE image";
         return false;
     }
     return find_in_sections(image.sections(), name, data, size, content, error);
