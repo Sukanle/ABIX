@@ -29,6 +29,8 @@ MSVC_TAG = "msvc_x64"
 MSVC_VARIANTS = [
     ("version_dll", "version_dll", []),
     ("resource_dll", "resource_dll", ["ws2_32.lib"]),
+    ("interface_dll", "interface_dll", []),
+    ("owner_dll", "owner_dll", []),
 ]
 # Entries injected by an MSYS2/MinGW shell must not leak into the MSVC build:
 # the MinGW headers/libraries conflict with the Visual C++ runtime.
