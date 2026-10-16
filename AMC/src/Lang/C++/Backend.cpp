@@ -496,7 +496,7 @@ int backend(const char *input, const char *output) {
     // names, so it never affects consumers that only want the projection.
     {
         std::string check_path(output);
-        const auto slash = check_path.find_last_of('/');
+        const auto slash = check_path.find_last_of("/\\");
         check_path = slash == std::string::npos ? std::string("amc_abi_check.hpp")
                                                 : check_path.substr(0, slash + 1) + "amc_abi_check.hpp";
         auto check = fmt::output_file(check_path);
