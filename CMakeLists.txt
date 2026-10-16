@@ -349,6 +349,9 @@ if(AMC_BUILD)
             add_test(NAME amc-integration-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/integration_test.py
                              ${CMAKE_BINARY_DIR}/bin)
+            add_test(NAME amc-feature-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/feature_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME amc-cmake-integration-test
                 COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/cmake_integration_test.py

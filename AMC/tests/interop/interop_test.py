@@ -27,13 +27,17 @@ import tempfile
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def exe_name(base: str) -> str:
+    return base + ".exe" if sys.platform == "win32" else base
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: interop_test.py <amc_bin_dir> [source_root]", file=sys.stderr)
         return 2
 
     bin_dir = os.path.abspath(sys.argv[1])
-    amc = os.path.join(bin_dir, "amc")
+    amc = os.path.join(bin_dir, exe_name("amc"))
 
     cxx = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("c++")
     rustc = shutil.which("rustc")
@@ -45,6 +49,10 @@ def main() -> int:
         lib_name, load_env = "libinterop_demo.dylib", "DYLD_LIBRARY_PATH"
     elif sys.platform.startswith("linux"):
         lib_name, load_env = "libinterop_demo.so", "LD_LIBRARY_PATH"
+    elif sys.platform == "win32":
+        # Windows resolves the DLL from the executable's directory, so no
+        # loader-path variable is needed at run time.
+        lib_name, load_env = "interop_demo.dll", None
     else:
         print(f"  [SKIP] unsupported platform for the interop demo: {sys.platform}")
         return 0
@@ -70,10 +78,14 @@ def main() -> int:
     try:
         # 1. Native shared library with the exported C ABI.
         lib = os.path.join(work, lib_name)
-        result = run(
-            [cxx, "-std=c++17", "-shared", "-fPIC", "-O2",
-             os.path.join(SCRIPT_DIR, "demo_lib.cpp"), "-o", lib]
-        )
+        demo_lib = os.path.join(SCRIPT_DIR, "demo_lib.cpp")
+        if sys.platform == "win32":
+            # Emit the import library rustc/zig link against alongside the DLL.
+            implib = os.path.join(work, "libinterop_demo.dll.a")
+            result = run([cxx, "-std=c++17", "-shared", "-O2", demo_lib, "-o", lib,
+                          f"-Wl,--out-implib,{implib}"])
+        else:
+            result = run([cxx, "-std=c++17", "-shared", "-fPIC", "-O2", demo_lib, "-o", lib])
         check(result.returncode == 0, "native demo library built",
               result.stderr.strip()[:2000])
 
@@ -117,7 +129,7 @@ def main() -> int:
         #    (no hand-written `-l` on the command line).
         consumer_src = os.path.join(work, "consumer.rs")
         shutil.copyfile(os.path.join(SCRIPT_DIR, "consumer.rs"), consumer_src)
-        consumer = os.path.join(work, "interop_consumer")
+        consumer = os.path.join(work, exe_name("interop_consumer"))
         result = run([rustc, "--edition", "2021", "-O", consumer_src,
                       "--cfg", "abix_link", "-L", work, "-o", consumer])
         check(result.returncode == 0, "Rust consumer compiled against the projection",
@@ -126,7 +138,8 @@ def main() -> int:
         # 5. Run the consumer against the native library.
         if os.path.isfile(consumer):
             env = dict(os.environ)
-            env[load_env] = work + os.pathsep + env.get(load_env, "")
+            if load_env:
+                env[load_env] = work + os.pathsep + env.get(load_env, "")
             result = run([consumer], env=env)
             check(result.returncode == 0 and "interop ok" in result.stdout,
                   "Rust consumer ran the native library",
@@ -150,7 +163,7 @@ def main() -> int:
 
             zig_src = os.path.join(work, "zig_consumer.zig")
             shutil.copyfile(os.path.join(SCRIPT_DIR, "zig_consumer.zig"), zig_src)
-            zig_exe = os.path.join(work, "zig_consumer")
+            zig_exe = os.path.join(work, exe_name("zig_consumer"))
             result = run([zig, "build-exe", zig_src, "-lc", "-L", work, "-linterop_demo",
                           "-femit-bin=" + zig_exe])
             check(result.returncode == 0, "Zig consumer compiled against the projection",
@@ -158,7 +171,8 @@ def main() -> int:
 
             if os.path.isfile(zig_exe):
                 env = dict(os.environ)
-                env[load_env] = work + os.pathsep + env.get(load_env, "")
+                if load_env:
+                    env[load_env] = work + os.pathsep + env.get(load_env, "")
                 result = run([zig_exe], env=env)
                 check(result.returncode == 0 and "zig interop ok" in (result.stdout + result.stderr),
                       "Zig consumer ran the native library",
