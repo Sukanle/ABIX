@@ -38,7 +38,7 @@ class TestRunner:
         self.keep_artifacts = keep_artifacts
 
         bd = tempfile.mkdtemp(
-            prefix="amc-integration.", dir=os.environ.get("TMPDIR", "/tmp")
+            prefix="amc-integration.", dir=os.environ.get("TMPDIR")
         )
         self.build_dir = bd
         self.gen_separate = os.path.join(bd, "autogen-separate")
@@ -65,7 +65,13 @@ class TestRunner:
     # helpers
     # ------------------------------------------------------------------
     def run(self, cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
-        """Run a command and return the CompletedProcess instance."""
+        """Run a command and return the CompletedProcess instance.
+
+        Text streams are decoded as UTF-8 regardless of the platform locale, so
+        the suite behaves identically on Windows (often GBK) and POSIX.
+        """
+        kwargs.setdefault("encoding", "utf-8")
+        kwargs.setdefault("errors", "replace")
         return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
     def check_output(self, msg: str, cmd: list[str]) -> bool:
@@ -85,6 +91,16 @@ class TestRunner:
     def has_binary(self, name: str) -> bool:
         """Return True if the named binary is on PATH (shutil.which)."""
         return shutil.which(name) is not None
+
+    @staticmethod
+    def elf_container_supported() -> bool:
+        """Return True when the host produces ELF/Mach-O images AMC can scan.
+
+        AMC's binary section reader handles ELF and Mach-O only; on Windows the
+        toolchain produces PE images, which have no GNU build id and no
+        `.abix.metadata` section to scan.
+        """
+        return sys.platform.startswith("linux") or sys.platform == "darwin"
 
     def section_names(self, path: str):
         """Return a section listing using canonical ABIX section names.
@@ -173,7 +189,7 @@ class TestRunner:
         if not self.check_output("amc-dump JSON succeeded", cmd):
             return False
 
-        with open(dump_json) as f:
+        with open(dump_json, encoding="utf-8") as f:
             content = f.read()
 
         patterns = [
@@ -214,7 +230,7 @@ class TestRunner:
             return False
         self.pass_("generated header exists")
 
-        with open(header) as f:
+        with open(header, encoding="utf-8") as f:
             content = f.read()
 
         patterns = [
@@ -306,7 +322,7 @@ class TestRunner:
             return False
 
         # dump
-        with open(m8_dump, "w") as f:
+        with open(m8_dump, "w", encoding="utf-8") as f:
             result_dump = self.run([self.bin_path("amc-dump"), m8_abix])
             f.write(result_dump.stdout)
 
@@ -316,7 +332,7 @@ class TestRunner:
 
         self.pass_("M8 fixture frontend and dump succeeded")
 
-        with open(m8_dump) as f:
+        with open(m8_dump, encoding="utf-8") as f:
             content = f.read()
 
         patterns = [
@@ -417,7 +433,7 @@ class TestRunner:
             ok = False
 
         # amc-dump diff (text)
-        with open(map_dump, "w") as f:
+        with open(map_dump, "w", encoding="utf-8") as f:
             r = self.run([self.bin_path("amc-dump"), "diff", map_v1, map_v2])
             f.write(r.stdout)
         if r.returncode != 0:
@@ -431,12 +447,12 @@ class TestRunner:
             ok = False
 
         # check patterns
-        with open(map_dump) as f:
+        with open(map_dump, encoding="utf-8") as f:
             dump_content = f.read()
         if not self.grep(dump_content, r"map_compatible"):
             ok = False
 
-        with open(map_dump_json) as f:
+        with open(map_dump_json, encoding="utf-8") as f:
             json_content = f.read()
         if not self.grep(json_content, r'"compatibility"'):
             ok = False
@@ -509,7 +525,7 @@ class TestRunner:
         r_inspect = self.run([self.bin_path("amc"), "inspect", self_abix])
 
         # check header patterns
-        with open(self_hpp) as f:
+        with open(self_hpp, encoding="utf-8") as f:
             hpp_content = f.read()
 
         all_ok = True
@@ -603,7 +619,7 @@ class TestRunner:
 
         self.pass_("AMC core self-description artifact generated and validated")
 
-        with open(amc_self_hpp) as f:
+        with open(amc_self_hpp, encoding="utf-8") as f:
             hpp_content = f.read()
 
         all_ok = True
@@ -876,7 +892,7 @@ class TestRunner:
         if not os.path.isfile(meta):
             self.fail("amc build did not emit the .abix.meta sidecar")
             return False
-        with open(meta) as handle:
+        with open(meta, encoding="utf-8") as handle:
             content = handle.read()
         if (
             "[metadata]" in content
@@ -1123,6 +1139,9 @@ class TestRunner:
 
     def step22_symbol_server(self) -> bool:
         """Step 22: local symbol server publishes/fetches by BuildID."""
+        if not self.elf_container_supported():
+            info("ELF/Mach-O build id unavailable, skipping the symbol server test")
+            return True
         if not self.has_binary("clang++") or not self.has_binary("readelf"):
             info("clang++/readelf not found, skipping the symbol server test")
             return True
@@ -1386,6 +1405,9 @@ class TestRunner:
 
     def step24_region_to_module(self) -> bool:
         """Step 24: AMC reads the embedded region back as an AbiModule."""
+        if not self.elf_container_supported():
+            info("ELF/Mach-O embedded region unavailable, skipping region decoding test")
+            return True
         if not self.has_binary("clang++"):
             info("clang++ not found, skipping region decoding test")
             return True
@@ -1499,7 +1521,7 @@ class TestRunner:
         if generated.returncode != 0 or not os.path.isfile(header):
             self.fail("amc generate -l lua did not emit a contract header")
             return False
-        with open(header) as handle:
+        with open(header, encoding="utf-8") as handle:
             content = handle.read()
         if "aue::Contract" not in content or "amc_test_compute" not in content:
             self.fail("generated Lua contract is missing the ABIX function set")
@@ -1516,7 +1538,7 @@ class TestRunner:
             info("clang++ not found, skipping the generated contract compile check")
             return True
         source = os.path.join(self.build_dir, "lua_contract_check.cpp")
-        with open(source, "w") as handle:
+        with open(source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "amc_lua_contract.hpp"\n'
                 'extern "C" int amc_test_create(lua_State*) { return 0; }\n'
@@ -1567,7 +1589,7 @@ class TestRunner:
             return False
 
         source = os.path.join(self.build_dir, "generated_dispatch.cpp")
-        with open(source, "w") as handle:
+        with open(source, "w", encoding="utf-8") as handle:
             handle.write("""
 #include "amc_lua_contract.hpp"
 #include "Aue/Aue.h"
@@ -1753,7 +1775,7 @@ int main() {
         ):
             self.fail("could not generate the counter contract")
             return False
-        with open(contract) as handle:
+        with open(contract, encoding="utf-8") as handle:
             contract_text = handle.read()
         if (
             '"new", 1, counter_new' not in contract_text
@@ -1769,7 +1791,7 @@ int main() {
         ).returncode != 0 or not os.path.isfile(script):
             self.fail("could not generate the Lua conformance script")
             return False
-        with open(script) as handle:
+        with open(script, encoding="utf-8") as handle:
             script_text = handle.read()
         if "counter._abi_hash" not in script_text:
             self.fail("generated conformance script does not check the ABI hash")
@@ -1788,6 +1810,9 @@ int main() {
 
     def step29_lldb_abix(self) -> bool:
         """Step 29: the LLDB `abix` command queries the embedded region."""
+        if not self.elf_container_supported():
+            info("ELF/Mach-O embedded region unavailable, skipping the LLDB integration test")
+            return True
         if not self.has_binary("clang++") or not self.has_binary("lldb"):
             info("clang++/lldb not found, skipping the LLDB integration test")
             return True
@@ -1962,6 +1987,9 @@ int main() {
 
     def step32_go_to_definition(self) -> bool:
         """Step 32: LLDB go-to-definition via BuildID -> symbol server -> .abix."""
+        if not self.elf_container_supported():
+            info("ELF/Mach-O build id unavailable, skipping go-to-definition test")
+            return True
         if not (
             self.has_binary("clang++")
             and self.has_binary("lldb")
@@ -2054,11 +2082,14 @@ int main() {
 
     def step33_lldb_cast(self) -> bool:
         """Step 33: LLDB `abix cast` interprets memory via AMC layout data."""
+        if not self.elf_container_supported():
+            info("ELF/Mach-O embedded region unavailable, skipping the LLDB cast test")
+            return True
         if not (self.has_binary("clang++") and self.has_binary("lldb")):
             info("clang++/lldb not found, skipping the LLDB cast test")
             return True
         source = os.path.join(self.build_dir, "cast_prog.cpp")
-        with open(source, "w") as handle:
+        with open(source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "amc_generated.hpp"\n'
                 '#include "amc_test_types.hpp"\n'
@@ -2136,7 +2167,7 @@ int main() {
         if generated.returncode != 0 or not os.path.isfile(adapter):
             self.fail("amc adapter did not generate a file")
             return False
-        with open(adapter) as handle:
+        with open(adapter, encoding="utf-8") as handle:
             text = handle.read()
         if (
             "copy_field" not in text
@@ -2151,7 +2182,7 @@ int main() {
             info("clang++ not found, skipping the adapter compile check")
             return True
         source = os.path.join(build, "adapter_check.cpp")
-        with open(source, "w") as handle:
+        with open(source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "adapter.hpp"\n'
                 "struct V1 { int value; };\n"
@@ -2201,7 +2232,7 @@ int main() {
         ):
             self.fail("amc adapter failed for the conversion fixture")
             return False
-        with open(conv_adapter) as handle:
+        with open(conv_adapter, encoding="utf-8") as handle:
             converted = handle.read()
         if "convert_int" not in converted or "convert_float" not in converted:
             self.fail("conversion adapter is missing convert_int / convert_float")
@@ -2209,7 +2240,7 @@ int main() {
         self.pass_("amc adapter generates integer and float conversions")
 
         conv_source = os.path.join(build, "convert_check.cpp")
-        with open(conv_source, "w") as handle:
+        with open(conv_source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "convert.hpp"\n'
                 "struct V1 { int a; float b; };\n"
@@ -2242,7 +2273,7 @@ int main() {
         ):
             self.fail("amc adapter --typed failed")
             return False
-        with open(typed_header) as handle:
+        with open(typed_header, encoding="utf-8") as handle:
             typed_text = handle.read()
         if (
             "::skl::abix::bridge::Adapter<" not in typed_text
@@ -2266,7 +2297,7 @@ int main() {
             self.fail("could not generate the C++ projection for the typed adapter")
             return False
         typed_source = os.path.join(build, "typed_check.cpp")
-        with open(typed_source, "w") as handle:
+        with open(typed_source, "w", encoding="utf-8") as handle:
             handle.write(
                 "#define ABIX_ADAPTER_TYPED 1\n"
                 '#include "projection/amc_generated.hpp"\n'
@@ -2301,6 +2332,9 @@ int main() {
 
     def step35_abi_shim(self) -> bool:
         """Step 35: `amc adapter --shim` builds a loadable shim library."""
+        if not self.elf_container_supported():
+            info("POSIX dlopen/ELF shim unavailable, skipping the ABI shim test")
+            return True
         if not (self.has_binary("clang++") and self.has_binary("clang")):
             info("clang++/clang not found, skipping the ABI shim test")
             return True
@@ -2329,7 +2363,7 @@ int main() {
         ):
             self.fail("amc adapter --shim did not generate a source file")
             return False
-        with open(shim_cpp) as handle:
+        with open(shim_cpp, encoding="utf-8") as handle:
             text = handle.read()
         if "abix_adapter_apply" not in text or "#pragma once" in text:
             self.fail("shim source is not a translation unit exposing a C ABI")
@@ -2354,7 +2388,7 @@ int main() {
             return False
 
         host_source = os.path.join(build, "host.c")
-        with open(host_source, "w") as handle:
+        with open(host_source, "w", encoding="utf-8") as handle:
             handle.write(
                 "#include <dlfcn.h>\n"
                 "struct V1 { int value; };\n"
@@ -2388,7 +2422,7 @@ int main() {
         if not os.path.isfile(check_header):
             self.fail("amc generate did not emit amc_abi_check.hpp")
             return False
-        with open(check_header) as handle:
+        with open(check_header, encoding="utf-8") as handle:
             text = handle.read()
         if (
             "ABIX ABI check" not in text
@@ -2414,7 +2448,7 @@ int main() {
 
         # A native declaration that matches the contract must compile cleanly.
         ok_source = os.path.join(check_dir, "abi_check_ok.cpp")
-        with open(ok_source, "w") as handle:
+        with open(ok_source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "amc_test_types.hpp"\n'
                 '#include "amc_abi_check.hpp"\n'
@@ -2433,7 +2467,7 @@ int main() {
         # A drifted declaration (extra field) must be rejected at compile time,
         # which is exactly what clangd surfaces while editing.
         drift_header = os.path.join(check_dir, "abi_check_drift.hpp")
-        with open(drift_header, "w") as handle:
+        with open(drift_header, "w", encoding="utf-8") as handle:
             handle.write(
                 "#pragma once\n#include <cstdint>\n"
                 "struct AmcTestFoo { int32_t x; double y; int32_t z; };\n"
@@ -2441,7 +2475,7 @@ int main() {
                 "enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n"
             )
         drift_source = os.path.join(check_dir, "abi_check_drift.cpp")
-        with open(drift_source, "w") as handle:
+        with open(drift_source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "abi_check_drift.hpp"\n'
                 '#include "amc_abi_check.hpp"\n'
@@ -2466,15 +2500,15 @@ int main() {
         # nor the total size, so only the width assertion can catch it -- this
         # is the part of the LayoutHash comparison the offset checks miss.
         width_header = os.path.join(check_dir, "abi_check_width.hpp")
-        with open(width_header, "w") as handle:
+        with open(width_header, "w", encoding="utf-8") as handle:
             handle.write(
                 "#pragma once\n#include <cstdint>\n"
-                "struct AmcTestFoo { long x; double y; };\n"
+                "struct AmcTestFoo { int64_t x; double y; };\n"
                 "struct AmcTestBar { int32_t a; double b; int32_t c; };\n"
                 "enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n"
             )
         width_source = os.path.join(check_dir, "abi_check_width.cpp")
-        with open(width_source, "w") as handle:
+        with open(width_source, "w", encoding="utf-8") as handle:
             handle.write(
                 '#include "abi_check_width.hpp"\n'
                 '#include "amc_abi_check.hpp"\n'

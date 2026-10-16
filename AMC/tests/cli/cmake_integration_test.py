@@ -27,7 +27,7 @@ def main() -> None:
     amc_root = os.path.abspath(args.source_root)
 
     build_dir = tempfile.mkdtemp(
-        prefix="amc-cmake.", dir=os.environ.get("TMPDIR", "/tmp")
+        prefix="amc-cmake.", dir=os.environ.get("TMPDIR")
     )
     print(f"  [INFO] BUILD_DIR: {build_dir}")
 

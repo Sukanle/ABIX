@@ -102,11 +102,12 @@ macro(abix_find_dependencies)
                         "(install the full LLVM package including libclang-cpp)")
       elseif(_abix_llvm_req GREATER -1)
         message(FATAL_ERROR "LLVM / Clang not found — required by the project configuration.  "
-                            "Install LLVM via Homebrew, or set LLVM_DIR / Clang_DIR on the command line.")
+                            "Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 LLVM package, or set "
+                            "LLVM_DIR / Clang_DIR on the command line.")
       else()
         message(STATUS "LLVM / Clang not found — AMC (ABI Metadata Compiler) "
-                        "will not be built.  Install LLVM via Homebrew, or set "
-                        "LLVM_DIR / Clang_DIR on the command line.")
+                        "will not be built.  Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 "
+                        "LLVM package, or set LLVM_DIR / Clang_DIR on the command line.")
       endif()
     endif()
   endif()
@@ -158,9 +159,9 @@ macro(abix_find_dependencies)
       set(ABIX_tomlplusplus_FOUND FALSE)
       if(_abix_toml_req GREATER -1)
         message(FATAL_ERROR "toml++ not found — required by the project configuration.  "
-                            "Install: brew install tomlplusplus")
+                            "Install: brew install tomlplusplus, or vcpkg install tomlplusplus")
       else()
-        message(STATUS "toml++ not found — install via: brew install tomlplusplus")
+        message(STATUS "toml++ not found — install via: brew install tomlplusplus, or vcpkg install tomlplusplus")
       endif()
     endif()
   endif()

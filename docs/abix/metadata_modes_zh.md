@@ -213,7 +213,7 @@ Executable / Shared Library
 具体平台实现：
 - **ELF**：`.abix.manifest` / `.abix.desc` / `.abix.hash` / `.abix.names`
 - **Mach-O**：`__DATA,__abix_manifest` / `__DATA,__abix_desc` 等
-- **PE**：`.abix$m` / `.abix$d` / `.abix$h` / `.abix$n`
+- **PE**：`.abix`（私有头 + Metadata Region）/ `.abix.n`（names，可剥离）。详见 [pe-inspection_zh.md](../architecture/pe-inspection_zh.md)。
 
 > ABIX 规范不绑定 ELF section 名称。`.abix.desc` 是 ELF 实现，不是 ABIX 协议本身。
 > 抽象层应称为 **ABIX Metadata Region**。

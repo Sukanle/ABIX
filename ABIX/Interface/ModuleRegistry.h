@@ -75,6 +75,12 @@ constexpr const char *to_string(ModuleStatus status) noexcept {
 //
 // The registry does not own the manifest or the adapters: both are static
 // storage inside the provider, valid while the module is loaded.
+//
+// Threading: the registry is a bind-time structure and is **not** internally
+// synchronized. Concurrent register/unregister/lookup must be serialized by the
+// caller (lookups return pointers into an array that compacts on unregister).
+// The lifecycle half is safe to drive from many threads: leases may be acquired
+// and released concurrently with `unregister_module`.
 template<size_t ModuleCapacity = 16, size_t InterfaceCapacity = 128>
 class ModuleRegistry {
 public:
@@ -95,13 +101,21 @@ public:
         if (_module_count == ModuleCapacity) return ModuleStatus::capacity_exceeded;
         if (_interface_count + manifest.interface_count > InterfaceCapacity)
             return ModuleStatus::interface_capacity_exceeded;
+
+        // Slots are not compacted on unregister, so append to the first free slot
+        // rather than to index `_module_count` (which can overwrite a live slot
+        // whenever a lower-indexed slot was freed).
+        size_t slot_index = 0;
+        while (slot_index < ModuleCapacity && _modules[slot_index].used) ++slot_index;
+        if (slot_index == ModuleCapacity) return ModuleStatus::capacity_exceeded;
+
         if (!activate_module(control)) return ModuleStatus::invalid_state;
 
         control.id = next_module_instance_id();
-        _modules[_module_count].control = &control;
-        _modules[_module_count].begin = static_cast<uint32_t>(_interface_count);
-        _modules[_module_count].count = manifest.interface_count;
-        _modules[_module_count].used = true;
+        _modules[slot_index].control = &control;
+        _modules[slot_index].begin = static_cast<uint32_t>(_interface_count);
+        _modules[slot_index].count = manifest.interface_count;
+        _modules[slot_index].used = true;
         ++_module_count;
         for (uint32_t i = 0; i < manifest.interface_count; ++i) {
             const InterfaceManifestEntry &entry = manifest.interfaces[i];

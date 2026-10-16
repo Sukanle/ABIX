@@ -57,10 +57,23 @@ constexpr const char *to_string(ModuleState state) noexcept {
 
 // Caller-owned lifecycle control for one loaded module instance. The loader
 // (or the test harness) owns it and hands its address to the registry. Keeping
-// it out of the registry lets the loader tie it to the platform module handle.
+// it out of the registry lets the loader tie it to the platform module handle so
+// a lease can hold an OS-level reference (see `pin`/`unpin` below).
 struct ModuleControl {
     ModuleInstanceId id = invalid_module_instance;
     const char *name = nullptr;
+
+    // Loader-owned: the platform handle (HMODULE / dlopen handle) and, on POSIX,
+    // the load path (a dlopen handle alone cannot re-open an object, so the path
+    // is needed to take a second OS reference). `pin_state` is scratch the
+    // platform keeps between pin and unpin. The hooks run on the 0<->1 lease
+    // transitions and may be null (the lease is then logical only).
+    void *module_handle = nullptr;
+    const char *module_path = nullptr;
+    void *pin_state = nullptr;
+    bool (*pin)(ModuleControl &control) = nullptr;
+    void (*unpin)(ModuleControl &control) = nullptr;
+
     std::atomic<uint32_t> state{static_cast<uint32_t>(ModuleState::loading)};
     std::atomic<uint32_t> leases{0};
 };
@@ -82,18 +95,28 @@ inline bool activate_module(ModuleControl &control) noexcept {
 }
 
 // Acquire a lease only while the module is active. The state is re-checked
-// after the increment so a concurrent begin_unload cannot be missed.
+// after the increment so a concurrent begin_unload cannot be missed. The first
+// lease takes an OS-level reference (`pin`) so the module stays mapped until the
+// last lease is released.
 inline bool try_acquire_lease(ModuleControl &control) noexcept {
     if (control.state.load(std::memory_order_acquire) != static_cast<uint32_t>(ModuleState::active)) return false;
-    control.leases.fetch_add(1, std::memory_order_acq_rel);
+    const uint32_t before = control.leases.fetch_add(1, std::memory_order_acq_rel);
     if (control.state.load(std::memory_order_acquire) != static_cast<uint32_t>(ModuleState::active)) {
         control.leases.fetch_sub(1, std::memory_order_acq_rel);
         return false;
     }
+    // `before == 0` means no other lease exists, so no concurrent release can
+    // race the pin.
+    if (before == 0 && control.pin != nullptr) control.pin(control);
     return true;
 }
 
-inline void release_lease(ModuleControl &control) noexcept { control.leases.fetch_sub(1, std::memory_order_acq_rel); }
+// The last lease drops the OS-level reference, so the owner's eventual
+// unload()/FreeLibrary()/dlclose() brings the last reference to zero and unmaps
+// the module exactly once every lease is gone.
+inline void release_lease(ModuleControl &control) noexcept {
+    if (control.leases.fetch_sub(1, std::memory_order_acq_rel) == 1 && control.unpin != nullptr) control.unpin(control);
+}
 
 // Stop admitting new leases. Returns true when the module is draining (or was
 // already unloaded); false when it was never activated.

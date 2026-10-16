@@ -14,7 +14,7 @@ function(abi_add_test name)
             COMMAND dsymutil $<TARGET_FILE:${name}> -o ${CMAKE_BINARY_DIR}/bin/${name}.dSYM
             COMMENT "Generate dSYM file for ${name} on macOS")
     endif()
-    catch_discover_tests(${name})
+    catch_discover_tests(${name} WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endfunction()
 
 abi_add_test(basic_test)
@@ -39,6 +39,8 @@ abi_add_test(owner_dll_test)
 abi_add_test(hash_test)
 abi_add_test(compatibility_test)
 abi_add_test(map_test)
+abi_add_test(atomic_test)
+abi_add_test(binary_image_test)
 
 # --- Unity build: all tests in a single executable ---
 add_executable(test_all ${TEST_SRC_DIR}/test_all.cpp)
@@ -67,4 +69,4 @@ foreach(
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/bin
         COMMENT "Stage plugin ${plugin} for test_all")
 endforeach()
-catch_discover_tests(test_all)
+catch_discover_tests(test_all WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

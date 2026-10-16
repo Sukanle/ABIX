@@ -75,7 +75,9 @@ if(MSVC)
     add_compile_options(/W4)
 else()
     add_compile_options(-Wall -Wextra)
-    if(WIN32)
+    # MinGW GCC needs this so inline functions exported with dllexport are still emitted. It is a GCC-only flag
+    # (Clang rejects it), so restrict it to GNU on Windows.
+    if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_compile_options(-fno-keep-inline-dllexport)
     endif()
 endif()
@@ -158,7 +160,21 @@ if(ABIX_benchmark_FOUND)
     add_subdirectory(bench)
 endif()
 
-file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json SYMBOLIC)
+# Expose compile_commands.json at the build root (the parent of the per-config build directory) for tooling such as
+# clangd. A symlink is used where supported; on Windows (no SeCreateSymbolicLinkPrivilege by default) the file is
+# refreshed as a copy at build time, because the compiler database is only produced during generation.
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    if(WIN32)
+        add_custom_target(
+            abix-compile-commands ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_BINARY_DIR}/compile_commands.json
+                    ${CMAKE_BINARY_DIR}/../compile_commands.json
+            COMMENT "Refreshing compile_commands.json at the build root")
+    else()
+        file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json
+             SYMBOLIC)
+    endif()
+endif()
 
 if(AMC_BUILD)
     if(ABIX_LLVM_FOUND)
@@ -333,6 +349,9 @@ if(AMC_BUILD)
             add_test(NAME amc-integration-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/integration_test.py
                              ${CMAKE_BINARY_DIR}/bin)
+            add_test(NAME amc-feature-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/feature_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME amc-cmake-integration-test
                 COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/cmake_integration_test.py
@@ -347,6 +366,11 @@ if(AMC_BUILD)
             # unavailable.
             add_test(NAME amc-cmdly-interop-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/cmdly_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            # P0 automation: expose a C++ class as capabilities with no
+            # hand-written adapter (auto thunks + metadata + Rust bindings).
+            add_test(NAME amc-expose-interop-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/expose_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")

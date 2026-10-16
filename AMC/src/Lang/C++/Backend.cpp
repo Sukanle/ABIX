@@ -74,6 +74,37 @@ static std::string cpp_string(const std::string &value) {
 
 static std::string hex_u64(uint64_t value) { return fmt::format("0x{:x}ULL", value); }
 
+// Render a recorded TypeID as a C++ spelling for a generated interface method
+// typedef. Pointer and record names are already source-level spellings; a C
+// primitive that carries the C spelling `_Bool` maps to the C++ `bool`, exactly
+// as the generated thunk source does.
+static std::string cpp_type_of(const amc::AbiModule &m, amc::Hash128 id) {
+    if (id.lo == 0 && id.hi == 0) return "void";
+    for (const auto &type : m.types)
+        if (type.id == id) return type.name == "_Bool" ? std::string("bool") : type.name;
+    return "void";
+}
+
+static bool type_is_pointer(const amc::AbiModule &m, amc::Hash128 id) {
+    for (const auto &type : m.types)
+        if (type.id == id) return type.kind == amc::TypeKind::pointer;
+    return false;
+}
+
+// An interface method is usable as an object-handle call only when its first
+// parameter is a pointer (the object handle). The `[[interface]]` declaration
+// references whatever function defines the contract, which is not necessarily an
+// object method, so the generated proxy class is emitted only when every method
+// qualifies.
+static bool interface_has_handle_methods(const amc::AbiModule &m, const amc::InterfaceRecord &record) {
+    if (record.method_count == 0) return false;
+    for (uint32_t i = 0; i < record.method_count; ++i) {
+        const auto &method = m.interface_methods[record.method_begin + i];
+        if (method.parameters.empty() || !type_is_pointer(m, method.parameters[0].type_id)) return false;
+    }
+    return true;
+}
+
 int backend(const char *input, const char *output) {
     amc::AbiModule m;
     std::string e;
@@ -87,7 +118,19 @@ int backend(const char *input, const char *output) {
         "#include <ABIX/Runtime/Registry.h>\n"
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
-        "#include <string.h>\n"
+        "#include <string.h>\n");
+    // The interface contract constants below name `InterfaceId`, so pull in the
+    // interface layer only when the module actually declares interfaces; the
+    // proxy API is added only when a proxy class is actually generated.
+    bool any_interface_proxy = false;
+    for (const auto &record : m.interfaces)
+        if (interface_has_handle_methods(m, record)) {
+            any_interface_proxy = true;
+            break;
+        }
+    if (!m.interfaces.empty()) o.print("#include <ABIX/Interface/Contract.h>\n");
+    if (any_interface_proxy) o.print("#include <ABIX/Interface/Proxy.h>\n");
+    o.print(
         "namespace amc_generated {{\n"
         "using TypeId = ::skl::abix::model::TypeId;\n"
         "using LayoutInfo = ::skl::abix::metadata::LayoutInfo;\n"
@@ -229,6 +272,97 @@ int backend(const char *input, const char *output) {
         cpp_string(m.package_name), cpp_string(m.package_version), m.types.size(), m.functions.size(),
         m.symbols.size());
 
+    // Interface contracts (`[[interface]]` / `[[implements]]`): a named, versioned
+    // contract, not a private vtable. For each contract the projection emits its
+    // identity, version, slot enum and adapter typedefs, plus a `Traits` struct and
+    // (when every method takes the object handle first) a proxy class derived from
+    // `InterfaceProxy<Traits>` — so a consumer can bind, verify and call through a
+    // header-declared interface without touching the provider's layout.
+    for (const auto &record : m.interfaces) {
+        const std::string name = cpp_name(record.name);
+        // Methods addressed by slot, so a non-contiguous table is still emitted
+        // in slot order.
+        std::vector<const amc::InterfaceMethod *> by_slot;
+        for (uint32_t i = 0; i < record.method_count; ++i) {
+            const auto &method = m.interface_methods[record.method_begin + i];
+            if (method.slot >= by_slot.size()) by_slot.resize(method.slot + 1, nullptr);
+            by_slot[method.slot] = &method;
+        }
+        const uint32_t slots = static_cast<uint32_t>(by_slot.size());
+
+        o.print("\n// Interface contract `{}` (version {}).\n", record.name, record.version);
+        o.print("inline constexpr ::skl::abix::poly::InterfaceId k{}Interface{{{}, {}}};\n", name,
+            hex_u64(record.id.lo), hex_u64(record.id.hi));
+        o.print("inline constexpr uint32_t k{}Version = {};\n", name, record.version);
+        o.print("enum class {}Slot : uint32_t {{\n", name);
+        for (const auto *method : by_slot)
+            if (method != nullptr) o.print("    {} = {},\n", cpp_name(method->name), method->slot);
+        o.print("}};\n");
+        for (const auto *method : by_slot) {
+            if (method == nullptr) continue;
+            std::string params;
+            for (const auto &parameter : method->parameters) {
+                if (!params.empty()) params += ", ";
+                params += cpp_type_of(m, parameter.type_id);
+            }
+            o.print("using {}_{}_fn = {} (*)({});\n", name, cpp_name(method->name), cpp_type_of(m, method->return_type),
+                params);
+        }
+
+        // Traits: the interface difference a proxy needs.
+        o.print("struct {}Traits {{\n", name);
+        o.print("    static constexpr ::skl::abix::poly::InterfaceId id = k{}Interface;\n", name);
+        o.print("    static constexpr uint32_t version = k{}Version;\n", name);
+        o.print("    static constexpr size_t slots = {};\n", slots);
+        for (const auto *method : by_slot)
+            if (method != nullptr)
+                o.print("    static constexpr uint32_t {}_slot = {};\n", cpp_name(method->name), method->slot);
+        o.print("    static constexpr ::skl::abix::poly::InterfaceMethodHash signatures[{}] = {{\n",
+            slots == 0 ? 1 : slots);
+        for (const auto *method : by_slot) {
+            if (method == nullptr) {
+                o.print("        {{{}, {}}},\n", "0ULL", "0ULL");
+                continue;
+            }
+            o.print("        {{{}, {}}},\n", hex_u64(method->signature.lo), hex_u64(method->signature.hi));
+        }
+        o.print("    }};\n}};\n");
+
+        if (!interface_has_handle_methods(m, record)) {
+            o.print("// No proxy class: a method does not take the object handle as its first parameter.\n");
+            continue;
+        }
+        o.print(
+            "class {} : public ::skl::abix::poly::InterfaceProxy<{}Traits> {{\n"
+            "    using Base = ::skl::abix::poly::InterfaceProxy<{}Traits>;\n\n"
+            "public:\n"
+            "    using Base::Base;\n",
+            name, name, name);
+        for (const auto *method : by_slot) {
+            if (method == nullptr) continue;
+            const std::string mname = cpp_name(method->name);
+            const std::string ret = cpp_type_of(m, method->return_type);
+            std::string decl, forward;
+            for (size_t p = 1; p < method->parameters.size(); ++p) {
+                const std::string arg = fmt::format("arg{}", p - 1);
+                if (!decl.empty()) {
+                    decl += ", ";
+                    forward += ", ";
+                }
+                decl += cpp_type_of(m, method->parameters[p].type_id) + " " + arg;
+                forward += arg;
+            }
+            if (forward.empty())
+                o.print("    {} {}({}) const noexcept {{ return this->template call<{}_{}_fn>({}Traits::{}_slot); }}\n",
+                    ret, mname, decl, name, mname, name, mname);
+            else
+                o.print(
+                    "    {} {}({}) const noexcept {{ return this->template call<{}_{}_fn>({}Traits::{}_slot, {}); }}\n",
+                    ret, mname, decl, name, mname, name, mname, forward);
+        }
+        o.print("}};\n");
+    }
+
     // .abix.names section: type/field/function names for diagnostic use only.
     // This section is NOT referenced by any runtime code and can be safely
     // stripped via: strip --remove-section=.abix.names <binary>
@@ -239,19 +373,35 @@ int backend(const char *input, const char *output) {
     // unreferenced variable entirely, which would silently make the names
     // un-strippable because they were never emitted.
     //
-    // Mach-O section names are limited to 16 bytes and require an explicit
-    // segment, so macOS uses "__DATA,__abix_names" instead of the ELF spelling.
+    // Section attributes differ per container: ELF uses the dot-separated
+    // spelling; Mach-O requires a segment and a <=16-byte name; PE section names
+    // are 8 bytes and MSVC needs `#pragma section` + `__declspec(allocate)`
+    // instead of an attribute.
     if (!m.types.empty()) {
         o.print(
             "#if defined(__APPLE__)\n"
-            "__attribute__((used, section(\"__DATA,__abix_names\")))\n"
-            "#elif defined(__GNUC__) || defined(__clang__)\n"
-            "__attribute__((used, section(\".abix.names\")))\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "__attribute__((used, section(\"__DATA,__abix_names\"))) inline constexpr const char *amc_type_names[]\n"
+            "#elif defined(_WIN32) && defined(_MSC_VER)\n"
+            "#  pragma section(\".abix.n\", read)\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "extern \"C\" __declspec(selectany) __declspec(allocate(\".abix.n\")) const char *const amc_type_names[]\n"
+            "#elif defined(_WIN32)\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "__attribute__((used, section(\".abix.n\"))) inline constexpr const char *amc_type_names[]\n"
+            "#else\n"
+            "#  define SKL_ABIX_NAMES_DECL "
+            "__attribute__((used, section(\".abix.names\"))) inline constexpr const char *amc_type_names[]\n"
             "#endif\n"
-            "inline constexpr const char *amc_type_names[] = {{\n");
+            "SKL_ABIX_NAMES_DECL = {{\n");
         for (const auto &type : m.types)
             o.print("    {},\n", cpp_string(type.name));
-        o.print("}};\n");
+        o.print(
+            "}};\n"
+            "#if defined(_WIN32) && defined(_MSC_VER)\n"
+            "// selectany + /INCLUDE keep the section past /OPT:REF despite being unreferenced.\n"
+            "#  pragma comment(linker, \"/INCLUDE:amc_type_names\")\n"
+            "#endif\n");
     }
 
     // ABIX Metadata Region (AI-PM): the self-describing, pointer-free image of
@@ -267,22 +417,46 @@ int backend(const char *input, const char *output) {
             fmt::print(stderr, "{}\n", metadata_error);
             return 1;
         }
+        const uint32_t region_size_value = static_cast<uint32_t>(region.size());
         o.print(
             "\n// ABIX Metadata Region: manifest + desc + hash + names (offset-based).\n"
             "#if defined(__APPLE__)\n"
-            "__attribute__((used, section(\"__DATA,__abix_metadata\"), aligned(8)))\n"
-            "#elif defined(__GNUC__) || defined(__clang__)\n"
-            "__attribute__((used, section(\".abix.metadata\"), aligned(8)))\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "__attribute__((used, section(\"__DATA,__abix_metadata\"), aligned(8))) inline constexpr unsigned char "
+            "amc_metadata_region[]\n"
+            "#elif defined(_WIN32) && defined(_MSC_VER)\n"
+            "#  pragma section(\".abix\", read)\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "extern \"C\" __declspec(selectany) __declspec(allocate(\".abix\")) const unsigned char "
+            "amc_metadata_region[]\n"
+            "#elif defined(_WIN32)\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "__attribute__((used, section(\".abix\"), aligned(8))) inline constexpr unsigned char amc_metadata_region[]\n"
+            "#else\n"
+            "#  define SKL_ABIX_METADATA_DECL "
+            "__attribute__((used, section(\".abix.metadata\"), aligned(8))) inline constexpr unsigned char "
+            "amc_metadata_region[]\n"
             "#endif\n"
-            "inline constexpr unsigned char amc_metadata_region[{}] = {{\n",
-            region.size());
+            "SKL_ABIX_METADATA_DECL = {{\n"
+            "#if defined(_WIN32)\n"
+            "    // AbixPeHeader (24 B): magic, version, size, flags, region_offset, region_size, reserved.\n"
+            "    0x41,0x42,0x49,0x58, 0x01,0x00, 0x18,0x00, 0x00,0x00,0x00,0x00,\n"
+            "    0x18,0x00,0x00,0x00, 0x{:02x},0x{:02x},0x{:02x},0x{:02x}, 0x00,0x00,0x00,0x00,\n"
+            "#endif\n",
+            region_size_value & 0xff, (region_size_value >> 8) & 0xff, (region_size_value >> 16) & 0xff,
+            (region_size_value >> 24) & 0xff);
         for (size_t i = 0; i < region.size(); ++i) {
             if (i % 12 == 0) o.print("    ");
             o.print("0x{:02x},", region[i]);
             if (i % 12 == 11 || i + 1 == region.size()) o.print("\n");
         }
-        o.print("}};\n");
-        o.print("inline constexpr size_t amc_metadata_region_size = {};\n", region.size());
+        o.print(
+            "}};\n"
+            "#if defined(_WIN32) && defined(_MSC_VER)\n"
+            "// selectany + /INCLUDE keep the section past /OPT:REF despite being unreferenced.\n"
+            "#  pragma comment(linker, \"/INCLUDE:amc_metadata_region\")\n"
+            "#endif\n");
+        o.print("inline constexpr size_t amc_metadata_region_size = sizeof(amc_metadata_region);\n");
     }
 
     for (size_t i = 0; i < m.maps.size(); ++i) {
@@ -362,7 +536,7 @@ int backend(const char *input, const char *output) {
     // names, so it never affects consumers that only want the projection.
     {
         std::string check_path(output);
-        const auto slash = check_path.find_last_of('/');
+        const auto slash = check_path.find_last_of("/\\");
         check_path = slash == std::string::npos ? std::string("amc_abi_check.hpp")
                                                 : check_path.substr(0, slash + 1) + "amc_abi_check.hpp";
         auto check = fmt::output_file(check_path);
@@ -401,6 +575,9 @@ int backend(const char *input, const char *output) {
                 "static_assert(alignof({0}) == ::amc_generated::{1}::align, "
                 "\"ABIX ABI check: align mismatch for {0}\");\n",
                 type.name, id);
+            // An exposed type is opaque and may hold private members, for which
+            // `offsetof` is ill-formed.
+            if ((type.flags & amc::type_opaque) != 0) continue;
             for (uint32_t i = 0; i < type.field_count; ++i) {
                 const auto &field = m.fields[type.field_begin + i];
                 if (!is_cpp_identifier(field.name)) continue;

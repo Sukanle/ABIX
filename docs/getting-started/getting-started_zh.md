@@ -27,8 +27,8 @@ generate。
 
 ## 1. 依赖
 
-> **平台支持：** 目前支持 Linux 与 macOS。**Windows 暂不可用**——PE/CRT 路径、跨 DLL
-> 行为与平台一致性测试仍在验证中，请在 Linux 或 macOS 上构建与评估。
+> **平台支持：** 支持 Linux、macOS 与 Windows；Windows 上使用 MSYS2 UCRT64 工具链
+> （GCC 或 Clang）。见 [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64)。
 
 * C++17 或更高
 * CMake 3.20+

@@ -387,9 +387,9 @@ ABIX
 - LLVM / Clang tooling (for the AMC C++ frontend)
 - a supported native toolchain
 
-> **Platform support:** Linux and macOS are supported today. **Windows is not
-> available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
-> tests are still being validated, so please build and evaluate on Linux or macOS.
+> **Platform support:** Linux, macOS and **Windows**. Windows builds use the
+> MSYS2 UCRT64 toolchain (GCC or Clang); see
+> [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64).
 
 ### Build
 

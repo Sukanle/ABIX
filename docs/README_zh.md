@@ -6,7 +6,8 @@
 
 > [项目 README](README_zh.md) 是入口。本文件导航 `docs/` 目录。
 
-> **平台支持：** 目前支持 Linux 与 macOS。**Windows 暂不可用。**
+> **平台支持：** 支持 Linux、macOS 与 Windows；Windows（MSYS2 UCRT64）环境见
+> [`../CONTRIBUTING.md`](../CONTRIBUTING.md#windows-msys2-ucrt64)。
 
 ```mermaid
 graph TD
@@ -89,6 +90,8 @@ ABIX 和 AMC 内部工作原理。
 | [runtime_zh.md](architecture/runtime_zh.md) | [runtime.md](architecture/runtime.md) | 运行时职责、注册表、执行模型 |
 | [compatibility_zh.md](architecture/compatibility_zh.md) | [compatibility.md](architecture/compatibility.md) | TypeID / LayoutHash / BuildID / MetadataID |
 | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | [elf-inspection.md](architecture/elf-inspection.md) | 在 ELF / Mach-O 二进制中检查 ABIX 元数据节区 |
+| [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | [pe-inspection.md](architecture/pe-inspection.md) | Windows PE 镜像的 ABIX 私有头设计 |
+| [binary-image_zh.md](architecture/binary-image_zh.md) | [binary-image.md](architecture/binary-image.md) | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
 
 ## AI
 
@@ -119,6 +122,7 @@ AI 和 Agent 集成。
 | [type-model_zh.md](development/type-model_zh.md) | [type-model.md](development/type-model.md) | ABI 事实与源语言类型的边界，以及逐 target 生成模型 |
 | [competitors_zh.md](development/competitors_zh.md) | [competitors.md](development/competitors.md) | 竞品分析 |
 | [roadmap_zh.md](development/roadmap_zh.md) | [roadmap.md](development/roadmap.md) | 范围与排期 |
+| [testing_zh.md](development/testing_zh.md) | [testing.md](development/testing.md) | 完整测试流程、各层目的与预期结果 |
 
 ## 生态
 

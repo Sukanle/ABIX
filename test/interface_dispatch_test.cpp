@@ -5,6 +5,7 @@
  */
 #include <catch2/catch_test_macros.hpp>
 
+#include "ABIX/Interface/Declaration.h"
 #include "ABIX/Interface/Interface.h"
 
 namespace {
@@ -13,6 +14,7 @@ using skl::abix::model::TypeId;
 using skl::abix::poly::interface_entry;
 using skl::abix::poly::InterfaceId;
 using skl::abix::poly::InterfaceMethod;
+using skl::abix::poly::InterfaceMethodHash;
 using skl::abix::poly::InterfaceRef;
 using skl::abix::poly::InterfaceRegistry;
 using skl::abix::poly::InterfaceStatus;
@@ -179,4 +181,77 @@ TEST_CASE("unbound interface slots are reported rather than guessed") {
     REQUIRE_FALSE(ref.bound(1));
     REQUIRE(ref.bound(2));
     REQUIRE(ref.method<AxisFn>(1) == nullptr);
+}
+
+TEST_CASE("a resolved method binding verifies its recorded signature") {
+    constexpr TypeId vec_id{0x11, 0x12};
+    constexpr InterfaceId ivec{0x31, 0x32};
+    constexpr InterfaceMethodHash axis_sig{0xaa, 0xbb};
+
+    const InterfaceMethod methods[] = {
+        {    axis_sig,  interface_entry(&vec2_axis), 0, 0},
+        {{0xcc, 0xdd}, interface_entry(&vec2_scale), 2, 0}, // slot 1 is unbound
+    };
+    InterfaceRegistry<4> registry;
+    REQUIRE(registry.add({ivec, vec_id, methods, 2, 1, 0}) == InterfaceStatus::ok);
+
+    Vec2 v{1, 2};
+    InterfaceRef<4> ref;
+    REQUIRE(ref.resolve(registry, &v, vec_id, ivec, 1) == InterfaceStatus::ok);
+    REQUIRE(ref.signature(0) == axis_sig);
+    // A matching signature, or no expectation at all, is ok.
+    REQUIRE(ref.verify(0, axis_sig) == InterfaceStatus::ok);
+    REQUIRE(ref.verify(0, InterfaceMethodHash{0x0, 0x0}) == InterfaceStatus::ok);
+    // A different signature is refused, not silently called.
+    REQUIRE(ref.verify(0, InterfaceMethodHash{0xde, 0xad}) == InterfaceStatus::signature_mismatch);
+    // An unbound slot is reported as such.
+    REQUIRE(ref.verify(1, axis_sig) == InterfaceStatus::method_not_found);
+
+    AxisFn axis = nullptr;
+    REQUIRE(ref.method(axis, 0, axis_sig) == InterfaceStatus::ok);
+    REQUIRE(axis(ref.object(), 0) == 1);
+    AxisFn unbound = reinterpret_cast<AxisFn>(&vec2_axis);
+    REQUIRE(ref.method(unbound, 1, axis_sig) == InterfaceStatus::method_not_found);
+    REQUIRE(unbound == nullptr);
+}
+
+namespace {
+// A provider adapter whose first parameter is the object handle.
+int counter_area(const void *self) { return static_cast<const Counter *>(self)->n; }
+}   // namespace
+
+#define ABIX_TEST_SHAPE_METHODS(X) X(area, 0x1111, 0x2222, int, 0)
+ABIX_DECLARE_INTERFACE(TestShape, 0x71, 0x00, 1, ABIX_TEST_SHAPE_METHODS)
+
+TEST_CASE("an interface proxy binds, verifies and calls through cached entries") {
+    constexpr TypeId counter_id{0x21, 0x22};
+    const InterfaceMethod methods[] = {
+        {{0x1111, 0x2222}, interface_entry(&counter_area), 0, 0}
+    };
+    InterfaceRegistry<4> registry;
+    REQUIRE(registry.add({TestShapeTraits::id, counter_id, methods, 1, 1, 0}) == InterfaceStatus::ok);
+
+    Counter c{7};
+    TestShape shape(registry, &c, counter_id);
+    REQUIRE(shape.valid());
+    REQUIRE(shape.area() == 7);
+    int out = 0;
+    REQUIRE(shape.area(out) == InterfaceStatus::ok);
+    REQUIRE(out == 7);
+
+    // A bound method whose recorded signature differs from the contract's expected
+    // signature makes the proxy invalid instead of calling it unsafely.
+    const InterfaceMethod wrong[] = {
+        {{0xdead, 0xbeef}, interface_entry(&counter_area), 0, 0}
+    };
+    InterfaceRegistry<4> registry2;
+    REQUIRE(registry2.add({TestShapeTraits::id, counter_id, wrong, 1, 1, 0}) == InterfaceStatus::ok);
+    TestShape bad(registry2, &c, counter_id);
+    REQUIRE(bad.status() == InterfaceStatus::signature_mismatch);
+    REQUIRE_FALSE(bad.valid());
+
+    // Failure to bind is explicit and observable.
+    TestShape missing;
+    REQUIRE(missing.bind(registry, &c, TypeId{0xde, 0xad}) == InterfaceStatus::interface_not_found);
+    REQUIRE_FALSE(missing.valid());
 }

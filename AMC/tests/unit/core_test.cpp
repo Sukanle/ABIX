@@ -260,6 +260,68 @@ int main() {
         check(contains(error, "not a supported binary"), "unsupported container error is descriptive");
     }
 
+    // --- PE reader --------------------------------------------------------
+    {
+        // Minimal PE32+ with one `.rdata` section and a CodeView (RSDS) debug
+        // directory, exercising is_pe / read_pe_sections / read_pe_debug_id.
+        std::vector<uint8_t> pe(0x300, 0);
+        const auto put16 = [&](size_t o, uint16_t v) {
+            pe[o] = static_cast<uint8_t>(v);
+            pe[o + 1] = static_cast<uint8_t>(v >> 8);
+        };
+        const auto put32 = [&](size_t o, uint32_t v) {
+            for (int i = 0; i < 4; ++i)
+                pe[o + i] = static_cast<uint8_t>(v >> (8 * i));
+        };
+        const auto put64 = [&](size_t o, uint64_t v) {
+            for (int i = 0; i < 8; ++i)
+                pe[o + i] = static_cast<uint8_t>(v >> (8 * i));
+        };
+        pe[0] = 'M';
+        pe[1] = 'Z';
+        put32(0x3C, 0x40);
+        pe[0x40] = 'P';
+        pe[0x41] = 'E';
+        const size_t pe_coff = 0x44;
+        put16(pe_coff + 0, 0x8664);   // amd64
+        put16(pe_coff + 2, 1);        // one section
+        put16(pe_coff + 16, 240);     // PE32+ optional header
+        const size_t pe_optional = pe_coff + 20;
+        put16(pe_optional + 0, 0x20B);
+        put64(pe_optional + 24, 0x140000000ull);
+        const size_t pe_ddir = pe_optional + 112;
+        put32(pe_ddir + 6 * 8, 0x1000);       // debug directory RVA
+        put32(pe_ddir + 6 * 8 + 4, 28);       // debug directory size
+        const size_t pe_sect = pe_optional + 240;
+        const char pe_name[] = ".rdata";
+        for (int i = 0; i < 6; ++i)
+            pe[pe_sect + i] = static_cast<uint8_t>(pe_name[i]);
+        put32(pe_sect + 8, 0x100);
+        put32(pe_sect + 12, 0x1000);
+        put32(pe_sect + 16, 0x200);
+        put32(pe_sect + 20, 0x200);
+        put32(0x200 + 12, 2);      // IMAGE_DEBUG_TYPE_CODEVIEW
+        put32(0x200 + 24, 0x220);  // PointerToRawData -> RSDS record
+        const char rsds[] = "RSDS";
+        for (int i = 0; i < 4; ++i)
+            pe[0x220 + i] = static_cast<uint8_t>(rsds[i]);
+        for (int i = 0; i < 16; ++i)
+            pe[0x224 + i] = static_cast<uint8_t>(0x10 + i);   // GUID
+        put32(0x234, 7);   // Age
+
+        std::string pe_error;
+        check(amc::is_pe(pe.data(), pe.size()), "PE image detected");
+        check(amc::detect_binary_format(pe.data(), pe.size()) == amc::BinaryFormat::pe, "PE format detected");
+        std::vector<amc::BinarySection> pe_sections;
+        check(amc::read_pe_sections(pe.data(), pe.size(), pe_sections, pe_error), "PE sections read");
+        check(amc::native_section_name(amc::BinaryFormat::pe, ".abix.metadata") == ".abix",
+            "PE metadata section maps to .abix");
+        std::vector<uint8_t> pe_build_id;
+        check(amc::read_pe_debug_id(pe.data(), pe.size(), pe_build_id, pe_error), "PE CodeView debug id read");
+        check(pe_build_id.size() == 20 && pe_build_id[0] == 0x10 && pe_build_id[16] == 7,
+            "PE debug id is the RSDS GUID + Age");
+    }
+
     // --- query engine -----------------------------------------------------
     {
         amc::AbiModule m;
@@ -303,7 +365,8 @@ int main() {
 
         const std::string root = "amc_symbol_test_store";
         const std::string key = "deadbeef";
-        check(contains(amc::symbol_store_path(root, key, ".abix"), "de/adbeef.abix"), "symbol store path layout");
+        const std::string expected_tail = (std::filesystem::path("de") / "adbeef.abix").string();
+        check(contains(amc::symbol_store_path(root, key, ".abix"), expected_tail), "symbol store path layout");
 
         const std::vector<uint8_t> artifact = {1, 2, 3, 4};
         std::string stored;

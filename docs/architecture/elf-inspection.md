@@ -155,7 +155,8 @@ The script runs 9 phases:
 
 - **Linux / ELF**: ELF64 little-endian (x86_64 / aarch64), thin images.
 - **macOS / Mach-O**: 64-bit little-endian Mach-O (arm64), thin images.
-- **Windows / PE**: planned, not yet implemented.
+- **Windows / PE**: `.abix` / `.abix.n` sections; reading and emission are
+  implemented — see [pe-inspection.md](pe-inspection.md).
 
 ## Limitations
 
@@ -168,6 +169,6 @@ The script runs 9 phases:
 - **Mach-O images** must be thin (single architecture); universal / fat
   binaries are not parsed yet.
 - **Cross-platform goal**: Windows (PE), macOS (Mach-O) and Linux (ELF). PE/COFF
-  parsing is planned but not yet implemented.
+  parsing and emission are implemented; see [pe-inspection.md](pe-inspection.md).
 - `.abix.names` contains `const char*` pointers; the actual strings reside in
   `.rodata` / `__TEXT,__cstring`. Use `strings <binary> | grep -i amc` to find them.

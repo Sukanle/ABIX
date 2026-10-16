@@ -27,6 +27,10 @@ enum class TypeKind : uint32_t {
 // A template primary has metadata useful for dependency closure, but it is not
 // a concrete native C++ type that can receive a TypeTraits specialization.
 constexpr uint32_t type_template_primary = 1u << 0;
+// A type exposed as an opaque handle: a consumer language sees an explicitly
+// sized blob, never the fields. The producer still owns the real definition, so
+// "layout is describable" and "fields are accessible" stay separate.
+constexpr uint32_t type_opaque = 1u << 1;
 
 // Runtime ABI kind for primitive types, independent of the source spelling.
 // It captures how the type behaves at the binary boundary: signed/unsigned
@@ -245,7 +249,13 @@ struct OwnershipContract {
 // Where a function reports its status.
 enum class StatusSource : uint32_t {
     return_value = 0,
-    parameter = 1
+    parameter = 1,
+    // The return value is an aggregate carrying the status in one field and the
+    // value in another (the ABIX-STD Result layout). `status_parameter` is the
+    // status field index and `value_parameter` is the value field index within
+    // the returned record, so a Result return binds to the error boundary
+    // without a separate out-parameter.
+    return_field = 2
 };
 
 // Error boundary contract: how a function reports success/failure and where the
@@ -254,10 +264,12 @@ enum class StatusSource : uint32_t {
 struct ErrorContract {
     uint32_t function_index = 0;
     StatusSource status_source = StatusSource::return_value;
-    uint32_t status_parameter = UINT32_MAX;   // local parameter index when status_source == parameter
+    uint32_t status_parameter = UINT32_MAX;   // local parameter index, or the
+                                              // status field index for return_field
     int64_t success_value = 0;                // status value that means success
-    uint32_t value_parameter =
-        UINT32_MAX;   // local parameter index carrying the value, or UINT32_MAX when the return value is the value
+    uint32_t value_parameter = UINT32_MAX;    // local parameter index carrying the value, the value field
+                                              // index for return_field, or UINT32_MAX when the return
+                                              // value itself is the value
     uint32_t flags = 0;
 };
 
