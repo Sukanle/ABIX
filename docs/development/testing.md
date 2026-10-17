@@ -28,6 +28,7 @@ This document is the complete test flow: how to build and run the suites, what e
 - [Manual feature walkthrough and generated files](#manual-feature-walkthrough-and-generated-files)
 - [Native binding (Rust) walkthrough](#native-binding-rust-walkthrough)
 - [Keeping the temporary artifacts](#keeping-the-temporary-artifacts)
+- [Tool scripts (`tools/`)](#tool-scripts-tools)
 - [Sanitizers and platform notes](#sanitizers-and-platform-notes)
 - [Reading a failure](#reading-a-failure)
 
@@ -261,20 +262,78 @@ python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 
 Retained locations (all under the platform temp directory):
 
-| Suite | Retained |
-|-------|----------|
-| `amc-integration-test` | `amc-integration.*` (`autogen-separate/`, `autogen-full/`) |
-| `amc-feature-test` | `amc-feature.*` (`.abix`, the generated `cpp/rust/zig/lua` projections) |
-| `amc-cmake-integration-test` | `amc-cmake.*` (the configured CMake fixture build tree) |
-| `amc-rust-test` | `amc-rust.*` (the provider artifacts and projections) |
-| `amc-interop-test` | `amc-interop.*` (native library, consumers, `.abix`) |
-| `amc-cmdly-interop-test` | `amc-cmdly.*` |
-| `amc-expose-interop-test` | `amc-expose.*` (thunks, manifest, bindings) |
-| `amc-e2e-test` | `amc_e2e_*` files |
-| `amc-core-test` | `amc_cache_test_*`, `amc_symbol_test_store` |
+| Suite                        | Retained                                                                |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `amc-integration-test`       | `amc-integration.*` (`autogen-separate/`, `autogen-full/`)              |
+| `amc-feature-test`           | `amc-feature.*` (`.abix`, the generated `cpp/rust/zig/lua` projections) |
+| `amc-cmake-integration-test` | `amc-cmake.*` (the configured CMake fixture build tree)                 |
+| `amc-rust-test`              | `amc-rust.*` (the provider artifacts and projections)                   |
+| `amc-interop-test`           | `amc-interop.*` (native library, consumers, `.abix`)                    |
+| `amc-cmdly-interop-test`     | `amc-cmdly.*`                                                           |
+| `amc-expose-interop-test`    | `amc-expose.*` (thunks, manifest, bindings)                             |
+| `amc-e2e-test`               | `amc_e2e_*` files                                                       |
+| `amc-core-test`              | `amc_cache_test_*`, `amc_symbol_test_store`                             |
 
 Retain deliberately: the directories are not removed afterwards, so clean them
 up once you are done inspecting.
+
+The switch only reaches the suites registered in `ctest` (CMake injects
+`KEEP_ARTIFACTS=1` for them). The `tools/` scripts are not registered and carry
+their own keep switches (`--keep`, `--keep-artifacts`, `KEEP_ARTIFACTS=1`); see
+the next section.
+
+## Tool scripts (`tools/`)
+
+These scripts are **not registered in `ctest`** and are run by hand. Only the
+second group produces test verdicts.
+
+### Build and code-generation helpers
+
+| Script                | What                                                                                                                                                                                                                                                                | Purpose                                                                                                                                                                                                                                | Expected                                                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `build.py`            | Configures and builds the CMake project, delegates to `build_variants.py`, then runs `test_all` and `bench_all` from `build/<type>/bin/` as requested                                                                                                               | One command for the everyday "build -> variants -> test -> bench" loop                                                                                                                                                                 | `== Build complete ==` -> `== Running variant build: ... ==` -> `== Running tests ==` (green `test_all`) -> `== Running benchmarks ==`     |
+| `build_variants.py`   | Compiles the plugin DLL variants with `g++` (`tool_x`) / `clang++` (`tool_y`) into `build/<type>/bin/variants/<tag>/`; with `--with-msvc` on Windows it also emits `version_dll` / `resource_dll` / `interface_dll` / `owner_dll` through `cl.exe` (tag `msvc_x64`) | Turns "cross-compiler / cross-CRT" into an executable case rather than a claim; these are what `2.cross_compiler_variant`, `12.socket_resource_lifecycle`, `13.cross_crt_msvc_resource` and `13b.…across a cross-CRT MSVC DLL` resolve | `== [<tag>] <compiler> ==` plus `Generated: <path>` per DLL, ending in `== Variant build complete ==`; the main build must already be done |
+| `gen_hotcache_dll.py` | Generates `dlls/hotcache_dll.cpp` (1000 regular plus 20 hot exports registered through `SKL_ABIX_DEFINE_TABLE`)                                                                                                                                                     | Provides a stable sample for tables past `SKL_ABIX_HASH_THRESHOLD` instead of hand-writing one                                                                                                                                         | `generated .../dlls/hotcache_dll.cpp: 1000 regular + 20 hot functions`. It is a code generator and produces no test verdict                |
+
+```bash
+python tools/build.py                        # build + variants + tests + benchmarks
+python tools/build.py --clean --build-only   # build only
+python tools/build.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Studio/2022/Community"
+python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC variants alone
+```
+
+`build.py` flags: `--clean`, `--build-only` / `--build-test` / `--build-bench`,
+`--run-only` / `--run-test` / `--run-bench`, `--build-type`, `--generator`,
+`--with-dev`; `--build-*` and `--run-*` cannot be combined. It runs the
+aggregate executables, so it is **not** a substitute for `ctest` (see
+[test tiers](#test-tiers)).
+
+### Tests and verification
+
+| Script                  | What                                                                                                                                                                                                                                                                                                         | Purpose                                                                                                                                                                     | Expected                                                                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_amc_bootstrap.py` | Verifies AMC's metadata bootstrap for its own core IR: `amc build` -> `validate` -> `generate` -> consume the generated C++ projection through `RuntimeRegistry::type_of<T>()`                                                                                                                               | Shows the compiled AMC stage can describe its core model and consume its projection (not compiler-source self-hosting: `amc-cpp` still uses Clang to extract C++ semantics) | `[PASS] AMC core metadata bootstrap succeeded` and `[PASS] verified build -> validate -> generate -> RuntimeRegistry::type_of<T>()`; needs `cmake` + `clang++`                                     |
+| `test_amc_elf-pe.py`    | Nine phases over the metadata section: `amc build` -> `amc generate` (a `amc_generated.hpp` with the platform section attribute) -> `clang++` links a native binary carrying `.abix.metadata` -> `readelf -S` -> `objdump -s` -> `amc metadata --from-elf` -> `--verify` -> export round-trip -> error cases | Shows the section really lands in the binary and can be read back, rather than round-tripping in memory only                                                                | Each `[Phase N]` prints `[PASS]` (with a `✓`) and the run ends with a summary; needs `readelf` / `objdump`, so it is mainly for Linux/macOS                                                        |
+| `abix_mcp_compat.py`    | Drives `amc-mcp` over stdio JSON-RPC to answer "is `plugin` ABI-compatible with `host`?" and prints a JSON report                                                                                                                                                                                            | Makes the MCP tool protocol verifiable in CI: the LLM is removed from the loop while the transport and tool protocol stay real                                              | JSON report on stdout; stderr prints `COMPATIBLE`, otherwise `INCOMPATIBLE: N difference(s)` with a non-zero exit                                                                                  |
+| `abix_token_cost.py`    | Compares the token cost of learning one module's ABI from source against `amc context <file.abix> --format llm`                                                                                                                                                                                              | Gives a reproducible order-of-magnitude for "the metadata view is cheaper"                                                                                                  | `{"source_tokens", "metadata_tokens", "source_over_metadata"}` on stdout; the counts come from a lexical tokenizer, not a model tokenizer, so treat the ratio as an **indicator, not a benchmark** |
+
+```bash
+python tools/test_amc_bootstrap.py                       # AMC_BIN_DIR=... reuses an external build
+KEEP_ARTIFACTS=1 python tools/test_amc_bootstrap.py       # keeps amc-bootstrap.*
+python tools/test_amc_elf-pe.py --keep                    # keeps amc_elf_test_*
+python tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix
+python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
+```
+
+### Debugger integration
+
+| File            | What                                                                                                                                  | Purpose                                                                                                                                                                            | Expected                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lldb_abix.cpp` | Native plugin built by the CMake target `abix-lldb` (when LLDB headers and library are found), producing `build/<type>/bin/abix_lldb` | Queries the `.abix.metadata` embedded in the loaded binary from the debugger (`abix info` / `type` / `function` / `verify` / `check`); parsing and querying are delegated to `amc` | `plugin load build/Release/bin/abix_lldb` in an LLDB session, then `abix …`; the target is skipped when LLDB is not found |
+| `lldb_abix.py`  | Script implementation of the same commands                                                                                            | Alternative to the native plugin, for environments without an LLDB C++ toolchain                                                                                                   | `command script import tools/lldb_abix.py`, then `abix …`; set `ABIX_AMC` when `amc` is not on PATH                       |
+
+Both follow "LLDB never grows a second `.abix`/ELF parser".
+`tools/__pycache__/` is just the Python cache directory, not a script.
 
 ## Sanitizers and platform notes
 

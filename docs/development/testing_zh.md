@@ -28,6 +28,7 @@
 - [手动功能走查与生成文件](#手动功能走查与生成文件)
 - [原生绑定（Rust）走查](#原生绑定rust走查)
 - [保留临时产物](#保留临时产物)
+- [工具脚本（`tools/`）](#工具脚本tools)
 - [Sanitizer 与平台说明](#sanitizer-与平台说明)
 - [如何解读失败](#如何解读失败)
 
@@ -260,19 +261,68 @@ python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 
 保留位置（均在系统临时目录下）：
 
-| 套件 | 保留内容 |
-|------|----------|
-| `amc-integration-test` | `amc-integration.*`（`autogen-separate/`、`autogen-full/`） |
-| `amc-feature-test` | `amc-feature.*`（`.abix` 与 `cpp/rust/zig/lua` 生成绑定） |
-| `amc-cmake-integration-test` | `amc-cmake.*`（已配置的 CMake fixture 构建树） |
-| `amc-rust-test` | `amc-rust.*`（provider 产物与投影） |
-| `amc-interop-test` | `amc-interop.*`（原生库、消费端、`.abix`） |
-| `amc-cmdly-interop-test` | `amc-cmdly.*` |
-| `amc-expose-interop-test` | `amc-expose.*`（thunk、清单、绑定） |
-| `amc-e2e-test` | `amc_e2e_*` 文件 |
-| `amc-core-test` | `amc_cache_test_*`、`amc_symbol_test_store` |
+| 套件                         | 保留内容                                                    |
+| ---------------------------- | ----------------------------------------------------------- |
+| `amc-integration-test`       | `amc-integration.*`（`autogen-separate/`、`autogen-full/`） |
+| `amc-feature-test`           | `amc-feature.*`（`.abix` 与 `cpp/rust/zig/lua` 生成绑定）   |
+| `amc-cmake-integration-test` | `amc-cmake.*`（已配置的 CMake fixture 构建树）              |
+| `amc-rust-test`              | `amc-rust.*`（provider 产物与投影）                         |
+| `amc-interop-test`           | `amc-interop.*`（原生库、消费端、`.abix`）                  |
+| `amc-cmdly-interop-test`     | `amc-cmdly.*`                                               |
+| `amc-expose-interop-test`    | `amc-expose.*`（thunk、清单、绑定）                         |
+| `amc-e2e-test`               | `amc_e2e_*` 文件                                            |
+| `amc-core-test`              | `amc_cache_test_*`、`amc_symbol_test_store`                 |
 
 注意这是**有意保留**：这些目录之后不会被清理，查看完请自行删除。
+
+该开关只作用于 `ctest` 注册的套件（由 CMake 注入 `KEEP_ARTIFACTS=1`）；`tools/` 下的脚本不在 `ctest` 中，各有自己的保留开关（`--keep`、`--keep-artifacts`、`KEEP_ARTIFACTS=1`），见下节。
+
+## 工具脚本（`tools/`）
+
+这些脚本**不在 `ctest` 中注册**，需要手动运行。按用途分三类；其中只有第 2 类产生测试结论。
+
+### 构建与代码生成辅助
+
+| 脚本                  | 功能                                                                                                                                                                                                                                            | 目的                                                                                                                                                                                      | 预期现象                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `build.py`            | 配置 + 构建 CMake 工程，随后委托 `build_variants.py`，再按需运行 `build/<type>/bin/` 下的 `test_all` 与 `bench_all`                                                                                                                             | 一条命令复现「构建 → 变体 → 测试 → 基准」的日常循环                                                                                                                                       | `== Build complete ==` → `== Running variant build: ... ==` → `== Running tests ==`（`test_all` 全绿）→ `== Running benchmarks ==` |
+| `build_variants.py`   | 用 `g++`（`tool_x`）/ `clang++`（`tool_y`）编译同一批插件 DLL 变体并暂存到 `build/<type>/bin/variants/<tag>/`；`--with-msvc` 时在 Windows 上再用 `cl.exe` 产出 `version_dll` / `resource_dll` / `interface_dll` / `owner_dll`（tag `msvc_x64`） | 把「跨编译器 / 跨 CRT」变成可执行用例而不是声明；供 `2.cross_compiler_variant`、`12.socket_resource_lifecycle`、`13.cross_crt_msvc_resource`、`13b.…across a cross-CRT MSVC DLL` 解析 DLL | 逐个打印 `== [<tag>] <compiler> ==` 与 `Generated: <path>`，最后 `== Variant build complete ==`；必须先完成主构建                  |
+| `gen_hotcache_dll.py` | 生成 `dlls/hotcache_dll.cpp`（1000 个普通导出 + 20 个热导出，经 `SKL_ABIX_DEFINE_TABLE` 注册）                                                                                                                                                  | 为超过 `SKL_ABIX_HASH_THRESHOLD` 的大表提供稳定样本，免去手写                                                                                                                             | `generated .../dlls/hotcache_dll.cpp: 1000 regular + 20 hot functions`。它是代码生成器，不产生测试结论                             |
+
+```bash
+python tools/build.py                        # 构建 + 变体 + 测试 + 基准
+python tools/build.py --clean --build-only   # 只构建
+python tools/build.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Studio/2022/Community"
+python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变体
+```
+
+`build.py` 的常用参数：`--clean`、`--build-only` / `--build-test` / `--build-bench`、`--run-only` / `--run-test` / `--run-bench`、`--build-type`、`--generator`、`--with-dev`；`--build-*` 与 `--run-*` 不能混用。注意它跑的是聚合可执行文件，**不等于 `ctest`**（覆盖面见[测试分层](#测试分层)）。
+
+### 测试与验证
+
+| 脚本                    | 功能                                                                                                                                                                                                                                | 目的                                                                                                                            | 预期现象                                                                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `test_amc_bootstrap.py` | 验证 AMC 自身核心 IR 的元数据自举：`amc build` → `validate` → `generate` → 用生成的 C++ 投影经 `RuntimeRegistry::type_of<T>()` 取类型                                                                                               | 证明「已编译的 AMC 阶段能描述自己的核心模型并消费其投影」，而不是靠人工描述（非编译源自举：`amc-cpp` 仍用 Clang 提取 C++ 语义） | `[PASS] AMC core metadata bootstrap succeeded` 与 `[PASS] verified build -> validate -> generate -> RuntimeRegistry::type_of<T>()`；需要 `cmake` + `clang++` |
+| `test_amc_elf-pe.py`    | 9 阶段验证元数据段：`amc build` → `amc generate`（带平台段属性的 `amc_generated.hpp`）→ `clang++` 链出含 `.abix.metadata` 的原生二进制 → `readelf -S` → `objdump -s` → `amc metadata --from-elf` → `--verify` → 导出往返 → 错误用例 | 证明「段真的进了二进制并且能被读回」，而不只是在内存里往返                                                                      | 每个 `[Phase N]` 输出 `[PASS]`（含 `✓`）并在末尾给出汇总；依赖 `readelf` / `objdump`，主要在 Linux/macOS 上使用                                              |
+| `abix_mcp_compat.py`    | 以 stdio JSON-RPC 驱动 `amc-mcp`，回答「`plugin` 与 `host` 是否 ABI 兼容」，输出 JSON 报告                                                                                                                                          | 让 MCP 工具协议可在 CI 中验证——把 LLM 从链路中去掉，但传输与工具协议保持真实                                                    | stdout 为 JSON 报告；兼容时 stderr 打印 `COMPATIBLE`，否则 `INCOMPATIBLE: N difference(s)` 并返回非零                                                        |
+| `abix_token_cost.py`    | 比较「读源码」与「读 `amc context <file.abix> --format llm`」了解同一模块 ABI 的 token 数                                                                                                                                           | 给「元数据视图更省上下文」一个可复现的量级参考                                                                                  | stdout 为 `{"source_tokens", "metadata_tokens", "source_over_metadata"}`；用词法分词器估算，不是模型分词器，应视为**指标而非基准**                           |
+
+```bash
+python tools/test_amc_bootstrap.py                       # 可用 AMC_BIN_DIR=... 复用外部构建
+KEEP_ARTIFACTS=1 python tools/test_amc_bootstrap.py       # 保留 amc-bootstrap.*
+python tools/test_amc_elf-pe.py --keep                    # 保留 amc_elf_test_*
+python tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix
+python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
+```
+
+### 调试器集成
+
+| 脚本            | 功能                                                                                              | 目的                                                                                                                                      | 预期现象                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `lldb_abix.cpp` | 原生插件，由 CMake 目标 `abix-lldb` 构建（需找到 LLDB 头与库），产物 `build/<type>/bin/abix_lldb` | 在调试器里查询已加载二进制中嵌入的 `.abix.metadata`（`abix info` / `type` / `function` / `verify` / `check`）；解析与查询一律委托给 `amc` | LLDB 中 `plugin load build/Release/bin/abix_lldb` 后即可用 `abix …`；找不到 LLDB 时该目标不构建 |
+| `lldb_abix.py`  | 脚本版实现，功能同上                                                                              | 与原生插件二选一，覆盖没有 LLDB C++ 工具链的环境                                                                                          | `command script import tools/lldb_abix.py` 后用 `abix …`；`amc` 不在 PATH 时设 `ABIX_AMC`       |
+
+两者都遵循「LLDB 不自己写第二套 `.abix` / ELF 解析器」：`tools/__pycache__/` 只是 Python 缓存目录，不是脚本。
 
 ## Sanitizer 与平台说明
 
