@@ -8,17 +8,26 @@ static skl::abix::dll::Object *g_lib = nullptr;
 static const skl::abix::runtime::Table *g_table = nullptr;
 static skl::abix::dll::Image *g_image = nullptr;
 
-static void setup_lookup_bench() {
-    if (g_lib) return;
-    g_lib = new skl::abix::dll::Object();
-    g_lib->load(dll_path("hotcache_dll").c_str());
-    g_table = g_lib->get_table();
-    g_image = g_lib->image_acquire();
+// Lazily loads the shared plugin state. Returns true when the benchmarks can
+// run; otherwise marks `state` as skipped with the reason instead of letting
+// them dereference a null table/image.
+static bool ensure_lookup_plugin(benchmark::State &state) {
+    if (!g_lib) {
+        g_lib = new skl::abix::dll::Object();
+        if (!require_plugin(state, *g_lib, "hotcache_dll")) return false;
+        g_table = g_lib->get_table();
+        g_image = g_lib->image_acquire();
+    }
+    if (g_table == nullptr || g_image == nullptr) {
+        state.SkipWithError("hotcache_dll exposes no name+sig table");
+        return false;
+    }
+    return true;
 }
 
 // --- BM_FindIndex_Only (baseline) ---
 static void BM_FindIndex_Only(benchmark::State &state) {
-    setup_lookup_bench();
+    if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     for (auto _ : state) {
         const char *nm = hot_name(state.iterations() % 20);
@@ -31,7 +40,7 @@ BENCHMARK(BM_FindIndex_Only);
 
 // --- BM_Resolve_Linear ---
 static void BM_Resolve_Linear(benchmark::State &state) {
-    setup_lookup_bench();
+    if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     for (auto _ : state) {
         const char *nm = hot_name(state.iterations() % 20);
@@ -43,7 +52,7 @@ BENCHMARK(BM_Resolve_Linear);
 
 // --- BM_Resolve_WithEBR ---
 static void BM_Resolve_WithEBR(benchmark::State &state) {
-    setup_lookup_bench();
+    if (!ensure_lookup_plugin(state)) return;
     skl::abix::rcu::Domain &dom = skl::abix::rcu::Domain::instance();
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     for (auto _ : state) {
@@ -62,7 +71,7 @@ BENCHMARK(BM_Resolve_WithEBR);
 
 // --- 80/20 distribution ---
 static void BM_Resolve_Linear_80_20(benchmark::State &state) {
-    setup_lookup_bench();
+    if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     for (auto _ : state) {
         int i = (int)state.iterations();
@@ -75,7 +84,7 @@ BENCHMARK(BM_Resolve_Linear_80_20);
 
 // --- Random access (no hot entries) ---
 static void BM_Resolve_Linear_Random(benchmark::State &state) {
-    setup_lookup_bench();
+    if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     for (auto _ : state) {
         const char *nm = cold_name((int)state.iterations() % 1'000);

@@ -139,21 +139,25 @@ static skl::abix::dll::Object *g_hotcache_lib = nullptr;
 static skl::abix::dll::Function<int(int, int)> g_add;
 static skl::abix::dll::Function<int(int)> g_e_0000;
 
-static void setup_call_bench() {
+// Loads the plugins the call benchmarks need. Returns false (after marking the
+// benchmark skipped) when a module is unavailable — the resolved Functions
+// would otherwise point into a module that was never mapped.
+static bool setup_call_bench(benchmark::State &state) {
     if (!g_math_lib) {
         g_math_lib = new skl::abix::dll::Object();
-        g_math_lib->load(dll_path("math_dll").c_str());
+        if (!require_plugin(state, *g_math_lib, "math_dll")) return false;
         g_add = skl::abix::dll::Function<int(int, int)>(*g_math_lib, "add");
     }
     if (!g_hotcache_lib) {
         g_hotcache_lib = new skl::abix::dll::Object();
-        g_hotcache_lib->load(dll_path("hotcache_dll").c_str());
+        if (!require_plugin(state, *g_hotcache_lib, "hotcache_dll")) return false;
         g_e_0000 = skl::abix::dll::Function<int(int)>(*g_hotcache_lib, "e_0000");
     }
+    return true;
 }
 
 static void BM_ABIX_Call(benchmark::State &state) {
-    setup_call_bench();
+    if (!setup_call_bench(state)) return;
     int a = 1, b = 2;
     for (auto _ : state) {
         int r = g_add(a, b);
@@ -163,7 +167,7 @@ static void BM_ABIX_Call(benchmark::State &state) {
 BENCHMARK(BM_ABIX_Call);
 
 static void BM_ABIX_TinyFunction(benchmark::State &state) {
-    setup_call_bench();
+    if (!setup_call_bench(state)) return;
     int a = 1, b = 2;
     for (auto _ : state) {
         int r = g_add(a, b);
@@ -173,7 +177,7 @@ static void BM_ABIX_TinyFunction(benchmark::State &state) {
 BENCHMARK(BM_ABIX_TinyFunction);
 
 static void BM_ABIX_SmallFunction(benchmark::State &state) {
-    setup_call_bench();
+    if (!setup_call_bench(state)) return;
     int v = 42;
     for (auto _ : state) {
         int r = g_e_0000(v);
@@ -183,7 +187,7 @@ static void BM_ABIX_SmallFunction(benchmark::State &state) {
 BENCHMARK(BM_ABIX_SmallFunction);
 
 static void BM_ABIX_Call_Raw(benchmark::State &state) {
-    setup_call_bench();
+    if (!setup_call_bench(state)) return;
     int a = 1, b = 2;
     auto fn = g_add.raw();
     for (auto _ : state) {

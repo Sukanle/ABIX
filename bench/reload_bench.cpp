@@ -5,9 +5,9 @@
 
 // --- BM_EBR_Reload_Logical (simulate image swap + retire + advance epoch + collect) ---
 static void BM_EBR_Reload_Logical(benchmark::State &state) {
-    std::string path = dll_path("reload_dll_a");
+    const std::string path = dll_path("reload_dll_a");
     skl::abix::dll::Object lib;
-    lib.load(path.c_str());
+    if (!require_plugin(state, lib, "reload_dll_a")) return;
 
     for (auto _ : state) {
         lib.reload(dll_path("reload_dll_b").c_str());
@@ -18,10 +18,10 @@ BENCHMARK(BM_EBR_Reload_Logical);
 
 // --- BM_DLL_Real_Reload ---
 static void BM_DLL_Real_Reload(benchmark::State &state) {
-    std::string path_a = dll_path("reload_dll_a");
-    std::string path_b = dll_path("reload_dll_b");
+    const std::string path_a = dll_path("reload_dll_a");
+    const std::string path_b = dll_path("reload_dll_b");
     skl::abix::dll::Object lib;
-    lib.load(path_a.c_str());
+    if (!require_plugin(state, lib, "reload_dll_a")) return;
 
     for (auto _ : state) {
         lib.reload(path_b.c_str());
