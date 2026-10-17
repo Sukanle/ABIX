@@ -93,7 +93,10 @@ Json::Json(long long value)
 }
 Json::Json(unsigned value)
     : owner_(std::make_shared<Owner>())
-    , node_(json_create_lhex(value)) {
+    // A decimal integer, not the library's hexadecimal JSON_LHEX: the parser
+    // has hex disabled, so `json_create_lhex` produced a value that could not
+    // be read back.
+    , node_(json_create_lint(static_cast<int64_t>(value))) {
     owner_->root = node_;
 }
 Json::Json(const char *value)
@@ -224,12 +227,12 @@ const Json *Json::find(std::string_view key) const {
     std::string owned_key(key);
     json_object *found = json_get_object_item(node_, owned_key.c_str(), nullptr);
     if (!found) return nullptr;
-    items_cache_.clear();
+    // Snapshot into the stable find cache. Using the array items cache here
+    // would make a later find() invalidate an earlier returned pointer.
     json_object *copy = json_deepcopy(found);
     if (!copy) return nullptr;
-    items_cache_.emplace_back(from_owned(copy));
-    cache_valid_ = true;
-    return &items_cache_.front();
+    find_cache_.emplace_back(from_owned(copy));
+    return &find_cache_.back();
 }
 
 void Json::push_back(Json value) {

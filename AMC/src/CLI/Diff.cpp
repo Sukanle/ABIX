@@ -32,6 +32,7 @@ int cmd_diff(char **args, int arg_count) {
             return fail(amc::ErrorCategory::io, "write_abix", error, args[5]);
         return command == "compatibility" && incompatible ? 1 : 0;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

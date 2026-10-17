@@ -1,0 +1,41 @@
+[package]
+name = "native_api"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++20"]
+files = ["native_api.hpp"]
+symbols = ["Corpus"]
+
+# Native↔ABIX-STD parameter adaptation: each declaration maps a native (STL)
+# parameter type onto an ABIX-STD boundary type. Without a declaration the
+# frontend keeps refusing the STL type (ABI-SPEC §18 requires an explicit map).
+[[adapt]]
+native = "std::string"
+target = "abix_str_utf8"
+
+[[adapt]]
+native = "std::string_view"
+target = "abix_str_utf8"
+
+[[adapt]]
+native = "std::vector"
+target = "abix_span_i32"
+element = "int32_t"
+
+[[adapt]]
+native = "std::span"
+target = "abix_span_i32"
+element = "int32_t"
+
+[[expose]]
+type = "Corpus"
+methods = ["add_line", "measure", "sum", "sum_span"]
+constructor = []
+
+[thunks]
+output = "native_thunks.cpp"
+
+[[export]]
+output = "native_api.abix"

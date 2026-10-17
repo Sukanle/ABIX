@@ -370,6 +370,9 @@ ABIX
 - LLVM / Clang 工具链（AMC C++ 前端需要）
 - 受支持的原生工具链
 
+> **平台支持：** 支持 Linux、macOS 与 **Windows**。Windows 上使用 MSYS2 UCRT64
+> 工具链（GCC 或 Clang）构建；见 [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64)。
+
 ### 构建
 
 ```bash

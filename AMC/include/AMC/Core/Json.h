@@ -1,6 +1,7 @@
 #ifndef AMC_JSON_H
 #define AMC_JSON_H
 
+#include <list>
 #include <string>
 #include <string_view>
 #include <memory>
@@ -84,6 +85,13 @@ private:
     json_object *node_ = nullptr;
     mutable Array items_cache_;
     mutable bool cache_valid_ = false;
+    // Each find() returns a snapshot copy. They live in a std::list so that a
+    // returned pointer stays valid when more find() calls are made on the same
+    // object (a std::vector would reallocate and dangle earlier results).
+    // std::list, unlike std::deque, supports an incomplete element type, which
+    // is required here because Json is still incomplete inside its own
+    // definition.
+    mutable std::list<Json> find_cache_;
 };
 
 bool parse_json(std::string_view text, Json &value, std::string &error);

@@ -14,7 +14,7 @@ function(abi_add_test name)
             COMMAND dsymutil $<TARGET_FILE:${name}> -o ${CMAKE_BINARY_DIR}/bin/${name}.dSYM
             COMMENT "Generate dSYM file for ${name} on macOS")
     endif()
-    catch_discover_tests(${name})
+    catch_discover_tests(${name} WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endfunction()
 
 abi_add_test(basic_test)
@@ -27,13 +27,25 @@ abi_add_test(edge_test)
 abi_add_test(mics_test)
 abi_add_test(closed_test)
 abi_add_test(logging_test)
-abi_add_test(rcu_config_test)
+abi_add_test(rcu_reclaim_test)
+# Advancement diagnostics are compiled out of the default build, so their wiring
+# needs a translation unit that forces them on. This is the only target that does.
+abi_add_test(rcu_stats_test)
+target_compile_definitions(rcu_stats_test PRIVATE SKL_ABIX_RCU_ENABLE_STATS=1)
 abi_add_test(concurrency_test)
 abi_add_test(bootstrap_test)
 abi_add_test(metadata_registry_test)
+abi_add_test(interface_dispatch_test)
+abi_add_test(interface_module_test)
+abi_add_test(owner_abi_test)
+abi_add_test(interface_dll_test)
+abi_add_test(owner_dll_test)
 abi_add_test(hash_test)
 abi_add_test(compatibility_test)
 abi_add_test(map_test)
+abi_add_test(atomic_test)
+abi_add_test(binary_image_test)
+abi_add_test(pool_test)
 
 # --- Unity build: all tests in a single executable ---
 add_executable(test_all ${TEST_SRC_DIR}/test_all.cpp)
@@ -53,11 +65,13 @@ foreach(
     edge_stdcall_dll
     hotcache_dll
     closed_dll
-    closed_dll_v2)
+    closed_dll_v2
+    interface_dll
+    owner_dll)
     add_custom_command(
         TARGET test_all
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/bin
         COMMENT "Stage plugin ${plugin} for test_all")
 endforeach()
-catch_discover_tests(test_all)
+catch_discover_tests(test_all WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

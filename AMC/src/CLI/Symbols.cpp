@@ -133,6 +133,7 @@ int cmd_symbols(char **args, int arg_count) {
         fmt::print("fetched {} -> {}\n", path, output.string());
         return 0;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

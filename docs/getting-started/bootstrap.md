@@ -481,7 +481,7 @@ descriptors do not yet build `amc-cpp` itself.
 4. Closure consumers verify `type_of<TypeInfo>()`, `type_of<RegistryEntry>()`,
    lookup by `TypeId` and name, the canonical registry bridge, and that
    generated descriptor size/alignment match the native types.
-5. `ThreadState`, `RetiredNode`, `RetiredBatch`, `Epoch` and `rcu_domain` are
+5. `ThreadState`, `RetiredNode`, `RetiredBatch`, `Epoch` and `rcu::Domain` are
    included in the artifact; runtime type metadata comes from the generated
    module rather than hand-written metadata, with the two bootstrap kernel
    wire records as the only intentional TCB.

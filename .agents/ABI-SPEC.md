@@ -120,6 +120,32 @@ A function record carries:
 A function is identified at the ABI by its signature, not its name. Parameter
 order is significant. A function whose return type is zero is invalid.
 
+### 6.1 Error boundary
+
+A function may carry an optional **error-boundary contract** describing how it
+reports success/failure and where the result value is carried: the status source
+(the return value, a parameter, or a field of a returned aggregate), the status
+value that means success, and where the result is carried. It lets a consumer
+turn a bare C status code into a typed result (`Result<T, E>`).
+
+The status source is one of:
+
+- `return_value` — the whole return value is the status, and the result is a
+  parameter (or the return value itself);
+- `parameter` — a parameter carries the status, and the return value is the
+  result;
+- `return_field` — the return value is an aggregate carrying the status in one
+  field and the value in another (the ABIX-STD `Result` layout); the recorded
+  status/value indices are field indices within the returned record. This is how
+  an `abix_result_*` return binds to the error boundary without an
+  out-parameter.
+
+The contract is a **semantic contract, not a layout fact**: it does not change
+`TypeID`, `LayoutHash` or `ABIHash`, and a module without it is fully valid
+(every function is then "no declared error boundary"). It never permits a
+language-native unwinding mechanism (C++ exception, Rust panic) to cross the ABI
+boundary; the producing side converts it to the declared status.
+
 ## 7. Symbol Identity
 
 - A `Symbol` maps a name to a type, field or function by index.
@@ -137,16 +163,114 @@ order is significant. A function whose return type is zero is invalid.
 
 ## 9. Ownership
 
-Ownership semantics are **not yet part of the ABIX ABI model**. Where a language
-expresses ownership (for example C++ RAII), a frontend may encode it as flags,
-but it must not be assumed by the core model. Reserved for a future revision;
-until then, ownership differences are not detected by compatibility checks.
+Ownership is a **contract about how an ABI interaction is used**, not a fixed
+property of a type: the same type may be borrowed by one function and owned by
+another. It is declared, never inferred.
+
+A module may carry an optional ownership contract:
+
+- **release policies** — a value type and the entry points that create and
+  release it;
+- **per-interaction modes** — for a parameter or return value, one of
+  `borrowed` (non-owning view), `owned` (receiver releases through the declared
+  release entry point) or `copy` (independent data from an explicit copy), plus
+  a reference to the release entry point for `owned` returns.
+
+Rules:
+
+- Ownership is a contract, not a layout fact: it does **not** participate in
+  `TypeID`, `LayoutHash` or `ABIHash`, and it never changes the meaning of an
+  existing record.
+- An absent contract means `unspecified`; a reader must not infer `borrowed` or
+  `owned` from the absence of a record.
+- An `owned` interaction must reference an available release entry point; a
+  contract without one is rejected rather than assumed safe.
+- A module without ownership records is fully valid.
+
+Because it is optional and additive, ownership differences are not (yet) part of
+the compatibility classification; they are reported through the contract query,
+not folded into a single "ABI compatible" answer.
+
+### 9.1 ABIX-STD
+
+**ABIX-STD** is the standard cross-language ABI primitive layer. It is not a
+replacement STL: it defines a small set of ABI types and contracts that
+different languages can consume without each re-inventing a library interface.
+The ownership contract above is the ABIX-STD ownership vocabulary.
+
+The three data-passing semantics are:
+
+- **borrow** — a non-owning view; the receiver must not release the data, and it
+  is valid only while the producer keeps it alive;
+- **owned** — the receiver takes ownership and releases through the producer's
+  declared release entry point;
+- **copy** — independent data produced by an explicit copy.
+
+The first ABIX-STD primitive is a **borrowed span** (`abix_span_i32`): a plain
+two-field POD `{ const int32_t *data; uint64_t len; }` whose layout is identical
+in every language. ABIX records concrete instantiations (one span type per
+element type), not generic parameters; generic instantiation is a frontend
+concern (see [`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
+
+ABIX-STD types are ordinary ABIX types: their `TypeID`/`LayoutHash` come from the
+shared rules, and the borrow/owned/copy semantics are carried by the ownership
+contract, never by the layout.
+
+ABIX-STD is organized in three layers, and standardizes **boundary protocols, not
+container implementations**:
+
+1. **ABIX Core** records ABI facts (layout, pointers, length, alignment, calling
+   convention, type identity) and does not embed any language's containers.
+2. **ABIX-STD contracts** define a few composable interoperability contracts.
+3. **Language adapters and AMC** map each language's types to a contract and
+   generate thin adapters, copies or conversions at the boundary.
+
+Contracts are matched by **capability**, not by container name: a type is mapped
+by whether it can prove the required capability (contiguous storage, a release
+entry point, safe copying), never by a name-based table such as
+`vector ↔ Vec ↔ ArrayList`. Capability must be proven by a trusted frontend,
+an explicit declaration, or verified metadata -- never inferred from a name.
+
+| Priority | Contracts                                                        |
+| -------- | ---------------------------------------------------------------- |
+| P0       | sequence view, string view, opaque handle, ownership, error boundary |
+| P1       | optional, result, callback, generic range                        |
+| P2       | map, set, deque, complex graphs, language-specific containers    |
+
+P2 types are not given a unified implementation: they are exposed through
+`Opaque` handles with accessors, capability adapters, or explicit copies. A
+`std::vector<T>` is not a container contract of its own: AMC reads `data()` and
+`size()` through accessors and lowers it to a `SequenceView<T>` when the element
+type, layout, borrowing lifetime and invalidation conditions allow; otherwise it
+uses `Opaque` or an explicit copy. Nothing is claimed to be zero-copy merely
+because a name or an API looks similar.
+
+The P0 contracts (sequence view, string view, opaque handle, ownership, error
+boundary) and the P1 contracts (optional, result, callback, range) are each
+matched by **capability** — shape plus element `TypeID` — never by name:
+
+- `optional` = `{ discriminant: bool/u8; payload: T }`;
+- `result`   = `{ status: int; payload: T }` (reuses the error-boundary idea);
+- `callback` = `{ function entry; opaque context }`;
+- `range`    = a non-contiguous container exposed through length + indexed-access
+  accessors (no contiguous-memory assumption).
+
+A non-template contract type (for example a callback struct) is declared with
+`[[contract-type]]`; a container lowered through accessors uses `[[view]]`
+(contiguous) or `[[range]]` (iteration).
+
+P2 types (map, set, deque, complex graphs, language-specific containers) get
+**no unified implementation**: they are declared `opaque` (`[[contract-type]]
+contract = "opaque"`) and used through exported accessor operations, or through a
+`[[view]]` / `[[range]]` adapter, or an explicit copy. An `opaque` handle is a
+normal exported type whose layout consumers must not rely on.
 
 ## 10. Target
 
-A module records `arch`, `os`, `target_abi`, `compiler` and the module-level
-`calling_convention`. ABI facts are only comparable when their targets are
-compatible; tooling must report target differences rather than silently
+A module records `arch`, `os`, `target_abi`, `compiler`, the module-level
+`calling_convention`, and the optional platform facts `pointer_bits` and
+`endianness` (0 means unknown). ABI facts are only comparable when their targets
+are compatible; tooling must report target differences rather than silently
 comparing them.
 
 A module describes **one** target, and target differences are resolved by
@@ -157,6 +281,42 @@ floating-point format) for that target. Source-language identity — how a
 language spelled the type (`c_long`, `i32`) — is not an ABIX core type; it may be
 retained as optional provenance that never participates in identity. See
 [`docs/development/type-model.md`](../docs/development/type-model.md).
+
+### 10.1 Runtime target verification
+
+A region may carry a target description so a consumer can verify, at load time,
+that the artifact's platform matches the host or a required target. Verification
+distinguishes three outcomes and **never reports an unknown as compatible**:
+
+- `compatible` — every checked fact matched;
+- `incompatible` — a checked fact disagreed (including a pointer-typed record
+  that is not pointer-sized);
+- `unverifiable` — evidence is missing (no target description, or the region
+  leaves a checked fact unknown).
+
+Static verification (comparing a target against the produced artifact at build
+or CI time) and runtime verification (platform identity and metadata consistency
+at load) are separate concerns; facts that cannot be independently verified at
+runtime are reported as unverifiable rather than assumed.
+
+Verification is reported **per dimension**, so a tool can say precisely what
+matched, what disagreed, and what could not be checked from the region alone:
+
+| Dimension           | Checks from the region                                    |
+| ------------------- | --------------------------------------------------------- |
+| `platform`          | arch / os / abi / pointer width / endianness vs expected  |
+| `layout`            | pointer width consistency; fields inside their owner type |
+| `calling_convention`| each function declares a convention matching the required |
+
+Facts that need the compiled binary or the target toolchain — real field offsets
+in an object file, aggregate parameter classification, hidden return pointers —
+are **not** claimed by region verification; they belong to the build stage and
+come back `unverifiable` here. Region-internal `layout` checks prove the metadata
+is self-consistent, not that it matches a particular binary.
+
+The CLI exposes this as `amc target <file.abix|binary> [--expect arch=..,os=..]`:
+it prints the recorded target, or verifies it and reports each dimension
+independently (exit `1` when any is incompatible).
 
 ## 11. Canonical Representation
 
@@ -211,6 +371,36 @@ must be an explicit decision.
 - A Metadata Region is integrity-checked by recomputing `MetadataID` over
   `desc + hash + names`.
 - Artifacts must be mmap-able and parse-able offline without loading the program.
+
+### 13.1 Extension directory
+
+Optional contract tables (ownership, error boundary, target description, and
+future contracts) are discovered through a trailing **extension directory** in
+the `desc` section, after the fixed record tables:
+
+```text
+[ header  ]  version, count, flags, reserved
+[ entries ]  kind, version, count, byte_offset, byte_size, reserved
+[ records ]  payloads, addressed by their entry
+```
+
+- A region with **no extensions** has `desc_size` equal to the fixed record
+  size; its bytes are identical to a region produced before the directory
+  existed.
+- `directory.version` describes the directory encoding only; each entry carries
+  its own `version`, so contracts evolve independently.
+- `kind` names the contract type, not the record shape; `byte_size` alone fixes
+  record boundaries. A reader may skip an unknown `kind` only when the directory
+  is well formed and the boundaries check out.
+- An unknown directory version, a duplicate `kind`, or an out-of-bounds entry is
+  rejected rather than guessed at.
+
+Known extension kinds: `1` ownership, `2` error boundary, `3` target
+description, `4` ABIX-STD lowering, `5` view adapter, `6` range adapter. Adding a
+kind does not require a format version change. A view/range adapter carries a
+`semantics` flag (borrowed / owned / copy); the lifetime and invalidation rules
+remain the caller's contract — the region only reports them, it never enforces a
+lifetime at run time.
 
 ## 14. Versioning
 
@@ -301,6 +491,9 @@ it MUST NOT be assumed to be bidirectional.
 - A new required section, or a change to an existing record layout, is a format
   version change.
 - Extensions must not change the meaning of existing records.
+- Optional contract tables inside the Metadata Region use the extension
+  directory (§13.1); adding a contract kind does not require a format version
+  change.
 
 ## 16. Reserved Fields
 
@@ -316,3 +509,250 @@ it MUST NOT be assumed to be bidirectional.
 - A name-stripped artifact remains valid: names and source origins are
   diagnostic and are excluded from `ABIHash`; `TypeID`/`LayoutHash` are
   unaffected.
+
+## 18. Generic Instantiation
+
+ABIX does not define a universal generic system, and it does not unify C++
+templates, Rust generics and Zig `comptime`. It records **concrete ABI
+entities**. Instantiation is a pipeline, not a single type transform:
+
+```text
+source generic
+    -> frontend instantiation + constraint check   (the source language owns this)
+    -> concrete type + target ABI facts
+    -> ABIX-STD contract match                       (direct map / thin adapter / Opaque / reject)
+    -> .abix + generated bindings and symbols
+```
+
+Responsibilities are separated:
+
+- the **language frontend** performs instantiation, enforces the language's
+  constraints, and reports the concrete layout and calling ABI (aggregate
+  parameter passing, hidden return pointers, etc. cannot be derived from
+  `sizeof`/`alignof` alone);
+- **AMC** coordinates the request, selects the target, matches the concrete type
+  against an ABIX-STD contract, and generates bindings or adapters;
+- **ABIX Core / ABIX-STD** record the resulting facts and contracts; they never
+  implement a language's template semantics.
+
+Two stages are distinct:
+
+- **Instantiation** replaces generic parameters with concrete arguments to
+  obtain a real type (`abix_span<int32_t>`).
+- **ABI lowering** decides whether that type can be used directly at the boundary
+  (matches an ABIX-STD contract) or needs a thin adapter. A successful
+  instantiation does **not** by itself prove contract compatibility: a concrete
+  `std::span<int>` is not automatically an ABIX-STD `SequenceView<i32>`; AMC must
+  prove representation, alignment, calling ABI, element representation and
+  lifetime compatibility, or generate an adapter.
+
+Lowering against a contract has three outcomes:
+
+| Outcome         | Meaning                                                             |
+| --------------- | ------------------------------------------------------------------ |
+| `direct`        | the concrete type is already the boundary entity                    |
+| `needs_adapter` | compatible shape, but a thin adapter to the canonical type is generated |
+| `unsupported`   | cannot be lowered; the instantiation is rejected (no silent ABI)    |
+
+The first contract is `sequence-view`: a record of exactly two fields — a data
+pointer and an unsigned length. Matching is **not shape alone**; each dimension is
+checked independently:
+
+| Dimension    | Must confirm                                          | Otherwise            |
+| ------------ | ----------------------------------------------------- | -------------------- |
+| data field   | a pointer (or a contract-permitted equivalent)        | `unsupported`        |
+| element type | the pointee `TypeID` matches the declared element     | `unsupported`        |
+| mutability   | a mutable contract requires a non-const pointer       | `unsupported`        |
+| length field | an unsigned integer of known width                    | `unsupported`        |
+| layout       | size/align/offsets/representation are known           | adapter or reject    |
+| target ABI   | pointer/length/aggregate passing is known             | not `direct`         |
+
+A pointer records its pointee (`PointeeRef`, an optional section) so element
+matching uses ABI identity, not a spelling: `const float *` does not match
+`SequenceView<i32>` merely because it has two fields. When a pointer has no
+recorded pointee, the matcher falls back to a normalized ABI spelling.
+
+The second contract is `string-view`: a record of `{ data, length, encoding }`.
+The code unit is matched by the data pointer's pointee `TypeID`; the length and
+encoding fields must be unsigned integers. It is read-only and borrowed by
+default (a mutable contract requires a non-const pointer). The `encoding` value
+is a **runtime** property: the build stage checks the field's presence and type,
+and runtime verification can check its value; the build does not assume a
+particular encoding merely because the shape matches.
+
+Identity has two layers that must not be conflated:
+
+- a **type reference** links type-graph nodes inside one `.abix`; the metadata
+  region may additionally address a type by its table index, which is a
+  file-local reference and MUST NOT be compared across files;
+- a **stable type identity** is the canonical `TypeID` used to compare types
+  across builds and modules. ABIX `TypeID`s are content hashes (a name or an ABI
+  descriptor), so they are stable; a region index is not.
+
+Mutability is a **separate qualifier**, not part of the base element identity:
+the pointer's pointee records whether the data is const, and the contract matcher
+checks access rights independently.
+
+A matching element `TypeID` is necessary but **not sufficient** for `direct`: the
+matcher also checks the element's layout/size/alignment, the data-pointer and
+length representation, mutability, and the target calling ABI. Type and layout
+are reported as distinct reasons (`element_mismatch` vs `layout`) so `amc diff`
+can separate "element type changed" from "layout changed".
+
+A pointer-then-length record at the canonical offsets (pointer at 0, length at
+pointer width, size `2 * pointer_width`) is `direct`; the same two fields in the
+reversed order are `needs_adapter` and are lowered to the canonical view;
+anything else is rejected. `direct` means the mapping has been **proved**, not
+optimistically assumed — a `const float *` + length record does not match
+`SequenceView<i32>` merely because it has two fields.
+
+The result also records a **reason** (for example `element_mismatch`,
+`field_count`, `layout`) so tools can explain the decision rather than only
+reporting "incompatible".
+
+The lowering result is recorded in the `.abix` (an optional section) and is
+readable at run time; a target backend uses it to emit the adapter.
+
+A container whose layout is not a sequence view (for example a `std::vector<T>`
+with three pointers) is **not** a contract of its own. AMC lowers it to a
+`SequenceView<T>` through declared **accessor functions** (`data()`/`size()`),
+or uses `Opaque`/a copy when the layout, element type, borrow lifetime or
+invalidation conditions cannot be proven. The container's internal layout is
+never exposed; the generated adapter calls the accessors.
+
+**Lowering is a conversion decision** derived from concrete ABI facts and the
+target contract. It is **not** part of type identity and does **not** by itself
+prove ABI compatibility:
+
+- instantiation answers *what concrete entity the source language produced*;
+- the ABI description answers *its actual binary representation and call rules*;
+- lowering answers *how that entity satisfies a target contract*;
+- runtime verification answers *whether the loaded artifact meets the declared
+  conditions*.
+
+Two types with different layouts (`abix_view_rev_i32` and `abix_span_i32`) may
+satisfy the same `SequenceView<i32>` contract through an adapter; they are not
+the same concrete ABI type. A lowering record lets a reader discover that an
+adapter is required, but `status = needs_adapter` alone must never trigger a
+runtime conversion: the adapter must be really generated, linked, and checked at
+build time.
+
+Identity is layered and MUST NOT be conflated:
+
+| Identity                   | Describes                                            |
+| -------------------------- | ---------------------------------------------------- |
+| Instantiation request      | template + canonical arguments + target + frontend   |
+| Concrete ABI identity      | layout + calling ABI + target (layout/`LayoutHash`)  |
+| Export symbol name         | a link/diagnostic name; not an identity              |
+
+The instantiation request identity is recorded in the `.abix` (an optional
+`instantiations` section) as request-hash → concrete type, so tools can recognise
+the same request across builds. A request match is not a compatibility proof: the
+concrete ABI identity is checked separately.
+
+Ownership and other contracts are validated separately from layout identity.
+
+Not every instantiation is exported. Instantiating a type, recording it in
+`.abix`, and producing an export symbol are independent steps: an instantiation
+used only inside a module does not need a symbol, and a type may be recorded
+without an exported wrapper. Only entities that actually cross a module boundary
+need generated symbols or call adapters. In practice the C++ frontend records a
+typedef alias of an instantiation (for example `abix_span_i32`) as the concrete
+ABI entity when a selected function signature references it, so a contract type
+does not have to appear in the export symbol list.
+
+Instantiation requests fall into three classes, handled differently:
+
+- **A — pure type parameters** (`span<T>`, `vector<T>`): support primitive,
+  pointer and known-ABIX combinations first, checking element representation and
+  constraints.
+- **B — value parameters / conditional instantiation** (`array<T, N>`, `const`
+  generic parameters): the frontend evaluates the value first and records its
+  effect on layout.
+- **C — language constraints and specialization** (C++ concepts, template
+  specialization, Rust trait bounds, Zig `comptime`): decided entirely by the
+  source frontend; AMC does not re-implement these rules.
+
+An instantiation request's identity (for caching) includes the template, the
+canonical type/value arguments, the target configuration and the frontend
+configuration; it may also depend on macros, constraints, specialization choice
+and compile options, so it is not a function of the template name and arguments
+alone. A cache hit does not by itself prove that an existing artifact is still
+ABI-compatible with the current target.
+
+When a concrete type matches no ABIX-STD contract, AMC does not force an ABI: it
+requires an explicit mapping, uses an `Opaque` handle, or rejects the
+instantiation.
+
+A **native parameter type** (for example `std::string`, `std::vector<T>`) is
+handled the same way: it must not cross the boundary raw. A frontend records an
+explicit mapping from the native type onto an ABIX-STD boundary type (for the C++
+frontend, an `[[adapt]]` declaration), and only then does it generate a thunk
+whose parameter is the boundary type plus the marshalling step. The mapping is
+**parameters only**: a return value lowered to a borrowed view would dangle, so
+returns keep their own contract. The generated adapter is really compiled and
+linked; a recorded mapping alone never triggers a runtime conversion.
+
+## 19. Interface Contract
+
+An **interface** is a named, versioned, independent contract for
+non-intrusive polymorphism. It is not a class hierarchy and not any compiler's
+vtable: a provider keeps its own object layout, inheritance and virtual
+functions, and a generated adapter realises each interface method. Implementing
+an interface never requires modifying the provider type.
+
+### 19.1 Identity
+
+Identity is layered and MUST NOT be conflated:
+
+| Identity | Describes |
+| -------- | --------- |
+| Interface identity (`InterfaceId`) | A content hash over the interface **name**, **version** and **ordered method signatures** |
+| Method identity | `(interface_id, slot)`, with the method signature verified independently |
+| Implementation binding | How one concrete type reaches each slot, through an adapter |
+
+An interface identity is never a class name and never a vtable address. Because
+the ordered method signatures participate in the hash, **reordering or editing a
+method changes the identity**: a stale consumer can never silently call the wrong
+method — it simply does not match.
+
+The interface contract is a **semantic contract, not a layout fact**: it does
+not participate in `TypeID`, `LayoutHash` or `ABIHash`, and a module without
+interfaces is fully valid.
+
+### 19.2 Slot stability and versioning
+
+- Within one interface version, a slot's meaning is **fixed**.
+- Changing the method set (adding, removing, reordering or re-signing a method)
+  MUST be expressed as a **new version**, which yields a new identity. An existing
+  `(name, version)` is never mutated in place and its identity is never reused.
+- A consumer requests a version explicitly, or requests "newest" (`0`). A missing
+  requested version is reported as `version_mismatch`, distinct from an unknown
+  interface (`interface_not_found`).
+
+### 19.3 Signature verification
+
+Method identity is `(interface_id, slot)`, but the **method signature is checked
+separately**: a matching slot alone never proves the function type is correct.
+A consumer that intends to call a slot through a concrete function type must
+verify the recorded method signature against the signature its contract expects.
+A mismatch is refused (`signature_mismatch`) rather than called unsafely; an
+unbound slot is `method_not_found`. Once verified, a resolved adapter may be
+cached and called natively — binding happens at setup time, never per call.
+
+### 19.4 Dispatch artifacts
+
+An interface is realised at the boundary through a provider-owned adapter table:
+each entry names a signature and an entry point whose first argument is the
+object handle. The consumer resolves once and thereafter performs a plain native
+indirect call. Runtime dispatch is never a per-call lookup, a name comparison or
+a type inspection.
+
+### 19.5 Discovery manifest
+
+A provider exposes one fixed entry (`abix_module_query_v1`) returning a
+versioned, self-describing manifest. The platform export table is consulted for
+that entry only; no mangled name is decoded and no interface meaning is inferred
+from a symbol. A consumer validates the manifest (version, bounds, non-zero ids,
+duplicate slot rejection) before registering anything; a malformed or unknown
+manifest fails clearly rather than being guessed at.

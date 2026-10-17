@@ -1,0 +1,171 @@
+[package]
+name = "interop_demo"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["demo_api.hpp"]
+symbols = [
+    # The ABIX-STD contract types are intentionally NOT listed: AMC recognises
+    # them from the exported function signatures (the frontend records the
+    # typedef alias as the concrete ABI entity) and lowers them, so a contract
+    # type does not need an explicit export symbol.
+    "DemoVec2",
+    "demo_add",
+    "demo_scale",
+    "demo_vec2_create",
+    "demo_vec2_destroy",
+    "demo_div",
+    "demo_live_count",
+    "demo_numbers",
+    "demo_sum",
+    "demo_numbers_rev",
+    "demo_greeting",
+    "demo_str_len",
+    "demo_buffer_create",
+    "demo_buffer_push",
+    "demo_buffer_data",
+    "demo_buffer_size",
+    "demo_buffer_destroy",
+    "demo_optional",
+    "demo_result",
+    "demo_callback",
+    "demo_callback_invoke",
+    "demo_set_create",
+    "demo_set_insert",
+    "demo_set_size",
+    "demo_set_at",
+    "demo_set_destroy",
+    "demo_map_create",
+    "demo_map_put",
+    "demo_map_get",
+    "demo_map_size",
+    "demo_map_destroy",
+]
+
+[[owned]]
+type = "DemoVec2"
+create = "demo_vec2_create"
+destroy = "demo_vec2_destroy"
+
+# Per-interaction ownership contract (not a property of the type).
+[[contract]]
+function = "demo_vec2_create"
+returns = "owned"
+release = "demo_vec2_destroy"
+
+[[contract]]
+function = "demo_scale"
+params = ["borrowed"]
+
+[[contract]]
+function = "demo_vec2_destroy"
+params = ["owned"]
+
+# ABIX-STD borrowed span (M3): the view is borrowed, not owned.
+[[contract]]
+function = "demo_numbers"
+returns = "borrowed"
+
+[[contract]]
+function = "demo_sum"
+params = ["borrowed"]
+
+# Generic instantiation (M3): the frontend instantiates the ABIX-STD template
+# and AMC records the concrete entity `abix_span_i32`.
+[[instantiate]]
+template = "abix_std::abix_span"
+args = ["int32_t"]
+as = "abix_span_i32"
+contract = "sequence-view"
+element = "int"
+
+# A non-canonical view: instantiation succeeds, but it is not the boundary
+# entity, so AMC lowers it to `abix_span_i32` with a generated adapter.
+[[instantiate]]
+template = "abix_std::abix_view_rev"
+args = ["int32_t"]
+as = "abix_view_rev_i32"
+contract = "sequence-view"
+element = "int"
+
+# ABIX-STD string view (P0): borrowed, read-only UTF-8 text.
+[[instantiate]]
+template = "abix_std::abix_str"
+args = ["char"]
+as = "abix_str_utf8"
+contract = "string-view"
+element = "char"
+
+# A vector-like container lowered to `abix_span_i32` through accessors. Its
+# internal layout is never exposed.
+[[view]]
+type = "DemoBuffer"
+data_accessor = "demo_buffer_data"
+size_accessor = "demo_buffer_size"
+
+# ABIX-STD P1 contracts.
+[[instantiate]]
+template = "abix_std::abix_optional"
+args = ["int32_t"]
+as = "abix_optional_i32"
+contract = "optional"
+element = "int"
+
+[[instantiate]]
+template = "abix_std::abix_result"
+args = ["int32_t"]
+as = "abix_result_i32"
+contract = "result"
+element = "int"
+
+[[contract-type]]
+type = "abix_callback"
+contract = "callback"
+
+# P2: Map / Set are opaque handles used through accessors, not unified containers.
+[[contract-type]]
+type = "DemoMap"
+contract = "opaque"
+
+[[contract-type]]
+type = "DemoSet"
+contract = "opaque"
+
+# A non-contiguous container exposed as an iterable range.
+[[range]]
+type = "DemoSet"
+size_accessor = "demo_set_size"
+at_accessor = "demo_set_at"
+
+# Error boundary: demo_div reports its status in the return value and writes the
+# result through parameter 2.
+[[error]]
+function = "demo_div"
+success = 0
+value = 2
+
+# Non-intrusive polymorphism: an interface is an independent, named, versioned
+# contract; DemoVec2 implements it through adapters. No language's private
+# vtable layout is used.
+[[interface]]
+name = "IVectorMath"
+version = 1
+methods = ["demo_add", "demo_scale"]
+
+[[implements]]
+interface = "IVectorMath"
+type = "DemoVec2"
+methods = ["demo_add", "demo_scale"]
+
+# Target platform facts, carried into the region for runtime verification.
+[target]
+arch = 1
+os = 1
+abi = 1
+pointer_bits = 64
+endianness = "little"
+
+[[export]]
+output = "interop_demo.abix"

@@ -13,11 +13,11 @@
 // ============================================================
 #include <benchmark/benchmark.h>
 
-#include <cstdio>
 #include <cstring>
 #include <vector>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 
 // ============================================================
 // Helpers
@@ -35,8 +35,9 @@ struct ResolveFixture {
         entries.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
             char *name = new char[16];
-            std::snprintf(name, 16, "sym_%04u", i);
-            entries.push_back({name, skl::abix::dll::FnSigV<int(int)>, 0, 0xDEADBEEF, mics::utils::cstr32(name), 0});
+            format_into(name, 16, "sym_{:04}", i);
+            entries.push_back(
+                {name, skl::abix::dll::FnSigV<int(int)>, 0, 0xDEADBEEF, skl::abix::runtime::name_hash(name), 0});
         }
         table = {count, SKL_ABIX_TABLE_MAGIC, SKL_ABIX_TABLE_FORMAT_VERSION, 0, entries.data()};
         if (count >= SKL_ABIX_HASH_THRESHOLD) index.build(table);
@@ -87,6 +88,34 @@ void run_resolve_bench(benchmark::State &state, bool use_rcu, uint32_t table_siz
     state.SetItemsProcessed(state.iterations());
 }
 
+// HashIndex build cost and memory. `capacity = next_pow2(count * 2)` slots
+// of `{hash, index}` (8 bytes each), an O(capacity) EMPTY-init pass, then an
+// O(count) probe-insert pass. This runs on every load/reload for tables at or
+// above SKL_ABIX_HASH_THRESHOLD, so it is part of the module-load latency.
+void run_hashindex_build_bench(benchmark::State &state, uint32_t table_size) {
+    if (table_size < SKL_ABIX_HASH_THRESHOLD) {
+        state.SkipWithError("below SKL_ABIX_HASH_THRESHOLD: no index is built");
+        return;
+    }
+    ResolveFixture fix(table_size);
+    fix.index.destroy();   // the fixture built one; each iteration starts clean
+
+    skl::abix::runtime::HashIndex probe;
+    probe.build(fix.table);
+    state.counters["capacity"] = static_cast<double>(probe.capacity);
+    state.counters["slot_KiB"] =
+        static_cast<double>(probe.capacity) * sizeof(skl::abix::runtime::HashSlot) / 1024.0;
+    probe.destroy();
+
+    for (auto _ : state) {
+        skl::abix::runtime::HashIndex idx;
+        idx.build(fix.table);
+        benchmark::DoNotOptimize(idx.capacity);
+        idx.destroy();
+    }
+    state.counters["entries"] = static_cast<double>(table_size);
+}
+
 }   // anonymous namespace
 
 // ============================================================
@@ -112,3 +141,20 @@ public:
 };
 
 static ABIXResolveRegisterer g_registerer;
+
+// BM_HashIndex_Build/{entries}
+class ABIXHashIndexRegisterer {
+public:
+    ABIXHashIndexRegisterer() {
+        for (int si = 0; si < 6; ++si) {
+            std::string name = std::string("BM_HashIndex_Build/") + kSizeLabels[si];
+            benchmark::RegisterBenchmark(name.c_str(),
+                [size = kTableSizes[si]](benchmark::State &st) {
+                    run_hashindex_build_bench(st, uint32_t(size));
+                })
+                ->Unit(benchmark::kNanosecond);
+        }
+    }
+};
+
+static ABIXHashIndexRegisterer g_hashindex_registerer;

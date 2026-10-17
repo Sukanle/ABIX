@@ -6,6 +6,10 @@
 
 ## Current — ABIX 0.1.0 (Foundation, self-hosting and toolchain)
 
+**Platform support:** Linux and macOS are supported today. Windows is **not
+available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
+tests are still being validated.
+
 Established and maintained:
 
 - ABI inspection, diff, compatibility classification and adapter generation;
@@ -45,6 +49,14 @@ JSON-lines IPC) — a source-level `#[repr(C)]` / `extern "C"` extractor and a
 Rust `repr(C)` projection built on the ABI-normalised primitive identity
 (`core::ffi::c_*`). A C++ fixture and an ABI-equal Rust fixture already produce
 the same `TypeID` / `LayoutHash` and report `compatible=true`.
+
+Also delivered: a minimal `amc-zig` **backend-only** provider that consumes the
+same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]`
+typed pointers / `comptime` layout assertions). It validates that ABIX IR is
+reusable: the same artifact drives both the Rust and the Zig projection, and
+`AMC/tests/interop/` builds one native library and runs both consumers against
+it. The C++ → ABIX → Rust closed loop (with ownership, error-boundary and target
+contracts in an optional metadata-region extension directory) is complete.
 
 ### P0 — stabilize and validate
 

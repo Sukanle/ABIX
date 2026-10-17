@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
     const fs::path provider = fs::absolute(fs::path(args[0])).parent_path() / "amc-cpp";
 
     if (command == "--list-languages") {
-        fmt::print("cpp\nlua\nrust\n");
+        fmt::print("cpp\nlua\nrust\nzig\n");
         return 0;
     }
     if (command == "--describe-language") {
@@ -78,7 +78,11 @@ int main(int argc, char **argv) {
             fmt::print("rust frontend backend protocol=jsonl-v1\n");
             return 0;
         }
-        return usage_error("--describe-language supports cpp, lua and rust");
+        if (language == "zig") {
+            fmt::print("zig backend protocol=jsonl-v1\n");
+            return 0;
+        }
+        return usage_error("--describe-language supports cpp, lua, rust and zig");
     }
 
     if (command == "context") return cmd_context(args, arg_count);
@@ -87,7 +91,9 @@ int main(int argc, char **argv) {
     if (command == "query") return cmd_query(args, arg_count);
     if (command == "publish" || command == "fetch") return cmd_symbols(args, arg_count);
     if (command == "verify") return cmd_verify(args, arg_count, provider);
+    if (command == "target") return cmd_target(args, arg_count);
     if (command == "diff" || command == "compatibility") return cmd_diff(args, arg_count);
+    if (command == "cache") return cmd_cache(args, arg_count);
     if (command == "generate" || command == "backend") return cmd_generate(args, arg_count, provider);
     if (command == "frontend") return cmd_frontend(args, arg_count, provider);
     if (command == "build") return cmd_build(args, arg_count, provider);

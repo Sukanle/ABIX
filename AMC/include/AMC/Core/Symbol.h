@@ -20,7 +20,7 @@ namespace amc {
 // plan's lookup chain `Binary -> BuildID -> .abix`.
 
 // Reads the container-appropriate build id: the GNU build id note for ELF,
-// the LC_UUID command for Mach-O.
+// the LC_UUID command for Mach-O, the CodeView (RSDS) PDB GUID+Age for PE.
 bool read_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error);
 
 // Reads the GNU build id from `.note.gnu.build-id`.
@@ -28,6 +28,9 @@ bool read_gnu_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &b
 
 // Reads the UUID from the Mach-O LC_UUID load command.
 bool read_macho_uuid(const uint8_t *data, size_t size, std::vector<uint8_t> &uuid, std::string &error);
+
+// Reads the CodeView (RSDS) PDB GUID + Age from the PE debug directory.
+bool read_pe_debug_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error);
 
 std::string hex_encode(const uint8_t *data, size_t size);
 bool hex_decode(std::string_view hex, std::vector<uint8_t> &bytes);

@@ -56,6 +56,13 @@ The main line: ABIX IR as the common ABI representation across languages.
   (for example C `double` → Rust `core::ffi::c_double`).
 * cross-language bindings and a C++ ↔ Rust interoperability demo.
 
+Delivered: the `amc-rust` provider (`frontend` + `backend`) and the C++ → ABIX
+→ Rust closed loop — a real C++ library → `.abix` → generated Rust that links
+and runs, with ownership, error-boundary and target contracts carried in a
+versioned metadata-region extension directory. Also a minimal `amc-zig`
+**backend-only** provider, so the same `.abix` drives both the Rust and the Zig
+projection and both consumers link the same native library (`AMC/tests/interop/`).
+
 ### ABIX 0.3.0 — Ecosystem (future)
 
 Target areas, not hard commitments:

@@ -51,6 +51,41 @@ symbols = ["math::add", "math::Point"]
 output = "build/math_api.abix"
 ```
 
+A module may also declare optional **contracts**. They are semantic
+contracts, not layout facts, and never change `TypeID`/`LayoutHash`:
+
+```toml
+# Release policy: how an owned value is created and released.
+[[owned]]
+type = "Vec2"
+create = "vec2_create"
+destroy = "vec2_destroy"
+
+# Per-interaction ownership mode (borrowed / owned / copy).
+[[contract]]
+function = "vec2_create"
+returns = "owned"
+release = "vec2_destroy"
+
+[[contract]]
+function = "scale"
+params = ["borrowed"]
+
+# Error boundary: where a function reports its status and carries the value.
+[[error]]
+function = "div"
+success = 0
+value = 2
+
+# Target platform facts, for runtime verification.
+[target]
+arch = 1
+os = 1
+abi = 1
+pointer_bits = 64
+endianness = "little"
+```
+
 See [`abic.md`](../ABIX/abic.md) for the complete reference.
 
 ## Commands
@@ -117,11 +152,28 @@ amc verify contract.abix implementation.abix --format diagnostics
 `--format diagnostics` emits `file:line:column: error: ABI <kind> ...` lines
 using the contract's Source Origin, for editors and CI annotations.
 
+### `amc target`
+
+Prints the target platform recorded in an artifact (or embedded in a binary), or
+verifies it against an expected target — the static, CI-side counterpart to the
+runtime reader verification.
+
+```bash
+amc target file.abix                                          # describe
+amc target file.abix --expect arch=1,os=1,abi=1,pointer_bits=64,endianness=1
+amc target libfoo.so --expect arch=1 --format json
+```
+
+`platform`, `layout` and `calling_convention` are reported independently; an
+unknown fact is `unverifiable`, never `compatible`. The exit status is `1` when
+any checked dimension is `incompatible`.
+
 ### `amc generate`
 
 ```bash
 amc generate file.abix -l cpp  -o generated.hpp    # native C++17 projection
 amc generate file.abix -l rust -o generated.rs     # Rust `repr(C)` projection
+amc generate file.abix -l zig  -o generated.zig    # Zig `extern` projection
 amc generate file.abix -l lua  -o aue_contract.hpp # Aue contract (header)
 amc generate file.abix -l lua  -o conformance.lua  # generated Lua test case
 ```
@@ -155,11 +207,19 @@ alias encodes the target's C ABI. Because the Rust provider reads the language
 IR directly, `[[import]] language = "rust"` accepts `#[repr(C)]` structs/enums
 and `extern "C"` functions from `.rs` files without build flags.
 
+The Zig provider (`amc-zig`) is a **backend-only** consumer of the same IR:
+`amc generate -l zig` writes `amc_generated.zig` with `extern struct` types,
+`extern fn` declarations, `[*c]` typed pointers and `comptime` `@sizeOf` /
+`@alignOf` / `@offsetOf` assertions. It carries no Zig-specific model, so the
+same `.abix` that drives the Rust projection drives the Zig projection; see
+`AMC/tests/interop/`, where both consumers link the same native library.
+
 ### Language providers
 
 ```bash
-amc --list-languages              # cpp, lua, rust
+amc --list-languages              # cpp, lua, rust, zig
 amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
+amc --describe-language zig       # zig backend protocol=jsonl-v1
 ```
 
 Every `amc-<language>` executable is a standalone provider; `amc` dispatches to
@@ -264,6 +324,7 @@ amc validate missing.abix --error-format json
 |------|---------|
 | `amc-cpp` | C++ frontend/backend provider (JSON-lines IPC) |
 | `amc-rust` | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency |
+| `amc-zig` | Zig backend-only provider (JSON-lines IPC); consumes the same IR, no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools; indexes multiple artifacts as a knowledge base ([MCP.md](../ai/MCP.md)) |
 | `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`tools/lldb_abix.cpp`](../../tools/lldb_abix.cpp)) |

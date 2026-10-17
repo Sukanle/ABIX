@@ -72,6 +72,27 @@ def main() -> None:
     parser.add_argument(
         "--with-dev", action="store_true", help="Build with development features"
     )
+    parser.add_argument(
+        "--bench-repetitions",
+        type=int,
+        default=5,
+        help="Google Benchmark repetitions for the per-family runner",
+    )
+    parser.add_argument(
+        "--bench-out",
+        default="",
+        help="directory for the per-family benchmark JSON (default: <build>/bench)",
+    )
+    parser.add_argument(
+        "--bench-min-time",
+        default="",
+        help="optional bound for each benchmark run, e.g. 0.2s",
+    )
+    parser.add_argument(
+        "--bench-raw",
+        action="store_true",
+        help="Run bench_all in a single process instead of one process per family",
+    )
     if sys.platform == "win32":
         parser.add_argument(
             "--with-msvc",
@@ -141,26 +162,19 @@ def main() -> None:
     if not variants_script.exists():
         raise SystemExit(f"Variant build script not found: {variants_script}")
     print(f"\n== Running variant build: {variants_script} ==")
-    result = subprocess.run(
-        [sys.executable, str(variants_script), "--build-type", args.build_type]
-    )
+    variants_cmd = [
+        sys.executable,
+        str(variants_script),
+        "--build-type",
+        args.build_type,
+    ]
+    if sys.platform == "win32" and args.with_msvc:
+        variants_cmd.append("--with-msvc")
+        if args.vs_path:
+            variants_cmd.extend(["--vs-path", args.vs_path])
+    result = subprocess.run(variants_cmd)
     if result.returncode != 0:
         raise SystemExit(f"Variant build failed, exit code {result.returncode}")
-
-    if sys.platform == "win32" and args.with_msvc:
-        msvc_script = CURRENT_DIR / "build_msvc_variants.ps1"
-        if not msvc_script.exists():
-            print(f"  [Warning] MSVC variant script not found: {msvc_script}")
-        else:
-            print(f"\n== Running MSVC variant build: {msvc_script} ==")
-            msvc_cmd = ["powershell", "-File", str(msvc_script)]
-            if args.vs_path:
-                msvc_cmd.extend(["-VsPath", args.vs_path])
-            result = subprocess.run(msvc_cmd)
-            if result.returncode != 0:
-                print(
-                    "  [Warning] MSVC variant build failed (can be ignored if VS is not installed), cross-CRT tests will be skipped"
-                )
 
     if should_test:
         print("\n== Running tests ==")
@@ -170,11 +184,38 @@ def main() -> None:
         run([str(test_exe)], cwd=build_dir / "bin")
 
     if should_bench:
-        print("\n== Running benchmarks ==")
         bench_exe = build_dir / "bin" / get_executable_name("bench_all")
         if not bench_exe.exists():
             raise SystemExit(f"Benchmark executable not found: {bench_exe}")
-        run([str(bench_exe)], cwd=build_dir / "bin")
+        if args.bench_raw:
+            # One process, everything at once: what build.py did before the bench
+            # runner was extracted. Fast, but the EBR/RCU families share the
+            # process-wide rcu::Domain, so a family measured after the others have
+            # run reads several times slower (see tools/run_bench.py).
+            print("\n== Running benchmarks (single process) ==")
+            run([str(bench_exe)], cwd=build_dir / "bin")
+        else:
+            # One process per family, via the extracted runner: comparable numbers,
+            # and it also covers the standalone Google Benchmark executables and the
+            # families that are not EBR/RCU.
+            print("\n== Running benchmarks (one process per family) ==")
+            runner = CURRENT_DIR / "run_bench.py"
+            if not runner.exists():
+                raise SystemExit(f"Benchmark runner not found: {runner}")
+            bench_out = Path(args.bench_out) if args.bench_out else build_dir / "bench"
+            bench_cmd = [
+                sys.executable,
+                str(runner),
+                "--bin",
+                str(build_dir / "bin"),
+                "--out",
+                str(bench_out),
+                "--repetitions",
+                str(args.bench_repetitions),
+            ]
+            if args.bench_min_time:
+                bench_cmd.extend(["--min-time", args.bench_min_time])
+            run(bench_cmd)
 
 
 if __name__ == "__main__":

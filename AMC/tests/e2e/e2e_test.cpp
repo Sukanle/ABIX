@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -9,6 +10,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <algorithm>
 
 namespace {
@@ -29,9 +31,21 @@ struct TestResult {
 
 #define AMC_CHECK(r, a, b, msg) AMC_TEST(r, (a) == (b), msg << ": " << (a) << " != " << (b))
 
-std::string tmp_path(const char *name) { return std::string("/tmp/amc_e2e_") + name; }
+std::string tmp_path(const char *name) {
+    return (std::filesystem::temp_directory_path() / (std::string("amc_e2e_") + name)).string();
+}
 
-void cleanup(const std::string &path) { std::remove(path.c_str()); }
+// When KEEP_ARTIFACTS=1 is set (the CMake option SKL_ABIX_KEEP_TEST_ARTIFACTS),
+// the scratch files under the temp directory are retained for inspection.
+bool keep_artifacts() {
+    const char *value = std::getenv("KEEP_ARTIFACTS");
+    return value != nullptr && std::string(value) == "1";
+}
+
+void cleanup(const std::string &path) {
+    if (keep_artifacts()) return;
+    std::remove(path.c_str());
+}
 
 std::vector<uint8_t> read_bytes(const std::string &path) {
     std::ifstream input(path, std::ios::binary);
@@ -650,6 +664,72 @@ void test_abix_v4_section_directory(TestResult &r) {
     write_bytes(extended_path, extended);
     AMC_TEST(r, amc::read_abix(extended_path, loaded, error), "unknown optional section is skipped");
     cleanup(extended_path);
+    cleanup(path);
+}
+
+void test_abix_interface_sections(TestResult &r) {
+    std::cerr << "[abix_interface_sections]\n";
+    const auto path = tmp_path("interface_sections.abix");
+    cleanup(path);
+
+    amc::AbiModule module;
+    module.package_name = "iface";
+    module.package_version = "1";
+    const auto i32 = make_primitive("int", 4, 4);
+    const auto renderer = make_record("Renderer", 8, 8, 0, 0);
+    module.types.push_back(i32);
+    module.types.push_back(renderer);
+    module.functions.push_back(make_func("draw", i32.id,
+        {
+            {"w", i32.id, 0}
+    }));
+    module.functions.push_back(make_func("Renderer_draw", i32.id,
+        {
+            {"w", i32.id, 0}
+    }));
+
+    amc::InterfaceRecord iface;
+    iface.name = "IRenderer";
+    iface.version = 1;
+    iface.method_begin = 0;
+    iface.method_count = 1;
+    amc::InterfaceMethod method;
+    method.name = "draw";
+    method.signature = module.functions[0].signature;
+    method.return_type = i32.id;
+    method.parameters = module.functions[0].parameters;
+    method.slot = 0;
+    module.interface_methods.push_back(method);
+    iface.id = amc::interface_hash(iface, module.interface_methods);
+    module.interface_methods[0].interface_id = iface.id;
+    module.interfaces.push_back(iface);
+    amc::MethodBinding binding;
+    binding.interface_id = iface.id;
+    binding.method_signature = module.interface_methods[0].signature;
+    binding.slot = 0;
+    binding.native_function = module.functions[1].signature;
+    module.method_bindings.push_back(binding);
+    module.implementations.push_back({iface.id, renderer.id, 0, 1, 0});
+
+    std::string error;
+    AMC_TEST(r, amc::write_abix(module, path, error), "write interface artifact");
+    const auto bytes = read_bytes(path);
+    if (bytes.size() >= 20 + 17 * 24) {
+        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(17), "interface artifact section count");
+        const uint32_t expected_ids[] = {24, 25, 26, 27};
+        const uint32_t expected_sizes[] = {40, 72, 44, 56};
+        for (size_t i = 0; i < 4; ++i) {
+            const size_t entry = 20 + (13 + i) * 24;
+            AMC_CHECK(r, read_le_u32(bytes, entry), expected_ids[i], "interface section id");
+            AMC_CHECK(r, read_le_u32(bytes, entry + 16), expected_sizes[i], "interface section entry size");
+            AMC_CHECK(r, read_le_u32(bytes, entry + 20), uint32_t(0), "interface section is optional");
+        }
+    }
+    amc::AbiModule loaded;
+    AMC_TEST(r, amc::read_abix(path, loaded, error), "read interface artifact");
+    AMC_CHECK(r, loaded.interfaces.size(), size_t(1), "loaded interface count");
+    AMC_CHECK(r, loaded.interface_methods.size(), size_t(1), "loaded interface method count");
+    AMC_CHECK(r, loaded.method_bindings.size(), size_t(1), "loaded method binding count");
     cleanup(path);
 }
 
@@ -1342,6 +1422,9 @@ void test_member_symbol_projection(TestResult &r) {
 int main() {
     TestResult r;
 
+    if (keep_artifacts())
+        std::cerr << "  [KEEP] retained artifacts in " << std::filesystem::temp_directory_path().string() << "\n";
+
     std::cerr << "=== AMC E2E Tests ===\n\n";
 
     test_hash128_equality(r);
@@ -1370,6 +1453,7 @@ int main() {
     test_abix_nonexistent(r);
     test_abix_write_cannot_open(r);
     test_abix_v4_section_directory(r);
+    test_abix_interface_sections(r);
     test_compatibility_and_map_ir(r);
     test_primitive_identity_is_abi_based(r);
     test_compatibility_matches_primitives_by_abi(r);

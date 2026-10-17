@@ -105,11 +105,26 @@ amc verify contract.abix implementation.abix --format diagnostics
 `--format diagnostics` 输出 `file:line:column: error: ABI <kind> ...`（使用契约的
 Source Origin），供编辑器/CI 使用。
 
+### `amc target`
+
+打印产物（或二进制内嵌）记录的目标平台，或对期望目标做校验——是运行期 reader 校验的
+静态 / CI 侧对应入口。
+
+```bash
+amc target file.abix                                          # 描述
+amc target file.abix --expect arch=1,os=1,abi=1,pointer_bits=64,endianness=1
+amc target libfoo.so --expect arch=1 --format json
+```
+
+`platform` / `layout` / `calling_convention` **独立报告**；未知事实为 `unverifiable`，
+绝不降级为 `compatible`。任一被检查维度为 `incompatible` 时退出码为 `1`。
+
 ### generate
 
 ```bash
 amc generate file.abix -l cpp  -o generated.hpp
 amc generate file.abix -l rust -o generated.rs
+amc generate file.abix -l zig  -o generated.zig
 amc generate file.abix -l lua  -o aue_contract.hpp
 amc generate file.abix -l lua  -o conformance.lua
 ```
@@ -138,11 +153,18 @@ size/align/offset 检查。C-ABI 标量按其 ABI 归一化的 primitive identit
 `[[import]] language = "rust"` 可从 `.rs` 文件解析 `#[repr(C)]` struct/enum 与
 `extern "C"` 函数，且不需要编译 flag。
 
+Zig provider（`amc-zig`）是**仅后端**的同 IR 消费者：`amc generate -l zig` 写出
+`amc_generated.zig`，包含 `extern struct` 类型、`extern fn` 声明、`[*c]` 有类型指针
+以及 `comptime` 的 `@sizeOf` / `@alignOf` / `@offsetOf` 断言。它不引入任何 Zig 专属
+模型，因此驱动 Rust 投影的同一份 `.abix` 也能驱动 Zig 投影；见
+`AMC/tests/interop/`，两个消费者链接同一个原生库。
+
 ### 语言 provider
 
 ```bash
-amc --list-languages              # cpp、lua、rust
+amc --list-languages              # cpp、lua、rust、zig
 amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
+amc --describe-language zig       # zig backend protocol=jsonl-v1
 ```
 
 每个 `amc-<language>` 可执行文件都是独立 provider；`amc` 依据 `.abic.toml` 的
@@ -192,6 +214,7 @@ amc validate missing.abix --error-format json
 |------|------|
 | `amc-cpp` | C++ 前端/后端 provider（JSON-lines IPC） |
 | `amc-rust` | Rust 前端/后端 provider（JSON-lines IPC）；不依赖 Clang/LLVM |
+| `amc-zig` | Zig 仅后端 provider（JSON-lines IPC）；消费同一份 IR，不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | MCP server；可把多个 artifact 索引成 ABI 知识库（见 [MCP_zh.md](../ai/MCP_zh.md)） |
 | `libabix_lldb.so` | 原生 LLDB 命令插件（`abix ...`），直接链接 `libabix-*`（[`tools/lldb_abix.cpp`](../../tools/lldb_abix.cpp)） |

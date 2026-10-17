@@ -78,6 +78,7 @@ int cmd_query(char **args, int arg_count) {
                               : amc::compatibility_query_text(module, target, result));
         return result.consistent ? 0 : 1;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 int cmd_inspect(char **args, int arg_count) {
@@ -93,6 +94,7 @@ int cmd_inspect(char **args, int arg_count) {
                 module.fields.size(), module.functions.size());
         return 0;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

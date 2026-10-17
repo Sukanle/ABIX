@@ -23,12 +23,20 @@ import sys
 import tempfile
 from pathlib import Path
 
+# The ✓/✗ marks need an explicit UTF-8 stream on Windows (the console locale is
+# often GBK).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent
-AMC = ROOT / "build" / "Release" / "bin" / "amc"
-FIXTURE_DIR = ROOT / "amc" / "tests" / "fixtures"
+AMC = ROOT / "build" / "Release" / "bin" / ("amc.exe" if sys.platform == "win32" else "amc")
+FIXTURE_DIR = ROOT / "AMC" / "tests" / "fixtures"
 FIXTURE_CONFIG = FIXTURE_DIR / "amc_test.abic.toml"
 
 # Expected section names
@@ -40,6 +48,11 @@ SECTION_NAMES = ".abix.names"
 IS_MACOS = sys.platform == "darwin"
 NATIVE_METADATA = "__abix_metadata"
 NATIVE_NAMES = "__abix_names"
+
+# Windows is PE: section names are 8 bytes, so ABIX uses ".abix" / ".abix.n".
+IS_WINDOWS = sys.platform == "win32"
+WIN_METADATA = ".abix"
+WIN_NAMES = ".abix.n"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -170,7 +183,7 @@ def test_compile_elf(header, workdir):
     main_cpp = workdir / "main.cpp"
     main_cpp.write_text('#include "amc_generated.hpp"\nint main() { return 0; }\n')
 
-    binary = workdir / "test_abix"
+    binary = workdir / ("test_abix.exe" if IS_WINDOWS else "test_abix")
 
     rc, stdout, stderr = run(
         [
@@ -202,6 +215,25 @@ def test_compile_elf(header, workdir):
 def test_readelf_sections(binary, workdir):
     """Test: the binary exposes the ABIX metadata and names sections."""
     result = TestResult()
+
+    if IS_WINDOWS:
+        readobj = shutil.which("llvm-readobj")
+        if not readobj:
+            result.ok("llvm-readobj not found, skipping PE section inspection")
+            return result
+        rc, stdout, stderr = run([readobj, "--sections", str(binary)], check=False)
+        if rc != 0:
+            result.fail("llvm-readobj --sections", stderr.strip())
+            return result
+        if f"Name: {WIN_METADATA} (" in stdout:
+            result.ok(f"PE section {WIN_METADATA} found")
+        else:
+            result.fail("PE section", f"{WIN_METADATA} not found")
+        if f"Name: {WIN_NAMES} (" in stdout:
+            result.ok(f"PE section {WIN_NAMES} found")
+        else:
+            result.fail("PE section", f"{WIN_NAMES} not found")
+        return result
 
     if IS_MACOS:
         if not shutil.which("otool"):
@@ -257,6 +289,23 @@ def test_objdump_metadata(binary, workdir):
     """Test: the metadata section content can be dumped."""
     result = TestResult()
 
+    if IS_WINDOWS:
+        objcopy = shutil.which("llvm-objcopy") or shutil.which("objcopy")
+        if not objcopy:
+            result.ok("objcopy not found, skipping PE section dump")
+            return result
+        out_file = workdir / "win_region.bin"
+        rc, stdout, stderr = run([objcopy, f"--dump-section={WIN_METADATA}={out_file}", str(binary)], check=False)
+        if rc != 0 or not out_file.exists():
+            result.fail("objcopy --dump-section .abix", stderr.strip())
+            return result
+        data = out_file.read_bytes()
+        if data[:4] == b"ABIX":
+            result.ok("PE .abix starts with the ABIX magic")
+        else:
+            result.fail("PE .abix", "ABIX magic not found at offset 0")
+        return result
+
     if IS_MACOS:
         if not shutil.which("otool"):
             result.ok("otool not found, skipping section content dump")
@@ -306,6 +355,23 @@ def test_objdump_names(binary, workdir):
     non-empty, and has a reasonable size (>= 8 bytes per pointer × type count).
     """
     result = TestResult()
+
+    if IS_WINDOWS:
+        objcopy = shutil.which("llvm-objcopy") or shutil.which("objcopy")
+        if not objcopy:
+            result.ok("objcopy not found, skipping PE section dump")
+            return result
+        out_file = workdir / "win_names.bin"
+        rc, stdout, stderr = run([objcopy, f"--dump-section={WIN_NAMES}={out_file}", str(binary)], check=False)
+        if rc != 0 or not out_file.exists():
+            result.fail("objcopy --dump-section .abix.n", stderr.strip())
+            return result
+        size = out_file.stat().st_size
+        if size > 0:
+            result.ok(f"PE {WIN_NAMES} dumped ({size} bytes)")
+        else:
+            result.fail("PE section", f"{WIN_NAMES} appears empty")
+        return result
 
     if IS_MACOS:
         if not shutil.which("otool"):

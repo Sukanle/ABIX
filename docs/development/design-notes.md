@@ -346,10 +346,11 @@ layers.
    other; a writer that wants to unload waits until all readers have left (epoch plus grace)
    before reclaiming. It layers on top of an ownership/RAII model in which the creator also
    releases, adapting single-threaded lifetime management to multiple threads. `unload()` is
-   therefore mark, wait for readers to drain, reclaim. Timeout policies are `Safe`,
-   `ForceUnload` and `ForceLeak`; `Safe` prefers a zombie over a crash. Atomic operations use
-   the compiler builtins `__atomic_*` and deliberately avoid `<std::atomic>`, whose layout
-   varies by STL and would break cross-module ABI.
+   therefore mark, wait for readers to drain, reclaim. That wait is **unbounded**: a reader that
+   never leaves its critical section blocks the writer, and the caller's escape hatch is
+   `force_unload()`, which requires the caller to have excluded readers already. Atomic
+   operations use the compiler builtins `__atomic_*` and deliberately avoid `<std::atomic>`,
+   whose layout varies by STL and would break cross-module ABI.
 6. **Lookup acceleration.** Small tables are scanned linearly; large tables (64 entries and
    above) use an open-addressing hash index at roughly 50% load, built once at load time with
    no runtime initialization races. Hot functions, the 80/20 case, are supported.

@@ -47,6 +47,7 @@ public:
         o._name_hash = 0;
         o._index = ~runtime::index_t{0};
         o._valid = false;
+        o._verified_image = nullptr;
     }
     FunctionCC &operator=(FunctionCC &&o) noexcept {
         if (this != &o) {
@@ -56,10 +57,12 @@ public:
             _name_hash = o._name_hash;
             _index = o._index;
             _valid = o._valid;
+            _verified_image = nullptr;
             o._name = nullptr;
             o._name_hash = 0;
             o._index = ~runtime::index_t{0};
             o._valid = false;
+            o._verified_image = nullptr;
         }
         return *this;
     }
@@ -68,7 +71,10 @@ public:
         release_lib();
         _control = lib.control();
         _name = name;
-        _name_hash = mics::utils::cstr64(name);
+        // The table stores (and the index probes) the 32-bit folded name hash, so
+        // cache that form explicitly: find_index() below takes it, which keeps the
+        // hash from being recomputed on every resolve.
+        _name_hash = runtime::name_hash(name);
         _index = ~runtime::index_t{0};
         _valid = false;
         if (!_control) {
@@ -89,7 +95,7 @@ public:
         }
 
         runtime::index_t idx = ~runtime::index_t{0};
-        runtime::LookupResult r = find_index(*t, image->index, name, _sig, ver, idx);
+        runtime::LookupResult r = find_index(*t, image->index, name, _name_hash, _sig, ver, idx);
         switch (r) {
             case runtime::LookupResult::ok:
                 _index = idx;
@@ -107,7 +113,8 @@ public:
     }
 
     bool valid() const noexcept {
-        return _valid && _control
+        return _valid
+            && _control
             && util::load_acquire(&_control->state) == static_cast<uint32_t>(rcu::State::active)
             && util::load_acquire(&_control->image) != nullptr;
     }
@@ -115,6 +122,11 @@ public:
     runtime::index_t index() const noexcept { return _index; }
     uint64_t handle_id() const noexcept { return static_cast<uint64_t>(_index); }
 
+    // The pointer is handed out *after* the read-side section has been released, so
+    // nothing ties it to a live image: it is only valid while the image it came from
+    // is still the current one. A `reload()` (or `unload()` from another thread)
+    // invalidates it. Use `operator()`, which revalidates on every call, or hold an
+    // Interface lease, if the target has to stay valid across reloads.
     FnPtr raw() const noexcept {
         if (!valid()) return nullptr;
         rcu::LockGuard guard(rcu::Domain::instance());
@@ -128,10 +140,60 @@ public:
     }
 
     R operator()(Args... args) const noexcept {
-        if (!_control || util::load_acquire(&_control->state) != static_cast<uint32_t>(rcu::State::active)) {
+        if (!_control) {
             last_error() = CallError::not_loaded;
             return default_ret();
         }
+
+        // Fast path. Enter the read section first, so the module cannot be
+        // reclaimed while the call runs, then confirm the cached snapshot with a
+        // single relaxed load. `_index` is reused only when the current image is
+        // the one it was validated against *and* the entry still carries the
+        // resolved name hash and signature: that keeps this handle's contract
+        // ("the function with this name and signature in this module") intact
+        // while moving the per-call `strcmp` to the slow path. A stale or torn
+        // snapshot can therefore only cost a revalidate, never a wrong call.
+        //
+        // The section is released *after* the call returns, so the callee must not
+        // let an exception escape: an exception would skip the `exit()` below and
+        // leave this thread inside its section for good, which blocks every later
+        // grace period in the process. Calls cross a C ABI boundary, so that is the
+        // contract rather than something the callee is expected to test for.
+        {
+            rcu::Domain::instance().enter();
+            const Image *image = util::load_acquire(&_control->image);
+            if (image != nullptr
+                && image == util::load_relaxed(&_verified_image)
+                && image->export_table != nullptr
+                && _index < image->export_table->count) {
+                const auto &entry = image->export_table->entries[_index];
+                if (entry.name_hash == _name_hash && entry.sig == _sig && entry.fnptr != 0) {
+                    FnPtr verified = nullptr;
+                    memcpy(&verified, &entry.fnptr, sizeof(verified));
+                    last_error() = CallError::none;
+                    if constexpr (std::is_void_v<R>) {
+                        verified(args...);
+                        rcu::Domain::instance().exit();
+                        return;
+                    } else {
+                        R result = verified(args...);
+                        rcu::Domain::instance().exit();
+                        return result;
+                    }
+                }
+            }
+            rcu::Domain::instance().exit();
+        }
+
+        // Slow path: full re-validation (state, table, bounds, hash + sig + name).
+        if (util::load_acquire(&_control->state) != static_cast<uint32_t>(rcu::State::active)) {
+            last_error() = CallError::not_loaded;
+            return default_ret();
+        }
+        // Read the image *before* the table: the snapshot recorded below can then
+        // only be older than the table it was validated against, and an image
+        // that moved in between simply fails the pointer comparison next time.
+        const Image *validated_against = util::load_acquire(&_control->image);
         const auto *t = enter_read();
         if (!t) return default_ret();
         if (_index >= t->count) {
@@ -152,6 +214,7 @@ public:
         }
         FnPtr fn = nullptr;
         memcpy(&fn, &e.fnptr, sizeof(fn));
+        util::store_relaxed(&_verified_image, validated_against);
         last_error() = CallError::none;
         if constexpr (std::is_void_v<R>) {
             fn(args...);
@@ -188,6 +251,7 @@ private:
         _name_hash = 0;
         _index = ~runtime::index_t{0};
         _valid = false;
+        _verified_image = nullptr;
     }
 
     SharedPtr<Control> _control;
@@ -195,6 +259,14 @@ private:
     runtime::name_hash_t _name_hash = 0;
     runtime::index_t _index = ~runtime::index_t{0};
     bool _valid = false;
+    // `Image` against which `_index` was last validated, or nullptr. Only one
+    // pointer is needed: `Object` swaps `_control->image` on every load, reload,
+    // unload and force-unload, so an unchanged pointer means unchanged entries.
+    // It is a hint, re-confirmed by the entry's name hash and signature before a
+    // call, and `mutable` because `operator()` is const and may be called from
+    // several threads. Access goes through the `util::` atomic helpers, and every
+    // lifecycle path (resolve / move / release) clears it.
+    mutable const Image *_verified_image = nullptr;
 };
 
 template<typename Sig, cc::tag C = SKL_ABIX_CCPICK(Cdecl)>

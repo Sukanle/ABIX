@@ -27,6 +27,10 @@ and shows the core operations: inspect, query, diff, verify and generate.
 
 ## 1. Requirements
 
+> **Platform support:** Linux, macOS and Windows are supported; Windows builds use
+> the MSYS2 UCRT64 toolchain (GCC or Clang). See
+> [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64).
+
 * C++17 or later
 * CMake 3.20+
 * LLVM / Clang tooling (the AMC C++ frontend links `clang-cpp`)

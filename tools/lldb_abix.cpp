@@ -202,7 +202,7 @@ void run_info(lldb::SBDebugger &debugger, lldb::SBCommandReturnObject &result) {
     result.Printf("  metadata_id=%s\n", hash_hex(header.metadata_id).c_str());
     result.Printf("  types=%u fields=%u functions=%u parameters=%u symbols=%u\n", header.type_count, header.field_count,
         header.function_count, header.parameter_count, header.symbol_count);
-    result.Printf("  region= .abix.metadata (%zu bytes)\n", region.size());
+    result.Printf("  region= .abix.metadata (%llu bytes)\n", static_cast<unsigned long long>(region.size()));
 }
 
 // --- abix type -----------------------------------------------------------
@@ -222,8 +222,8 @@ void run_type(lldb::SBDebugger &debugger, const std::string &needle, bool layout
     }
     for (const auto index : indices) {
         const auto &type = module.types[index];
-        result.Printf("[%zu] %s kind=%s size=%u align=%u\n", index, type.name.c_str(),
-            amc::type_kind_name(type.kind).c_str(), type.size, type.align);
+        result.Printf("[%llu] %s kind=%s size=%u align=%u\n", static_cast<unsigned long long>(index),
+            type.name.c_str(), amc::type_kind_name(type.kind).c_str(), type.size, type.align);
         result.Printf("      id=%s layout=%s flags=0x%x fields=%u\n", hash_hex(type.id).c_str(),
             hash_hex(type.layout_hash).c_str(), type.flags, type.field_count);
         if (const amc::SourceOrigin *source = amc::find_source_origin(module, type.id))
@@ -254,15 +254,15 @@ void run_function(lldb::SBDebugger &debugger, const std::string &needle, lldb::S
     }
     for (const auto index : indices) {
         const auto &function = module.functions[index];
-        result.Printf("[%zu] %s owner=%s\n", index, function.name.c_str(),
+        result.Printf("[%llu] %s owner=%s\n", static_cast<unsigned long long>(index), function.name.c_str(),
             function.owner_type == amc::Hash128{} ? "-" : type_label(module, function.owner_type).c_str());
-        result.Printf("      signature=%s returns=%s cc=%u flags=0x%x params=%zu\n",
+        result.Printf("      signature=%s returns=%s cc=%u flags=0x%x params=%llu\n",
             hash_hex(function.signature).c_str(), type_label(module, function.return_type).c_str(),
-            function.calling_convention, function.flags, function.parameters.size());
+            function.calling_convention, function.flags, static_cast<unsigned long long>(function.parameters.size()));
         for (size_t p = 0; p < function.parameters.size(); ++p) {
             const auto &parameter = function.parameters[p];
-            result.Printf(
-                "      param %zu %-12s %s\n", p, parameter.name.c_str(), type_label(module, parameter.type_id).c_str());
+            result.Printf("      param %llu %-12s %s\n", static_cast<unsigned long long>(p),
+                parameter.name.c_str(), type_label(module, parameter.type_id).c_str());
         }
     }
 }
@@ -270,8 +270,8 @@ void run_function(lldb::SBDebugger &debugger, const std::string &needle, lldb::S
 // --- abix verify / check -------------------------------------------------
 
 void print_changes(const amc::VerifyResult &verification, lldb::SBCommandReturnObject &result) {
-    result.Printf(
-        "  compatible=%s changes=%zu\n", verification.consistent ? "true" : "false", verification.changes.size());
+    result.Printf("  compatible=%s changes=%llu\n", verification.consistent ? "true" : "false",
+        static_cast<unsigned long long>(verification.changes.size()));
     for (const auto &change : verification.changes) {
         std::string line = "  - ";
         line += amc::change_kind_name(change.kind);

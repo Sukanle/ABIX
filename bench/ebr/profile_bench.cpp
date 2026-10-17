@@ -1,7 +1,6 @@
 #include <benchmark/benchmark.h>
 
-#include <cstdio>
-
+#include "bench_fmt.hpp"
 #include "ebr/ebr_common.hpp"
 #include "topology/topology.hpp"
 #include "workloads/workload_runner.hpp"
@@ -11,17 +10,17 @@ int main(int argc, char **argv) {
 
     // Detect hardware topology
     auto topo = detect_cpu_topology();
-    fprintf(stderr, "[ebr_profile] Topology: %s\n", topo.to_string().c_str());
+    fmt::print(stderr, "[ebr_profile] Topology: {}\n", topo.to_string());
 
     // Print rcu_domain cache-line layout diagnostics
     print_rcu_domain_layout();
 
     // Print thread counts
     auto threads = default_thread_counts(topo);
-    fprintf(stderr, "[ebr_profile] Thread counts: ");
+    fmt::print(stderr, "[ebr_profile] Thread counts: ");
     for (auto t : threads)
-        fprintf(stderr, "%u ", t);
-    fprintf(stderr, "\n");
+        fmt::print(stderr, "{} ", t);
+    fmt::print(stderr, "\n");
 
     // Register all EBR benchmark groups
     register_ebr_fast_path(topo);
