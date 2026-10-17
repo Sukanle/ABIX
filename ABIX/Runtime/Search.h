@@ -41,9 +41,13 @@ enum class LookupResult : uint8_t {
 #define SKL_ABIX_HASHSLOT_EMPTY ~skl::abix::runtime::index_t{0}
 #define SKL_ABIX_HASH_THRESHOLD 64
 
+// A slot stores the entry index **plus one**, so 0 is a valid "empty" marker and
+// the whole array can be zeroed in bulk instead of running a per-slot init loop.
+// (0xFFFFFFFF stays the "no result" value for lookup `out` parameters, which is
+// unrelated to how a slot records occupancy.)
 struct HashSlot {
     name_hash_t hash;
-    index_t index;
+    index_t index_plus1;
 };
 
 inline constexpr uint32_t next_pow2(uint32_t v) noexcept {
@@ -75,18 +79,16 @@ struct HashIndex {
         slots = new (std::nothrow) HashSlot[capacity];
         if (!slots) return;
 
-        for (uint32_t i = 0; i < capacity; ++i) {
-            slots[i].hash = 0;
-            slots[i].index = SKL_ABIX_HASHSLOT_EMPTY;
-        }
+        // One bulk zero: 0 already means "empty" for the index_plus1 encoding.
+        memset(slots, 0, sizeof(HashSlot) * capacity);
 
         for (index_t i = 0; i < t.count; ++i) {
             const Entry &e = t.entries[i];
             uint32_t pos = e.name_hash & mask;
-            while (slots[pos].index != SKL_ABIX_HASHSLOT_EMPTY)
+            while (slots[pos].index_plus1 != 0)
                 pos = (pos + 1) & mask;
             slots[pos].hash = e.name_hash;
-            slots[pos].index = i;
+            slots[pos].index_plus1 = i + 1;
         }
     }
 
@@ -104,12 +106,15 @@ struct HashIndex {
 // Linear scan (baseline)
 // ============================================================
 
-inline LookupResult find_linear(const Table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept {
+// `nh` is the name hash (`runtime::name_hash`). Callers that already know it
+// (e.g. Function::resolve, which caches it) use this overload; the convenience
+// overload below hashes `name` first.
+inline LookupResult find_linear(
+    const Table &t, const char *name, name_hash_t nh, sig_t sig, version_t ver, index_t &out) noexcept {
     if (!name || t.magic != SKL_ABIX_TABLE_MAGIC) {
         out = ~index_t{0};
         return LookupResult::bad_Table;
     }
-    const name_hash_t nh = mics::utils::cstr32(name);
     for (index_t i = 0; i < t.count; ++i) {
         const Entry &e = t.entries[i];
         if (e.name_hash != nh) continue;
@@ -124,6 +129,14 @@ inline LookupResult find_linear(const Table &t, const char *name, sig_t sig, ver
     }
     out = ~index_t{0};
     return LookupResult::not_found;
+}
+
+inline LookupResult find_linear(const Table &t, const char *name, sig_t sig, version_t ver, index_t &out) noexcept {
+    if (!name) {
+        out = ~index_t{0};
+        return LookupResult::bad_Table;
+    }
+    return find_linear(t, name, name_hash(name), sig, ver, out);
 }
 
 inline const Entry *lookup_linear(const Table &t, const char *name, name_hash_t nh, sig_t sig) noexcept {
@@ -141,17 +154,16 @@ inline const Entry *lookup_linear(const Table &t, const char *name, name_hash_t 
 // Hash index lookup
 // ============================================================
 
-inline LookupResult find_hash(
-    const Table &t, const HashIndex &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept {
+inline LookupResult find_hash(const Table &t, const HashIndex &idx, const char *name, name_hash_t nh, sig_t sig,
+    version_t ver, index_t &out) noexcept {
     if (!name || t.magic != SKL_ABIX_TABLE_MAGIC || !idx.valid()) {
         out = ~index_t{0};
         return LookupResult::bad_Table;
     }
-    const name_hash_t nh = mics::utils::cstr32(name);
     uint32_t pos = nh & idx.mask;
-    while (idx.slots[pos].index != SKL_ABIX_HASHSLOT_EMPTY) {
+    while (idx.slots[pos].index_plus1 != 0) {
         if (idx.slots[pos].hash == nh) {
-            index_t i = idx.slots[pos].index;
+            index_t i = idx.slots[pos].index_plus1 - 1;
             const Entry &e = t.entries[i];
             if (strcmp(e.name, name) != 0) {
                 pos = (pos + 1) & idx.mask;
@@ -174,13 +186,22 @@ inline LookupResult find_hash(
     return LookupResult::not_found;
 }
 
+inline LookupResult find_hash(
+    const Table &t, const HashIndex &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept {
+    if (!name) {
+        out = ~index_t{0};
+        return LookupResult::bad_Table;
+    }
+    return find_hash(t, idx, name, name_hash(name), sig, ver, out);
+}
+
 inline const Entry *lookup_hash(
     const Table &t, const HashIndex &idx, const char *name, name_hash_t nh, sig_t sig) noexcept {
     if (!name || t.magic != SKL_ABIX_TABLE_MAGIC || !idx.valid()) return nullptr;
     uint32_t pos = nh & idx.mask;
-    while (idx.slots[pos].index != SKL_ABIX_HASHSLOT_EMPTY) {
+    while (idx.slots[pos].index_plus1 != 0) {
         if (idx.slots[pos].hash == nh) {
-            const Entry &e = t.entries[idx.slots[pos].index];
+            const Entry &e = t.entries[idx.slots[pos].index_plus1 - 1];
             if (e.sig == sig && strcmp(e.name, name) == 0) return &e;
         }
         pos = (pos + 1) & idx.mask;
@@ -192,10 +213,19 @@ inline const Entry *lookup_hash(
 // Auto-select: Linear for small Tables, HashIndex for large Tables
 // ============================================================
 
+inline LookupResult find_index(const Table &t, const HashIndex &idx, const char *name, name_hash_t nh, sig_t sig,
+    version_t ver, index_t &out) noexcept {
+    if (idx.valid()) return find_hash(t, idx, name, nh, sig, ver, out);
+    return find_linear(t, name, nh, sig, ver, out);
+}
+
 inline LookupResult find_index(
     const Table &t, const HashIndex &idx, const char *name, sig_t sig, version_t ver, index_t &out) noexcept {
-    if (idx.valid()) return find_hash(t, idx, name, sig, ver, out);
-    return find_linear(t, name, sig, ver, out);
+    if (!name) {
+        out = ~index_t{0};
+        return LookupResult::bad_Table;
+    }
+    return find_index(t, idx, name, name_hash(name), sig, ver, out);
 }
 
 }   // namespace skl::abix::runtime

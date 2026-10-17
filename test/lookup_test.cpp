@@ -21,7 +21,7 @@ TEST_CASE("8.lookup_policy_benchmark", "[perf][prompt8]") {
         auto sg = skl::abix::dll::FnSig<int(int)>::value;
         for (int i = 0; i < CALLS; ++i) {
             const char *nm = name_for(i);
-            auto e = look(nm, mics::utils::cstr32(nm), sg);
+            auto e = look(nm, skl::abix::runtime::name_hash(nm), sg);
             if (e) sink ^= reinterpret_cast<uintptr_t>(e->fnptr);
         }
         (void)sink;

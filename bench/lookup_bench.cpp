@@ -29,23 +29,101 @@ static bool ensure_lookup_plugin(benchmark::State &state) {
 static void BM_FindIndex_Only(benchmark::State &state) {
     if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    // Local cursor: `state.iterations()` is constant inside the loop body.
+    int i = 0;
     for (auto _ : state) {
-        const char *nm = hot_name(state.iterations() % 20);
+        const char *nm = hot_name(i % 20);
         skl::abix::runtime::index_t idx;
         find_index(*g_table, g_image->index, nm, sg, 0, idx);
         benchmark::DoNotOptimize(idx);
+        ++i;
     }
 }
 BENCHMARK(BM_FindIndex_Only);
+
+// Per-hash cost on *pre-formatted* names held in a contiguous block: cold_name()
+// builds its name with snprintf, which would otherwise dominate the measurement.
+static char g_hash_names[1'000][8];
+static char g_hash_names16[1'000][17];
+
+static const char *hash_name_short(int i) {
+    if (g_hash_names[0][0] == '\0')
+        for (int k = 0; k < 1'000; ++k)
+            std::snprintf(g_hash_names[k], sizeof(g_hash_names[k]), "e_%04d", k);
+    return g_hash_names[i % 1'000];
+}
+static const char *hash_name_long(int i) {
+    if (g_hash_names16[0][0] == '\0')
+        for (int k = 0; k < 1'000; ++k)
+            std::snprintf(g_hash_names16[k], sizeof(g_hash_names16[k]), "symbol_%08d_v", k);
+    return g_hash_names16[i % 1'000];
+}
+
+static void BM_Hash_Name_6ch(benchmark::State &state) {
+    int i = 0;
+    for (auto _ : state) {
+        auto nh = skl::abix::runtime::name_hash(hash_name_short(i));
+        benchmark::DoNotOptimize(nh);
+        ++i;
+    }
+}
+BENCHMARK(BM_Hash_Name_6ch);
+
+static void BM_Hash_Name_16ch(benchmark::State &state) {
+    int i = 0;
+    for (auto _ : state) {
+        auto nh = skl::abix::runtime::name_hash(hash_name_long(i));
+        benchmark::DoNotOptimize(nh);
+        ++i;
+    }
+}
+BENCHMARK(BM_Hash_Name_16ch);
+
+// Model: the resolve path needs the name hash twice — once for the table
+// lookup and once for the per-call validation — so it used to be computed twice
+// per resolve. Both variants hash a *varying* cold name (nothing can be hoisted)
+// and differ only in whether find_index() hashes again internally.
+static void BM_ResolvePath_TwoHashes(benchmark::State &state) {
+    if (!ensure_lookup_plugin(state)) return;
+    auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    int i = 0;
+    for (auto _ : state) {
+        const char *nm = cold_name(i % 1'000);
+        auto nh = skl::abix::runtime::name_hash(nm);   // what Function::resolve caches
+        benchmark::DoNotOptimize(nh);
+        skl::abix::runtime::index_t idx;
+        find_index(*g_table, g_image->index, nm, sg, 0, idx);   // hashes again
+        benchmark::DoNotOptimize(idx);
+        ++i;
+    }
+}
+BENCHMARK(BM_ResolvePath_TwoHashes);
+
+static void BM_ResolvePath_OneHash(benchmark::State &state) {
+    if (!ensure_lookup_plugin(state)) return;
+    auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    int i = 0;
+    for (auto _ : state) {
+        const char *nm = cold_name(i % 1'000);
+        const auto nh = skl::abix::runtime::name_hash(nm);
+        skl::abix::runtime::index_t idx;
+        find_index(*g_table, g_image->index, nm, nh, sg, 0, idx);   // reuses it
+        benchmark::DoNotOptimize(idx);
+        ++i;
+    }
+}
+BENCHMARK(BM_ResolvePath_OneHash);
 
 // --- BM_Resolve_Linear ---
 static void BM_Resolve_Linear(benchmark::State &state) {
     if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    int i = 0;
     for (auto _ : state) {
-        const char *nm = hot_name(state.iterations() % 20);
-        const auto *e = lookup_linear(*g_table, nm, mics::utils::cstr32(nm), sg);
+        const char *nm = hot_name(i % 20);
+        const auto *e = lookup_linear(*g_table, nm, skl::abix::runtime::name_hash(nm), sg);
         benchmark::DoNotOptimize(e);
+        ++i;
     }
 }
 BENCHMARK(BM_Resolve_Linear);
@@ -55,29 +133,37 @@ static void BM_Resolve_WithEBR(benchmark::State &state) {
     if (!ensure_lookup_plugin(state)) return;
     skl::abix::rcu::Domain &dom = skl::abix::rcu::Domain::instance();
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    int i = 0;
     for (auto _ : state) {
         dom.enter();
         skl::abix::dll::Image *img = g_lib->image_acquire();
-        const char *nm = hot_name(state.iterations() % 20);
+        const char *nm = hot_name(i % 20);
         skl::abix::runtime::index_t idx = 0;
         if (img && img->export_table) {
             find_index(*img->export_table, img->index, nm, sg, 0, idx);
         }
         benchmark::DoNotOptimize(idx);
         dom.exit();
+        ++i;
     }
 }
 BENCHMARK(BM_Resolve_WithEBR);
 
 // --- 80/20 distribution ---
+//
+// The target name must come from a local cursor: `benchmark::State::iterations()`
+// is constant inside the loop body (the harness only updates it between runs), so
+// deriving the name from it pins one name for the whole run. abix_lookup_cross_bench
+// already uses the local-cursor pattern for the same reason.
 static void BM_Resolve_Linear_80_20(benchmark::State &state) {
     if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    int i = 0;
     for (auto _ : state) {
-        int i = (int)state.iterations();
         const char *nm = (i % 100 < 80) ? hot_name(i % 20) : cold_name(i % 1'000);
-        const auto *e = lookup_linear(*g_table, nm, mics::utils::cstr32(nm), sg);
+        const auto *e = lookup_linear(*g_table, nm, skl::abix::runtime::name_hash(nm), sg);
         benchmark::DoNotOptimize(e);
+        ++i;
     }
 }
 BENCHMARK(BM_Resolve_Linear_80_20);
@@ -86,10 +172,12 @@ BENCHMARK(BM_Resolve_Linear_80_20);
 static void BM_Resolve_Linear_Random(benchmark::State &state) {
     if (!ensure_lookup_plugin(state)) return;
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
+    int i = 0;
     for (auto _ : state) {
-        const char *nm = cold_name((int)state.iterations() % 1'000);
-        const auto *e = lookup_linear(*g_table, nm, mics::utils::cstr32(nm), sg);
+        const char *nm = cold_name(i % 1'000);
+        const auto *e = lookup_linear(*g_table, nm, skl::abix::runtime::name_hash(nm), sg);
         benchmark::DoNotOptimize(e);
+        ++i;
     }
 }
 BENCHMARK(BM_Resolve_Linear_Random);

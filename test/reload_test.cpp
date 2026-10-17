@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstring>
 #include <chrono>
+#include <vector>
 
 TEST_CASE("9.hot_reload", "[reload][prompt9]") {
     log_info(
@@ -321,4 +322,80 @@ TEST_CASE("31.tick_frame_timeout", "[tick][timeout][prompt31]") {
     REQUIRE(add.valid());
     REQUIRE(add(1, 2) == 3);
     log_info("reload after unload: DLL functional, add(1,2)=%d", add(1, 2));
+}
+
+// The cached ("verified snapshot") call path in Function::operator() must not
+// outlive the image it was validated against. These three cases are the
+// regression guard for that optimization.
+TEST_CASE("9b.a cached handle never calls a stale image", "[reload][prompt9b]") {
+    log_info("Test 9b: the cached call path must follow a reload and must not survive an unload");
+
+    skl::abix::dll::Object lib;
+    REQUIRE(lib.load(dll_path("reload_dll_a").c_str()));
+
+    auto helper = skl::abix::dll::Function<int(int)>(lib, "helper");
+    REQUIRE(helper.valid());
+    REQUIRE(helper(5) == 105);
+    REQUIRE(helper(5) == 105);   // now served by the cached path
+    log_info("reload_dll_a: helper(5)=105 (twice, cached path established)");
+
+    // Positive: after the swap the same handle must reach the NEW implementation.
+    REQUIRE(lib.reload(dll_path("reload_dll_b").c_str()));
+    REQUIRE(lib.is_loaded());
+    REQUIRE(helper(5) == 205);
+    REQUIRE(helper(5) == 205);
+    log_info("after reload to reload_dll_b: helper(5)=205 (stable pointer not reused)");
+
+    // Negative: after the module is force-unloaded the handle must refuse
+    // instead of calling into a module that is on its way out. (`unload()`
+    // refuses while a handle is alive, so the forced path is the one that can
+    // strand a handle.)
+    lib.force_unload();
+    REQUIRE(!lib.is_loaded());
+    REQUIRE(helper(5) == 0);
+    REQUIRE(skl::abix::dll::last_error() == skl::abix::dll::CallError::not_loaded);
+    log_info("after force_unload: helper(5) refused with not_loaded");
+}
+
+TEST_CASE("9c.a handle resolved against one module rejects another module's table", "[reload][prompt9c]") {
+    log_info("Test 9c: re-pointing the Object at a different module must fail the stale handle");
+
+    skl::abix::dll::Object lib;
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    auto add = skl::abix::dll::Function<int(int, int)>(lib, "add");
+    REQUIRE(add.valid());
+    REQUIRE(add(2, 3) == 5);
+
+    REQUIRE(lib.reload(dll_path("edge_dll").c_str()));
+    REQUIRE(lib.is_loaded());
+
+    const int refused = add(2, 3);
+    REQUIRE(refused == 0);
+    REQUIRE(skl::abix::dll::last_error() == skl::abix::dll::CallError::table_changed);
+    log_info("stale handle refused after the module swap (result=%d, error=table_changed)", refused);
+}
+
+TEST_CASE("9d.concurrent calls through a cached handle", "[reload][threads][prompt9d]") {
+    log_info("Test 9d: concurrent callers share the cached snapshot without a wrong call");
+
+    skl::abix::dll::Object lib;
+    REQUIRE(lib.load(dll_path("math_dll").c_str()));
+    auto add = skl::abix::dll::Function<int(int, int)>(lib, "add");
+    REQUIRE(add.valid());
+    REQUIRE(add(1, 1) == 2);   // establish the snapshot before the threads start
+
+    std::atomic<int> wrong{0};
+    std::vector<std::thread> threads;
+    threads.reserve(8);
+    for (int t = 0; t < 8; ++t) {
+        threads.emplace_back([&add, &wrong] {
+            for (int i = 0; i < 20'000; ++i)
+                if (add(i, 1) != i + 1) ++wrong;
+        });
+    }
+    for (auto &thread : threads)
+        thread.join();
+
+    REQUIRE(wrong.load() == 0);
+    log_info("8 threads x 20000 calls through the cached path: 0 wrong results");
 }
