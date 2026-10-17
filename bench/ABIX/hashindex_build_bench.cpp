@@ -30,6 +30,16 @@
 // linear probing, first free slot wins, `strcmp` on a hash match), and the
 // equivalence check confirms they resolve identical indices with identical probe
 // counts. Nothing here is wired into ABIX.
+//
+// Modes:
+//   (default)        the fill-strategy comparison in this process
+//   --run-one/--spawn one (variant, size) per process, cold round vs steady state
+//   --reclaim N      how often RCU reclaim actually runs per synchronize() call
+//   --reload-loop    replay what Object::reload does with the real Domain, batched
+//                    vs eager retirement, and time only the index build
+//   --pattern [R]    the reload cadence (build while older buffers are pending,
+//                    one batch release every epoch batch), alloc vs one parked
+//                    buffer, amortized ns per build
 // ============================================================
 
 #include <algorithm>
@@ -38,9 +48,18 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 #include <vector>
 
 #include "ABIX/ABIX.h"
+
+#if defined(_WIN32)
+#  define ABIX_POPEN _popen
+#  define ABIX_PCLOSE _pclose
+#else
+#  define ABIX_POPEN popen
+#  define ABIX_PCLOSE pclose
+#endif
 
 namespace {
 
@@ -302,6 +321,380 @@ int probes_and_mismatches(const Table &t, double &base_probes, double &zero_prob
     return static_cast<int>(mism);
 }
 
+// ---------------------------------------------------------------- reclaim cadence
+
+inline unsigned long long g_reclaimed = 0;
+
+inline void count_reclaim(void *p) noexcept {
+    ++g_reclaimed;
+    delete static_cast<int *>(p);
+}
+
+inline void count_reclaim_image(void *p) noexcept {
+    ++g_reclaimed;
+    delete static_cast<skl::abix::dll::Image *>(p);
+}
+
+inline void destroy_index_only(void *p) noexcept { static_cast<skl::abix::runtime::HashIndex *>(p)->destroy(); }
+
+inline void free_image_token(void *p) noexcept { delete static_cast<skl::abix::dll::Image *>(p); }
+
+// ---------------------------------------------------------------- reload loop
+
+// Replays the exact sequence the shipping code runs, with the real Domain and the
+// real `HashIndex`, and times only the build:
+//
+//   batched: build -> retire(index) -> retire(image) -> synchronize()
+//            (what Object::reload did before the two-class split: the retired index
+//            waits for the batched epoch advancement, i.e. up to
+//            SKL_ABIX_RCU_EPOCH_BATCH reloads)
+//   eager:   build -> retire_eager(index) -> synchronize_eager()
+//                  -> retire(image) -> synchronize()
+//            (what Object::reload does now: the index is reclaimed by the next
+//            reload, while the image - and therefore its module - keeps the batched
+//            deferral)
+//
+// The module load/unload is represented by an empty image token: it is identical
+// in both variants and is not what this measures.
+void reload_loop(const char *mode, uint32_t size, int steps, int rounds) {
+    const bool eager = std::strcmp(mode, "eager") == 0;
+    Fixture fix(size);
+    auto &dom = skl::abix::rcu::Domain::instance();
+
+    std::vector<double> samples;
+    samples.reserve(static_cast<size_t>(rounds));
+    std::vector<skl::abix::runtime::HashIndex *> all;
+    all.reserve(static_cast<size_t>(steps));
+
+    for (int r = 0; r < rounds; ++r) {
+        skl::abix::runtime::HashIndex *live = nullptr;
+        double build_ns = 0;
+
+        for (int step = 0; step < steps; ++step) {
+            auto *next = new (std::nothrow) skl::abix::runtime::HashIndex();
+            if (!next) return;
+            all.push_back(next);
+
+            const auto t0 = Clock::now();
+            next->build(fix.table);
+            const auto t1 = Clock::now();
+            build_ns += std::chrono::duration<double, std::nano>(t1 - t0).count();
+            keep(next->capacity);
+
+            if (live) {
+                if (eager) {
+                    dom.retire_eager(live, destroy_index_only);
+                    dom.synchronize_eager();
+                    auto *token = new (std::nothrow) skl::abix::dll::Image{};
+                    if (token) dom.retire(token, free_image_token);
+                } else {
+                    dom.retire(live, destroy_index_only);
+                    auto *token = new (std::nothrow) skl::abix::dll::Image{};
+                    if (token) dom.retire(token, free_image_token);
+                }
+            }
+            dom.synchronize();
+            live = next;
+        }
+
+        samples.push_back(build_ns / steps);
+    }
+
+    for (auto *idx : all) {
+        idx->destroy();
+        delete idx;
+    }
+
+    std::printf("RELOADLOOP %s %u %.1f\n", mode, size, median(samples));
+}
+
+// Answer two questions about the free cadence the pool depends on.
+//
+// 1. How often does `synchronize()` actually reclaim? It only advances the epoch
+//    (and therefore only runs `collect`) every SKL_ABIX_RCU_EPOCH_BATCH calls, so
+//    a buffer retired by `Object::reload` becomes available in batches.
+// 2. Would an explicit `try_collect()` on the reload path un-batch it? It only
+//    ever collects `min_epoch - 1`, i.e. strictly older epochs, so it cannot touch
+//    the node retired a moment ago - the run below shows the same 0,0,..,8 shape.
+//
+// The timed pair is the one `Object::reload` performs per swap; an `Image`-sized
+// token keeps the reclaim callback comparable to the real path. `readers` reader
+// threads loop through short read-side critical sections, which is what the epoch
+// batch is for: batch=8 performs the grace period on one call in eight, batch=1 on
+// every call, so the two differ exactly when readers are inside often enough.
+void reclaim_cadence(int syncs, int iters, int readers, int spin) {
+    auto &dom = skl::abix::rcu::Domain::instance();
+    std::printf("reclaim cadence (SKL_ABIX_RCU_EPOCH_BATCH=%d, %d reader thread(s), spin=%d)\n",
+        SKL_ABIX_RCU_EPOCH_BATCH, readers, spin);
+
+    unsigned long long last = 0;
+    for (int i = 1; i <= syncs; ++i) {
+        auto *token = new (std::nothrow) int(i);
+        if (token) dom.retire(token, count_reclaim);
+        dom.synchronize();
+        std::printf("  synchronize #%2d -> %2llu reclaim(s)\n", i, g_reclaimed - last);
+        last = g_reclaimed;
+    }
+
+    std::printf("  with an explicit try_collect() each round:\n");
+    last = g_reclaimed;
+    for (int i = 1; i <= syncs; ++i) {
+        auto *token = new (std::nothrow) int(i);
+        if (token) dom.retire(token, count_reclaim);
+        dom.synchronize();
+        dom.try_collect();
+        std::printf("  retire + synchronize + try_collect #%2d -> %2llu reclaim(s)\n", i, g_reclaimed - last);
+        last = g_reclaimed;
+    }
+
+    std::atomic<bool> stop{false};
+    std::vector<std::thread> threads;
+    threads.reserve(static_cast<size_t>(readers));
+    for (int r = 0; r < readers; ++r) {
+        threads.emplace_back([&dom, &stop, spin] {
+            while (!stop.load(std::memory_order_relaxed)) {
+                dom.enter();
+                for (volatile int i = 0; i < spin; ++i) {}
+                dom.exit();
+            }
+        });
+    }
+    if (readers > 0) std::this_thread::sleep_for(std::chrono::milliseconds(50));   // let them register
+
+    const unsigned long long before = g_reclaimed;
+    const auto t0 = Clock::now();
+    for (int i = 0; i < iters; ++i) {
+        auto *img = new (std::nothrow) skl::abix::dll::Image{};
+        if (!img) break;
+        dom.retire(img, count_reclaim_image);
+        dom.synchronize();
+    }
+    const auto t1 = Clock::now();
+    const unsigned long long reclaimed = g_reclaimed - before;
+    stop.store(true);
+    for (auto &thread : threads)
+        thread.join();
+
+    const double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / iters;
+    std::printf("\nretire + synchronize: %.1f ns/iteration (%d iterations, %llu reclaimed = %.3f/iteration)\n", ns,
+        iters, reclaimed, static_cast<double>(reclaimed) / iters);
+    std::printf("(cross-check: BM_Reload_RetireSync measures the same pair in bench_all)\n");
+}
+
+// ---------------------------------------------------------------- reload pattern
+
+// The shape a reload loop actually runs at: each step builds a *new* index while
+// the images retired by the previous steps are still pending, and the domain
+// collects them in one batch every SKL_ABIX_RCU_EPOCH_BATCH steps. So the
+// allocator cannot hand back the previous buffer (it is still owned by a live
+// image), and a released buffer only becomes available in a batch. This
+// reproduces that shape exactly and reports the amortized cost per build for
+// three ways of obtaining the buffer:
+//
+//   alloc       - malloc every step (today: the buffer is freed at reclaim)
+//   pooled      - one parked buffer, taken only on an exact capacity match and
+//                 only for capacities inside the pool window
+//   pooled_all  - one parked buffer, window ignored (shows what the window costs)
+//   prod        - the shipped `runtime::HashIndex`, built and destroyed on the
+//                 same cadence (build now, destroy at the batch release), so the
+//                 shipped pool is measured rather than modelled
+struct ParkedZeroSlots {
+    ZeroSlot *slots = nullptr;
+    uint32_t capacity = 0;
+    ~ParkedZeroSlots() { std::free(slots); }
+};
+
+inline ParkedZeroSlots &parked_zero() noexcept {
+    static ParkedZeroSlots park;
+    return park;
+}
+
+struct PatternResult {
+    double ns = 0;
+    unsigned long long hits = 0;
+};
+
+PatternResult pattern_round(const Fixture &fix, uint32_t size, int mode, int steps) {
+    const uint32_t want = next_pow2(size * 2);
+    const uint32_t mask = want - 1;
+    const bool in_window = want >= SKL_ABIX_HASH_POOL_MIN_SLOTS && want <= SKL_ABIX_HASH_POOL_MAX_SLOTS;
+    ParkedZeroSlots &park = parked_zero();
+
+    PatternResult out;
+    std::vector<ZeroSlot *> pending;
+    pending.reserve(SKL_ABIX_RCU_EPOCH_BATCH + 1);
+    std::vector<skl::abix::runtime::HashIndex> prod;
+    prod.reserve(SKL_ABIX_RCU_EPOCH_BATCH + 1);
+
+    const auto t0 = Clock::now();
+    for (int step = 0; step < steps; ++step) {
+        if (mode == 3) {
+            // The shipped type on the shipped cadence: build a fresh index now,
+            // keep it pending, and destroy the batch when reclaim would.
+            prod.emplace_back();
+            prod.back().build(fix.table);
+            keep(prod.back().capacity);
+            if (prod.size() == static_cast<size_t>(SKL_ABIX_RCU_EPOCH_BATCH)) {
+                for (skl::abix::runtime::HashIndex &h : prod)
+                    h.destroy();
+                prod.clear();
+            }
+            continue;
+        }
+        ZeroSlot *buf = nullptr;
+        if (mode != 0 && park.slots != nullptr && park.capacity == want) {
+            buf = park.slots;
+            park.slots = nullptr;
+            park.capacity = 0;
+            ++out.hits;
+        } else {
+            buf = static_cast<ZeroSlot *>(std::malloc(sizeof(ZeroSlot) * want));
+        }
+        std::memset(buf, 0, sizeof(ZeroSlot) * want);
+        for (index_t i = 0; i < fix.table.count; ++i) {
+            const Entry &e = fix.table.entries[i];
+            uint32_t pos = e.name_hash & mask;
+            while (buf[pos].index_plus1 != 0)
+                pos = (pos + 1) & mask;
+            buf[pos].hash = e.name_hash;
+            buf[pos].index_plus1 = i + 1;
+        }
+        keep(static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(buf)));
+
+        pending.push_back(buf);
+        if (pending.size() == static_cast<size_t>(SKL_ABIX_RCU_EPOCH_BATCH)) {   // one collect
+            for (ZeroSlot *p : pending) {
+                const bool parkable = mode != 0 && (mode == 2 || in_window);
+                if (parkable && (park.slots == nullptr || park.capacity != want)) {
+                    ZeroSlot *stale = park.slots;
+                    park.slots = p;
+                    park.capacity = want;
+                    std::free(stale);
+                } else {
+                    std::free(p);
+                }
+            }
+            pending.clear();
+        }
+    }
+    for (ZeroSlot *p : pending)
+        std::free(p);
+    for (skl::abix::runtime::HashIndex &h : prod)
+        h.destroy();
+    const auto t1 = Clock::now();
+
+    out.ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / steps;
+    return out;
+}
+
+// One (mode, size) in this process, so the allocator starts from the same state
+// for every combination. `cold` is the first round of `steps` reloads (the
+// process's first allocations and page faults), `warm` is the median of the rest.
+int pattern_one(const char *mode, uint32_t size, int steps, int rounds) {
+    Fixture fix(size);
+    const int m = std::strcmp(mode, "alloc") == 0      ? 0
+                : std::strcmp(mode, "pooled") == 0     ? 1
+                : std::strcmp(mode, "pooled_all") == 0 ? 2
+                                                       : 3;
+
+    std::vector<double> samples;
+    samples.reserve(static_cast<size_t>(rounds));
+    unsigned long long hits = 0;
+    for (int r = 0; r < rounds; ++r) {
+        const PatternResult res = pattern_round(fix, size, m, steps);
+        samples.push_back(res.ns);
+        hits += res.hits;
+    }
+    const double cold = samples[0];
+    std::vector<double> rest(samples.begin() + 1, samples.end());
+    const double warm = rest.empty() ? cold : median(rest);
+    const double hit_rate = rounds > 0 ? static_cast<double>(hits) / rounds : 0.0;
+    std::printf("PATTERN %s %u %.1f %.1f %.1f\n", mode, size, cold, warm, hit_rate);
+    return 0;
+}
+
+int pattern_spawn(const char *self, int processes) {
+    struct Combo {
+        const char *mode;
+        uint32_t size;
+        std::vector<double> colds;
+        std::vector<double> warms;
+        std::vector<double> hits;
+    };
+
+    const char *modes[] = {"alloc", "pooled", "pooled_all", "prod"};
+    const uint32_t sizes[] = {1'024, 2'048, 4'096, 16'384, 65'536};
+    const int rounds = 6;
+
+    std::vector<Combo> combos;
+    for (uint32_t size : sizes)
+        for (const char *m : modes)
+            combos.push_back({m, size, {}, {}, {}});
+
+    for (Combo &c : combos) {
+        const int steps = c.size >= 16'384 ? 200 : (c.size >= 4'096 ? 500 : 2'000);
+        for (int p = 0; p < processes; ++p) {
+            std::string cmd = std::string("\"")
+                            + self
+                            + "\" --pattern-one "
+                            + c.mode
+                            + " "
+                            + std::to_string(c.size)
+                            + " "
+                            + std::to_string(steps)
+                            + " "
+                            + std::to_string(rounds);
+            std::FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
+            if (!pipe) {
+                std::fprintf(stderr, "cannot spawn: %s\n", cmd.c_str());
+                return 2;
+            }
+            char line[256] = {};
+            while (std::fgets(line, sizeof(line), pipe)) {
+                if (std::strncmp(line, "PATTERN", 7) != 0) continue;
+                char m[32] = {};
+                unsigned sz = 0;
+                double cold = 0, warm = 0, hits = 0;
+                if (std::sscanf(line, "PATTERN %31s %u %lf %lf %lf", m, &sz, &cold, &warm, &hits) == 5) {
+                    c.colds.push_back(cold);
+                    c.warms.push_back(warm);
+                    c.hits.push_back(hits);
+                }
+            }
+            ABIX_PCLOSE(pipe);
+        }
+    }
+
+    std::printf(
+        "reload cadence model, one (mode, size) per process, %d processes each, %d rounds of "
+        "reloads\nepoch batch: %d   pool window: %u..%u slots\n\n",
+        processes, rounds, SKL_ABIX_RCU_EPOCH_BATCH, SKL_ABIX_HASH_POOL_MIN_SLOTS, SKL_ABIX_HASH_POOL_MAX_SLOTS);
+    std::printf("%-7s | %10s %10s %10s %10s | %8s %8s %8s\n", "size", "alloc", "pooled", "pooled_all", "prod",
+        "alloc/pool", "alloc/prod", "hits/round");
+    std::printf(
+        "%-7s | %10s %10s %10s %10s | %8s %8s %8s\n", "", "warm ns", "warm ns", "warm ns", "warm ns", "", "", "");
+    for (uint32_t size : sizes) {
+        double alloc_w = 0, pool_w = 0, all_w = 0, prod_w = 0, hits = 0;
+        for (Combo &c : combos) {
+            if (c.size != size || c.warms.empty()) continue;
+            const double w = median(c.warms);
+            if (std::strcmp(c.mode, "alloc") == 0) {
+                alloc_w = w;
+            } else if (std::strcmp(c.mode, "pooled") == 0) {
+                pool_w = w;
+                hits = median(c.hits);
+            } else if (std::strcmp(c.mode, "pooled_all") == 0) {
+                all_w = w;
+            } else {
+                prod_w = w;
+            }
+        }
+        std::printf("%-7u | %10.1f %10.1f %10.1f %10.1f | %8.2f %8.2f %8.1f\n", size, alloc_w, pool_w, all_w, prod_w,
+            pool_w > 0 ? alloc_w / pool_w : 0.0, prod_w > 0 ? alloc_w / prod_w : 0.0, hits);
+    }
+    return 0;
+}
+
 }   // namespace
 
 // ---------------------------------------------------------------- single-process mode
@@ -380,14 +773,6 @@ int run_one(const char *variant, uint32_t size, int rounds) {
 
 // ---------------------------------------------------------------- spawn mode
 
-#if defined(_WIN32)
-#  define ABIX_POPEN _popen
-#  define ABIX_PCLOSE _pclose
-#else
-#  define ABIX_POPEN popen
-#  define ABIX_PCLOSE pclose
-#endif
-
 int spawn_all(const char *self) {
     struct Combo {
         const char *variant;
@@ -408,8 +793,14 @@ int spawn_all(const char *self) {
 
     for (Combo &c : combos) {
         for (int p = 0; p < processes; ++p) {
-            std::string cmd = std::string("\"") + self + "\" --run-one " + c.variant + " " + std::to_string(c.size)
-                            + " " + std::to_string(rounds);
+            std::string cmd = std::string("\"")
+                            + self
+                            + "\" --run-one "
+                            + c.variant
+                            + " "
+                            + std::to_string(c.size)
+                            + " "
+                            + std::to_string(rounds);
             std::FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
             if (!pipe) {
                 std::fprintf(stderr, "cannot spawn: %s\n", cmd.c_str());
@@ -467,6 +858,25 @@ int main(int argc, char **argv) {
             static_cast<int>(std::strtol(argv[4], nullptr, 10)));
     }
     if (argc >= 2 && std::strcmp(argv[1], "--spawn") == 0) return spawn_all(argv[0]);
+    if (argc >= 2 && std::strcmp(argv[1], "--reclaim") == 0) {
+        reclaim_cadence(argc >= 3 ? static_cast<int>(std::strtol(argv[2], nullptr, 10)) : 10,
+            argc >= 4 ? static_cast<int>(std::strtol(argv[3], nullptr, 10)) : 20'000,
+            argc >= 5 ? static_cast<int>(std::strtol(argv[4], nullptr, 10)) : 0,
+            argc >= 6 ? static_cast<int>(std::strtol(argv[5], nullptr, 10)) : 40);
+        return 0;
+    }
+    if (argc >= 6 && std::strcmp(argv[1], "--reload-loop") == 0) {
+        reload_loop(argv[2], static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10)),
+            static_cast<int>(std::strtol(argv[4], nullptr, 10)), static_cast<int>(std::strtol(argv[5], nullptr, 10)));
+        return 0;
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "--pattern") == 0) {
+        return pattern_spawn(argv[0], argc >= 3 ? static_cast<int>(std::strtol(argv[2], nullptr, 10)) : 5);
+    }
+    if (argc >= 6 && std::strcmp(argv[1], "--pattern-one") == 0) {
+        return pattern_one(argv[2], static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10)),
+            static_cast<int>(std::strtol(argv[4], nullptr, 10)), static_cast<int>(std::strtol(argv[5], nullptr, 10)));
+    }
 
     const uint32_t sizes[] = {1'024, 4'096, 16'384};
     const char *labels[] = {"1K", "4K", "16K"};
@@ -476,8 +886,8 @@ int main(int argc, char **argv) {
     std::printf("HashIndex::build variants (median of %d runs)\n\n", reps);
     std::printf("%-6s | %11s %11s %7s | %11s %7s | %11s %11s\n", "size", "pooled A", "pooled B", "B/A", "pooled D",
         "D/A", "alloc A", "alloc B");
-    std::printf("%-6s | %11s %11s %7s | %11s %7s | %11s %11s\n", "", "base ns", "zero ns", "", "gen ns", "",
-        "prod ns", "zero ns");
+    std::printf("%-6s | %11s %11s %7s | %11s %7s | %11s %11s\n", "", "base ns", "zero ns", "", "gen ns", "", "prod ns",
+        "zero ns");
 
     std::vector<std::array<double, 3>> alloc_cost;   // per size: pooled A, alloc A, ratio
     for (int s = 0; s < 3; ++s) {
@@ -552,10 +962,10 @@ int main(int argc, char **argv) {
     for (int s = 0; s < 3; ++s) {
         Fixture fix(sizes[s]);
         mism += probes_and_mismatches(fix.table, bp, zp, gp);
-        std::printf("\nequivalence %-4s: base_probes=%.3f zero_probes=%.3f gen_probes=%.3f mismatches=%d\n",
-            labels[s], bp, zp, gp, mism);
+        std::printf("\nequivalence %-4s: base_probes=%.3f zero_probes=%.3f gen_probes=%.3f mismatches=%d\n", labels[s],
+            bp, zp, gp, mism);
     }
-    std::printf("\nslot bytes: A base=%zu  B zero=%zu  D gen=%zu\n", sizeof(BaseSlot), sizeof(ZeroSlot),
-        sizeof(GenSlot));
+    std::printf(
+        "\nslot bytes: A base=%zu  B zero=%zu  D gen=%zu\n", sizeof(BaseSlot), sizeof(ZeroSlot), sizeof(GenSlot));
     return 0;
 }

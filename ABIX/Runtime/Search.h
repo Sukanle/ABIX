@@ -20,6 +20,8 @@
 
 #include <new>
 
+#include "ABIX/Util/Atomic.h"
+
 #include "mics/utils/hash.h"
 
 #include "ABIX/Runtime/Type.h"
@@ -61,6 +63,108 @@ inline constexpr uint32_t next_pow2(uint32_t v) noexcept {
     return v + 1;
 }
 
+// ---------------------------------------------------------------- buffer pool
+
+// `build` allocates the slot array and `destroy` releases it, and the reload path
+// does both on every swap, so the allocator sits on the reload path exactly where
+// the table is large. Keeping one freed buffer removes that allocation from about
+// one build in eight - RCU reclaim only runs every SKL_ABIX_RCU_EPOCH_BATCH
+// synchronize calls, so buffers are released in batches - which is worth a few
+// percent of the index build rather than all of it. The pool is therefore
+// deliberately minimal:
+//
+//   * at most one buffer, and only inside the window below (both bounds in slots).
+//     Below the floor the allocator's own reuse already covers the cost; above the
+//     ceiling a single retained buffer would cost more resident memory than the
+//     reloads it saves.
+//   * an exact capacity match, so nothing is ever resized or reinterpreted.
+//
+// bench/ABIX/hashindex_build_bench.cpp measures all of it: `--reclaim` for the
+// reclaim cadence, `--pattern` for the reload cadence itself, and an emptied
+// window (-DSKL_ABIX_HASH_POOL_MIN_SLOTS=4294967295U) for the pool-on/pool-off
+// comparison.
+#ifndef SKL_ABIX_HASH_POOL_MIN_SLOTS
+#  define SKL_ABIX_HASH_POOL_MIN_SLOTS 4'096U
+#endif
+#ifndef SKL_ABIX_HASH_POOL_MAX_SLOTS
+#  define SKL_ABIX_HASH_POOL_MAX_SLOTS (1U << 20)
+#endif
+
+// Tested before the pool is touched at all: a table outside the window must not
+// pay even the uncontended lock for a buffer the pool would refuse.
+inline constexpr bool in_slot_pool_window(uint32_t capacity) noexcept {
+    return capacity >= SKL_ABIX_HASH_POOL_MIN_SLOTS && capacity <= SKL_ABIX_HASH_POOL_MAX_SLOTS;
+}
+
+// A process-wide, single-slot recycle bin for `HashIndex` slot arrays.
+//
+// Lifetime: a buffer is handed to the pool by `HashIndex::destroy`, which already
+// had to be a point where nothing can still be traversing the array - it is
+// exactly where the slot array used to be deleted, and reclaim only runs after
+// every reader has left the image. Recycling therefore adds no new requirement;
+// the one caller that bypasses the grace period (`Object::force_unload`) already
+// requires the caller to have excluded readers. The pool is deliberately *not*
+// behind the per-Object writer lock: `destroy` also runs from RCU reclaim on the
+// reclaiming thread and outside that lock, so the pool carries its own.
+struct SlotPool {
+    HashSlot *slots = nullptr;
+    uint32_t capacity = 0;
+    uint32_t lock = 0;
+
+    static SlotPool &instance() noexcept {
+        static SlotPool pool;
+        return pool;
+    }
+
+    // Returns the parked buffer when it is an exact capacity match, otherwise
+    // nullptr. The caller still has to clear it: the memset is required for
+    // correctness, not just for tidiness, so it is not part of what the pool saves.
+    HashSlot *take(uint32_t want) noexcept {
+        lock_acquire();
+        HashSlot *out = nullptr;
+        if (slots != nullptr && capacity == want) {
+            out = slots;
+            slots = nullptr;
+            capacity = 0;
+        }
+        unlock();
+        return out;
+    }
+
+    // Parks `buf` when the window allows it, otherwise releases it. The slot
+    // always ends up holding the most recently released buffer that fits the
+    // window: a buffer of a *different* capacity is replaced rather than kept, so
+    // one oversized or undersized load cannot disable recycling for the rest of
+    // the process. A buffer of the same capacity is dropped instead, since the
+    // parked one is equivalent and freeing is the cheaper outcome. Callers must
+    // not touch `buf` afterwards.
+    void offer(HashSlot *buf, uint32_t cap) noexcept {
+        const bool fits = cap >= SKL_ABIX_HASH_POOL_MIN_SLOTS && cap <= SKL_ABIX_HASH_POOL_MAX_SLOTS;
+        lock_acquire();
+        if (buf != nullptr && fits && (slots == nullptr || capacity != cap)) {
+            HashSlot *stale = slots;
+            slots = buf;
+            capacity = cap;
+            buf = stale;
+        }
+        unlock();
+        // Outside the lock: a free can be arbitrarily slow, and other builds must
+        // not queue behind it.
+        delete[] buf;
+    }
+
+private:
+    SlotPool() noexcept = default;
+    ~SlotPool() { delete[] slots; }
+    SlotPool(const SlotPool &) = delete;
+    SlotPool &operator=(const SlotPool &) = delete;
+
+    void lock_acquire() noexcept {
+        while (!util::cas_relaxed(&lock, 0U, 1U)) {}
+    }
+    void unlock() noexcept { util::store_release(&lock, 0U); }
+};
+
 struct HashIndex {
     HashSlot *slots;
     uint32_t capacity;
@@ -74,10 +178,18 @@ struct HashIndex {
     bool valid() const noexcept { return slots != nullptr; }
 
     void build(const Table &t) noexcept {
+        release();   // defensive: a rebuilt index must not leak its old buffer
         capacity = next_pow2(t.count * 2);
         mask = capacity - 1;
-        slots = new (std::nothrow) HashSlot[capacity];
-        if (!slots) return;
+        if (in_slot_pool_window(capacity)) slots = SlotPool::instance().take(capacity);
+        if (!slots) {
+            slots = new (std::nothrow) HashSlot[capacity];
+            if (!slots) {
+                capacity = 0;
+                mask = 0;
+                return;
+            }
+        }
 
         // One bulk zero: 0 already means "empty" for the index_plus1 encoding.
         memset(slots, 0, sizeof(HashSlot) * capacity);
@@ -93,12 +205,20 @@ struct HashIndex {
     }
 
     void destroy() noexcept {
-        if (slots) {
-            delete[] slots;
-            slots = nullptr;
-        }
+        release();
         capacity = 0;
         mask = 0;
+    }
+
+private:
+    void release() noexcept {
+        if (slots) {
+            if (in_slot_pool_window(capacity))
+                SlotPool::instance().offer(slots, capacity);
+            else
+                delete[] slots;
+            slots = nullptr;
+        }
     }
 };
 

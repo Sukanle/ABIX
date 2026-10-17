@@ -41,6 +41,7 @@ abi_add_test(compatibility_test)
 abi_add_test(map_test)
 abi_add_test(atomic_test)
 abi_add_test(binary_image_test)
+abi_add_test(pool_test)
 
 # --- Unity build: all tests in a single executable ---
 add_executable(test_all ${TEST_SRC_DIR}/test_all.cpp)

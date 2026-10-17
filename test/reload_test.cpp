@@ -332,6 +332,83 @@ TEST_CASE("9d.concurrent calls through a cached handle", "[reload][threads][prom
     log_info("8 threads x 20000 calls through the cached path: 0 wrong results");
 }
 
+// The slot-buffer pool in ABIX/Runtime/Search.h only retains a buffer for tables
+// at or above SKL_ABIX_HASH_POOL_MIN_SLOTS (4096 slots = 2048 entries), and the
+// largest test module (hotcache_dll, 1020 entries -> 2048 slots) sits just below
+// that. So this case is the lifecycle guard *around* the pool - the module really
+// does build a hash index, and its buffer travels through the same reclaim path -
+// while the recycling branch itself is covered deterministically in pool_test.
+// What is new here, against 9d above, is readers running *during* the reloads:
+// resolves and calls happen while images are being swapped and reclaimed.
+TEST_CASE("43.reload_an_indexed_module_under_concurrent_calls", "[reload][pool][threads]") {
+    log_info("Test 43: repeated reloads of an index-bearing module with concurrent readers");
+
+    const std::string path = dll_path("hotcache_dll");
+    skl::abix::dll::Object lib;
+    REQUIRE(lib.load(path.c_str()));
+    REQUIRE(lib.is_loaded());
+    const auto *table = lib.get_table();
+    REQUIRE(table != nullptr);
+    REQUIRE(table->count >= SKL_ABIX_HASH_THRESHOLD);   // this module really does build an index
+    const uint32_t slots = skl::abix::runtime::next_pow2(table->count * 2);
+    REQUIRE(slots < SKL_ABIX_HASH_POOL_MIN_SLOTS);   // ... one the pool deliberately does not retain
+    log_info("hotcache_dll: %u entries -> an index of %u slots (%u below the pool floor)", table->count, slots,
+        SKL_ABIX_HASH_POOL_MIN_SLOTS - slots);
+
+    // The helpers in test_common.hpp format into one shared static buffer, which
+    // four threads cannot use at once: keep the name storage local and stable for
+    // as long as the handle lives (Function stores the pointer, not the text).
+    const std::string hot_entry = hot_name(0);
+    auto hot = skl::abix::dll::Function<int(int)>(lib, hot_entry.c_str());
+    REQUIRE(hot.valid());
+    REQUIRE(hot(5) == 5);
+
+    std::atomic<int> wrong{0};
+    std::atomic<bool> stop{false};
+    std::vector<std::thread> readers;
+    readers.reserve(4);
+    for (int t = 0; t < 4; ++t) {
+        readers.emplace_back([&lib, &hot, &wrong, &stop, t] {
+            const int n = 100 + t;
+            char name[16];
+            std::snprintf(name, sizeof(name), "e_%04d", n);
+            while (!stop.load(std::memory_order_relaxed)) {
+                // The cached call path: `hot` names an entry of this module, so
+                // after a same-path swap it must still reach that entry.
+                if (hot(9) != 9) ++wrong;
+
+                // Resolve a cold name (hash-index path) and call it. A reload can
+                // land between the two, and then the call *must* be refused (0)
+                // rather than reach the new image through a stale index: that
+                // refusal is the contract, so only a third value is a bug.
+                auto cold = skl::abix::dll::Function<int(int)>(lib, name);
+                if (cold.valid()) {
+                    const int got = cold(2);
+                    if (got != 0 && got != 2 + n) ++wrong;
+                }
+            }
+        });
+    }
+
+    for (int i = 0; i < 50; ++i) {
+        if (!lib.reload(path.c_str())) {
+            ++wrong;
+            break;
+        }
+    }
+    stop.store(true);
+    for (auto &thread : readers)
+        thread.join();
+
+    REQUIRE(lib.is_loaded());
+    REQUIRE(wrong.load() == 0);
+    REQUIRE(hot(3) == 3);
+    auto cold = skl::abix::dll::Function<int(int)>(lib, cold_name(42));
+    REQUIRE(cold.valid());
+    REQUIRE(cold(1) == 43);
+    log_info("50 reloads with 4 concurrent readers: 0 wrong results, cold lookups still resolve");
+}
+
 // --- Reclaim timeout: three failure modes, tested separately -------------------
 //
 // The three have different root causes and different expected behaviour, so they are
