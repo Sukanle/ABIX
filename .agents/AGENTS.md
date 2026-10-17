@@ -271,6 +271,27 @@ speculative infrastructure; new dependencies without justification.
 Do not introduce a new abstraction merely because an existing one is
 inconvenient.
 
+### 6.1 Dependencies and output formatting
+
+`ABIX/` is the library, not a facility: it stays free of third-party formatting
+dependencies. Do not include or link **fmt** in `ABIX/` — the ABI model and runtime
+keep their existing, dependency-free output and diagnostics (`ABIX/Util/Log.h` is the
+reference implementation: a variadic logger built on the C library).
+
+Everything else in the repository is a facility and **may** use **fmt** for output
+formatting: `AMC/`, `test/`, `bench/`, `Aue/` and `tools/`. Within a facility, fmt is
+the formatter to use — `fmt::print` / `fmt::format` / `fmt::format_to_n` instead of the
+`printf` family — and new output should stay on it rather than mixing two styles.
+`bench/` already does, through `bench/bench_fmt.hpp`.
+
+"ABIX itself" means the `ABIX/` headers and the runtime target, not every target whose
+name starts with `abix`: the `libabix-*` static libraries are facilities (their sources
+live under `AMC/src/Core/`), so they keep using fmt.
+
+`fmt` is an established project dependency (see `cmake/AbixDependencies.cmake`), so
+linking it into a facility target is not a new dependency — `bench/` requires it
+(`find_package(fmt REQUIRED)`).
+
 ---
 
 ## 7. Error Handling
