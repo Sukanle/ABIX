@@ -16,30 +16,25 @@
 #ifndef SKL_ABIX_RCU_CONFIG_H
 #define SKL_ABIX_RCU_CONFIG_H
 
-#include "ABIX/Util/Config.h"
+#include <stdint.h>
 
 namespace skl::abix::rcu {
 
+// Lifecycle state of a loaded image. `active` means an image is published and
+// calls are allowed; `zombie` means nothing is loadable (never loaded, or the
+// image has been detached and is on its way to reclamation).
+//
+// There is deliberately no timeout policy here: the grace period is unbounded, so
+// a reader that stays inside a critical section blocks `synchronize()` for as long
+// as it stays there. Adding a bounded wait means separating two questions that this
+// header must keep apart - "did the grace period finish?" (the domain's answer) and
+// "what happens to the old image if it did not?" (the object's decision) - and
+// neither should be expressed as a per-object configuration value before the wait
+// itself exists.
 enum class State : uint32_t {
     active = 0,
     retiring = 1,
     zombie = 2,
-};
-
-enum class TimeoutPolicy : uint8_t {
-    Safe = 0,
-    ForceUnload = 1,
-    ForceLeak = 2,
-};
-
-struct TimeoutConfig {
-    uint64_t timeout_ms;
-    uint64_t timeout_frames;
-
-    constexpr TimeoutConfig(
-        uint64_t ms = ABIX_RCU_TIMEOUT_MS, uint64_t frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT) noexcept
-        : timeout_ms(ms)
-        , timeout_frames(frames) {}
 };
 
 }   // namespace skl::abix::rcu

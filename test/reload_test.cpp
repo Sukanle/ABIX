@@ -78,27 +78,7 @@ TEST_CASE("24.zombie_lifecycle", "[zombie][prompt24]") {
     log_info("load() recovers: DLL reloaded and functional");
 }
 
-TEST_CASE("25.tick_function", "[tick][prompt25]") {
-    log_info("Test 25: abix::util::tick() function — updates time baseline for starvation guard");
-
-    uint64_t t0 = 1'000;
-    skl::abix::util::tick(t0);
-    log_info("tick(1000) called");
-
-    uint64_t t1 = 5'000;
-    skl::abix::util::tick(t1);
-    log_info("tick(5000) called");
-
-    uint64_t current = skl::abix::util::detail::get_tick_frames();
-    REQUIRE(current == t1);
-    log_info("get_tick_frames() returns tick value: %llu", (unsigned long long)current);
-
-    skl::abix::util::tick(9'999);
-    skl::abix::util::tick(10'000);
-    log_info("tick() accepts incremental timestamps correctly");
-}
-
-TEST_CASE("26.rcu_unload_with_timeout", "[rcu][timeout][prompt26]") {
+TEST_CASE("26.rcu_unload_paths", "[rcu][prompt26]") {
     log_info("Test 26: RCU unload — normal unload, force unload, reload");
 
     SECTION("26a.normal_unload_no_readers") {
@@ -159,17 +139,15 @@ TEST_CASE("27.logging_in_dll_operations", "[log][integration][prompt27]") {
     skl::abix::util::set_log_sink(nullptr);
 }
 
-TEST_CASE("28.full_config_roundtrip", "[config][integration][prompt28]") {
-    log_info("Test 28: full config roundtrip — rcu::TimeoutConfig + timeout policy + logging");
+TEST_CASE("28.load_call_unload_roundtrip", "[integration][prompt28]") {
+    log_info("Test 28: full roundtrip — load + calls + unload, with the logging sink installed");
 
     static int log_events = 0;
     auto sink = [](skl::abix::util::LogLevel, const char *) { ++log_events; };
     skl::abix::util::set_log_sink(sink);
     log_events = 0;
 
-    skl::abix::dll::Object lib(skl::abix::rcu::TimeoutConfig{3'000});
-    lib.set_timeout_policy(skl::abix::rcu::TimeoutPolicy::Safe);
-    REQUIRE(lib.timeout_policy() == skl::abix::rcu::TimeoutPolicy::Safe);
+    skl::abix::dll::Object lib;
 
     REQUIRE(lib.load(dll_path("math_dll").c_str()));
     REQUIRE(lib.is_loaded());
@@ -189,16 +167,15 @@ TEST_CASE("28.full_config_roundtrip", "[config][integration][prompt28]") {
     REQUIRE(!lib.is_loaded());
     REQUIRE(log_events > 0);
 
-    log_info("full roundtrip: config(3000ms) + Safe policy + load/math/unload = %d log events", log_events);
+    log_info("full roundtrip: load/call/unload = %d log events", log_events);
 
     skl::abix::util::set_log_sink(nullptr);
 }
 
-TEST_CASE("29.force_unload_timeout", "[policy][timeout][prompt29]") {
-    log_info("Test 29: ForceUnload — hold reader, force_unload bypasses RCU to immediately unload");
+TEST_CASE("29.force_unload_while_reader_held", "[rcu][prompt29]") {
+    log_info("Test 29: force_unload detaches and frees the image immediately while a reader is held");
 
     skl::abix::dll::Object lib;
-    lib.set_timeout_policy(skl::abix::rcu::TimeoutPolicy::ForceUnload);
     REQUIRE(lib.load(dll_path("math_dll").c_str()));
     REQUIRE(lib.is_loaded());
 
@@ -232,53 +209,10 @@ TEST_CASE("29.force_unload_timeout", "[policy][timeout][prompt29]") {
     log_info("reload after ForceUnload: DLL functional, add(1,2)=%d", add(1, 2));
 }
 
-TEST_CASE("30.force_leak_timeout", "[policy][timeout][prompt30]") {
-#if defined(ABIX_ENABLE_FORCE_LEAK_POLICY)
-    log_info("Test 30: ForceLeak — hold reader, force_unload bypasses RCU to leak safely");
-
-    dll::Object lib;
-    lib.set_timeout_policy(rcu::TimeoutPolicy::ForceLeak);
-    REQUIRE(lib.load(dll_path("math_dll").c_str()));
-    REQUIRE(lib.is_loaded());
-
-    std::atomic<bool> reader_active{false};
-    std::atomic<bool> reader_done{false};
-    std::thread reader([&]() {
-        auto *t_fl = lib.enter_read();
-        REQUIRE(t_fl != nullptr);
-        reader_active.store(true);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        lib.exit_read();
-        reader_done.store(true);
-    });
-
-    while (!reader_active.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    log_info("reader held, calling force_unload with ForceLeak policy");
-
-    lib.force_unload();
-    REQUIRE(!lib.is_loaded());
-    reader.join();
-    REQUIRE(reader_done.load());
-    log_info("force_unload completed: DLL unloaded, is_loaded()=false");
-
-    REQUIRE(lib.load(dll_path("math_dll").c_str()));
-    REQUIRE(lib.is_loaded());
-    auto add = dll::Function<int(int, int)>(lib, "add");
-    REQUIRE(add.valid());
-    REQUIRE(add(1, 2) == 3);
-    log_info("reload after ForceLeak: DLL functional, add(1,2)=%d", add(1, 2));
-#else
-    log_info("Test 30: ForceLeak timeout — skipped (ABIX_ENABLE_FORCE_LEAK_POLICY not defined)");
-#endif
-}
-
-TEST_CASE("31.tick_frame_timeout", "[tick][timeout][prompt31]") {
-    log_info("Test 31: Tick frame-driven — unload blocks until reader exits, force_unload bypasses");
+TEST_CASE("31.unload_blocks_until_reader_exits", "[rcu][prompt31]") {
+    log_info("Test 31: unload() blocks until the reader leaves, and the module is usable again afterwards");
 
     skl::abix::dll::Object lib;
-    lib.set_timeout_policy(skl::abix::rcu::TimeoutPolicy::Safe);
     REQUIRE(lib.load(dll_path("math_dll").c_str()));
     REQUIRE(lib.is_loaded());
 
@@ -286,15 +220,13 @@ TEST_CASE("31.tick_frame_timeout", "[tick][timeout][prompt31]") {
     std::atomic<bool> unload_done{false};
     std::atomic<bool> reader_done{false};
 
-    skl::abix::util::tick(0);
     std::thread reader_thread([&]() {
-        const auto *t_tick = lib.enter_read();
-        REQUIRE(t_tick != nullptr);
+        const auto *t = lib.enter_read();
+        REQUIRE(t != nullptr);
         reader_active.store(true);
-        for (uint64_t f = 1; f <= 15; ++f) {
-            skl::abix::util::tick(f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
+        // No timeout exists: the grace period is unbounded, so this reader holds
+        // unload() for as long as it stays inside.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         lib.exit_read();
         reader_done.store(true);
     });
@@ -399,3 +331,4 @@ TEST_CASE("9d.concurrent calls through a cached handle", "[reload][threads][prom
     REQUIRE(wrong.load() == 0);
     log_info("8 threads x 20000 calls through the cached path: 0 wrong results");
 }
+

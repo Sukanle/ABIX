@@ -102,6 +102,13 @@ inline void reclaim_image(void *p) noexcept {
     unload_module(img->module);
     delete img;
 }
+
+// The index slot array is retired separately from the image it belongs to, so the
+// buffer can be handed back to the pool one reload later while the module itself
+// stays mapped until the batched reclaim. That split is what makes a reload reuse
+// its predecessor's buffer (the index is the expensive part to rebuild) without
+// paying a fresh module map on every swap (`Domain::retire_eager`).
+inline void reclaim_index(void *p) noexcept { static_cast<runtime::HashIndex *>(p)->destroy(); }
 }   // namespace detail
 
 // Shared, reference-counted state for one loaded module. The `Object` facade
@@ -112,18 +119,25 @@ struct Control {
     Image *image = nullptr;
     uint32_t state = static_cast<uint32_t>(rcu::State::zombie);
     uint32_t writer_lock = 0;
-    uint64_t timeout_ms = ABIX_RCU_TIMEOUT_MS;
-    uint64_t timeout_frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT;
-    rcu::TimeoutPolicy timeout_policy = rcu::TimeoutPolicy::Safe;
 };
 
 namespace detail {
+// Hands a swapped-out image over the way the two RCU classes expect: the index
+// slot array goes to the eager class (reusable by the very next build), the image
+// itself stays in the batched class (its module keeps serving loads that still find
+// it resident). `reclaim_image` tolerates an already-destroyed index, so the later
+// batched pass is unchanged.
+inline void retire_image(Image *img) noexcept {
+    auto &dom = rcu::Domain::instance();
+    dom.retire_eager(&img->index, reclaim_index);
+    dom.synchronize_eager();
+    dom.retire(img, reclaim_image);
+    dom.synchronize();
+}
+
 inline void destroy_control(Control *c) noexcept {
     if (!c) return;
-    if (auto *img = c->image) {
-        rcu::Domain::instance().retire(img, reclaim_image);
-        rcu::Domain::instance().synchronize();
-    }
+    if (auto *img = c->image) retire_image(img);
     delete c;
 }
 }   // namespace detail
@@ -132,13 +146,6 @@ class Object {
 public:
     Object() noexcept
         : _c(make_control()) {}
-    explicit Object(const rcu::TimeoutConfig &cfg) noexcept
-        : _c(make_control()) {
-        if (_c) {
-            _c->timeout_ms = cfg.timeout_ms;
-            _c->timeout_frames = cfg.timeout_frames;
-        }
-    }
     ~Object() { unload(); }
     Object(const Object &) = delete;
     Object &operator=(const Object &) = delete;
@@ -254,8 +261,7 @@ public:
         unlock_writer();
 
         if (old_img) {
-            rcu::Domain::instance().retire(old_img, detail::reclaim_image);
-            rcu::Domain::instance().synchronize();
+            detail::retire_image(old_img);
         }
 
         last_error() = CallError::none;
@@ -287,7 +293,10 @@ public:
 
     // Resolve a raw exported symbol from the loaded module. This is the fixed
     // entry point path (for example the ABIX Interface discovery entry); it does
-    // not go through the name+sig table.
+    // not go through the name+sig table, and it takes no protection: the symbol is
+    // valid only for as long as the module stays loaded. `unload()` is refused
+    // while a handle is alive, but `reload()` swaps the image whenever it is
+    // asked to, so re-resolve after a reload instead of caching the result.
     void *resolve(const char *name) const noexcept { return detail::resolve_symbol(module(), name); }
 
     Image *image_acquire() const noexcept { return _c ? util::load_acquire(&_c->image) : nullptr; }
@@ -306,11 +315,6 @@ public:
     }
 
     void exit_read() noexcept { rcu::Domain::instance().exit(); }
-
-    void set_timeout_policy(rcu::TimeoutPolicy policy) noexcept {
-        if (_c) _c->timeout_policy = policy;
-    }
-    rcu::TimeoutPolicy timeout_policy() const noexcept { return _c ? _c->timeout_policy : rcu::TimeoutPolicy::Safe; }
 
 private:
     static SharedPtr<Control> make_control() noexcept {
@@ -332,8 +336,7 @@ private:
         auto *img = util::exchange_acq_rel(&_c->image, nullptr);
         util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::zombie));
         if (img) {
-            rcu::Domain::instance().retire(img, detail::reclaim_image);
-            rcu::Domain::instance().synchronize();
+            detail::retire_image(img);
             ABIX_LOG_INFO("Object::unload: unloaded");
         }
         last_error() = CallError::none;

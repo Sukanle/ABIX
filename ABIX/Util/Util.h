@@ -21,6 +21,5 @@
 #include "ABIX/Util/Hash.h"     // IWYU pragma: keep
 #include "ABIX/Util/Log.h"      // IWYU pragma: keep
 #include "ABIX/Util/Mem.h"      // IWYU pragma: keep
-#include "ABIX/Util/Timeout.h"      // IWYU pragma: keep
 
 #endif
