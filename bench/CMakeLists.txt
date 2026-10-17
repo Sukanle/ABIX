@@ -37,21 +37,25 @@ target_include_directories(hashindex_build_bench PRIVATE ${BENCH_INC_DIR})
 set_target_properties(hashindex_build_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # --- Advancement-starvation probe (standalone; not a Google Benchmark) ---
-# It reads the Domain diagnostics, which are compiled out of the default build, so
-# this target forces them on. It exercises the real Object::reload path in one
-# mode, hence the plugin dependency and staging.
-add_executable(rcu_advance_probe rcu/advance_probe.cpp)
-target_include_directories(rcu_advance_probe PRIVATE ${BENCH_INC_DIR})
-target_compile_definitions(rcu_advance_probe PRIVATE SKL_ABIX_RCU_ENABLE_STATS=1)
-set_target_properties(rcu_advance_probe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-add_dependencies(rcu_advance_probe reload_dll_a reload_dll_b)
-foreach(plugin reload_dll_a reload_dll_b)
-    add_custom_command(
-        TARGET rcu_advance_probe
-        POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/bin
-        COMMENT "Stage plugin ${plugin} for rcu_advance_probe")
-endforeach()
+# Development-only (-DSKL_ABIX_DEVELOPMENT=ON): it is a measurement tool, not part
+# of the normal build. It reads the Domain diagnostics, which are compiled out of
+# the default build, so the target also forces SKL_ABIX_RCU_ENABLE_STATS on. It
+# exercises the real Object::reload path in one mode, hence the plugin dependency
+# and staging.
+if(SKL_ABIX_DEVELOPMENT)
+    add_executable(rcu_advance_probe rcu/advance_probe.cpp)
+    target_include_directories(rcu_advance_probe PRIVATE ${BENCH_INC_DIR})
+    target_compile_definitions(rcu_advance_probe PRIVATE SKL_ABIX_RCU_ENABLE_STATS=1)
+    set_target_properties(rcu_advance_probe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_dependencies(rcu_advance_probe reload_dll_a reload_dll_b)
+    foreach(plugin reload_dll_a reload_dll_b)
+        add_custom_command(
+            TARGET rcu_advance_probe
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/plugins/${plugin} ${CMAKE_BINARY_DIR}/bin
+            COMMENT "Stage plugin ${plugin} for rcu_advance_probe")
+    endforeach()
+endif()
 abi_add_bench(NAME "abix_lookup_cross_bench" SOURCES "ABIX/abix_lookup_cross_bench.cpp")
 abi_add_bench(NAME "interface_dispatch_bench" SOURCES "ABIX/interface_dispatch_bench.cpp")
 
