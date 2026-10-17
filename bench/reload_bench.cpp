@@ -195,6 +195,42 @@ static void BM_Reload_SamePath(benchmark::State &state) {
 }
 BENCHMARK(BM_Reload_SamePath);
 
+// --- Bounded reclaim: the same loops with `set_reclaim_timeout_ms` ---------------
+//
+// Enabling a bound makes every reload ask for a real grace period instead of sharing
+// the batched one, which is the documented trade: the retired image (and therefore
+// its module) is released on every swap rather than up to SKL_ABIX_RCU_EPOCH_BATCH
+// swaps later. The point of these two cases is to measure that trade on the real
+// Object path - the unbounded numbers next to them are the default behaviour.
+static void BM_Reload_SamePath_BoundedReclaim(benchmark::State &state) {
+    const std::string path = dll_path("reload_dll_a");
+    skl::abix::dll::Object lib;
+    if (!require_plugin(state, lib, "reload_dll_a")) return;
+    lib.set_reclaim_timeout_ms(1'000);
+    for (auto _ : state) {
+        if (!lib.reload(path.c_str())) {
+            state.SkipWithError("same-path reload failed");
+            return;
+        }
+    }
+    benchmark::DoNotOptimize(lib.reclaim_outcome());
+}
+BENCHMARK(BM_Reload_SamePath_BoundedReclaim);
+
+static void BM_Reload_AlternatingPaths_BoundedReclaim(benchmark::State &state) {
+    const std::string path_a = dll_path("reload_dll_a");
+    const std::string path_b = dll_path("reload_dll_b");
+    skl::abix::dll::Object lib;
+    if (!require_plugin(state, lib, "reload_dll_a")) return;
+    lib.set_reclaim_timeout_ms(1'000);
+    for (auto _ : state) {
+        lib.reload(path_b.c_str());
+        lib.reload(path_a.c_str());
+    }
+    benchmark::DoNotOptimize(lib.reclaim_outcome());
+}
+BENCHMARK(BM_Reload_AlternatingPaths_BoundedReclaim);
+
 #if defined(SKL_ABIX_WINDOWS)
 static void BM_Reload_LoadFreeExW(benchmark::State &state) {
     const std::string path = dll_path("reload_dll_a");

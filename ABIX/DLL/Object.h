@@ -57,6 +57,18 @@ inline CallError &last_error() noexcept {
     return e;
 }
 
+// What happened to the image retired by the most recent load/reload/unload. Kept
+// separate from the operation's own success: swapping in a new module can succeed
+// while the previous one is still on its way out.
+enum class ReclaimOutcome : uint8_t {
+    not_attempted = 0,      // this operation retired nothing
+    reclaimed = 1,          // the retired image was released
+    deferred_batched = 2,   // no timeout configured, and the batched schedule had not
+                            // advanced yet: it is released by a later operation
+    deferred_timeout = 3,   // a reclaim timeout was configured and the grace period was
+                            // not proven in time; the image stays retired and mapped
+};
+
 class Object;
 
 struct Image {
@@ -119,25 +131,64 @@ struct Control {
     Image *image = nullptr;
     uint32_t state = static_cast<uint32_t>(rcu::State::zombie);
     uint32_t writer_lock = 0;
+    // Reclaim policy. The *duration* is configuration; every operation derives a
+    // fresh deadline from it, so a configured timeout is never reused as an absolute
+    // instant. 0 means unbounded, which is the default and keeps the batched
+    // behaviour described in docs/abix/api.md.
+    uint64_t reclaim_timeout_ms = 0;
+    uint32_t last_reclaim = static_cast<uint32_t>(ReclaimOutcome::not_attempted);
 };
 
 namespace detail {
 // Hands a swapped-out image over the way the two RCU classes expect: the index
 // slot array goes to the eager class (reusable by the very next build), the image
 // itself stays in the batched class (its module keeps serving loads that still find
-// it resident). `reclaim_image` tolerates an already-destroyed index, so the later
-// batched pass is unchanged.
-inline void retire_image(Image *img) noexcept {
+// it resident). Called with the writer lock held; the synchronize calls take the
+// domain's own lock, which is a leaf.
+//
+// When `c` asks for a bounded reclaim, the wait for the image's grace period is
+// bounded by a deadline derived from `c->reclaim_timeout_ms` - fresh for every call -
+// and the outcome is recorded on the Control. A timeout changes nothing else: the
+// image stays retired, mapped, and is released by a later successful grace period
+// (the "safe" policy; there is deliberately no automatic forced unload).
+inline void retire_image(Control *c, Image *img) noexcept {
     auto &dom = rcu::Domain::instance();
+    const bool bounded = c != nullptr && c->reclaim_timeout_ms != 0;
+
     dom.retire_eager(&img->index, reclaim_index);
-    dom.synchronize_eager();
-    dom.retire(img, reclaim_image);
-    dom.synchronize();
+
+    bool proven = false;
+    uint64_t token = 0;
+    if (bounded) {
+        // One bounded wait covers both classes, so the index buffer is recycled by the
+        // same grace period rather than by a separate unbounded eager sync (which would
+        // let a stuck reader block the reload before the deadline was ever consulted).
+        token = dom.retire_token(img, reclaim_image);
+        proven = dom.synchronize_until(rcu::Deadline::after_ms(c->reclaim_timeout_ms));
+    } else {
+        dom.synchronize_eager();   // unbounded, unchanged
+        token = dom.retire_token(img, reclaim_image);
+        dom.synchronize();   // unchanged batched behaviour
+    }
+
+    if (c) {
+        // The watermark is the honest answer to "was this image released?", which the
+        // outcome reports without having to observe the callback itself (the callback
+        // runs on whichever thread collects, and the Image is gone afterwards).
+        const bool done = dom.reclaimed_through(token, rcu::ReclaimClass::batched);
+        ReclaimOutcome outcome = ReclaimOutcome::deferred_batched;
+        if (done) {
+            outcome = ReclaimOutcome::reclaimed;
+        } else if (bounded && !proven) {
+            outcome = ReclaimOutcome::deferred_timeout;
+        }
+        util::store_release(&c->last_reclaim, static_cast<uint32_t>(outcome));
+    }
 }
 
 inline void destroy_control(Control *c) noexcept {
     if (!c) return;
-    if (auto *img = c->image) retire_image(img);
+    if (auto *img = c->image) retire_image(c, img);
     delete c;
 }
 }   // namespace detail
@@ -261,7 +312,7 @@ public:
         unlock_writer();
 
         if (old_img) {
-            detail::retire_image(old_img);
+            detail::retire_image(_c.get(), old_img);
         }
 
         last_error() = CallError::none;
@@ -316,6 +367,24 @@ public:
 
     void exit_read() noexcept { rcu::Domain::instance().exit(); }
 
+    // Bounds how long a load/reload/unload waits for a retired image's grace period.
+    // The value is a *duration*: every operation derives a fresh deadline from it, so
+    // a configured timeout is never reused as an absolute instant. 0 (the default)
+    // means unbounded, which keeps the batched behaviour - see the reclaim notes in
+    // docs/abix/api.md. Enabling a bound is an explicit trade: the wait then asks for
+    // a real grace period on every operation instead of sharing the batched one.
+    void set_reclaim_timeout_ms(uint64_t ms) noexcept {
+        if (_c) _c->reclaim_timeout_ms = ms;
+    }
+    uint64_t reclaim_timeout_ms() const noexcept { return _c ? _c->reclaim_timeout_ms : 0; }
+
+    // What happened to the image retired by the most recent operation. Never reports
+    // a failure of the operation itself: a reload that swapped the module in is still
+    // successful when the previous image is deferred.
+    ReclaimOutcome reclaim_outcome() const noexcept {
+        return _c ? static_cast<ReclaimOutcome>(util::load_acquire(&_c->last_reclaim)) : ReclaimOutcome::not_attempted;
+    }
+
 private:
     static SharedPtr<Control> make_control() noexcept {
         auto *c = new (std::nothrow) Control{};
@@ -336,7 +405,7 @@ private:
         auto *img = util::exchange_acq_rel(&_c->image, nullptr);
         util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::zombie));
         if (img) {
-            detail::retire_image(img);
+            detail::retire_image(_c.get(), img);
             ABIX_LOG_INFO("Object::unload: unloaded");
         }
         last_error() = CallError::none;

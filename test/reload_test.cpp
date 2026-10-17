@@ -332,3 +332,165 @@ TEST_CASE("9d.concurrent calls through a cached handle", "[reload][threads][prom
     log_info("8 threads x 20000 calls through the cached path: 0 wrong results");
 }
 
+// --- Reclaim timeout: three failure modes, tested separately -------------------
+//
+// The three have different root causes and different expected behaviour, so they are
+// deliberately not folded into one test: a reader that never leaves (46a), the
+// normal paths with and without a bound (46b), and many writers competing for the
+// grace period while a reader is stuck (46c).
+
+// (1) A reader that never leaves. `reload()` must still complete - the swap happens
+//     before the wait - report the deferral, and keep the old image mapped until a
+//     later grace period reclaims it (the "safe" policy: a timeout never unloads).
+TEST_CASE("46a.a stuck reader defers reclamation without blocking reload", "[reload][rcu][reclaim]") {
+    log_info("Test 46a: bounded reclaim with a reader that never leaves");
+
+    const std::string path = dll_path("math_dll");
+    skl::abix::dll::Object lib;
+    REQUIRE(lib.load(path.c_str()));
+    auto add = skl::abix::dll::Function<int(int, int)>(lib, "add");
+    REQUIRE(add.valid());
+    REQUIRE(add(1, 2) == 3);
+
+    REQUIRE(lib.reclaim_timeout_ms() == 0);   // unbounded by default
+    lib.set_reclaim_timeout_ms(5);
+    REQUIRE(lib.reclaim_timeout_ms() == 5);
+
+    std::atomic<bool> inside{false};
+    std::atomic<bool> release{false};
+    std::thread reader([&] {
+        const auto *t = lib.enter_read();
+        REQUIRE(t != nullptr);
+        inside.store(true);
+        while (!release.load())
+            std::this_thread::yield();
+        lib.exit_read();
+    });
+    while (!inside.load())
+        std::this_thread::yield();
+
+    int deferred = 0;
+    for (int i = 0; i < 5; ++i) {
+        REQUIRE(lib.reload(path.c_str()));
+        REQUIRE(lib.is_loaded());
+        if (lib.reclaim_outcome() == skl::abix::dll::ReclaimOutcome::deferred_timeout) ++deferred;
+        REQUIRE(add(2, 3) == 5);   // the handle stays correct through every swap
+    }
+    REQUIRE(deferred == 5);
+
+    release.store(true);
+    reader.join();
+
+    REQUIRE(lib.reload(path.c_str()));
+    REQUIRE(lib.reclaim_outcome() == skl::abix::dll::ReclaimOutcome::reclaimed);
+    REQUIRE(add(4, 4) == 8);
+    log_info("5 reloads while a reader was held: all deferred, then reclaimed once it left");
+}
+
+// (2) The normal paths. A bounded reclaim must reclaim on every operation (so the
+//     retired list cannot accumulate); the default path keeps the batched cadence,
+//     which defers by design.
+TEST_CASE("46b.bounded reclaims every time, the default batches", "[reload][rcu][reclaim]") {
+    SECTION("46b1.bounded: every reload reclaims") {
+        const std::string path = dll_path("math_dll");
+        skl::abix::dll::Object lib;
+        REQUIRE(lib.load(path.c_str()));
+        lib.set_reclaim_timeout_ms(50);
+
+        int reclaimed = 0;
+        for (int i = 0; i < 10; ++i) {
+            REQUIRE(lib.reload(path.c_str()));
+            if (lib.reclaim_outcome() == skl::abix::dll::ReclaimOutcome::reclaimed) ++reclaimed;
+        }
+        REQUIRE(reclaimed == 10);
+        log_info("bounded mode: 10/10 reloads reclaimed the previous image (no accumulation)");
+    }
+
+    SECTION("46b2.default: the batched schedule defers between releases") {
+        const std::string path = dll_path("math_dll");
+        skl::abix::dll::Object lib;
+        REQUIRE(lib.load(path.c_str()));
+        REQUIRE(lib.reclaim_timeout_ms() == 0);
+
+        int reclaimed = 0;
+        bool saw_deferred = false;
+        for (int i = 0; i < 8; ++i) {
+            REQUIRE(lib.reload(path.c_str()));
+            const auto outcome = lib.reclaim_outcome();
+            // No timeout is configured, so a timeout can never be reported.
+            REQUIRE(outcome != skl::abix::dll::ReclaimOutcome::deferred_timeout);
+            if (outcome == skl::abix::dll::ReclaimOutcome::reclaimed) ++reclaimed;
+            if (outcome == skl::abix::dll::ReclaimOutcome::deferred_batched) saw_deferred = true;
+        }
+        // 8 consecutive batched synchronizations contain at most one release, so both
+        // the deferral and a release must show up.
+        REQUIRE(reclaimed >= 1);
+        REQUIRE(saw_deferred);
+        log_info("default mode: %d/8 reclaimed, deferral observed (no timeouts)", reclaimed);
+    }
+}
+
+// (3) Many writers competing for the grace period while a reader is stuck. One Object
+//     per thread, because concurrent reload of the *same* Object is not an API
+//     promise; the RCU domain is shared, which is what this stresses.
+TEST_CASE("46c.multi-writer bounded reclaims with a stuck reader", "[reload][rcu][reclaim][threads]") {
+    constexpr int kThreads = 4;
+    constexpr int kRounds = 5;
+    const std::string path = dll_path("math_dll");
+
+    skl::abix::dll::Object lib;
+    REQUIRE(lib.load(path.c_str()));
+
+    std::atomic<bool> inside{false};
+    std::atomic<bool> release{false};
+    std::thread reader([&] {
+        const auto *t = lib.enter_read();
+        REQUIRE(t != nullptr);
+        inside.store(true);
+        while (!release.load())
+            std::this_thread::yield();
+        lib.exit_read();
+    });
+    while (!inside.load())
+        std::this_thread::yield();
+
+    std::atomic<int> failures{0};
+    std::atomic<int> deferred{0};
+    std::vector<std::thread> writers;
+    writers.reserve(kThreads);
+    for (int t = 0; t < kThreads; ++t) {
+        writers.emplace_back([&] {
+            skl::abix::dll::Object own;
+            if (!own.load(path.c_str())) {
+                ++failures;
+                return;
+            }
+            own.set_reclaim_timeout_ms(2);
+            for (int r = 0; r < kRounds; ++r) {
+                if (!own.reload(path.c_str())) ++failures;
+                if (own.reclaim_outcome() == skl::abix::dll::ReclaimOutcome::deferred_timeout) ++deferred;
+            }
+        });
+    }
+    for (auto &writer : writers)
+        writer.join();
+
+    REQUIRE(failures.load() == 0);
+    REQUIRE(deferred.load() > 0);   // the stuck reader makes every bounded wait expire
+
+    release.store(true);
+    reader.join();
+
+    // A final bounded operation must still be able to prove a grace period. If the
+    // timeout path had wedged the `sync` handshake, this would time out instead of
+    // reclaiming.
+    skl::abix::dll::Object final_lib;
+    REQUIRE(final_lib.load(path.c_str()));
+    final_lib.set_reclaim_timeout_ms(2'000);
+    REQUIRE(final_lib.reload(path.c_str()));
+    REQUIRE(final_lib.reclaim_outcome() == skl::abix::dll::ReclaimOutcome::reclaimed);
+    log_info(
+        "%d writers x %d bounded reloads under a stuck reader: 0 failures, handshake intact, "
+        "final reclaim succeeded",
+        kThreads, kRounds);
+}

@@ -65,3 +65,111 @@ TEST_CASE("44.reclaim_classes_batched_and_eager", "[rcu][reclaim]") {
             "eager node ignored %d batched synchronize calls, then was reclaimed eagerly", SKL_ABIX_RCU_EPOCH_BATCH);
     }
 }
+
+namespace {
+
+// A reader that stays inside the read side until it is released. Several cases below
+// need "the grace period cannot be proven", which requires a registered thread that
+// holds an epoch old enough to block `readers_passed`.
+class HeldReader {
+public:
+    explicit HeldReader(skl::abix::rcu::Domain &dom)
+        : _dom(dom) {
+        _thread = std::thread([this] {
+            _dom.enter();
+            _inside.store(true, std::memory_order_release);
+            while (!_release.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            _dom.exit();
+        });
+        while (!_inside.load(std::memory_order_acquire))
+            std::this_thread::yield();
+    }
+    HeldReader(const HeldReader &) = delete;
+    HeldReader &operator=(const HeldReader &) = delete;
+    ~HeldReader() { release(); }
+
+    void release() noexcept {
+        _release.store(true, std::memory_order_release);
+        if (_thread.joinable()) _thread.join();
+    }
+
+private:
+    skl::abix::rcu::Domain &_dom;
+    std::thread _thread;
+    std::atomic<bool> _inside{false};
+    std::atomic<bool> _release{false};
+};
+
+}   // namespace
+
+// `synchronize_until()` answers exactly one question - was the requested grace period
+// proven within the deadline - and a false answer must not be mistaken for progress:
+// no watermark moves, no callback runs, and the domain stays usable afterwards.
+TEST_CASE("45.synchronize_until_bounds_only_the_wait", "[rcu][reclaim][deadline]") {
+    using skl::abix::rcu::Deadline;
+    using skl::abix::rcu::ReclaimClass;
+    auto &dom = skl::abix::rcu::Domain::instance();
+
+    SECTION("45a.deadline shapes") {
+        REQUIRE(!Deadline::never().bounded());
+        REQUIRE(!Deadline::never().expired());
+        REQUIRE(Deadline::after_ms(0).bounded());
+        REQUIRE(Deadline::after_ms(0).expired());   // a non-blocking probe
+        REQUIRE(!Deadline::after_ms(1'000).expired());
+        log_info("Deadline: never() unbounded, after_ms(0) already expired");
+    }
+
+    SECTION("45b.no reader: proven, and the token is reclaimed") {
+        g_batched_reclaimed = 0;
+        const uint64_t token = dom.retire_token(new int(1), reclaim_batched_token);
+        REQUIRE(token != 0);
+        REQUIRE(!dom.reclaimed_through(token, ReclaimClass::batched));
+
+        REQUIRE(dom.synchronize_until(Deadline::after_ms(50)));
+        REQUIRE(dom.reclaimed_through(token, ReclaimClass::batched));
+        REQUIRE(g_batched_reclaimed >= 1);
+        log_info("no reader: grace period proven, node reclaimed");
+    }
+
+    SECTION("45c.a held reader times out: nothing reclaimed, epoch already advanced") {
+        g_batched_reclaimed = 0;
+        HeldReader reader(dom);
+        const uint64_t token = dom.retire_token(new int(1), reclaim_batched_token);
+
+        REQUIRE(!dom.synchronize_until(Deadline::after_ms(5)));   // not proven
+        REQUIRE(!dom.reclaimed_through(token, ReclaimClass::batched));
+        REQUIRE(g_batched_reclaimed == 0);   // no callback ran
+
+        // The advancement is irreversible, so the reader now holds an epoch older than
+        // the one the timed-out call published. A later call must still be able to make
+        // progress - this is the intermediate state the contract has to survive.
+        REQUIRE(!dom.synchronize_until(Deadline::after_ms(5)));
+        REQUIRE(!dom.reclaimed_through(token, ReclaimClass::batched));
+
+        reader.release();
+        REQUIRE(dom.synchronize_until(Deadline::after_ms(2'000)));
+        REQUIRE(dom.reclaimed_through(token, ReclaimClass::batched));
+        REQUIRE(g_batched_reclaimed == 1);
+        log_info("timeout after the epoch advanced: node stayed pending, later call reclaimed it");
+    }
+
+    SECTION("45d.a timed-out call does not leave the handshake stuck") {
+        HeldReader reader(dom);
+        const uint64_t token = dom.retire_token(new int(1), reclaim_batched_token);
+        for (int i = 0; i < 8; ++i)
+            REQUIRE(!dom.synchronize_until(Deadline::after_ms(1)));
+        reader.release();
+
+        // If the timed-out calls had left `sync` set, this would time out (or spin)
+        // instead of returning true.
+        REQUIRE(dom.synchronize_until(Deadline::after_ms(2'000)));
+        REQUIRE(dom.reclaimed_through(token, ReclaimClass::batched));
+        log_info("8 timed-out waits in a row, then a proven one: handshake not stuck");
+    }
+
+    SECTION("45e.retire_token(0) is never claimed as reclaimed") {
+        REQUIRE(!dom.reclaimed_through(0, ReclaimClass::batched));
+        REQUIRE(!dom.reclaimed_through(0, ReclaimClass::eager));
+    }
+}

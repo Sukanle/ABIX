@@ -19,6 +19,7 @@
 
 #include <stdlib.h>
 
+#include "ABIX/RCU/Deadline.h"
 #include "ABIX/Util/Atomic.h"
 
 #ifndef SKL_ABIX_RCU_EPOCH_BATCH
@@ -106,12 +107,48 @@ public:
     // itself useful (a module image that keeps a file mapped).
     void retire_eager(void *object, ReclaimFn reclaim) noexcept { retire_impl(object, reclaim, ReclaimClass::eager); }
 
+    // The epoch a retired object was queued at ("token"). Together with
+    // `reclaimed_through` it answers "has the domain already released that object?"
+    // without the caller having to observe its own reclaim callback.
+    uint64_t retire_token(void *object, ReclaimFn reclaim) noexcept {
+        return retire_impl(object, reclaim, ReclaimClass::batched);
+    }
+
+    // Whether the given class has already been collected through `token`, i.e. every
+    // object retired at or before that epoch has had its reclaim callback run.
+    // Monotonic per class, and only ever advanced after a grace period was proven.
+    bool reclaimed_through(uint64_t token, ReclaimClass cls) const noexcept {
+        const uint64_t completed = (cls == ReclaimClass::eager) ? util::load_acquire(&_epoch.completed_eager)
+                                                                : util::load_acquire(&_epoch.completed);
+        return token != 0 && completed >= token;
+    }
+
     void synchronize() noexcept;
 
     // Advances the epoch now instead of every SKL_ABIX_RCU_EPOCH_BATCH calls and
     // reclaims the eager class only, so it does not shorten the deferral the
     // batched class was tuned for. Cheap when there is nothing to collect.
     void synchronize_eager() noexcept;
+
+    // Requests one grace period and waits for it at most until `deadline`.
+    //
+    //   true  - the requested grace period **was proven**: every reader that could
+    //           still be traversing objects retired before the advancement has left
+    //           its critical section. Nothing more: this does not promise that a
+    //           collection scan ran, and it does not promise that any particular
+    //           reclaim callback has executed (`reclaimed_through` answers that).
+    //   false - the grace period was **not proven** within the deadline. Either the
+    //           deadline expired while a reader was still inside, or this thread never
+    //           got to perform the advancement because another writer held it. A false
+    //           result says nothing about whether readers have left, it never advances
+    //           the reclaimed-through watermark, and it never runs a reclaim callback,
+    //           so a caller must not release anything on the strength of it.
+    //
+    // Unlike `synchronize()` this always asks for a real grace period (it does not
+    // take the batched early return), which is the documented trade of enabling a
+    // bounded wait. The epoch advancement is irreversible, so a timeout still leaves
+    // the domain consistent and later synchronizations keep working.
+    bool synchronize_until(Deadline deadline) noexcept;
 
     void try_collect() noexcept {
         if (!try_lock_writer()) return;
@@ -138,10 +175,12 @@ public:
     uint64_t global_epoch() const noexcept { return util::load_relaxed(&_epoch.global); }
 
 private:
-    void retire_impl(void *object, ReclaimFn reclaim, ReclaimClass cls) noexcept {
+    // Queues an object for reclamation and returns the epoch it was queued at, or 0
+    // when the node could not be allocated (nothing was queued in that case).
+    uint64_t retire_impl(void *object, ReclaimFn reclaim, ReclaimClass cls) noexcept {
         uint64_t current_epoch = util::load_relaxed(&_epoch.global);
         auto *r = new (std::nothrow) RetiredNode{object, current_epoch, reclaim, cls, nullptr};
-        if (!r) return;
+        if (!r) return 0;
 
         auto &batch = local_batch();
         if (batch.tail)
@@ -152,6 +191,7 @@ private:
         batch.count++;
 
         if (batch.count >= SKL_ABIX_RCU_BATCH_PUBLISH) publish_local_batch();
+        return current_epoch;
     }
 
     ThreadState *get_thread() noexcept {
@@ -236,6 +276,36 @@ private:
     // Shared body of the two synchronize entry points; `eager` selects which class
     // is collected (and skips the batch counter).
     void synchronize_impl(bool eager) noexcept;
+
+    // Takes ownership of one epoch advancement. Returns false when another writer
+    // already owns it (the caller must not touch `sync` in that case). The owner is
+    // responsible for clearing `sync` on every path out.
+    bool begin_advance(uint64_t &old_epoch) noexcept {
+        lock_writer();
+        publish_local_batch_locked();
+        if (util::load_relaxed(&_epoch.sync) != 0) {
+            unlock_writer();
+            return false;
+        }
+        old_epoch = util::load_relaxed(&_epoch.global);
+        util::inc_acq_rel(&_epoch.global);
+        util::store_release(&_epoch.sync, old_epoch + 1);
+        unlock_writer();
+        return true;
+    }
+
+    // Clears `sync` after an advancement owned by this thread, optionally collecting
+    // both classes. A proven grace period covers both, so a bounded wait reclaims the
+    // eager class (index buffers) and the batched class (images) in one pass.
+    void end_advance(uint64_t old_epoch, bool collect_now) noexcept {
+        lock_writer();
+        if (collect_now) {
+            collect(old_epoch, ReclaimClass::eager);
+            collect(old_epoch, ReclaimClass::batched);
+        }
+        util::store_release(&_epoch.sync, 0);
+        unlock_writer();
+    }
 
     // ── Collector ────────────────────────────────────────────
 
@@ -331,6 +401,37 @@ inline void Domain::synchronize_impl(bool eager) noexcept {
 inline void Domain::synchronize() noexcept { synchronize_impl(false); }
 
 inline void Domain::synchronize_eager() noexcept { synchronize_impl(true); }
+
+inline bool Domain::synchronize_until(Deadline deadline) noexcept {
+    for (;;) {
+        uint64_t old_epoch = 0;
+        if (!begin_advance(old_epoch)) {
+            // Another writer owns the advancement: this thread waits, retries, or
+            // gives up, and it never clears a `sync` it does not own.
+            if (deadline.bounded() && deadline.expired()) return false;
+            continue;
+        }
+
+        // This thread owns the advancement from here on and must clear `sync` on
+        // every path out. The clock is polled rather than read per iteration so an
+        // unbounded wait costs nothing: `expired()` on a `never()` deadline is a
+        // single register compare.
+        unsigned polls = 0;
+        bool proven = true;
+        while (!readers_passed(old_epoch)) {
+            if ((++polls & 0xFFu) == 0 && deadline.expired()) {
+                proven = false;
+                break;
+            }
+        }
+
+        // On a proven grace period both classes are collected (the return value still
+        // promises only the grace period: `collect` may early-out on its watermark, and
+        // callbacks run for as long as they run).
+        end_advance(old_epoch, /*collect_now=*/proven);
+        return proven;
+    }
+}
 
 }   // namespace skl::abix::rcu
 
