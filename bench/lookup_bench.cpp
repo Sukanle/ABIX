@@ -1,7 +1,7 @@
 #include <benchmark/benchmark.h>
-#include <stdio.h>
 
 #include "bench_common.hpp"
+#include "bench_fmt.hpp"
 
 // Shared state: loaded once before benchmarks
 static skl::abix::dll::Object *g_lib = nullptr;
@@ -26,7 +26,7 @@ static bool ensure_lookup_plugin(benchmark::State &state) {
 }
 
 // Pre-formatted name tables. `bench_common.hpp`'s `hot_name()`/`cold_name()` rebuild
-// the name with `snprintf` on **every** call, which in a ~3 ns lookup is most of the
+// the name on **every** call, which in a ~3 ns lookup is most of the
 // measurement: measured that way the read-side bracket (1.64 ns, see
 // `BM_ABIX_HandleRcuBracket`) is invisible, which is why `BM_FindIndex_Only` and
 // `BM_Resolve_WithEBR` used to report the same value. The name has to be held
@@ -36,14 +36,14 @@ static const char *hot_name_cached(int i) {
     static char names[20][8] = {};
     if (names[0][0] == '\0')
         for (int k = 0; k < 20; ++k)
-            std::snprintf(names[k], sizeof(names[k]), "h_%02d", k);
+            format_into(names[k], "h_{:02d}", k);
     return names[i % 20];
 }
 static const char *cold_name_cached(int i) {
     static char names[1'000][8] = {};
     if (names[0][0] == '\0')
         for (int k = 0; k < 1'000; ++k)
-            std::snprintf(names[k], sizeof(names[k]), "e_%04d", k);
+            format_into(names[k], "e_{:04d}", k);
     return names[i % 1'000];
 }
 
@@ -64,20 +64,20 @@ static void BM_FindIndex_Only(benchmark::State &state) {
 BENCHMARK(BM_FindIndex_Only);
 
 // Per-hash cost on *pre-formatted* names held in a contiguous block: cold_name()
-// builds its name with snprintf, which would otherwise dominate the measurement.
+// rebuilds its name on every call, which would otherwise dominate the measurement.
 static char g_hash_names[1'000][8];
 static char g_hash_names16[1'000][17];
 
 static const char *hash_name_short(int i) {
     if (g_hash_names[0][0] == '\0')
         for (int k = 0; k < 1'000; ++k)
-            std::snprintf(g_hash_names[k], sizeof(g_hash_names[k]), "e_%04d", k);
+            format_into(g_hash_names[k], "e_{:04d}", k);
     return g_hash_names[i % 1'000];
 }
 static const char *hash_name_long(int i) {
     if (g_hash_names16[0][0] == '\0')
         for (int k = 0; k < 1'000; ++k)
-            std::snprintf(g_hash_names16[k], sizeof(g_hash_names16[k]), "symbol_%08d_v", k);
+            format_into(g_hash_names16[k], "symbol_{:08d}_v", k);
     return g_hash_names16[i % 1'000];
 }
 

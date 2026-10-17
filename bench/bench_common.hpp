@@ -3,9 +3,9 @@
 
 #include <benchmark/benchmark.h>
 #include <string>
-#include <cstdio>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 #include "dlls/plugin_path.h"
 
 #if defined(_MSC_VER)
@@ -29,13 +29,13 @@ inline bool require_plugin(benchmark::State &state, skl::abix::dll::Object &lib,
 
 inline const char *hot_name(int i) {
     static char buf[16];
-    snprintf(buf, sizeof(buf), "h_%02d", i);
+    format_into(buf, "h_{:02}", i);
     return buf;
 }
 
 inline const char *cold_name(int i) {
     static char buf[16];
-    snprintf(buf, sizeof(buf), "e_%04d", i);
+    format_into(buf, "e_{:04}", i);
     return buf;
 }
 

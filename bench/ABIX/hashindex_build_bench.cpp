@@ -52,6 +52,7 @@
 #include <vector>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 
 #if defined(_WIN32)
 #  define ABIX_POPEN _popen
@@ -82,7 +83,7 @@ struct Fixture {
         entries.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
             char *name = new char[16];
-            std::snprintf(name, 16, "sym_%04u", i);
+            format_into(name, 16, "sym_{:04}", i);
             entries.push_back(
                 {name, skl::abix::dll::FnSigV<int(int)>, 0, 0xDEADBEEF, skl::abix::runtime::name_hash(name), 0});
         }
@@ -405,7 +406,7 @@ void reload_loop(const char *mode, uint32_t size, int steps, int rounds) {
         delete idx;
     }
 
-    std::printf("RELOADLOOP %s %u %.1f\n", mode, size, median(samples));
+    fmt::print("RELOADLOOP {} {} {:.1f}\n", mode, size, median(samples));
 }
 
 // Answer two questions about the free cadence the pool depends on.
@@ -424,7 +425,7 @@ void reload_loop(const char *mode, uint32_t size, int steps, int rounds) {
 // every call, so the two differ exactly when readers are inside often enough.
 void reclaim_cadence(int syncs, int iters, int readers, int spin) {
     auto &dom = skl::abix::rcu::Domain::instance();
-    std::printf("reclaim cadence (SKL_ABIX_RCU_EPOCH_BATCH=%d, %d reader thread(s), spin=%d)\n",
+    fmt::print("reclaim cadence (SKL_ABIX_RCU_EPOCH_BATCH={}, {} reader thread(s), spin={})\n",
         SKL_ABIX_RCU_EPOCH_BATCH, readers, spin);
 
     unsigned long long last = 0;
@@ -432,18 +433,18 @@ void reclaim_cadence(int syncs, int iters, int readers, int spin) {
         auto *token = new (std::nothrow) int(i);
         if (token) dom.retire(token, count_reclaim);
         dom.synchronize();
-        std::printf("  synchronize #%2d -> %2llu reclaim(s)\n", i, g_reclaimed - last);
+        fmt::print("  synchronize #{:2} -> {:2} reclaim(s)\n", i, g_reclaimed - last);
         last = g_reclaimed;
     }
 
-    std::printf("  with an explicit try_collect() each round:\n");
+    fmt::print("  with an explicit try_collect() each round:\n");
     last = g_reclaimed;
     for (int i = 1; i <= syncs; ++i) {
         auto *token = new (std::nothrow) int(i);
         if (token) dom.retire(token, count_reclaim);
         dom.synchronize();
         dom.try_collect();
-        std::printf("  retire + synchronize + try_collect #%2d -> %2llu reclaim(s)\n", i, g_reclaimed - last);
+        fmt::print("  retire + synchronize + try_collect #{:2} -> {:2} reclaim(s)\n", i, g_reclaimed - last);
         last = g_reclaimed;
     }
 
@@ -476,9 +477,9 @@ void reclaim_cadence(int syncs, int iters, int readers, int spin) {
         thread.join();
 
     const double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / iters;
-    std::printf("\nretire + synchronize: %.1f ns/iteration (%d iterations, %llu reclaimed = %.3f/iteration)\n", ns,
+    fmt::print("\nretire + synchronize: {:.1f} ns/iteration ({} iterations, {} reclaimed = {:.3f}/iteration)\n", ns,
         iters, reclaimed, static_cast<double>(reclaimed) / iters);
-    std::printf("(cross-check: BM_Reload_RetireSync measures the same pair in bench_all)\n");
+    fmt::print("(cross-check: BM_Reload_RetireSync measures the same pair in bench_all)\n");
 }
 
 // ---------------------------------------------------------------- reload pattern
@@ -609,7 +610,7 @@ int pattern_one(const char *mode, uint32_t size, int steps, int rounds) {
     std::vector<double> rest(samples.begin() + 1, samples.end());
     const double warm = rest.empty() ? cold : median(rest);
     const double hit_rate = rounds > 0 ? static_cast<double>(hits) / rounds : 0.0;
-    std::printf("PATTERN %s %u %.1f %.1f %.1f\n", mode, size, cold, warm, hit_rate);
+    fmt::print("PATTERN {} {} {:.1f} {:.1f} {:.1f}\n", mode, size, cold, warm, hit_rate);
     return 0;
 }
 
@@ -646,7 +647,7 @@ int pattern_spawn(const char *self, int processes) {
                             + std::to_string(rounds);
             std::FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
             if (!pipe) {
-                std::fprintf(stderr, "cannot spawn: %s\n", cmd.c_str());
+                fmt::print(stderr, "cannot spawn: {}\n", cmd);
                 return 2;
             }
             char line[256] = {};
@@ -665,14 +666,14 @@ int pattern_spawn(const char *self, int processes) {
         }
     }
 
-    std::printf(
-        "reload cadence model, one (mode, size) per process, %d processes each, %d rounds of "
-        "reloads\nepoch batch: %d   pool window: %u..%u slots\n\n",
+    fmt::print(
+        "reload cadence model, one (mode, size) per process, {} processes each, {} rounds of "
+        "reloads\nepoch batch: {}   pool window: {}..{} slots\n\n",
         processes, rounds, SKL_ABIX_RCU_EPOCH_BATCH, SKL_ABIX_HASH_POOL_MIN_SLOTS, SKL_ABIX_HASH_POOL_MAX_SLOTS);
-    std::printf("%-7s | %10s %10s %10s %10s | %8s %8s %8s\n", "size", "alloc", "pooled", "pooled_all", "prod",
-        "alloc/pool", "alloc/prod", "hits/round");
-    std::printf(
-        "%-7s | %10s %10s %10s %10s | %8s %8s %8s\n", "", "warm ns", "warm ns", "warm ns", "warm ns", "", "", "");
+    fmt::print("{:<7} | {:>10} {:>10} {:>10} {:>10} | {:>8} {:>8} {:>8}\n", "size", "alloc", "pooled", "pooled_all",
+        "prod", "alloc/pool", "alloc/prod", "hits/round");
+    fmt::print("{:<7} | {:>10} {:>10} {:>10} {:>10} | {:>8} {:>8} {:>8}\n", "", "warm ns", "warm ns", "warm ns",
+        "warm ns", "", "", "");
     for (uint32_t size : sizes) {
         double alloc_w = 0, pool_w = 0, all_w = 0, prod_w = 0, hits = 0;
         for (Combo &c : combos) {
@@ -689,8 +690,8 @@ int pattern_spawn(const char *self, int processes) {
                 prod_w = w;
             }
         }
-        std::printf("%-7u | %10.1f %10.1f %10.1f %10.1f | %8.2f %8.2f %8.1f\n", size, alloc_w, pool_w, all_w, prod_w,
-            pool_w > 0 ? alloc_w / pool_w : 0.0, prod_w > 0 ? alloc_w / prod_w : 0.0, hits);
+        fmt::print("{:<7} | {:>10.1f} {:>10.1f} {:>10.1f} {:>10.1f} | {:>8.2f} {:>8.2f} {:>8.1f}\n", size, alloc_w,
+            pool_w, all_w, prod_w, pool_w > 0 ? alloc_w / pool_w : 0.0, prod_w > 0 ? alloc_w / prod_w : 0.0, hits);
     }
     return 0;
 }
@@ -767,7 +768,7 @@ int run_one(const char *variant, uint32_t size, int rounds) {
     std::vector<double> rest(samples.begin() + 1, samples.end());
     const double warm = rest.empty() ? cold : median(rest);
     const double best = *std::min_element(samples.begin(), samples.end());
-    std::printf("RESULT %s %u %.1f %.1f %.1f\n", variant, size, cold, warm, best);
+    fmt::print("RESULT {} {} {:.1f} {:.1f} {:.1f}\n", variant, size, cold, warm, best);
     return 0;
 }
 
@@ -803,7 +804,7 @@ int spawn_all(const char *self) {
                             + std::to_string(rounds);
             std::FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
             if (!pipe) {
-                std::fprintf(stderr, "cannot spawn: %s\n", cmd.c_str());
+                fmt::print(stderr, "cannot spawn: {}\n", cmd);
                 return 2;
             }
             char line[256] = {};
@@ -821,10 +822,10 @@ int spawn_all(const char *self) {
         }
     }
 
-    std::printf("one (variant, size) per process: %d processes each, first round vs steady state\n\n", processes);
-    std::printf("%-6s %-8s | %14s %14s | %14s %14s | %8s\n", "size", "variant", "cold min ns", "cold med ns",
+    fmt::print("one (variant, size) per process: {} processes each, first round vs steady state\n\n", processes);
+    fmt::print("{:<6} {:<8} | {:>14} {:>14} | {:>14} {:>14} | {:>8}\n", "size", "variant", "cold min ns", "cold med ns",
         "warm min ns", "warm med ns", "warm/cold");
-    std::printf("%-6s %-8s | %14s %14s | %14s %14s | %8s\n", "", "", "", "", "", "", "");
+    fmt::print("{:<6} {:<8} | {:>14} {:>14} | {:>14} {:>14} | {:>8}\n", "", "", "", "", "", "", "");
     for (Combo &c : combos) {
         std::vector<double> cold = c.colds, warm = c.warms;
         if (cold.empty() || warm.empty()) continue;
@@ -832,14 +833,14 @@ int spawn_all(const char *self) {
         const double cold_med = median(cold);
         const double warm_min = *std::min_element(warm.begin(), warm.end());
         const double warm_med = median(warm);
-        std::printf("%-6u %-8s | %14.1f %14.1f | %14.1f %14.1f | %8.2f\n", c.size, c.variant, cold_min, cold_med,
-            warm_min, warm_med, warm_med / cold_med);
+        fmt::print("{:<6} {:<8} | {:>14.1f} {:>14.1f} | {:>14.1f} {:>14.1f} | {:>8.2f}\n", c.size, c.variant, cold_min,
+            cold_med, warm_min, warm_med, warm_med / cold_med);
     }
 
     // The decision the experiment exists for: reuse vs allocate for the shipped
     // strategy (zero sentinel), per size.
-    std::printf("\npooling payoff for the shipped strategy (B): alloc / pool\n");
-    std::printf("%-6s | %14s %14s %8s\n", "size", "B_alloc warm", "B_pool warm", "ratio");
+    fmt::print("\npooling payoff for the shipped strategy (B): alloc / pool\n");
+    fmt::print("{:<6} | {:>14} {:>14} {:>8}\n", "size", "B_alloc warm", "B_pool warm", "ratio");
     for (uint32_t size : sizes) {
         double alloc_warm = 0, pool_warm = 0;
         for (Combo &c : combos) {
@@ -847,7 +848,7 @@ int spawn_all(const char *self) {
             if (std::strcmp(c.variant, "B_alloc") == 0) alloc_warm = median(c.warms);
             if (std::strcmp(c.variant, "B_pool") == 0) pool_warm = median(c.warms);
         }
-        std::printf("%-6u | %14.1f %14.1f %8.2f\n", size, alloc_warm, pool_warm, alloc_warm / pool_warm);
+        fmt::print("{:<6} | {:>14.1f} {:>14.1f} {:>8.2f}\n", size, alloc_warm, pool_warm, alloc_warm / pool_warm);
     }
     return 0;
 }
@@ -883,11 +884,11 @@ int main(int argc, char **argv) {
     const int iters[] = {2'000, 500, 200};
     const int reps = 9;
 
-    std::printf("HashIndex::build variants (median of %d runs)\n\n", reps);
-    std::printf("%-6s | %11s %11s %7s | %11s %7s | %11s %11s\n", "size", "pooled A", "pooled B", "B/A", "pooled D",
-        "D/A", "alloc A", "alloc B");
-    std::printf("%-6s | %11s %11s %7s | %11s %7s | %11s %11s\n", "", "base ns", "zero ns", "", "gen ns", "", "prod ns",
-        "zero ns");
+    fmt::print("HashIndex::build variants (median of {} runs)\n\n", reps);
+    fmt::print("{:<6} | {:>11} {:>11} {:>7} | {:>11} {:>7} | {:>11} {:>11}\n", "size", "pooled A", "pooled B", "B/A",
+        "pooled D", "D/A", "alloc A", "alloc B");
+    fmt::print("{:<6} | {:>11} {:>11} {:>7} | {:>11} {:>7} | {:>11} {:>11}\n", "", "base ns", "zero ns", "", "gen ns",
+        "", "prod ns", "zero ns");
 
     std::vector<std::array<double, 3>> alloc_cost;   // per size: pooled A, alloc A, ratio
     for (int s = 0; s < 3; ++s) {
@@ -928,8 +929,8 @@ int main(int argc, char **argv) {
             },
             iters[s], reps);
 
-        std::printf("%-6s | %11.1f %11.1f %7.2f | %11.1f %7.2f | %11.1f %11.1f\n", labels[s], pa, pb, pb / pa, pd,
-            pd / pa, aa, ab);
+        fmt::print("{:<6} | {:>11.1f} {:>11.1f} {:>7.2f} | {:>11.1f} {:>7.2f} | {:>11.1f} {:>11.1f}\n", labels[s], pa,
+            pb, pb / pa, pd, pd / pa, aa, ab);
 
         // Allocation overhead for the *implemented* strategy (B: zero sentinel),
         // measured interleaved: the same fill with a pooled buffer vs a fresh
@@ -951,10 +952,11 @@ int main(int argc, char **argv) {
         alloc_cost.push_back({pooled_med, alloc_med, alloc_med / pooled_med});
     }
 
-    std::printf("\nallocating the slot buffer per build vs reusing it (interleaved, 7 rounds, strategy B)\n");
-    std::printf("%-6s | %12s %12s %7s\n", "size", "pooled ns", "per-alloc ns", "ratio");
+    fmt::print("\nallocating the slot buffer per build vs reusing it (interleaved, 7 rounds, strategy B)\n");
+    fmt::print("{:<6} | {:>12} {:>12} {:>7}\n", "size", "pooled ns", "per-alloc ns", "ratio");
     for (int s = 0; s < 3; ++s) {
-        std::printf("%-6s | %12.1f %12.1f %7.2f\n", labels[s], alloc_cost[s][0], alloc_cost[s][1], alloc_cost[s][2]);
+        fmt::print(
+            "{:<6} | {:>12.1f} {:>12.1f} {:>7.2f}\n", labels[s], alloc_cost[s][0], alloc_cost[s][1], alloc_cost[s][2]);
     }
 
     double bp = 0, zp = 0, gp = 0;
@@ -962,10 +964,9 @@ int main(int argc, char **argv) {
     for (int s = 0; s < 3; ++s) {
         Fixture fix(sizes[s]);
         mism += probes_and_mismatches(fix.table, bp, zp, gp);
-        std::printf("\nequivalence %-4s: base_probes=%.3f zero_probes=%.3f gen_probes=%.3f mismatches=%d\n", labels[s],
-            bp, zp, gp, mism);
+        fmt::print("\nequivalence {:<4}: base_probes={:.3f} zero_probes={:.3f} gen_probes={:.3f} mismatches={}\n",
+            labels[s], bp, zp, gp, mism);
     }
-    std::printf(
-        "\nslot bytes: A base=%zu  B zero=%zu  D gen=%zu\n", sizeof(BaseSlot), sizeof(ZeroSlot), sizeof(GenSlot));
+    fmt::print("\nslot bytes: A base={}  B zero={}  D gen={}\n", sizeof(BaseSlot), sizeof(ZeroSlot), sizeof(GenSlot));
     return 0;
 }

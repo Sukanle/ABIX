@@ -6,6 +6,7 @@
 #include <benchmark/benchmark.h>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 #include <type_traits>
 
 #if defined(__APPLE__)
@@ -47,8 +48,8 @@ inline auto &domain = skl::abix::rcu::Domain::instance();
 // ============================================================
 inline void print_rcu_domain_layout() {
     size_t sz = sizeof(skl::abix::rcu::Domain);
-    printf("rcu_domain layout: sizeof=%zu, cache_lines=%zu\n", sz,
+    fmt::print("rcu_domain layout: sizeof={}, cache_lines={}\n", sz,
         (sz + SKL_ABIX_CACHE_LINE_SIZE - 1) / SKL_ABIX_CACHE_LINE_SIZE);
-    printf("  epoch alignas:   %d\n", SKL_ABIX_CACHE_LINE_SIZE);
-    printf("  epoch_batch:         %d\n", SKL_ABIX_RCU_EPOCH_BATCH);
+    fmt::print("  epoch alignas:   {}\n", SKL_ABIX_CACHE_LINE_SIZE);
+    fmt::print("  epoch_batch:         {}\n", SKL_ABIX_RCU_EPOCH_BATCH);
 }

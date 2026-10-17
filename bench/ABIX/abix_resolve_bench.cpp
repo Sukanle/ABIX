@@ -13,11 +13,11 @@
 // ============================================================
 #include <benchmark/benchmark.h>
 
-#include <cstdio>
 #include <cstring>
 #include <vector>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 
 // ============================================================
 // Helpers
@@ -35,7 +35,7 @@ struct ResolveFixture {
         entries.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
             char *name = new char[16];
-            std::snprintf(name, 16, "sym_%04u", i);
+            format_into(name, 16, "sym_{:04}", i);
             entries.push_back(
                 {name, skl::abix::dll::FnSigV<int(int)>, 0, 0xDEADBEEF, skl::abix::runtime::name_hash(name), 0});
         }

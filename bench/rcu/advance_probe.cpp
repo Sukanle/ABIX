@@ -74,6 +74,7 @@
 #include <vector>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 #include "dlls/plugin_path.h"
 
 #if defined(_WIN32)
@@ -253,21 +254,19 @@ RunResult run_once(const Options &opt, int writers, unsigned hw, bool verbose) {
         if (opt.max_backlog != 0 && s.retired_backlog >= opt.max_backlog) {
             r.capped = true;
             running.store(false, std::memory_order_relaxed);
-            std::printf("  backlog cap reached (%llu >= %llu): stopping writers early\n",
-                (unsigned long long)s.retired_backlog, (unsigned long long)opt.max_backlog);
+            fmt::print(
+                "  backlog cap reached ({} >= {}): stopping writers early\n", s.retired_backlog, opt.max_backlog);
             break;
         }
 
         if (verbose && now_ns() - window_start - last_report_ns >= opt.sample_ms * 1'000'000ULL) {
             last_report_ns = now_ns() - window_start;
-            std::printf(
-                "  t=%6llu ms  backlog=%7llu oldest=%10llu ns  attempts=%-9llu contend=%-9llu retries=%-10llu "
-                "adv_to=%-8llu grace_to=%-8llu max_wait=%10llu ns\n",
-                (unsigned long long)(last_report_ns / 1'000'000ULL), (unsigned long long)s.retired_backlog,
-                (unsigned long long)s.retired_oldest_age_ns, (unsigned long long)s.advance_attempts,
-                (unsigned long long)s.advance_contentions, (unsigned long long)s.advance_retries,
-                (unsigned long long)s.advance_timeouts, (unsigned long long)s.grace_period_timeouts,
-                (unsigned long long)s.advance_max_wait_ns);
+            fmt::print(
+                "  t={:6} ms  backlog={:7} oldest={:10} ns  attempts={:<9} contend={:<9} retries={:<10} "
+                "adv_to={:<8} grace_to={:<8} max_wait={:10} ns\n",
+                last_report_ns / 1'000'000ULL, s.retired_backlog, s.retired_oldest_age_ns, s.advance_attempts,
+                s.advance_contentions, s.advance_retries, s.advance_timeouts, s.grace_period_timeouts,
+                s.advance_max_wait_ns);
         }
     }
 
@@ -313,70 +312,61 @@ RunResult run_once(const Options &opt, int writers, unsigned hw, bool verbose) {
 void print_verdict(const Options &opt, unsigned hw, const RunResult &r) {
     const int threads = r.writers + opt.readers;
     switch (r.verdict) {
-        case 2: std::printf("  VERDICT: HANDSHAKE NOT DRAINED after readers stopped\n"); break;
-        case 3: std::printf("  VERDICT: a reload failed (plugin missing or unloadable)\n"); break;
+        case 2: fmt::print("  VERDICT: HANDSHAKE NOT DRAINED after readers stopped\n"); break;
+        case 3: fmt::print("  VERDICT: a reload failed (plugin missing or unloadable)\n"); break;
         case 1: {
             const bool oversubscribed = hw != 0 && static_cast<unsigned>(threads) > hw;
-            std::printf(
-                "  VERDICT: STARVATION SUSPECTED - a writer never advanced while others advanced %llu times "
-                "(grace_period_timeouts=%llu)%s\n",
-                (unsigned long long)r.max_ok, (unsigned long long)r.totals.grace_period_timeouts,
+            fmt::print(
+                "  VERDICT: STARVATION SUSPECTED - a writer never advanced while others advanced {} times "
+                "(grace_period_timeouts={}){}\n",
+                r.max_ok, r.totals.grace_period_timeouts,
                 oversubscribed ? "; re-run at or below hardware_concurrency before believing it (oversubscribed)" : "");
             break;
         }
         default:
             if (r.totals.grace_period_timeouts > 0 && r.min_ok < 64) {
-                std::printf(
-                    "  VERDICT: few or no advancements proven (min ok=%llu, total=%llu) with "
-                    "grace_period_timeouts=%llu: a reader held the grace period open (shared blocker, not "
-                    "writer starvation); backlog drained to %llu after it left\n",
-                    (unsigned long long)r.min_ok, (unsigned long long)r.total_ok,
-                    (unsigned long long)r.totals.grace_period_timeouts,
-                    (unsigned long long)r.after_drain.retired_backlog);
+                fmt::print(
+                    "  VERDICT: few or no advancements proven (min ok={}, total={}) with "
+                    "grace_period_timeouts={}: a reader held the grace period open (shared blocker, not "
+                    "writer starvation); backlog drained to {} after it left\n",
+                    r.min_ok, r.total_ok, r.totals.grace_period_timeouts, r.after_drain.retired_backlog);
             } else if (r.total_ok < static_cast<uint64_t>(r.writers) * 64) {
-                std::printf("  VERDICT: too few successes to judge fairness in this window\n");
+                fmt::print("  VERDICT: too few successes to judge fairness in this window\n");
             } else {
-                std::printf("  VERDICT: no starvation observed in this window\n");
+                fmt::print("  VERDICT: no starvation observed in this window\n");
             }
             break;
     }
-    if (r.capped)
-        std::printf("  NOTE: writers were stopped early at the backlog cap; fairness numbers are truncated\n");
+    if (r.capped) fmt::print("  NOTE: writers were stopped early at the backlog cap; fairness numbers are truncated\n");
 }
 
 void print_verbose_run(const Options &opt, unsigned hw, const RunResult &r) {
-    std::printf("\n== per writer (writers=%d) ==\n", r.writers);
+    fmt::print("\n== per writer (writers={}) ==\n", r.writers);
     for (size_t i = 0; i < r.reports.size(); ++i) {
         const auto &rep = r.reports[i];
-        std::printf("  writer %2zu: ok=%-8llu timeouts=%-8llu max_streak=%-8llu max_call=%llu ns%s\n", i,
-            (unsigned long long)rep.ok, (unsigned long long)rep.timeouts, (unsigned long long)rep.max_streak,
-            (unsigned long long)rep.max_ns, rep.failed ? "  (reload failed)" : "");
+        fmt::print("  writer {:2}: ok={:<8} timeouts={:<8} max_streak={:<8} max_call={} ns{}\n", i, rep.ok,
+            rep.timeouts, rep.max_streak, rep.max_ns, rep.failed ? "  (reload failed)" : "");
     }
-    std::printf("\n== totals ==\n");
-    std::printf("  advance_attempts=%llu contentions=%llu retries=%llu advance_timeouts=%llu max_wait_ns=%llu\n",
-        (unsigned long long)r.totals.advance_attempts, (unsigned long long)r.totals.advance_contentions,
-        (unsigned long long)r.totals.advance_retries, (unsigned long long)r.totals.advance_timeouts,
-        (unsigned long long)r.totals.advance_max_wait_ns);
-    std::printf("  grace_period_timeouts=%llu   peak_backlog=%llu   peak_oldest_age=%llu ns\n",
-        (unsigned long long)r.totals.grace_period_timeouts, (unsigned long long)r.peak_backlog,
-        (unsigned long long)r.peak_oldest_age_ns);
-    std::printf("  per-writer ok: min=%llu max=%llu total=%llu   longest timeout streak=%llu   worst ok call=%llu ns\n",
-        (unsigned long long)r.min_ok, (unsigned long long)r.max_ok, (unsigned long long)r.total_ok,
-        (unsigned long long)r.max_streak, (unsigned long long)r.worst_call_ns);
-    std::printf("  drain after readers stopped: proven=%s  backlog %llu -> %llu\n", r.drained ? "yes" : "NO",
-        (unsigned long long)r.totals.retired_backlog, (unsigned long long)r.after_drain.retired_backlog);
+    fmt::print("\n== totals ==\n");
+    fmt::print("  advance_attempts={} contentions={} retries={} advance_timeouts={} max_wait_ns={}\n",
+        r.totals.advance_attempts, r.totals.advance_contentions, r.totals.advance_retries, r.totals.advance_timeouts,
+        r.totals.advance_max_wait_ns);
+    fmt::print("  grace_period_timeouts={}   peak_backlog={}   peak_oldest_age={} ns\n", r.totals.grace_period_timeouts,
+        r.peak_backlog, r.peak_oldest_age_ns);
+    fmt::print("  per-writer ok: min={} max={} total={}   longest timeout streak={}   worst ok call={} ns\n", r.min_ok,
+        r.max_ok, r.total_ok, r.max_streak, r.worst_call_ns);
+    fmt::print("  drain after readers stopped: proven={}  backlog {} -> {}\n", r.drained ? "yes" : "NO",
+        r.totals.retired_backlog, r.after_drain.retired_backlog);
     print_verdict(opt, hw, r);
 }
 
 // The only line the parent parses. Keep the key names in sync with parse_result_line.
 void print_result_line(const RunResult &r) {
-    std::printf(
-        "RESULT writers=%d min_ok=%llu max_ok=%llu total_ok=%llu streak=%llu adv_to=%llu grace_to=%llu "
-        "backlog=%llu drained=%d capped=%d verdict=%d\n",
-        r.writers, (unsigned long long)r.min_ok, (unsigned long long)r.max_ok, (unsigned long long)r.total_ok,
-        (unsigned long long)r.max_streak, (unsigned long long)r.totals.advance_timeouts,
-        (unsigned long long)r.totals.grace_period_timeouts, (unsigned long long)r.peak_backlog, r.drained ? 1 : 0,
-        r.capped ? 1 : 0, r.verdict);
+    fmt::print(
+        "RESULT writers={} min_ok={} max_ok={} total_ok={} streak={} adv_to={} grace_to={} "
+        "backlog={} drained={} capped={} verdict={}\n",
+        r.writers, r.min_ok, r.max_ok, r.total_ok, r.max_streak, r.totals.advance_timeouts,
+        r.totals.grace_period_timeouts, r.peak_backlog, r.drained ? 1 : 0, r.capped ? 1 : 0, r.verdict);
 }
 
 bool parse_result_line(const char *text, RunResult &r) {
@@ -462,8 +452,7 @@ T pick(const std::vector<T> &sorted, double q) {
 
 void print_metric_row(const char *name, std::vector<uint64_t> values) {
     std::sort(values.begin(), values.end());
-    std::printf("  %-22s %-14llu %-14llu %-14llu\n", name, (unsigned long long)pick(values, 0.0),
-        (unsigned long long)pick(values, 0.5), (unsigned long long)pick(values, 1.0));
+    fmt::print("  {:<22} {:<14} {:<14} {:<14}\n", name, pick(values, 0.0), pick(values, 0.5), pick(values, 1.0));
 }
 
 void print_distribution(const Options &opt, unsigned hw, const std::vector<RunResult> &runs) {
@@ -482,30 +471,29 @@ void print_distribution(const Options &opt, unsigned hw, const std::vector<RunRe
         if (r.capped) ++capped;
     }
     const bool oversubscribed = hw != 0 && static_cast<unsigned>(opt.writers + opt.readers) > hw;
-    std::printf("\n== distribution over %zu separate processes (writers=%d deadline=%llums mode=%s) ==\n", runs.size(),
-        opt.writers, (unsigned long long)opt.deadline_ms, opt.reload ? "reload" : "raw");
+    fmt::print("\n== distribution over {} separate processes (writers={} deadline={}ms mode={}) ==\n", runs.size(),
+        opt.writers, opt.deadline_ms, opt.reload ? "reload" : "raw");
     if (oversubscribed)
-        std::printf("  OVERSUBSCRIBED (%d threads > %u hw): skew may reflect the OS scheduler, not the protocol\n",
+        fmt::print("  OVERSUBSCRIBED ({} threads > {} hw): skew may reflect the OS scheduler, not the protocol\n",
             opt.writers + opt.readers, hw);
-    std::printf("  %-22s %-14s %-14s %-14s\n", "metric", "min", "median", "max");
+    fmt::print("  {:<22} {:<14} {:<14} {:<14}\n", "metric", "min", "median", "max");
     print_metric_row("per-writer min ok", min_ok);
     print_metric_row("per-writer max ok", max_ok);
     print_metric_row("longest streak", streak);
     print_metric_row("advance_timeouts", adv_to);
     print_metric_row("grace_period_timeouts", grace_to);
     print_metric_row("peak_backlog", backlog);
-    std::printf("  verdicts: starvation=%llu not_drained=%llu reload_failed=%llu clean=%zu",
-        (unsigned long long)starved, (unsigned long long)not_drained, (unsigned long long)reload_failed,
-        runs.size() - (size_t)starved - (size_t)not_drained - (size_t)reload_failed);
-    if (capped) std::printf(" (backlog-capped=%llu)", (unsigned long long)capped);
-    std::printf("\n");
+    fmt::print("  verdicts: starvation={} not_drained={} reload_failed={} clean={}", starved, not_drained,
+        reload_failed, runs.size() - (size_t)starved - (size_t)not_drained - (size_t)reload_failed);
+    if (capped) fmt::print(" (backlog-capped={})", capped);
+    fmt::print("\n");
 }
 
 void print_sweep(const Options &opt, unsigned hw, const std::vector<int> &levels,
     const std::vector<std::vector<RunResult>> &per_level) {
-    std::printf("\n== sweep (deadline=%llums, %d process(es) per level, mode=%s, hw=%u) ==\n",
-        (unsigned long long)opt.deadline_ms, opt.repeat, opt.reload ? "reload" : "raw", hw);
-    std::printf("  %-8s %-8s %-13s %-11s %-11s %-12s %-12s %-9s %-9s %s\n", "writers", "reps", "min_ok(med)",
+    fmt::print("\n== sweep (deadline={}ms, {} process(es) per level, mode={}, hw={}) ==\n", opt.deadline_ms, opt.repeat,
+        opt.reload ? "reload" : "raw", hw);
+    fmt::print("  {:<8} {:<8} {:<13} {:<11} {:<11} {:<12} {:<12} {:<9} {:<9} {}\n", "writers", "reps", "min_ok(med)",
         "ratio(med)", "ratio(max)", "streak(med)", "streak(max)", "starved", "capped", "backlog(max)");
     bool any_oversubscribed = false;
     for (size_t i = 0; i < levels.size(); ++i) {
@@ -516,7 +504,7 @@ void print_sweep(const Options &opt, unsigned hw, const std::vector<int> &levels
         const bool oversubscribed = hw != 0 && static_cast<unsigned>(levels[i] + opt.readers) > hw;
         any_oversubscribed = any_oversubscribed || oversubscribed;
         char writers_cell[32];
-        std::snprintf(writers_cell, sizeof(writers_cell), "%d%s", levels[i], oversubscribed ? "*" : "");
+        format_into(writers_cell, "{}{}", levels[i], oversubscribed ? "*" : "");
         for (const auto &r : runs) {
             min_ok.push_back(r.min_ok);
             streak.push_back(r.max_streak);
@@ -537,21 +525,19 @@ void print_sweep(const Options &opt, unsigned hw, const std::vector<int> &levels
         if (any_zero) {
             // At least one process had a writer that never advanced: the ratio is
             // unbounded, which is the strongest thing this table can show.
-            std::snprintf(med_buf, sizeof(med_buf), "inf");
-            std::snprintf(max_buf, sizeof(max_buf), "inf");
+            format_into(med_buf, "inf");
+            format_into(max_buf, "inf");
         } else {
-            std::snprintf(med_buf, sizeof(med_buf), "%.2f", pick(ratio, 0.5));
-            std::snprintf(max_buf, sizeof(max_buf), "%.2f", pick(ratio, 1.0));
+            format_into(med_buf, "{:.2f}", pick(ratio, 0.5));
+            format_into(max_buf, "{:.2f}", pick(ratio, 1.0));
         }
 
-        std::printf("  %-8s %-8zu %-13llu %-11s %-11s %-12llu %-12llu %-9llu %-9llu %llu\n", writers_cell, runs.size(),
-            (unsigned long long)pick(min_ok, 0.5), med_buf, max_buf, (unsigned long long)pick(streak, 0.5),
-            (unsigned long long)pick(streak, 1.0), (unsigned long long)starved, (unsigned long long)capped,
-            (unsigned long long)backlog_max);
+        fmt::print("  {:<8} {:<8} {:<13} {:<11} {:<11} {:<12} {:<12} {:<9} {:<9} {}\n", writers_cell, runs.size(),
+            pick(min_ok, 0.5), med_buf, max_buf, pick(streak, 0.5), pick(streak, 1.0), starved, capped, backlog_max);
     }
-    std::printf("  ratio = per-writer max ok / min ok (1.00 is perfectly even); inf means a writer never advanced\n");
+    fmt::print("  ratio = per-writer max ok / min ok (1.00 is perfectly even); inf means a writer never advanced\n");
     if (any_oversubscribed)
-        std::printf(
+        fmt::print(
             "  * writers + readers > hardware_concurrency (oversubscribed): skew may reflect the OS scheduler\n");
 }
 
@@ -582,7 +568,7 @@ void parse_int_list(const char *text, std::vector<int> &out) {
 }
 
 void print_help() {
-    std::printf(
+    fmt::print(
         "rcu_advance_probe [options]\n"
         "  --writers N          competing writer threads            (default 4)\n"
         "  --readers N          reader threads entering/exiting RCU  (default 0)\n"
@@ -645,12 +631,12 @@ int main(int argc, char **argv) {
         } else if (std::strcmp(a, "--run-one") == 0) {
             opt.run_one = true;
         } else {
-            std::fprintf(stderr, "unknown option: %s (try --help)\n", a);
+            fmt::print(stderr, "unknown option: {} (try --help)\n", a);
             return 64;
         }
     }
     if (opt.writers <= 0) {
-        std::fprintf(stderr, "--writers must be >= 1\n");
+        fmt::print(stderr, "--writers must be >= 1\n");
         return 64;
     }
     if (opt.repeat <= 0) opt.repeat = 1;
@@ -658,11 +644,11 @@ int main(int argc, char **argv) {
     if (opt.reload && opt.deadline_ms == 0) {
         // For Object a 0 timeout means *unbounded*, not a non-blocking probe, so a
         // held reader would block the reload forever and the probe could not stop.
-        std::fprintf(stderr, "--reload needs --deadline-ms >= 1 (0 means unbounded for Object)\n");
+        fmt::print(stderr, "--reload needs --deadline-ms >= 1 (0 means unbounded for Object)\n");
         return 64;
     }
     if (!Domain::stats_enabled()) {
-        std::fprintf(stderr, "this binary was built without SKL_ABIX_RCU_ENABLE_STATS\n");
+        fmt::print(stderr, "this binary was built without SKL_ABIX_RCU_ENABLE_STATS\n");
         return 64;
     }
 
@@ -671,28 +657,27 @@ int main(int argc, char **argv) {
 
     // Child process: one window, one RESULT line. The parent runs this.
     if (opt.run_one) {
-        std::printf("rcu_advance_probe --run-one (writers=%d mode=%s deadline=%llums)\n", opt.writers,
-            opt.reload ? "reload" : "raw", (unsigned long long)opt.deadline_ms);
+        fmt::print("rcu_advance_probe --run-one (writers={} mode={} deadline={}ms)\n", opt.writers,
+            opt.reload ? "reload" : "raw", opt.deadline_ms);
         RunResult r = run_once(opt, opt.writers, hw, /*verbose=*/true);
         print_result_line(r);
         return r.verdict;
     }
 
-    std::printf("rcu_advance_probe\n");
-    std::printf("  mode=%s readers=%d hold_us=%llu deadline_ms=%llu duration_ms=%llu retire_per_call=%llu repeat=%d\n",
-        opt.reload ? "reload" : "raw", opt.readers, (unsigned long long)opt.hold_us,
-        (unsigned long long)opt.deadline_ms, (unsigned long long)opt.duration_ms,
-        (unsigned long long)opt.retire_per_call, opt.repeat);
-    std::printf("  hardware_concurrency=%u\n", hw);
-    if (opt.reload) std::printf("  plugin=%s\n", dll_path(opt.plugin.c_str()).c_str());
+    fmt::print("rcu_advance_probe\n");
+    fmt::print("  mode={} readers={} hold_us={} deadline_ms={} duration_ms={} retire_per_call={} repeat={}\n",
+        opt.reload ? "reload" : "raw", opt.readers, opt.hold_us, opt.deadline_ms, opt.duration_ms,
+        opt.retire_per_call, opt.repeat);
+    fmt::print("  hardware_concurrency={}\n", hw);
+    if (opt.reload) fmt::print("  plugin={}\n", dll_path(opt.plugin.c_str()));
 
     const bool orchestrate = opt.sweep || opt.repeat > 1;
 
     if (!orchestrate) {
         // Single interactive run.
         if (hw != 0 && static_cast<unsigned>(threads) > hw) {
-            std::printf(
-                "  WARNING: %d threads > %u hw threads (oversubscribed): success spread and timeout streaks may "
+            fmt::print(
+                "  WARNING: {} threads > {} hw threads (oversubscribed): success spread and timeout streaks may "
                 "reflect OS scheduling, not the advancement protocol\n",
                 threads, hw);
         }
@@ -707,22 +692,21 @@ int main(int argc, char **argv) {
     std::vector<std::vector<RunResult>> per_level;
     std::vector<int> verdicts;
     for (int w : levels) {
-        std::printf("\n-- writers=%d --\n", w);
+        fmt::print("\n-- writers={} --\n", w);
         std::vector<RunResult> runs;
         for (int rep = 0; rep < opt.repeat; ++rep) {
             RunResult r;
             std::string child_output;
             if (!run_child(argv[0], opt, w, r, child_output)) {
-                std::fprintf(stderr, "child for writers=%d rep=%d produced no RESULT line:\n%s", w, rep + 1,
-                    child_output.c_str());
+                fmt::print(
+                    stderr, "child for writers={} rep={} produced no RESULT line:\n{}", w, rep + 1, child_output);
                 return 64;
             }
-            std::printf(
-                "  rep %d/%d: min_ok=%-10llu max_ok=%-10llu streak=%-8llu adv_to=%-8llu grace_to=%-8llu "
-                "backlog=%-8llu verdict=%d\n",
-                rep + 1, opt.repeat, (unsigned long long)r.min_ok, (unsigned long long)r.max_ok,
-                (unsigned long long)r.max_streak, (unsigned long long)r.totals.advance_timeouts,
-                (unsigned long long)r.totals.grace_period_timeouts, (unsigned long long)r.peak_backlog, r.verdict);
+            fmt::print(
+                "  rep {}/{}: min_ok={:<10} max_ok={:<10} streak={:<8} adv_to={:<8} grace_to={:<8} "
+                "backlog={:<8} verdict={}\n",
+                rep + 1, opt.repeat, r.min_ok, r.max_ok, r.max_streak, r.totals.advance_timeouts,
+                r.totals.grace_period_timeouts, r.peak_backlog, r.verdict);
             verdicts.push_back(r.verdict);
             runs.push_back(std::move(r));
         }
@@ -735,9 +719,9 @@ int main(int argc, char **argv) {
         print_distribution(opt, hw, per_level.front());
 
     const int rc = worst_rc(verdicts);
-    std::printf("\nrcu_advance_probe overall: %s\n", rc == 0   ? "no anomaly"
-                                                     : rc == 1 ? "starvation suspected in at least one process"
-                                                     : rc == 2 ? "a handshake failed to drain"
-                                                               : "a reload failed");
+    fmt::print("\nrcu_advance_probe overall: {}\n", rc == 0   ? "no anomaly"
+                                                          : rc == 1 ? "starvation suspected in at least one process"
+                                                          : rc == 2 ? "a handshake failed to drain"
+                                                                    : "a reload failed");
     return rc;
 }
