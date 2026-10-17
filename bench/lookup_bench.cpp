@@ -25,6 +25,28 @@ static bool ensure_lookup_plugin(benchmark::State &state) {
     return true;
 }
 
+// Pre-formatted name tables. `bench_common.hpp`'s `hot_name()`/`cold_name()` rebuild
+// the name with `snprintf` on **every** call, which in a ~3 ns lookup is most of the
+// measurement: measured that way the read-side bracket (1.64 ns, see
+// `BM_ABIX_HandleRcuBracket`) is invisible, which is why `BM_FindIndex_Only` and
+// `BM_Resolve_WithEBR` used to report the same value. The name has to be held
+// constant across the two so only the bracket differs. (`abix_resolve_bench` and
+// this file's own `hash_name_short()` already pre-format for the same reason.)
+static const char *hot_name_cached(int i) {
+    static char names[20][8] = {};
+    if (names[0][0] == '\0')
+        for (int k = 0; k < 20; ++k)
+            std::snprintf(names[k], sizeof(names[k]), "h_%02d", k);
+    return names[i % 20];
+}
+static const char *cold_name_cached(int i) {
+    static char names[1'000][8] = {};
+    if (names[0][0] == '\0')
+        for (int k = 0; k < 1'000; ++k)
+            std::snprintf(names[k], sizeof(names[k]), "e_%04d", k);
+    return names[i % 1'000];
+}
+
 // --- BM_FindIndex_Only (baseline) ---
 static void BM_FindIndex_Only(benchmark::State &state) {
     if (!ensure_lookup_plugin(state)) return;
@@ -32,7 +54,7 @@ static void BM_FindIndex_Only(benchmark::State &state) {
     // Local cursor: `state.iterations()` is constant inside the loop body.
     int i = 0;
     for (auto _ : state) {
-        const char *nm = hot_name(i % 20);
+        const char *nm = hot_name_cached(i);
         skl::abix::runtime::index_t idx;
         find_index(*g_table, g_image->index, nm, sg, 0, idx);
         benchmark::DoNotOptimize(idx);
@@ -88,7 +110,7 @@ static void BM_ResolvePath_TwoHashes(benchmark::State &state) {
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     int i = 0;
     for (auto _ : state) {
-        const char *nm = cold_name(i % 1'000);
+        const char *nm = cold_name_cached(i);
         auto nh = skl::abix::runtime::name_hash(nm);   // what Function::resolve caches
         benchmark::DoNotOptimize(nh);
         skl::abix::runtime::index_t idx;
@@ -104,7 +126,7 @@ static void BM_ResolvePath_OneHash(benchmark::State &state) {
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     int i = 0;
     for (auto _ : state) {
-        const char *nm = cold_name(i % 1'000);
+        const char *nm = cold_name_cached(i);
         const auto nh = skl::abix::runtime::name_hash(nm);
         skl::abix::runtime::index_t idx;
         find_index(*g_table, g_image->index, nm, nh, sg, 0, idx);   // reuses it
@@ -120,7 +142,7 @@ static void BM_Resolve_Linear(benchmark::State &state) {
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     int i = 0;
     for (auto _ : state) {
-        const char *nm = hot_name(i % 20);
+        const char *nm = hot_name_cached(i);
         const auto *e = lookup_linear(*g_table, nm, skl::abix::runtime::name_hash(nm), sg);
         benchmark::DoNotOptimize(e);
         ++i;
@@ -137,7 +159,10 @@ static void BM_Resolve_WithEBR(benchmark::State &state) {
     for (auto _ : state) {
         dom.enter();
         skl::abix::dll::Image *img = g_lib->image_acquire();
-        const char *nm = hot_name(i % 20);
+        // Keep the acquire observable: without it the compiler may fold the image
+        // lookup away and the benchmark stops measuring the read-side path.
+        benchmark::DoNotOptimize(img);
+        const char *nm = hot_name_cached(i);
         skl::abix::runtime::index_t idx = 0;
         if (img && img->export_table) {
             find_index(*img->export_table, img->index, nm, sg, 0, idx);
@@ -174,7 +199,7 @@ static void BM_Resolve_Linear_Random(benchmark::State &state) {
     auto sg = skl::abix::dll::FnSig<int(int)>::value;
     int i = 0;
     for (auto _ : state) {
-        const char *nm = cold_name(i % 1'000);
+        const char *nm = cold_name_cached(i);
         const auto *e = lookup_linear(*g_table, nm, skl::abix::runtime::name_hash(nm), sg);
         benchmark::DoNotOptimize(e);
         ++i;
@@ -185,7 +210,6 @@ BENCHMARK(BM_Resolve_Linear_Random);
 #ifndef ALL_BENCHMARKS
 int main(int argc, char **argv) {
     benchmark::MaybeReenterWithoutASLR(argc, argv);
-    skl::abix::rcu::Domain::instance().reset();
 
     char arg0_default[] = "benchmark";
     char *args_default = reinterpret_cast<char *>(arg0_default);
