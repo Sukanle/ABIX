@@ -279,8 +279,12 @@ if(AMC_BUILD)
                                                  fmt::fmt)
 
         add_executable(amc-cpp AMC/src/Lang/C++/C++.cpp AMC/src/Lang/C++/Frontend.cpp AMC/src/Lang/C++/Backend.cpp)
-        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include ${LLVM_INCLUDE_DIRS}
-                                                   ${CLANG_INCLUDE_DIRS})
+        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        # LLVM/Clang headers are reached as ordinary `-I` directories, so under
+        # -Wall -Wextra their own diagnostics (chiefly -Wunused-parameter in the
+        # clang/* headers) flood the build log.  Marking them SYSTEM keeps the
+        # warnings scoped to ABIX code.
+        target_include_directories(amc-cpp SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
         target_compile_definitions(amc-cpp PRIVATE ABIX_CLANG_RESOURCE_DIR="${ABIX_CLANG_RESOURCE_DIR}")
         target_link_libraries(amc-cpp PRIVATE amc-core amc-lang clang-cpp LLVM fmt::fmt tomlplusplus::tomlplusplus)
 
@@ -327,8 +331,10 @@ if(AMC_BUILD)
         find_library(ABIX_LLDB_LIBRARY NAMES lldb)
         if(ABIX_LLDB_INCLUDE_DIR AND ABIX_LLDB_LIBRARY)
             add_library(abix-lldb MODULE tools/lldb_abix.cpp)
-            target_include_directories(abix-lldb PRIVATE ${ABIX_LLDB_INCLUDE_DIR}
-                                                         ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+            target_include_directories(abix-lldb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+            # LLDB headers ship with LLVM; treat them as system headers for the
+            # same reason as the clang/* includes above.
+            target_include_directories(abix-lldb SYSTEM PRIVATE ${ABIX_LLDB_INCLUDE_DIR})
             target_link_libraries(abix-lldb PRIVATE amc-core ${ABIX_LLDB_LIBRARY})
             set_target_properties(abix-lldb PROPERTIES OUTPUT_NAME abix_lldb LIBRARY_OUTPUT_DIRECTORY
                                                                              ${CMAKE_BINARY_DIR}/bin)
