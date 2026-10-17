@@ -832,6 +832,7 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
             return fail(amc::ErrorCategory::config, "build", std::string(error.description()), config_path.string());
         }
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

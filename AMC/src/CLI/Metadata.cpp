@@ -168,6 +168,7 @@ int cmd_metadata(char **args, int arg_count) {
         }
         return 0;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

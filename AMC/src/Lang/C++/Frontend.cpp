@@ -1158,9 +1158,9 @@ bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std:
             for (const auto &function : module.functions) {
                 if (!is_method_of_type(function)) continue;
                 if (function.name == method
-                    || function.name.size() > method.size()
+                    || (function.name.size() > method.size()
                            && function.name.compare(function.name.size() - method.size(), method.size(), method) == 0
-                           && function.name[function.name.size() - method.size() - 1] == ':') {
+                           && function.name[function.name.size() - method.size() - 1] == ':')) {
                     found = &function;
                     break;
                 }

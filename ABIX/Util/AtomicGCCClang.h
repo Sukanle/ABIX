@@ -26,6 +26,16 @@
 
 namespace skl::abix::util::atomic_detail {
 
+// GCC's -Wstringop-overflow cannot bound the destination of `__atomic_store_n`
+// when the pointer comes from an opaque allocation, and reports a false
+// positive ("writing N bytes into a region of size 0 ... likely at address
+// zero") at the inlined builtin below. The stores are well-formed by contract,
+// so silence that one warning for this header only. Clang has no such warning.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+
 template<typename T>
 inline T load_acquire(const T *p) noexcept {
     return __atomic_load_n(p, __ATOMIC_ACQUIRE);
@@ -77,6 +87,10 @@ inline bool compare_exchange(T *p, T &expected, T desired) noexcept {
 
 template<typename T>
 inline constexpr bool is_always_lock_free = __atomic_always_lock_free(sizeof(T), nullptr);
+
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
 
 }   // namespace skl::abix::util::atomic_detail
 

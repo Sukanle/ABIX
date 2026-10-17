@@ -13,9 +13,11 @@
 #if !defined(_MSC_VER)
 #  include <unistd.h>
 #  if !defined(_WIN32)
-#    define O_BINARY 0
-#  else
-#    define O_BINARY 0x8000   // MinGW-gcc
+#    ifndef O_BINARY
+#      define O_BINARY 0
+#    endif
+#  elif !defined(O_BINARY)
+#    define O_BINARY 0x8000   // MinGW-gcc; UCRT's <fcntl.h> already defines it
 #  endif
 #else
 #  include <io.h>

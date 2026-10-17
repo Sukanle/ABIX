@@ -765,8 +765,11 @@ namespace {
 // Locate one extension payload by kind. Returns false only on a structural
 // error; `present` reports whether the kind exists. An unknown kind is not an
 // error -- the directory fixes its boundaries, so it can be skipped safely.
-bool find_extension(const uint8_t *data, size_t size, const MetadataHeader &header, uint32_t kind, bool &present,
-    uint32_t &version, uint32_t &count, const uint8_t *&records, size_t &byte_size, std::string &error) {
+// `size` is accepted for call-site symmetry but unused: read_metadata_header()
+// already bounds-checked [desc_offset, desc_offset + desc_size) against the
+// region, so every access below stays in range.
+bool find_extension(const uint8_t *data, [[maybe_unused]] size_t size, const MetadataHeader &header, uint32_t kind,
+    bool &present, uint32_t &version, uint32_t &count, const uint8_t *&records, size_t &byte_size, std::string &error) {
     present = false;
     version = 0;
     count = 0;

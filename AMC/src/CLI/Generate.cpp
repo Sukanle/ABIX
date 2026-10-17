@@ -74,6 +74,7 @@ int cmd_generate(char **args, int arg_count, const fs::path &provider) {
         }
         return usage_error(command + " expects -l cpp|lua|rust|zig -o <directory|file>");
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 int cmd_frontend(char **args, int arg_count, const fs::path &provider) {
@@ -101,6 +102,7 @@ int cmd_frontend(char **args, int arg_count, const fs::path &provider) {
             return fail(amc::ErrorCategory::provider, "frontend", error, config_path.string());
         return 0;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

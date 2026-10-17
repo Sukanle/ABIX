@@ -137,6 +137,7 @@ int cmd_verify(char **args, int arg_count, const fs::path &provider) {
             return fail(amc::ErrorCategory::config, "verify", std::string(error.description()), config_path.string());
         }
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 namespace {
