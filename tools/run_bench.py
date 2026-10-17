@@ -23,6 +23,20 @@ so they are not run twice - add them back with `--extra-exe`. The plain chrono p
 (`hashindex_build_bench`, and the dev-only `rcu_advance_probe`) are not Google
 Benchmark programs and are out of scope here.
 
+Two environment problems make short EBR runs unrepeatable, and both are handled here
+instead of being left to each child process:
+
+  * CPU frequency scaling. Google Benchmark reads `cpu0`'s cpufreq governor and warns
+    unless it is `performance`. The governor is checked up front (so the message is
+    printed once, not once per child, where `run_gb` captures it) and the fix command
+    is printed with it.
+  * Hybrid P-core/E-core scheduling. `topology/topology.cpp` reports 0 P-cores on
+    Linux, so a thread is free to migrate between a 5.5 GHz P-core and a 4.3 GHz
+    E-core mid-measurement. `--pin auto` restricts every child process to the
+    fastest cores, `--pin <list>` restricts it to an explicit set and `--pin off`
+    leaves the scheduler alone. Pinning a family with more threads than the pool
+    oversubscribes it, so read the printed pool before comparing thread counts.
+
 Usage:
     python tools/run_bench.py                                   # everything
     python tools/run_bench.py BM_EBR_SyncPhase BM_Reload_       # only these filters
@@ -30,12 +44,16 @@ Usage:
     python tools/run_bench.py --no-extra                        # bench_all families only
     python tools/run_bench.py --extra-exe ebr_bench             # add one back
     python tools/run_bench.py --bin build/Release/bin --out build/bench --repetitions 5
+    python tools/run_bench.py --pin off                         # keep every CPU available
+    python tools/run_bench.py --pin 0-7                         # pin to an explicit CPU list
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -50,6 +68,124 @@ DEFAULT_EXTRA_EXES = [
 
 def exe_name(base: str) -> str:
     return base + ".exe" if sys.platform == "win32" else base
+
+
+def _read_int(path: Path) -> int | None:
+    """Contents of a sysfs integer file, or None when it cannot be read."""
+    try:
+        return int(path.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def cpu_scaling_advice() -> str | None:
+    """A warning plus the fix commands when CPU frequency scaling is active.
+
+    Google Benchmark prints `***WARNING*** CPU scaling is enabled` unless cpu0's
+    governor is `performance`; that same condition is what makes the EBR numbers
+    noisy, so the run is annotated once here instead of in every child's stderr,
+    which `run_gb` captures and only prints on failure. Returns None when the file
+    is absent (non-Linux, or cpufreq not exposed) or already `performance`.
+    """
+    try:
+        governor = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor").read_text(encoding="ascii").strip()
+    except OSError:
+        return None
+    if governor == "performance":
+        return None
+    return (
+        f"CPU scaling is enabled (cpu0 governor: {governor}) - real-time numbers will be noisy.\n"
+        "  fix:  sudo cpupower frequency-set -g performance\n"
+        "  or:   echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor\n"
+        "  undo: sudo cpupower frequency-set -g powersave"
+    )
+
+
+def performance_cpu_pool() -> list[int]:
+    """Online CPUs reporting the highest `cpuinfo_max_freq`, i.e. the P-cores.
+
+    The frequency split is the portable hybrid signal on Linux (this class of Intel
+    parts reports 5.5 GHz for P-cores and 4.3 GHz for E-cores). An empty list means
+    the machine is homogeneous, or cpufreq is unavailable, and pinning is skipped
+    rather than guessed.
+    """
+    freqs: dict[int, int] = {}
+    for path in Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpufreq/cpuinfo_max_freq"):
+        freq = _read_int(path)
+        if freq:
+            freqs[int(path.parent.parent.name[3:])] = freq
+    if not freqs:
+        return []
+    top = max(freqs.values())
+    pool = sorted(cpu for cpu, freq in freqs.items() if freq >= top * 0.95)
+    return pool if len(pool) < len(freqs) else []
+
+
+def parse_cpu_list(spec: str) -> list[int]:
+    """`0-3,8,10-11` -> [0, 1, 2, 3, 8, 10, 11]."""
+    cpus: list[int] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        first, sep, last = part.partition("-")
+        cpus.extend(range(int(first), int(last) + 1) if sep else [int(first)])
+    return cpus
+
+
+def format_cpu_list(cpus: list[int]) -> str:
+    """[0, 1, 2, 3, 8] -> `0-3,8` (the inverse of `parse_cpu_list`)."""
+    spans: list[str] = []
+    start = prev = cpus[0]
+    for cpu in cpus[1:]:
+        if cpu == prev + 1:
+            prev = cpu
+            continue
+        spans.append(f"{start}-{prev}" if start != prev else str(start))
+        start = prev = cpu
+    spans.append(f"{start}-{prev}" if start != prev else str(start))
+    return ",".join(spans)
+
+
+def resolve_pin(pin: str) -> list[int]:
+    """The CPU set the children are restricted to; empty means no restriction.
+
+    `topology/topology.cpp` leaves `performance_cpus` at 0 on Linux, so the P-core
+    pool is derived here. `os.sched_setaffinity` is Unix-only, so a request it cannot
+    honour on this platform is reported and then ignored.
+    """
+    if pin == "off":
+        return []
+    cpus = performance_cpu_pool() if pin == "auto" else parse_cpu_list(pin)
+    if not cpus:
+        return []
+    if not hasattr(os, "sched_setaffinity"):
+        print("  [warn] --pin is not supported on this platform, running unpinned", file=sys.stderr)
+        return []
+    return cpus
+
+
+def pin_spec(value: str) -> str:
+    """argparse `type` for `--pin`: a typo fails before the first benchmark runs."""
+    if value in ("auto", "off"):
+        return value
+    try:
+        cpus = parse_cpu_list(value)
+    except ValueError:
+        cpus = []
+    if not cpus:
+        raise argparse.ArgumentTypeError(f"expected `auto`, `off` or a CPU list like `0-7`, got {value!r}")
+    return value
+
+
+def strip_child_noise(text: str) -> str:
+    """Drop the environment banners Google Benchmark repeats in every child.
+
+    They would otherwise fill the excerpt printed for a failing executable and hide
+    the actual error.
+    """
+    noise = ("***WARNING*** CPU scaling", "***WARNING*** Failed to set thread affinity")
+    return "\n".join(line for line in text.splitlines() if not line.startswith(noise)).strip()
 
 
 def discover_families(bench: Path) -> list[str]:
@@ -78,12 +214,15 @@ def discover_families(bench: Path) -> list[str]:
     return sorted(families)
 
 
-def run_gb(exe: Path, out: Path, filter_: str | None, repetitions: int, min_time: str, cwd: Path) -> bool:
+def run_gb(
+    exe: Path, out: Path, filter_: str | None, repetitions: int, min_time: str, allowed_cpus: list[int], cwd: Path
+) -> bool:
     """Run one Google Benchmark executable (or one filtered family) into `out`.
 
     Returns whether the executable exited cleanly. A benchmark that skips itself
     (Google Benchmark's SkipWithError, e.g. a plugin that was not staged) is not a
-    failure; a non-zero exit is.
+    failure; a non-zero exit is. `allowed_cpus` restricts the child, and every thread
+    it spawns, to that CPU set; an empty list leaves the scheduler alone.
     """
     cmd = [str(exe)]
     if filter_:
@@ -98,9 +237,18 @@ def run_gb(exe: Path, out: Path, filter_: str | None, repetitions: int, min_time
     if min_time:
         cmd.append(f"--benchmark_min_time={min_time}")
     # Decode as UTF-8 regardless of the console locale (Windows is often GBK here).
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=cwd,
+        preexec_fn=functools.partial(os.sched_setaffinity, 0, set(allowed_cpus)) if allowed_cpus else None,
+    )
     if result.returncode != 0:
-        print(f"  [FAIL] {filter_ or exe.name}: exit {result.returncode}\n{result.stderr[-800:]}", file=sys.stderr)
+        excerpt = strip_child_noise(result.stderr[-800:])
+        print(f"  [FAIL] {filter_ or exe.name}: exit {result.returncode}\n{excerpt}", file=sys.stderr)
         return False
     return True
 
@@ -150,6 +298,12 @@ def main() -> int:
     parser.add_argument("--repetitions", type=int, default=5, help="Google Benchmark repetitions")
     parser.add_argument("--min-time", default="", help="optionally bound each run, e.g. 0.2s")
     parser.add_argument(
+        "--pin",
+        type=pin_spec,
+        default="auto",
+        help="restrict the children to a CPU set: `auto` (fastest cores, the default), `off`, or a list like `0-7`",
+    )
+    parser.add_argument(
         "--extra-exe",
         action="append",
         default=None,
@@ -198,14 +352,24 @@ def main() -> int:
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    allowed_cpus = resolve_pin(args.pin)
+
     print(
         f"running {len(families)} bench_all families + {len(extra_exes)} standalone executables, "
-        f"one process each ({args.repetitions} repetitions)"
+        f"one process each ({args.repetitions} repetitions)",
+        flush=True,
     )
     print(
         "note: EBR/RCU numbers are only comparable because each family starts from an empty rcu::Domain",
         file=sys.stderr,
     )
+    scaling = cpu_scaling_advice()
+    if scaling:
+        print(f"  [warn] {scaling}", file=sys.stderr)
+    if allowed_cpus:
+        print(f"  [pin] restricting every process to CPUs {format_cpu_list(allowed_cpus)}", file=sys.stderr)
+    elif args.pin != "off":
+        print("  [pin] no P-core pool detected, running unpinned", file=sys.stderr)
 
     # label -> rows, so the summary table can mix families and standalone executables.
     summary: dict[str, list[tuple[str, int, float, float]]] = {}
@@ -214,7 +378,7 @@ def main() -> int:
 
     for family in families:
         path = out_dir / (family.replace("/", "_") + ".json")
-        if not run_gb(bench, path, family, args.repetitions, args.min_time, cwd=bin_dir):
+        if not run_gb(bench, path, family, args.repetitions, args.min_time, allowed_cpus=allowed_cpus, cwd=bin_dir):
             failed.append(family)
         rows = summarize(path)
         summary[family] = rows
@@ -223,7 +387,9 @@ def main() -> int:
 
     for exe in extra_exes:
         path = out_dir / (exe + ".json")
-        if not run_gb(bin_dir / exe_name(exe), path, None, args.repetitions, args.min_time, cwd=bin_dir):
+        if not run_gb(
+            bin_dir / exe_name(exe), path, None, args.repetitions, args.min_time, allowed_cpus=allowed_cpus, cwd=bin_dir
+        ):
             failed.append(exe)
         rows = summarize(path)
         summary[exe] = rows
