@@ -27,6 +27,7 @@ This document is the complete test flow: how to build and run the suites, what e
     - [J. CMake integration (`amc-cmake-integration-test`)](#j-cmake-integration-amc-cmake-integration-test)
 - [Manual feature walkthrough and generated files](#manual-feature-walkthrough-and-generated-files)
 - [Native binding (Rust) walkthrough](#native-binding-rust-walkthrough)
+- [Keeping the temporary artifacts](#keeping-the-temporary-artifacts)
 - [Sanitizers and platform notes](#sanitizers-and-platform-notes)
 - [Reading a failure](#reading-a-failure)
 
@@ -182,7 +183,7 @@ A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AM
 
 ## Manual feature walkthrough and generated files
 
-The suites generate into a temporary directory and clean up. To inspect the artifacts, run the steps by hand:
+The suites generate into a temporary directory and clean up. To inspect the artifacts, either run the steps by hand or keep the directories with [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#keeping-the-temporary-artifacts):
 
 ```bash
 AMC=build/Release/bin/amc.exe           # drop .exe on Linux/macOS
@@ -232,6 +233,48 @@ rustc --edition 2021 -O /tmp/consumer.rs --cfg abix_link -L /tmp -o /tmp/consume
 ```
 
 `--cfg abix_link` turns on the projection's `#[link(name = "interop_demo")]`, so the symbols bind to the native library. Expected final line: `interop ok: add=5 scale=13 div=5 err=1 types=31`. The consumer's assert_eq!s are the real assertions (layout, ownership, error boundary, ABIX-STD, Interface).
+
+## Keeping the temporary artifacts
+
+Every suite that generates into a temporary directory deletes it when it
+finishes, so a green run leaves nothing to inspect. Configure with
+`-DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON` to run them with `KEEP_ARTIFACTS=1` instead:
+each suite then keeps its working directory and prints the path.
+
+```bash
+cmake -B build/Release -DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON -G Ninja -S .
+cmake --build build/Release --parallel
+ctest --test-dir build/Release -R amc- --output-on-failure
+```
+
+```
+  [KEEP] retained artifacts: C:/Users/.../Temp/amc-feature.a1b2c3
+```
+
+The same switch works for one run without reconfiguring, either through the
+environment variable or the flag every suite accepts:
+
+```bash
+KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .
+python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
+```
+
+Retained locations (all under the platform temp directory):
+
+| Suite | Retained |
+|-------|----------|
+| `amc-integration-test` | `amc-integration.*` (`autogen-separate/`, `autogen-full/`) |
+| `amc-feature-test` | `amc-feature.*` (`.abix`, the generated `cpp/rust/zig/lua` projections) |
+| `amc-cmake-integration-test` | `amc-cmake.*` (the configured CMake fixture build tree) |
+| `amc-rust-test` | `amc-rust.*` (the provider artifacts and projections) |
+| `amc-interop-test` | `amc-interop.*` (native library, consumers, `.abix`) |
+| `amc-cmdly-interop-test` | `amc-cmdly.*` |
+| `amc-expose-interop-test` | `amc-expose.*` (thunks, manifest, bindings) |
+| `amc-e2e-test` | `amc_e2e_*` files |
+| `amc-core-test` | `amc_cache_test_*`, `amc_symbol_test_store` |
+
+Retain deliberately: the directories are not removed afterwards, so clean them
+up once you are done inspecting.
 
 ## Sanitizers and platform notes
 

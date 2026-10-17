@@ -26,6 +26,12 @@ import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
+# option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory.
+if "--keep-artifacts" in sys.argv:
+    os.environ["KEEP_ARTIFACTS"] = "1"
+KEEP_ARTIFACTS = os.environ.get("KEEP_ARTIFACTS", "") == "1"
+
 
 def find_cmdly():
     root = os.environ.get("CMDLY_ROOT") or os.path.expanduser("~/Code/cmdly")
@@ -39,10 +45,11 @@ def find_cmdly():
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    argv = [arg for arg in sys.argv[1:] if arg != "--keep-artifacts"]
+    if not argv:
         print("usage: cmdly_test.py <amc_bin_dir> [source_root]", file=sys.stderr)
         return 2
-    bin_dir = os.path.abspath(sys.argv[1])
+    bin_dir = os.path.abspath(argv[0])
     amc = os.path.join(bin_dir, "amc")
     cxx = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("c++")
     rustc = shutil.which("rustc")
@@ -148,7 +155,10 @@ def main() -> int:
     check(r.returncode == 0 and "cmdly ABIX interop" in r.stdout,
           "the Rust consumer drove cmdly through the ABIX facade", (r.stdout + r.stderr)[-400:])
 
-    shutil.rmtree(work, ignore_errors=True)
+    if KEEP_ARTIFACTS:
+        print("  [KEEP] retained artifacts: " + work)
+    else:
+        shutil.rmtree(work, ignore_errors=True)
     print("=== cmdly interop: %d passed, %d failed ===" % (passed, failed))
     return 1 if failed else 0
 

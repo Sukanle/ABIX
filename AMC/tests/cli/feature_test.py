@@ -25,6 +25,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+# `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
+# option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory
+# instead of deleting it at the end of the run.
+if "--keep-artifacts" in sys.argv:
+    os.environ["KEEP_ARTIFACTS"] = "1"
+KEEP_ARTIFACTS = os.environ.get("KEEP_ARTIFACTS", "") == "1"
+
 
 def exe_name(base: str) -> str:
     return base + ".exe" if sys.platform == "win32" else base
@@ -54,12 +61,13 @@ class Report:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    argv = [arg for arg in sys.argv[1:] if arg != "--keep-artifacts"]
+    if not argv:
         print("usage: feature_test.py <amc_bin_dir> [source_root]", file=sys.stderr)
         return 2
 
-    bin_dir = Path(sys.argv[1]).resolve()
-    source_root = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else bin_dir.parent.parent
+    bin_dir = Path(argv[0]).resolve()
+    source_root = Path(argv[1]).resolve() if len(argv) > 1 else bin_dir.parent.parent
     fixtures = source_root / "AMC" / "tests" / "fixtures"
     amc = bin_dir / exe_name("amc")
 
@@ -206,7 +214,10 @@ def main() -> int:
               f"{report.skipped} skipped")
         return 0 if report.failed == 0 else 1
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if KEEP_ARTIFACTS:
+            print(f"  [KEEP] retained artifacts: {work}")
+        else:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 if __name__ == "__main__":

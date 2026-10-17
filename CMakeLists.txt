@@ -12,6 +12,8 @@ option(SKL_ABIX_DEVELOPMENT "Enable development-only benchmarks (internal diagno
 option(SKL_ABIX_BUILD_DLL_VARIANTS
        "Build different DLL variants for different toolchains to simulate cross-compiler behavior" ON)
 option(AMC_BUILD "Build the AMC C++ frontend/backend tools" ON)
+option(SKL_ABIX_KEEP_TEST_ARTIFACTS
+       "Keep the test suites' temporary artifacts on disk for inspection (sets KEEP_ARTIFACTS=1)" OFF)
 
 if(DEFINED SKL_ABIX_RCU_EPOCH_BATCH)
     add_definitions(-DSKL_ABIX_RCU_EPOCH_BATCH=${SKL_ABIX_RCU_EPOCH_BATCH})
@@ -391,6 +393,18 @@ if(AMC_BUILD)
             amc-core-test
             amc-e2e-test
             PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        # SKL_ABIX_KEEP_TEST_ARTIFACTS: run every suite with KEEP_ARTIFACTS=1 so
+        # its temporary directory is retained and printed for inspection.
+        if(SKL_ABIX_KEEP_TEST_ARTIFACTS AND BUILD_TESTING)
+            set(_abix_keep_tests amc-core-test amc-e2e-test)
+            if(AMC_PYTHON_EXECUTABLE)
+                list(APPEND _abix_keep_tests
+                     amc-integration-test amc-feature-test amc-cmake-integration-test amc-rust-test
+                     amc-interop-test amc-cmdly-interop-test amc-expose-interop-test)
+            endif()
+            set_tests_properties(${_abix_keep_tests} PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
+            message(STATUS "Test artifacts are retained: each suite prints its working directory (KEEP_ARTIFACTS=1)")
+        endif()
     else()
         message(WARNING "LLVM/Clang not found: AMC tools will not be built")
     endif()

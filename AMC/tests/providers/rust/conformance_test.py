@@ -54,11 +54,14 @@ def make_case(source_root: str) -> ProviderCase:
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    if "--keep-artifacts" in sys.argv:
+        os.environ["KEEP_ARTIFACTS"] = "1"
+    argv = [arg for arg in sys.argv[1:] if arg != "--keep-artifacts"]
+    if not argv:
         print(__doc__)
         return 2
-    bin_dir = sys.argv[1]
-    source_root = sys.argv[2] if len(sys.argv) > 2 else os.path.normpath(
+    bin_dir = argv[0]
+    source_root = argv[1] if len(argv) > 1 else os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", ".."))
     return ProviderConformance(bin_dir, make_case(source_root)).run_all()
 

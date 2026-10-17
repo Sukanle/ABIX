@@ -27,6 +27,7 @@
     - [J. CMake 集成（`amc-cmake-integration-test`）](#j-cmake-集成amc-cmake-integration-test)
 - [手动功能走查与生成文件](#手动功能走查与生成文件)
 - [原生绑定（Rust）走查](#原生绑定rust走查)
+- [保留临时产物](#保留临时产物)
 - [Sanitizer 与平台说明](#sanitizer-与平台说明)
 - [如何解读失败](#如何解读失败)
 
@@ -181,7 +182,8 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 ## 手动功能走查与生成文件
 
-各套件在临时目录生成并在结束时清理。要查看产物，手动执行：
+各套件在临时目录生成并在结束时清理。要查看产物，可以手动执行，也可以用
+[`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#保留临时产物) 保留目录：
 
 ```bash
 AMC=build/Release/bin/amc.exe           # Linux/macOS 去掉 .exe
@@ -231,6 +233,46 @@ rustc --edition 2021 -O /tmp/consumer.rs --cfg abix_link -L /tmp -o /tmp/consume
 ```
 
 `--cfg abix_link` 打开投影里的 `#[link(name = "interop_demo")]`，符号即绑定到原生库。预期最后一行：`interop ok: add=5 scale=13 div=5 err=1 types=31`。消费端的 `assert_eq!` 才是真正的断言（布局、所有权、错误边界、ABIX-STD、Interface）。
+
+## 保留临时产物
+
+凡是在临时目录里生成产物的套件，结束时都会删除该目录，所以全绿的一次跑完
+后没有任何东西可查。配置时加上 `-DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON`，即以
+`KEEP_ARTIFACTS=1` 运行：各套件会保留自己的工作目录并打印路径。
+
+```bash
+cmake -B build/Release -DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON -G Ninja -S .
+cmake --build build/Release --parallel
+ctest --test-dir build/Release -R amc- --output-on-failure
+```
+
+```
+  [KEEP] retained artifacts: C:/Users/.../Temp/amc-feature.a1b2c3
+```
+
+同样可以在不重新配置的情况下对单次运行生效：既可用环境变量，也可用各套件都
+接受的参数：
+
+```bash
+KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .
+python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
+```
+
+保留位置（均在系统临时目录下）：
+
+| 套件 | 保留内容 |
+|------|----------|
+| `amc-integration-test` | `amc-integration.*`（`autogen-separate/`、`autogen-full/`） |
+| `amc-feature-test` | `amc-feature.*`（`.abix` 与 `cpp/rust/zig/lua` 生成绑定） |
+| `amc-cmake-integration-test` | `amc-cmake.*`（已配置的 CMake fixture 构建树） |
+| `amc-rust-test` | `amc-rust.*`（provider 产物与投影） |
+| `amc-interop-test` | `amc-interop.*`（原生库、消费端、`.abix`） |
+| `amc-cmdly-interop-test` | `amc-cmdly.*` |
+| `amc-expose-interop-test` | `amc-expose.*`（thunk、清单、绑定） |
+| `amc-e2e-test` | `amc_e2e_*` 文件 |
+| `amc-core-test` | `amc_cache_test_*`、`amc_symbol_test_store` |
+
+注意这是**有意保留**：这些目录之后不会被清理，查看完请自行删除。
 
 ## Sanitizer 与平台说明
 

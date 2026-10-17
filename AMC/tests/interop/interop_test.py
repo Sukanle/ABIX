@@ -26,17 +26,24 @@ import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
+# option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory.
+if "--keep-artifacts" in sys.argv:
+    os.environ["KEEP_ARTIFACTS"] = "1"
+KEEP_ARTIFACTS = os.environ.get("KEEP_ARTIFACTS", "") == "1"
+
 
 def exe_name(base: str) -> str:
     return base + ".exe" if sys.platform == "win32" else base
 
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    argv = [arg for arg in sys.argv[1:] if arg != "--keep-artifacts"]
+    if not argv:
         print("usage: interop_test.py <amc_bin_dir> [source_root]", file=sys.stderr)
         return 2
 
-    bin_dir = os.path.abspath(sys.argv[1])
+    bin_dir = os.path.abspath(argv[0])
     amc = os.path.join(bin_dir, exe_name("amc"))
 
     cxx = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("c++")
@@ -198,7 +205,10 @@ def main() -> int:
         print(f"\ninterop: {passed} passed, {failed} failed")
         return 0 if failed == 0 else 1
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if KEEP_ARTIFACTS:
+            print(f"  [KEEP] retained artifacts: {work}")
+        else:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 if __name__ == "__main__":

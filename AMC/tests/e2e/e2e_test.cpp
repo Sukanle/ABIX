@@ -10,6 +10,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <algorithm>
 
 namespace {
@@ -34,7 +35,17 @@ std::string tmp_path(const char *name) {
     return (std::filesystem::temp_directory_path() / (std::string("amc_e2e_") + name)).string();
 }
 
-void cleanup(const std::string &path) { std::remove(path.c_str()); }
+// When KEEP_ARTIFACTS=1 is set (the CMake option SKL_ABIX_KEEP_TEST_ARTIFACTS),
+// the scratch files under the temp directory are retained for inspection.
+bool keep_artifacts() {
+    const char *value = std::getenv("KEEP_ARTIFACTS");
+    return value != nullptr && std::string(value) == "1";
+}
+
+void cleanup(const std::string &path) {
+    if (keep_artifacts()) return;
+    std::remove(path.c_str());
+}
 
 std::vector<uint8_t> read_bytes(const std::string &path) {
     std::ifstream input(path, std::ios::binary);
@@ -1410,6 +1421,9 @@ void test_member_symbol_projection(TestResult &r) {
 
 int main() {
     TestResult r;
+
+    if (keep_artifacts())
+        std::cerr << "  [KEEP] retained artifacts in " << std::filesystem::temp_directory_path().string() << "\n";
 
     std::cerr << "=== AMC E2E Tests ===\n\n";
 

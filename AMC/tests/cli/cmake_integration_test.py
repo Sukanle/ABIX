@@ -21,6 +21,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="AMC CMake integration test")
     parser.add_argument("amc_bin_dir", help="Directory containing amc executable")
     parser.add_argument("source_root", help="Root of the ABIX source tree")
+    parser.add_argument(
+        "--keep-artifacts",
+        action="store_true",
+        default=os.environ.get("KEEP_ARTIFACTS", "") == "1",
+        help="Retain the temporary build directory on exit (or set KEEP_ARTIFACTS=1)",
+    )
     args = parser.parse_args()
 
     amc_bin = os.path.abspath(args.amc_bin_dir)
@@ -82,7 +88,10 @@ def main() -> None:
         sys.exit(failed)
 
     finally:
-        shutil.rmtree(build_dir, ignore_errors=True)
+        if args.keep_artifacts:
+            print(f"  [INFO] retained artifacts: {build_dir}")
+        else:
+            shutil.rmtree(build_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

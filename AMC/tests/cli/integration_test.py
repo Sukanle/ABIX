@@ -3205,7 +3205,8 @@ def main() -> None:
     parser.add_argument(
         "--keep-artifacts",
         action="store_true",
-        help="Retain temporary build directory on exit",
+        default=os.environ.get("KEEP_ARTIFACTS", "") == "1",
+        help="Retain temporary build directory on exit (or set KEEP_ARTIFACTS=1)",
     )
     args = parser.parse_args()
 

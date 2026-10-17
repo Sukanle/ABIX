@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -52,6 +53,22 @@ amc::Type make_type(const std::string &name, uint32_t size, uint32_t align) {
     type.size = size;
     type.align = align;
     return type;
+}
+
+// When KEEP_ARTIFACTS=1 is set (the CMake option SKL_ABIX_KEEP_TEST_ARTIFACTS),
+// the temporary cache/scratch directories are retained for inspection.
+bool keep_artifacts() {
+    const char *value = std::getenv("KEEP_ARTIFACTS");
+    return value != nullptr && std::string(value) == "1";
+}
+
+void cleanup_dir(const std::filesystem::path &root) {
+    if (keep_artifacts()) {
+        std::printf("  [KEEP] retained artifacts: %s\n", root.string().c_str());
+        return;
+    }
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }
 
 }   // namespace
@@ -375,8 +392,7 @@ int main() {
         std::string fetched_path;
         check(amc::fetch_symbol(root, key, fetched, fetched_path, error), "fetch symbol");
         check(fetched == artifact, "fetched artifact matches");
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
+        cleanup_dir(root);
     }
 
     // --- JSON -------------------------------------------------------------
@@ -1464,8 +1480,7 @@ int main() {
             "an unsafe artifact name is refused");
 
         check(cache.clear() >= 1 && cache.entries() == 0, "cache can be cleared");
-        std::error_code cleanup_error;
-        std::filesystem::remove_all(root, cleanup_error);
+        cleanup_dir(root);
 
         // Concurrent writers of a fresh key must leave one complete, verifiable
         // entry, never a partial or mixed product.
@@ -1493,7 +1508,7 @@ int main() {
             const auto after = concurrent.lookup(base);
             check(after.status == amc::CacheStatus::hit && after.artifacts.size() == 1 && concurrent.entries() == 1,
                 "concurrent writers leave one consistent entry");
-            std::filesystem::remove_all(concurrent_root, cleanup_error);
+            cleanup_dir(concurrent_root);
         }
 
         // A recorded dependency (the frontend's include closure) invalidates the
@@ -1529,7 +1544,7 @@ int main() {
                       dependency_for("v1more"), dependency_error)
                       && dependency_cache.lookup(base).status == amc::CacheStatus::hit,
                 "re-store refreshes the dependency closure");
-            std::filesystem::remove_all(dep_root, cleanup_error);
+            cleanup_dir(dep_root);
         }
 
 #if !defined(_WIN32)
@@ -1565,7 +1580,7 @@ int main() {
             const auto process_hit = process_cache.lookup(base);
             check(process_hit.status == amc::CacheStatus::hit && process_hit.artifacts.size() == 1,
                 "cross-process entry is a consistent hit");
-            std::filesystem::remove_all(process_root, cleanup_error);
+            cleanup_dir(process_root);
         }
 #endif
     }
