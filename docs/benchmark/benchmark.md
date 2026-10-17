@@ -156,8 +156,8 @@ The following are median values observed on the reference platform described abo
 | EBR role-based | read-heavy / 20T | 12.34 G/s |
 | EBR role-based | balanced / 20T | 11.70 G/s |
 | EBR role-based | write-heavy / 20T | 11.92 G/s |
-| Reload | logical | 3.00 us |
-| Reload | real DLL | 2.96 us |
+| Reload | `BM_Reload_AlternatingPaths` | 2.96 us |
+| Reload | `BM_Reload_AlternatingPaths_WithPathLookup` | 3.00 us |
 | Calls | `BM_ABIX_Call` | 3.91 ns |
 | Lookup crossover | uniform, linear, 16K | 1.59 us |
 | Lookup crossover | uniform, hash index, 16K | 13.2 ns |
@@ -165,6 +165,8 @@ The following are median values observed on the reference platform described abo
 | False sharing | padded, 16T | 3.87 ns |
 
 The limited conclusions are that shared-write contention grows with thread count in the packed false-sharing test while the padded variant stays around 3.4-4.0 ns; HashIndex is substantially faster than linear scanning for the 16K uniform lookup; and 20-thread role-based EBR throughput is around 12 G/s. These are platform-specific observations, and the write-heavy role-based CV was about 14.7%.
+
+Two measurement notes. First, the reload rows alternate between two *different* module files, so every swap forces a full map/unmap of a different image; the rebuild-in-place case a hot-reload loop actually hits is `BM_Reload_SamePath`, and `BM_Reload_LoadOnly`/`FreeOnly`/`RetireSync` split the cost. Second, the EBR/RCU families share the process-wide `rcu::Domain`, so a family measured after the others reads several times slower than when it is filtered: `BM_EBR_SyncPhase/1T` spans roughly 6 ns (alone in a process) to ~1 us (after a full run). `tools/run_bench_isolated.py` runs each family in its own process and summarises the results, which is the form to compare across machines and commits.
 
 ### Lookup Benchmark Measurements
 
