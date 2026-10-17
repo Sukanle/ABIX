@@ -38,6 +38,20 @@ namespace skl::abix::rcu {
 
 namespace detail {
 
+#ifdef SKL_ABIX_WINDOWS
+// QPC ticks per second. Fixed for the lifetime of the process, so it is queried
+// once; a zero frequency is documented not to happen, but is mapped to 1 so a
+// caller can never divide by zero.
+inline uint64_t qpc_frequency() noexcept {
+    static const uint64_t frequency = []() noexcept -> uint64_t {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return (f.QuadPart > 0) ? static_cast<uint64_t>(f.QuadPart) : 1ULL;
+    }();
+    return frequency;
+}
+#endif
+
 // Monotonic clock in platform units: QPC ticks on Windows, nanoseconds elsewhere.
 // Never goes backwards, never wraps in practice, and is only read by a bounded wait
 // (every 256 polls), so it stays off the unrestricted path.
@@ -53,16 +67,28 @@ inline uint64_t monotonic_now() noexcept {
 #endif
 }
 
+// The same clock in nanoseconds, for diagnostics that report durations. The
+// distinction matters only on Windows, where QPC ticks are not nanoseconds; the
+// split division keeps both intermediates inside 64 bits for any realistic uptime
+// and frequency.
+inline uint64_t monotonic_now_ns() noexcept {
+#ifdef SKL_ABIX_WINDOWS
+    const uint64_t ticks = monotonic_now();
+    const uint64_t frequency = qpc_frequency();
+    const uint64_t whole_seconds = ticks / frequency;
+    const uint64_t remainder = ticks % frequency;
+    return whole_seconds * 1'000'000'000ULL + remainder * 1'000'000'000ULL / frequency;
+#else
+    return monotonic_now();
+#endif
+}
+
 // Converts milliseconds to the clock's units. The QPC frequency is fixed for the
 // lifetime of the process, so it is queried once and kept.
 inline uint64_t duration_units(uint64_t ms) noexcept {
 #ifdef SKL_ABIX_WINDOWS
-    static const uint64_t per_ms = []() noexcept -> uint64_t {
-        LARGE_INTEGER f;
-        QueryPerformanceFrequency(&f);
-        // ticks per ms; the frequency is documented to be nonzero and fixed
-        return (f.QuadPart > 0) ? static_cast<uint64_t>(f.QuadPart) / 1'000ULL : 0ULL;
-    }();
+    // ticks per ms; the frequency is documented to be nonzero and fixed
+    const uint64_t per_ms = qpc_frequency() / 1'000ULL;
     return ms * (per_ms != 0 ? per_ms : 1ULL);
 #else
     return ms * 1'000'000ULL;

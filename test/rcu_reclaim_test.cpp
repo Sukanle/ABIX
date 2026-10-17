@@ -173,3 +173,28 @@ TEST_CASE("45.synchronize_until_bounds_only_the_wait", "[rcu][reclaim][deadline]
         REQUIRE(!dom.reclaimed_through(0, ReclaimClass::eager));
     }
 }
+
+// The advancement diagnostics are opt-in. The default build must answer `stats()`
+// with an all-zero snapshot and a no-op `reset_stats()`, without taking the writer
+// lock. Guarded by the macro so the same file also compiles with diagnostics on
+// (`test_all` unity build, or a `-DSKL_ABIX_RCU_ENABLE_STATS=1` build), where this
+// case simply does not apply; the wiring itself is covered by `rcu_stats_test`.
+#if !SKL_ABIX_RCU_ENABLE_STATS
+TEST_CASE("47.advance_diagnostics_are_compiled_out_by_default", "[rcu][reclaim][stats]") {
+    auto &dom = skl::abix::rcu::Domain::instance();
+    REQUIRE(!skl::abix::rcu::Domain::stats_enabled());
+
+    const auto s = dom.stats();
+    REQUIRE(s.advance_attempts == 0);
+    REQUIRE(s.advance_contentions == 0);
+    REQUIRE(s.advance_retries == 0);
+    REQUIRE(s.advance_timeouts == 0);
+    REQUIRE(s.advance_max_wait_ns == 0);
+    REQUIRE(s.grace_period_timeouts == 0);
+    REQUIRE(s.retired_backlog == 0);
+    REQUIRE(s.retired_oldest_age_ns == 0);
+
+    dom.reset_stats();   // must be a no-op, not an error
+    log_info("diagnostics compiled out: stats() is an all-zero no-op");
+}
+#endif

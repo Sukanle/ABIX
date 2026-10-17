@@ -398,6 +398,9 @@ unload() / force_unload() -> zombie （image 已摘除，稍后回收）
 | `synchronize_until(deadline)` | `bool` | 请求一次宽限期，最多等待到 `Deadline`。`true` 只表示**宽限期已被证明**——仅此而已：不承诺回收扫描已运行，也不承诺任何回调已执行。`false` 表示**未被证明**（截止时间到，或推进权在别的写者手里）：不知道有任何读者已离开、水位未推进、回调未运行。它总是要求一次真实宽限期，因此启用它就放弃了批量延迟（见下） |
 | `try_collect()` | `void` | 尝试回收：若获取写锁成功，扫描并回收已通过的两类 retired 对象 |
 | `global_epoch()` | `uint64_t` | 诊断用：返回当前全局 epoch 值 |
+| `stats()` | `Stats` | 可选推进诊断的快照（见下）。未启用诊断的构建返回全零且不加锁 |
+| `reset_stats()` | `void` | 清零诊断计数器；诊断被编译掉时为空操作 |
+| `stats_enabled()` | `static constexpr bool` | 本构建是否采集诊断 |
 
 **设计要点：**
 
@@ -431,6 +434,32 @@ public:
 **deadline 不覆盖什么**：它只约束**等待**。调度延迟与回收回调本身（unmap 模块、释放内存）都可能超过截止时间，因此**不要**把 `after_ms(n)` 读成"这个操作一定在 n 毫秒内完成"。
 
 **超时后谁处置**：没有谁会自动处置：`false` 之后退休对象原样留下（仍 mapped），由后续一次成功宽限期回收。这里**刻意没有**自动强制卸载，也还没有"永不 unmap"策略；对象自己的那次回收结果见 `dll::ReclaimOutcome`。
+
+### 推进权诊断
+
+推进权（谁有权跑一次宽限期）是**抢占式、无公平性保证**的：抢不到的写者只能重试，没有任何队列阻止后来的写者插队。在为此设计机制之前，应先证明它确有需要，因此域可以报告实际发生了什么。诊断是**可选开启**的——定义 `SKL_ABIX_RCU_ENABLE_STATS`（CMake：`-DSKL_ABIX_RCU_ENABLE_STATS=ON`）——否则完全编译掉，读者路径与默认推进路径不受影响。
+
+```cpp
+auto s = skl::abix::rcu::Domain::instance().stats();
+// s.advance_attempts, s.advance_contentions, s.advance_retries,
+// s.advance_timeouts, s.advance_max_wait_ns, s.grace_period_timeouts,
+// s.retired_backlog, s.retired_oldest_age_ns
+```
+
+这些计数器把"一个 RCU 超时数"会混为一谈的情况分开：
+
+| 字段 | 含义 |
+|---|---|
+| `advance_attempts` | 线程尝试取得推进权的次数 |
+| `advance_contentions` | 尝试时发现已有其他写者持有（`sync` 非零）的次数 |
+| `advance_retries` | `synchronize_until()` 中失败后重试的次数 |
+| `advance_timeouts` | 在截止时间放弃等待推进权的次数——**根本没轮到跑宽限期** |
+| `advance_max_wait_ns` | 等待推进权的最长观测时间（从未争用则为 0） |
+| `grace_period_timeouts` | 取得了推进权但未能证明宽限期——**读者卡住了它** |
+| `retired_backlog` | 快照时刻：已发布但尚未回收的退休节点数 |
+| `retired_oldest_age_ns` | 快照时刻：最老那个节点的等待时长 |
+
+`advance_timeouts` 与 `grace_period_timeouts` 是两种不同的失败；`deferred_batched`（正常的批量节奏）两者都不是，它由 `dll::Object` 层以 `ReclaimOutcome` 报告，不在这里。后两个字段是在写锁下从退休链表采样的**仪表值**，所以 `stats()` 是诊断端点，而非热路径调用。为何先测量、再决定是否需要可取消的 FIFO 仲裁，见 `Optimize-plan.md`（D-1）。
 
 **使用示例：**
 ```cpp

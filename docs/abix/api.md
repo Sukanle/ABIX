@@ -352,6 +352,9 @@ lib.unload();  // retires the old image -> synchronize -> reclaim
 | `synchronize_until(deadline)` | `bool` | Requests one grace period and waits at most until `Deadline`. `true` means the grace period **was proven** — nothing more: no promise that a collection scan ran or that any callback executed. `false` means it was **not proven** (the deadline expired, or another writer held the advancement): no reader is known to have left, no watermark moved, no callback ran. It always asks for a real grace period, so enabling it gives up the batched delay (see below) |
 | `try_collect()` | `void` | Opportunistic reclaim: if the writer lock is free, scans and reclaims passed objects of both classes |
 | `global_epoch()` | `uint64_t` | Diagnostics: current global epoch |
+| `stats()` | `Stats` | Snapshot of the optional advancement diagnostics (see below). All-zero, and lock-free, when the build does not enable them |
+| `reset_stats()` | `void` | Zeroes the diagnostic counters; a no-op when diagnostics are compiled out |
+| `stats_enabled()` | `static constexpr bool` | Whether this build collects the diagnostics |
 
 **Design notes**
 
@@ -385,6 +388,32 @@ public:
 **What a deadline does not cover.** It bounds the wait only. Scheduling delay and the reclaim callbacks themselves (unmapping a module, freeing memory) can still take longer, so never read `after_ms(n)` as "this operation finishes within n ms".
 
 **Who acts on a timeout.** Nobody automatically: a `false` result leaves the retired object in place — still mapped — and a later successful grace period reclaims it. There is deliberately no automatic forced unload, and no "never unmap" policy yet; see `dll::ReclaimOutcome` for what a `dll::Object` reports about its own retired image.
+
+### Advancement Diagnostics
+
+Advancement (who gets to run a grace period) is **preemptive and has no fairness guarantee**: a writer that cannot take the right retries, and there is no queue that would stop a later writer from overtaking it. Before designing such a mechanism it should be shown to be needed, so the domain can report what actually happens. The diagnostics are opt-in — define `SKL_ABIX_RCU_ENABLE_STATS` (CMake: `-DSKL_ABIX_RCU_ENABLE_STATS=ON`) — and compiled out entirely otherwise, leaving the reader path and the default advancement path untouched.
+
+```cpp
+auto s = skl::abix::rcu::Domain::instance().stats();
+// s.advance_attempts, s.advance_contentions, s.advance_retries,
+// s.advance_timeouts, s.advance_max_wait_ns, s.grace_period_timeouts,
+// s.retired_backlog, s.retired_oldest_age_ns
+```
+
+The counters keep apart what a single "RCU timeout" number would conflate:
+
+| Field | Meaning |
+|---|---|
+| `advance_attempts` | Times a thread tried to take the advancement right |
+| `advance_contentions` | Attempts that found another writer already owned it (`sync` set) |
+| `advance_retries` | Failed attempts retried by `synchronize_until()` |
+| `advance_timeouts` | Gave up waiting for the advancement right at the deadline — **never got to run a grace period** |
+| `advance_max_wait_ns` | Longest observed wait for the advancement right (0 if never contended) |
+| `grace_period_timeouts` | Owned the advancement but did not prove the grace period — **a reader held it open** |
+| `retired_backlog` | Retired nodes published but not yet reclaimed, at the snapshot |
+| `retired_oldest_age_ns` | Age of the oldest such node, at the snapshot |
+
+`advance_timeouts` and `grace_period_timeouts` are the two distinct failures; `deferred_batched` (the normal batched schedule) is neither and is reported by the `dll::Object` layer as a `ReclaimOutcome`, not here. The last two fields are gauges sampled from the retired list under the writer lock, which is why `stats()` is a diagnostics endpoint, not a hot-loop call. See `Optimize-plan.md` (D-1) for why the plan is to measure first and only then decide whether a cancellable FIFO arbitration is warranted.
 
 ### Who Owns Validity
 

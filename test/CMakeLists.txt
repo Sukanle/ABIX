@@ -28,6 +28,10 @@ abi_add_test(mics_test)
 abi_add_test(closed_test)
 abi_add_test(logging_test)
 abi_add_test(rcu_reclaim_test)
+# Advancement diagnostics are compiled out of the default build, so their wiring
+# needs a translation unit that forces them on. This is the only target that does.
+abi_add_test(rcu_stats_test)
+target_compile_definitions(rcu_stats_test PRIVATE SKL_ABIX_RCU_ENABLE_STATS=1)
 abi_add_test(concurrency_test)
 abi_add_test(bootstrap_test)
 abi_add_test(metadata_registry_test)

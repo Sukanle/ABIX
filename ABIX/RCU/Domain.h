@@ -31,6 +31,14 @@
 #ifndef SKL_ABIX_RCU_BATCH_PUBLISH
 #  define SKL_ABIX_RCU_BATCH_PUBLISH 64
 #endif
+// Optional advancement diagnostics. Off by default: when it is not defined every
+// counter update compiles away (they sit behind `if constexpr`), so the default
+// build keeps the same reader path and the same advancement path. Enabling it adds
+// a handful of relaxed increments on the writer side only, plus one clock reading
+// per retired node so `retired_oldest_age_ns` can be reported.
+#ifndef SKL_ABIX_RCU_ENABLE_STATS
+#  define SKL_ABIX_RCU_ENABLE_STATS 0
+#endif
 
 namespace skl::abix::rcu {
 
@@ -69,6 +77,10 @@ struct RetiredNode {
     ReclaimFn reclaim;
     ReclaimClass cls;
     RetiredNode *next;
+    // Monotonic clock reading taken when the node was queued. Only written when
+    // SKL_ABIX_RCU_ENABLE_STATS is on; the field stays in the layout either way so
+    // enabling diagnostics never changes the node's ABI.
+    uint64_t retired_at_ns = 0;
 };
 
 struct RetiredBatch {
@@ -86,6 +98,37 @@ struct alignas(SKL_ABIX_CACHE_LINE_SIZE) Epoch {
 
 class Domain {
 public:
+    // Optional advancement diagnostics (see SKL_ABIX_RCU_ENABLE_STATS).
+    //
+    // These exist to answer one question before any fairness mechanism is built:
+    // does a writer actually starve on the advancement right, or is the current
+    // preemptive retry loop good enough in practice? Two failure modes that a
+    // single "RCU timeout" number would conflate are kept apart:
+    //
+    //   * advance_timeouts      - never got the advancement right: another writer
+    //                             kept `sync` for the whole deadline.
+    //   * grace_period_timeouts - owned the advancement, but a reader did not
+    //                             leave before the deadline.
+    //   * deferred_batched is not a timeout at all and is reported by the Object
+    //     layer (`ReclaimOutcome`), not here.
+    //
+    // `retired_backlog` and `retired_oldest_age_ns` are gauges sampled from the
+    // retired list by `stats()`, not counters.
+    struct Stats {
+        uint64_t advance_attempts = 0;        // times a thread tried to take the advancement
+        uint64_t advance_contentions = 0;     // attempts that found another owner in `sync`
+        uint64_t advance_retries = 0;         // failed advancement attempts retried by synchronize_until
+        uint64_t advance_timeouts = 0;        // gave up waiting for the advancement at the deadline
+        uint64_t advance_max_wait_ns = 0;     // longest observed wait for the advancement
+        uint64_t grace_period_timeouts = 0;   // owned the advancement, did not prove the grace period
+        uint64_t retired_backlog = 0;         // nodes still queued at the time of the snapshot
+        uint64_t retired_oldest_age_ns = 0;   // age of the oldest queued node at the snapshot
+    };
+
+    // Whether this build collects the diagnostics above. When false, `stats()`
+    // returns an all-zero snapshot without taking the writer lock.
+    static constexpr bool stats_enabled() noexcept { return SKL_ABIX_RCU_ENABLE_STATS != 0; }
+
     static Domain &instance() noexcept {
         static Domain inst;
         return inst;
@@ -174,6 +217,48 @@ public:
 
     uint64_t global_epoch() const noexcept { return util::load_relaxed(&_epoch.global); }
 
+    // Snapshot of the optional diagnostics. The counters are read with relaxed
+    // loads (they are advisory, not a synchronisation primitive); the two gauges
+    // are taken under the writer lock so the retired list cannot change while it
+    // is walked. Cheap enough for a diagnostics endpoint, not for a hot loop.
+    Stats stats() noexcept {
+        Stats snapshot;
+        if constexpr (stats_enabled()) {
+            lock_writer();
+            snapshot.advance_attempts = util::load_relaxed(&_counters.advance_attempts);
+            snapshot.advance_contentions = util::load_relaxed(&_counters.advance_contentions);
+            snapshot.advance_retries = util::load_relaxed(&_counters.advance_retries);
+            snapshot.advance_timeouts = util::load_relaxed(&_counters.advance_timeouts);
+            snapshot.advance_max_wait_ns = util::load_relaxed(&_counters.advance_max_wait_ns);
+            snapshot.grace_period_timeouts = util::load_relaxed(&_counters.grace_period_timeouts);
+
+            const uint64_t now = detail::monotonic_now_ns();
+            for (const RetiredNode *n = _reader.retired; n; n = n->next) {
+                ++snapshot.retired_backlog;
+                if (n->retired_at_ns != 0) {
+                    const uint64_t age = now - n->retired_at_ns;
+                    if (age > snapshot.retired_oldest_age_ns) snapshot.retired_oldest_age_ns = age;
+                }
+            }
+            unlock_writer();
+        }
+        return snapshot;
+    }
+
+    // Zeroes the counters. The gauges need no reset: they are computed on read.
+    void reset_stats() noexcept {
+        if constexpr (stats_enabled()) {
+            lock_writer();
+            util::store_relaxed(&_counters.advance_attempts, 0ULL);
+            util::store_relaxed(&_counters.advance_contentions, 0ULL);
+            util::store_relaxed(&_counters.advance_retries, 0ULL);
+            util::store_relaxed(&_counters.advance_timeouts, 0ULL);
+            util::store_relaxed(&_counters.advance_max_wait_ns, 0ULL);
+            util::store_relaxed(&_counters.grace_period_timeouts, 0ULL);
+            unlock_writer();
+        }
+    }
+
 private:
     // Queues an object for reclamation and returns the epoch it was queued at, or 0
     // when the node could not be allocated (nothing was queued in that case).
@@ -181,6 +266,9 @@ private:
         uint64_t current_epoch = util::load_relaxed(&_epoch.global);
         auto *r = new (std::nothrow) RetiredNode{object, current_epoch, reclaim, cls, nullptr};
         if (!r) return 0;
+        if constexpr (stats_enabled()) {
+            r->retired_at_ns = detail::monotonic_now_ns();
+        }
 
         auto &batch = local_batch();
         if (batch.tail)
@@ -280,10 +368,21 @@ private:
     // Takes ownership of one epoch advancement. Returns false when another writer
     // already owns it (the caller must not touch `sync` in that case). The owner is
     // responsible for clearing `sync` on every path out.
+    //
+    // This is a preemptive attempt, not a fair one: there is no queue and no
+    // ordering, so a retrying caller can lose indefinitely to later writers. That
+    // is a documented property, not a bug - see `Stats` and the D-1 notes in
+    // memory/Optimize-plan.md for why fairness is measured before it is implemented.
     bool begin_advance(uint64_t &old_epoch) noexcept {
         lock_writer();
         publish_local_batch_locked();
+        if constexpr (stats_enabled()) {
+            util::inc_relaxed(&_counters.advance_attempts);
+        }
         if (util::load_relaxed(&_epoch.sync) != 0) {
+            if constexpr (stats_enabled()) {
+                util::inc_relaxed(&_counters.advance_contentions);
+            }
             unlock_writer();
             return false;
         }
@@ -345,11 +444,32 @@ private:
         uint64_t lock = 0;
     };
 
+    // Declared unconditionally, and on its own cache line, so enabling the
+    // diagnostics never changes the domain's layout - only whether the fields are
+    // written. The counters live on the writer/advancement path, so they must not
+    // share a line with the Epoch block.
+    struct alignas(SKL_ABIX_CACHE_LINE_SIZE) Counters {
+        uint64_t advance_attempts = 0;
+        uint64_t advance_contentions = 0;
+        uint64_t advance_retries = 0;
+        uint64_t advance_timeouts = 0;
+        uint64_t advance_max_wait_ns = 0;
+        uint64_t grace_period_timeouts = 0;
+    };
+
+    // Raises `advance_max_wait_ns` to `ns` if it is a new maximum. A CAS loop
+    // rather than a fetch-max so concurrent writers do not lose a larger sample.
+    void note_max_wait_ns(uint64_t ns) noexcept {
+        uint64_t observed = util::load_relaxed(&_counters.advance_max_wait_ns);
+        while (ns > observed && !util::compare_exchange(&_counters.advance_max_wait_ns, observed, ns)) {}
+    }
+
     Epoch _epoch;   // Independent cache line (64 bytes)
 
     reader _reader;
     writer _writer;
     uint32_t _sync_count = 0;
+    Counters _counters;
 };
 
 class LockGuard {
@@ -371,6 +491,14 @@ inline void Domain::synchronize_impl(bool eager) noexcept {
     publish_local_batch_locked();
 
     if (util::load_relaxed(&_epoch.sync) != 0) {
+        // Counted as an attempt: the caller asked for a synchronize and found the
+        // advancement held. (For the batched entry point we cannot know whether the
+        // batch gate would have let it advance without disturbing `_sync_count`, so
+        // this is counted as an attempt even when the cadence was not yet due.)
+        if constexpr (stats_enabled()) {
+            util::inc_relaxed(&_counters.advance_attempts);
+            util::inc_relaxed(&_counters.advance_contentions);
+        }
         unlock_writer();
         while (util::load_acquire(&_epoch.sync) != 0) {}
         return;
@@ -383,6 +511,10 @@ inline void Domain::synchronize_impl(bool eager) noexcept {
             return;
         }
         _sync_count = 0;
+    }
+
+    if constexpr (stats_enabled()) {
+        util::inc_relaxed(&_counters.advance_attempts);
     }
 
     uint64_t old_epoch = util::load_relaxed(&_epoch.global);
@@ -403,13 +535,39 @@ inline void Domain::synchronize() noexcept { synchronize_impl(false); }
 inline void Domain::synchronize_eager() noexcept { synchronize_impl(true); }
 
 inline bool Domain::synchronize_until(Deadline deadline) noexcept {
+    // Diagnostics: the wait for the advancement is timed from the first contended
+    // attempt, so a first-try success records nothing (there was no wait). Only the
+    // bounded caller is timed at all; the unbounded `synchronize()` path does not
+    // pay for this.
+    bool waiting = false;
+    uint64_t wait_start_ns = 0;
+
     for (;;) {
         uint64_t old_epoch = 0;
         if (!begin_advance(old_epoch)) {
             // Another writer owns the advancement: this thread waits, retries, or
             // gives up, and it never clears a `sync` it does not own.
-            if (deadline.bounded() && deadline.expired()) return false;
+            if constexpr (stats_enabled()) {
+                if (!waiting) {
+                    waiting = true;
+                    wait_start_ns = detail::monotonic_now_ns();
+                }
+                util::inc_relaxed(&_counters.advance_retries);
+            }
+            if (deadline.bounded() && deadline.expired()) {
+                // Timed out waiting for the advancement itself: distinct from a
+                // grace-period timeout, which means the advancement was ours.
+                if constexpr (stats_enabled()) {
+                    util::inc_relaxed(&_counters.advance_timeouts);
+                    note_max_wait_ns(detail::monotonic_now_ns() - wait_start_ns);
+                }
+                return false;
+            }
             continue;
+        }
+
+        if constexpr (stats_enabled()) {
+            if (waiting) note_max_wait_ns(detail::monotonic_now_ns() - wait_start_ns);
         }
 
         // This thread owns the advancement from here on and must clear `sync` on
@@ -423,6 +581,10 @@ inline bool Domain::synchronize_until(Deadline deadline) noexcept {
                 proven = false;
                 break;
             }
+        }
+
+        if constexpr (stats_enabled()) {
+            if (!proven) util::inc_relaxed(&_counters.grace_period_timeouts);
         }
 
         // On a proven grace period both classes are collected (the return value still
