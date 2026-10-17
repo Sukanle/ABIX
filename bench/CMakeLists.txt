@@ -13,7 +13,7 @@ function(abi_add_bench)
 
     add_executable(${BENCH_NAME} ${BENCH_SOURCES})
     target_include_directories(${BENCH_NAME} PRIVATE ${BENCH_INC_DIR})
-    target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark benchmark::benchmark_main)
+    target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark_main)
     set_target_properties(${BENCH_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                      "RelWithDebInfo"))
@@ -60,7 +60,7 @@ abi_add_bench(NAME "ebr_profile_bench" SOURCES "ebr/profile_bench.cpp" ${EBR_SOU
 # --- Unity build: all benchmarks in a single executable ---
 add_executable(bench_all ${BENCH_SRC_DIR}/bench_all.cpp ${EBR_SOURCES})
 target_include_directories(bench_all PRIVATE ${BENCH_INC_DIR})
-target_link_libraries(bench_all PRIVATE benchmark::benchmark benchmark::benchmark_main)
+target_link_libraries(bench_all PRIVATE benchmark::benchmark_main)
 set_target_properties(bench_all PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 foreach(
     plugin
