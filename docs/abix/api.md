@@ -275,19 +275,22 @@ Returns a reference to the thread-local last error code. Thread-safe (each threa
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `load(path)` | `bool` | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version |
-| `unload()` | `bool` | Mark unloading → wait for RCU readers → unload if `ref_count() == 0`; returns `false` and sets `stale_handle` if handles are alive |
-| `force_unload()` | `void` | Unload regardless of ref-count (bypasses RCU, caller must ensure no concurrent readers) |
-| `reload(path)` | `bool` | `force_unload()` + `load(path)` |
-| `is_loaded()` | `bool` | Whether the module is currently loaded and not in the unloading state |
-| `get_table()` | `const runtime::Table*` | Get the validated export table pointer |
+| `load(path)` | `bool` | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version, build the hash index |
+| `unload()` | `bool` | Refuses with `stale_handle` while any `Function` handle is alive (`ref_count() != 0`); otherwise swaps the image out and retires it for the domain to reclaim after a grace period |
+| `force_unload()` | `void` | Detach and free the image immediately, bypassing the grace period (the caller must already have excluded readers) |
+| `reload(path)` | `bool` | Load the new module and build its index, swap it in atomically, then retire the previous image (EBR-protected, not a `force_unload` + `load`) |
+| `is_loaded()` | `bool` | `state == rcu::State::active` and an image is published |
+| `get_table()` | `const runtime::Table*` | The validated export table of the current image |
 | `module()` | `module_handle` | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX) |
-| `ref_count()` | `uint32_t` | Number of live `Function` handles (strong refs to the shared Control) |
-| `try_enter_read()` | `bool` | Enter RCU read-side critical section with double-checked locking; returns `false` and sets `dll::CallError::unloading` if the module is unloading or zombie |
-| `exit_read()` | `void` | Exit RCU read-side critical section (decrements active reader count) |
-| `begin_rcu_unload()` | `bool` | Initiate RCU unload: set `_unloading` flag → spin-wait until `_active_readers == 0` or timeout → apply `_timeout_policy`; returns `true` on success |
-| `set_timeout_policy(p)` | `void` | Set the RCU timeout policy (`rcu::TimeoutPolicy::Safe` / `ForceUnload` / `ForceLeak`) |
-| `timeout_policy()` | `rcu::TimeoutPolicy` | Get the current RCU timeout policy |
+| `module_path()` | `const char*` | Path this object was loaded from (POSIX takes a second OS reference with it) |
+| `resolve(name)` | `void*` | Raw exported symbol lookup (fixed entry points such as `abi_get_table`); not the name+sig table, and no protection is held: valid only while the module stays loaded, so re-resolve after a reload instead of caching it |
+| `image_acquire()` | `Image*` | Current image pointer (used by the unload path) |
+| `ref_count()` | `uint32_t` | Number of live `dll::Function` handles (strong references to the shared `Control`) |
+| `enter_read()` | `const runtime::Table*` | Enter a read-side critical section and return the current table, or `nullptr` (setting `CallError::unloading`) when nothing is loaded |
+| `exit_read()` | `void` | Leave the read-side critical section |
+| `set_reclaim_timeout_ms(ms)` | `void` | Bound how long an operation waits for a retired image's grace period; a *duration*, derived fresh per operation, 0 = unbounded. See "Bounding a Reclaim Wait" |
+| `reclaim_timeout_ms()` | `uint64_t` | The configured duration |
+| `reclaim_outcome()` | `ReclaimOutcome` | What happened to the image retired by the most recent operation |
 
 **Usage Example:**
 ```cpp
@@ -305,103 +308,136 @@ ABIX implements RCU (Read-Copy-Update) with epoch-based reclamation (EBR) for th
 
 **Architecture:**
 
-| Phase | Write Side (unloader) | Read Side (caller) |
-|-------|----------------------|---------------------|
-| Mark | `begin_rcu_unload()` sets `_unloading = true` | `try_enter_read()` checks `_unloading` before inc |
-| Grace | `wait_for_readers()` spins until `_active_readers == 0` | Active readers hold `_active_readers > 0` |
-| Reclaim | `unload_internal()` calls `FreeLibrary`/`dlclose` | `exit_read()` decrements `_active_readers` |
+| Role | Operation | Notes |
+|------|-----------|-------|
+| Reader | `enter_read()` -> `rcu::Domain::enter()` | Records the current global epoch; lock-free, uncontended |
+| Reader | `exit_read()` -> `rcu::Domain::exit()` | Marks this thread quiescent (epoch = 0) |
+| Writer | `unload()` -> `retire()` + `synchronize()` | Pushes the old image onto the retired list, waits for readers to pass, then reclaims |
+| Writer | `reload()` -> `retire()` + `synchronize()` | Atomically swaps in the new image, retires the old one asynchronously |
 
 **Design:**
 
-- **_Double-checked locking**: `try_enter_read()` checks `_unloading` before and after incrementing `_active_readers`, preventing the TOCTOU race where a reader detects `_unloading == false` but the unloader sets the flag before the reader increments.
-- **_Spin-wait**: `wait_for_readers()` busy-waits. This is appropriate for DLL function calls that are expected to return quickly.
-- **_Zero STL dependency**: Atomics operate on plain `bool` and `uint32_t` via compiler builtins — no `<atomic>`, no layout variance across STL implementations.
-- **_`force_unload` / `reload` bypass RCU**: These methods directly unload without RCU protection. Callers must guarantee no concurrent readers.
+- **Global EBR domain**: every `dll::Object` shares the same `rcu::Domain` singleton, so epoch advancement applies to all modules at once. There is no per-module reader counter.
+- **Thread-local state**: each thread registers itself in TLS on its first `enter()`; `exit()` only writes its own cache line, so readers never contend.
+- **Retire batching**: `retire()` accumulates up to 64 objects in a thread-local batch before publishing them to the global list, which keeps the writer lock out of the per-retire path.
+- **Two reclaim classes**: `retire()` puts an object in the *batched* class, which `synchronize()` reclaims only when it advances the epoch (once every `SKL_ABIX_RCU_EPOCH_BATCH` calls). `retire_eager()` puts an object in the *eager* class, which `synchronize_eager()` reclaims on its next call without touching the batched schedule. Both share the same grace period but keep separate "reclaimed up to" watermarks. `Object::reload` uses the split so that a swapped-out index slot array is reusable by the very next `build`, while the module image keeps the batched delay (which is what keeps an alternating hot reload on the loader's already-resident path).
+- **Zero `<atomic>` dependency**: atomics operate on plain integers and pointers via compiler builtins, so the layout does not vary across STL implementations.
+- **`force_unload` bypasses the grace period**: it detaches and frees the image immediately, so the caller must already have excluded readers. `unload()` and `reload()` do *not* bypass EBR; they retire the old image and let the domain reclaim it.
 
 **Usage Example:**
 ```cpp
 // Thread 1: Reader
 auto add = dll::Function<int(int, int)>(lib, "add");
-int result = add(2, 3);  // operator() auto-calls try_enter_read/exit_read
+int result = add(2, 3);  // operator() auto-calls enter_read/exit_read
 
 // Thread 2: Unloader
-lib.unload();  // Marks unloading, waits for reader, then unloads
+lib.unload();  // retires the old image -> synchronize -> reclaim
 ```
 
-### RCU Timeout Policies
-
-When `ABIX_RCU_TIMEOUT_ENABLE` is `1` (default), `wait_for_readers()` periodically checks elapsed time against `ABIX_RCU_TIMEOUT_MS`. If the grace period exceeds the threshold, one of three policies is applied:
-
-| Policy | Enum | Behavior |
-|--------|------|----------|
-| **Safe** | `rcu::TimeoutPolicy::Safe` | Sets `_zombie = true`, clears `_unloading`. DLL stays loaded but inaccessible. **Never crashes.** (Default) |
-| **ForceUnload** | `rcu::TimeoutPolicy::ForceUnload` | Calls `unload_internal()` immediately. Active callers receive dangling pointers — **will crash**. |
-| **ForceLeak** | `rcu::TimeoutPolicy::ForceLeak` | Detaches module handle, DLL stays loaded in OS. Requires `#define ABIX_ENABLE_FORCE_LEAK_POLICY`. |
-
-**Zombie lifecycle:**
-```
-begin_rcu_unload() → timeout → _zombie = true
-    ↓
-is_loaded() → false      (new callers rejected)
-try_enter_read() → false  (sets dll::CallError::unloading)
-load() → force_unload zombie → load fresh DLL
-~dll::Object() → unload_internal() (force cleanup)
-```
-
-### Timeout Check: Dual-Fuel (Time + Frames)
-
-ABIX treats wall-clock time and frame count as two orthogonal fuel sources. Both are always available at runtime — no compile-time mode switch required.
-
-- **Time fuel**: `get_tick_ms()` always returns the system wall-clock. No host cooperation needed.
-- **Frame fuel**: `abix::tick(timestamp)` injects frame counts from the host loop. Optional, zero overhead if unused.
-- **Deadline check**: `wait_for_readers()` checks both `timeout_ms` AND `timeout_frames` every ~1M spin iterations. Whichever deadline arrives first triggers the timeout.
-
-### `rcu::TimeoutConfig` (`ABIX/RCU/Config.h`)
+### `rcu::Domain` (`ABIX/RCU/Domain.h`)
 
 **Namespace:** `skl::abix::rcu`
 
-Runtime configuration for RCU timeout behavior. Replaces the old compile-time-only `ABIX_RCU_TIMEOUT_MS` macro with per-instance settings.
+| Member | Returns | Description |
+|--------|---------|-------------|
+| `instance()` | `rcu::Domain&` | Global singleton |
+| `enter()` | `void` | Enter a read-side critical section: records the current global epoch; lock-free |
+| `exit()` | `void` | Leave the critical section: marks the thread quiescent (epoch = 0) |
+| `retire(obj, reclaim)` | `void` | Adds the object to the thread-local retired batch (**batched class**), published after 64 entries; reclaimed when `synchronize()` advances the epoch (every `SKL_ABIX_RCU_EPOCH_BATCH` calls, default 8) |
+| `retire_eager(obj, reclaim)` | `void` | Same, but the **eager class**: reclaimed by the next `synchronize_eager()`. For objects whose only value is becoming reusable soon (a swapped-out index buffer), without shortening the batched delay |
+| `retire_token(obj, reclaim)` | `uint64_t` | As `retire()`, but returns the epoch the object was queued at (0 when nothing was queued). Pair it with `reclaimed_through()` to ask "has the domain released it yet?" without observing the callback |
+| `reclaimed_through(token, cls)` | `bool` | Whether that class has been collected through `token`, i.e. every object retired at or before it has had its reclaim callback run. Monotonic per class, and only ever advanced after a proven grace period |
+| `synchronize()` | `void` | Advances the global epoch (once every `SKL_ABIX_RCU_EPOCH_BATCH` calls), waits for every thread to pass, reclaims the safe **batched** objects |
+| `synchronize_eager()` | `void` | Advances the global epoch **immediately** and reclaims only the safe **eager** objects; the batched delay is unaffected. Cheap when there is nothing to collect |
+| `synchronize_until(deadline)` | `bool` | Requests one grace period and waits at most until `Deadline`. `true` means the grace period **was proven** — nothing more: no promise that a collection scan ran or that any callback executed. `false` means it was **not proven** (the deadline expired, or another writer held the advancement): no reader is known to have left, no watermark moved, no callback ran. It always asks for a real grace period, so enabling it gives up the batched delay (see below) |
+| `try_collect()` | `void` | Opportunistic reclaim: if the writer lock is free, scans and reclaims passed objects of both classes |
+| `global_epoch()` | `uint64_t` | Diagnostics: current global epoch |
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `timeout_ms` | `uint64_t` | `ABIX_RCU_TIMEOUT_MS` | Timeout threshold in milliseconds. Checked against `get_tick_ms()`. 0 = disabled. |
-| `timeout_frames` | `uint64_t` | `ABIX_RCU_TIMEOUT_FRAMES_DEFAULT` (0) | Timeout threshold in frames. Checked against `get_tick_frames()`. 0 = disabled. |
+**Design notes**
 
-**Constructor:**
+- **Thread-local state**: the first `enter()` on a thread registers it in TLS; `exit()` writes only that cache line.
+- **Retire batching**: `SKL_ABIX_RCU_BATCH_PUBLISH` (default 64) objects accumulate locally to reduce global lock contention.
+- **Two reclaim delays**: the batched class (default 8 synchronizations) keeps a swapped-out image mapped so that alternating hot reloads still hit the loader's already-resident path; the eager class (next synchronization) makes a swapped-out index buffer reusable by the next `build`. Each class has its own watermark, so one cannot swallow the other's safe epoch.
+- **Advancement ownership**: a thread that takes the advancement owns `sync` and clears it on every path out; a thread that finds `sync` taken waits, retries, or times out, and never clears a `sync` it does not own.
+- **Cache-line isolation**: the epoch block is `alignas(SKL_ABIX_RCU_CACHE_LINE_SIZE)` and sits apart from the writer lock.
+- **Zero `<atomic>` dependency**: all atomics come from `ABIX/Util/Atomic.h`.
+
+### Bounding a Grace-Period Wait
+
+`rcu::Deadline` (`ABIX/RCU/Deadline.h`) says *how long* to wait, never what to do when the wait runs out:
+
 ```cpp
-constexpr rcu::TimeoutConfig(
-    uint64_t ms = ABIX_RCU_TIMEOUT_MS,
-    uint64_t frames = ABIX_RCU_TIMEOUT_FRAMES_DEFAULT
-) noexcept;
+namespace skl::abix::rcu {
+class Deadline {
+public:
+    static constexpr Deadline never() noexcept;      // unbounded (the previous behaviour)
+    static Deadline after_ms(uint64_t ms) noexcept;  // after_ms(0) is already expired
+    constexpr bool bounded() const noexcept;
+    bool expired() const noexcept;                   // reads the clock
+};
+}
 ```
 
-**Usage patterns:**
-```cpp
-// Scenario 1: pure defaults (macro values used)
-dll::Object lib1;
+`never()` is unbounded and never expired; `after_ms(0)` is a non-blocking probe that reports whether a grace period can be proven without waiting. The clock is monotonic and internal (QPC on Windows, `CLOCK_MONOTONIC` elsewhere), so ABIX takes no frame or wall-clock input from the host — a caller with a frame budget converts it to milliseconds itself. It is read only by a bounded wait, every 256 polls, so an unbounded wait costs nothing.
 
-// Scenario 2: explicit timeout, no frames
-dll::Object lib2(rcu::TimeoutConfig{3000});
+**What a bounded wait costs.** `synchronize_until()` always asks for a real grace period, so the epoch advances on every call instead of every `SKL_ABIX_RCU_EPOCH_BATCH` calls. That is the trade of enabling a bound: the batched deferral — which keeps recently retired modules mapped so an alternating hot reload hits the loader's already-resident path — is given up. Measured at 4.97x on `BM_Reload_AlternatingPaths` (17.3 us per iteration without a bound, 85.9 us with one). The default path, no bound configured, keeps the batched behaviour and its cost.
 
-// Scenario 3: game engine — both time and frame thresholds
-dll::Object lib3(rcu::TimeoutConfig{5000, 300});  // 5s or 300 frames, whichever triggers first
+**What a deadline does not cover.** It bounds the wait only. Scheduling delay and the reclaim callbacks themselves (unmapping a module, freeing memory) can still take longer, so never read `after_ms(n)` as "this operation finishes within n ms".
 
-// Scenario 4: runtime config from file
-uint64_t cfg_timeout = app_config.get("plugin_timeout_ms", 5000);
-dll::Object lib4(rcu::TimeoutConfig{cfg_timeout});
+**Who acts on a timeout.** Nobody automatically: a `false` result leaves the retired object in place — still mapped — and a later successful grace period reclaims it. There is deliberately no automatic forced unload, and no "never unmap" policy yet; see `dll::ReclaimOutcome` for what a `dll::Object` reports about its own retired image.
+
+### Who Owns Validity
+
+The grace period protects *calls*: `dll::Function::operator()` holds a read-side section for the whole call and revalidates the cached entry against the current image, so a reload can never make it call into a retired module. It does **not** protect a bare pointer that was copied out of the module, because nothing ties that pointer to a live image:| Way to reach module code | Protection across the call | What keeps it valid across a reload |
+|---|---|---|
+| `dll::Function::operator()` | read-side section, entry revalidated per call | the `dll::Function` handle (and `unload()` refuses while any handle is alive) |
+| `dll::Function::raw()` | none | nothing: re-resolve after a reload |
+| `Object::resolve(name)` | none | nothing: re-resolve after a reload |
+| `runtime::Function` (closure) | none | nothing: keep the module loaded yourself |
+| `InterfaceProxy::call` | its own **lease** model (`ModuleControl`, `pin`/`unpin`) | the lease: "the binding stays valid exactly as long as the caller holds a lease" |
+
+So if a call target has to survive a reload, hold a handle or a lease — not a pointer.
+
+### Grace Period and Reclamation Latency
+
+A grace period waits in `while (!readers_passed(old_epoch)) {}` until every reader has left its critical section. By default it is **unbounded**, so a reader that stays inside (a stuck call, a leaked `enter_read()` without `exit_read()`, a thread blocked on something it holds the section across) **blocks `unload()` and `reload()` for as long as it stays there**; `force_unload()` is the escape hatch and requires the caller to have already excluded readers. A `dll::Object` can bound that wait — see "Bounding a Reclaim Wait" below — which converts the block into a reported deferral without unloading anything early.
+
+There is no automatic policy on top of that: no forced unload on timeout (a timeout is not proof that no reader is inside), and no frame/clock input from the host. The earlier `TimeoutConfig` / `TimeoutPolicy` / starvation-guard surface was removed in 0.x rather than kept as an interface that promised behaviour it did not have.
+
+**Read-side contract.** A read-side section must be balanced on every path:
+
+- `dll::Function::operator()` releases the section after the call returns, so a callee must not let an exception escape — it would skip the release and leave that thread inside its section permanently, which stalls every later grace period in the process.
+- Manual `enter_read()` / `exit_read()` pairs carry the same obligation; use `rcu::LockGuard` where the section spans anything that can throw or return early.
+- A thread that has left is kept in the reader list with epoch 0 (never blocking), so leaving does not unregister anything; the list only grows with the number of threads that ever entered.
+
+**State machine** (`ABIX/RCU/Config.h`, `rcu::State`):
+
+```
+control created            -> zombie   (is_loaded() == false, calls refused)
+load() / reload() succeed  -> active   (image published, is_loaded() == true)
+unload() / force_unload()  -> zombie   (image detached, later reclaimed)
 ```
 
-### Lazy Starvation Guard
+`is_loaded()` is `state == active && image != nullptr`; `Function::valid()` and `Object::enter_read()` re-check both, so a handle from a previous image is refused rather than called.
 
-When no RCU unload is in progress, the timeout check only fires inside `wait_for_readers()`. If no new readers arrive, the time baseline may go stale. The starvation guard prevents this with three configurable levels:
+### Bounding a Reclaim Wait (`dll::Object`)
 
-| Level | Macro Value | Behavior |
-|-------|-------------|----------|
-| **Off** | `ABIX_LAZY_STARVATION_GUARD_OFF` (0) | Pure lazy, zero overhead. Accepts starvation risk. |
-| **Tick** | `ABIX_LAZY_STARVATION_GUARD_TICK` (1) | `try_enter_read()` calls `try_passive_check()` — updates `g_last_check_time` every 30s. `abix::tick()` also updates it. **(Default)** |
-| **Idle** | `ABIX_LAZY_STARVATION_GUARD_IDLE` (2) | Same as Tick, plus a background thread that wakes every 30s. Requires `#define ABIX_ENABLE_IDLE_BACKGROUND_THREAD`. |
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `set_reclaim_timeout_ms(ms)` | `void` | Bounds how long a load/reload/unload waits for a retired image's grace period. The value is a **duration**: every operation derives a fresh deadline from it, so a configured timeout is never reused as an absolute instant. `0` (default) means unbounded |
+| `reclaim_timeout_ms()` | `uint64_t` | The configured duration |
+| `reclaim_outcome()` | `ReclaimOutcome` | What happened to the image retired by the most recent operation |
 
-**`abix::tick()` is always available.** When the starvation guard is enabled, calling `tick()` from the main loop keeps the time baseline current without calling `get_tick_ms()` (a system call) on every `try_enter_read()`. It also feeds the frame counter for frame-based timeout deadlines.
+`ReclaimOutcome` describes the *retired image*, never the operation itself — a reload that swapped the module in is still successful when the previous image is deferred:
+
+| Value | Meaning |
+|-------|---------|
+| `not_attempted` | The operation retired nothing (nothing was loaded yet) |
+| `reclaimed` | The retired image was released |
+| `deferred_batched` | No timeout is configured and the batched schedule had not advanced yet; a later operation releases it |
+| `deferred_timeout` | A timeout is configured and the grace period was not proven in time; the image stays retired and mapped |
+
+Enabling a bound is an explicit trade, as described under "Bounding a Grace-Period Wait": the wait then asks for a real grace period on every operation instead of sharing the batched one, so the alternating-reload cost of ~4.97x applies to the Objects that opt in. A deferral is not a leak: once a grace period can be proven, the next operation reclaims every pending image — the same pull-based mechanism that already expresses "reclaim later".
 
 ### Logging (`ABIX/Util/Log.h`)
 
@@ -440,19 +476,18 @@ The primary template for typed function handles. Template parameters:
 | `valid()` | `bool` | Whether the handle is valid and the library is loaded |
 | `operator bool()` | `bool` | Same as `valid()` |
 | `index()` | `index_t` | Entry index in the table |
-| `library()` | `const dll::Object*` | The associated DLL object |
 | `handle_id()` | `uint64_t` | Opaque handle ID (stable across reload) |
-| `raw()` | `fn_type` | Raw function pointer |
+| `raw()` | `fn_type` | Raw function pointer. Handed out after the read-side section is released, so it is valid only while this handle's image is current: a reload invalidates it (re-resolve, or call `operator()`, which revalidates per call) |
 | `operator()(Args...)` | `R` | Call the function with type safety |
 
 **`operator()` behavior:**
-- Acquires RCU read-side critical section via `try_enter_read()` before calling the DLL function
-- Releases the critical section via `exit_read()` on all exit paths (including error paths)
-- If `try_enter_read()` fails (module is unloading) → sets `dll::CallError::unloading`, returns default `R{}`
-- If library is not loaded → sets `dll::CallError::not_loaded`, returns default `R{}`
-- If index is out of bounds → sets `dll::CallError::table_changed`, returns default `R{}`
-- If entry signature/name/hash changed → sets `dll::CallError::table_changed`, returns default `R{}`
-- If function pointer is null → sets `dll::CallError::invalid`, returns default `R{}`
+- Fast path: enters the read-side critical section (`rcu::Domain::enter()`), then confirms the cached snapshot in one relaxed load — the current image must be the one `_index` was validated against, and that entry must still carry the resolved name hash and signature. Only then does it call; the `strcmp` stays on the slow path.
+- Slow path (first call, after a reload, or on a stale snapshot): re-checks the state, revalidates the entry by index, name hash, signature and `strcmp`, and records the snapshot.
+- Releases the critical section via `exit_read()` on all exit paths (including error paths).
+- If nothing is loaded → sets `dll::CallError::not_loaded`, returns default `R{}`.
+- If the index is out of bounds for the current table → sets `dll::CallError::table_changed`, returns default `R{}`.
+- If the entry's signature/name hash/name changed → sets `dll::CallError::table_changed`, returns default `R{}`.
+- If the function pointer is null → sets `dll::CallError::invalid`, returns default `R{}`.
 
 ### `dll::Function<Sig, C>`
 
@@ -679,6 +714,8 @@ An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Sim
 - Stores a heap-allocated `closure_base` pointer as a `uint64_t` handle
 - Closure contains invoke/destroy/clone function pointers
 - `SKL_ABIX_CLOSURE_MAGIC` validates the closure at call time
+
+**Lifetime:** invoking a closure takes no read-side protection and holds no reference to any module. A closure that captures a module's raw function pointer is therefore only valid while that module stays loaded — pair it with a `dll::Function` handle or an Interface lease if it has to outlive a reload.
 
 **API:**
 

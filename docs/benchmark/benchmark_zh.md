@@ -90,9 +90,24 @@ build/Release/bin/bench_all \
   --benchmark_report_aggregates_only=true
 ```
 
-### B8/B16 对照观察
+### Epoch Batch：B8 / B16 与 B8 / B1
 
 `SKL_ABIX_RCU_EPOCH_BATCH=8` 和 `SKL_ABIX_RCU_EPOCH_BATCH=16` 两种构建均可运行 20T role-based 负载。在 CPU scaling 开启的情况下，重复短跑的变异系数约为 29%～44%，不足以判定哪一个更快，也不足以支持固定的百分比收益。
+
+`SKL_ABIX_RCU_EPOCH_BATCH=1` 另作单独测量，因为它决定的是**换出的模块 image 多快被回收**（Windows、关闭 Defender 实时防护、预热页缓存、两种构建交错运行、5 轮 × 3 repetitions）：
+
+| 基准 | batch 8 | batch 1 | |
+|---|---:|---:|---|
+| `BM_Reload_AlternatingPaths` | 17.3 µs | 85.9 µs | **4.97×** |
+| `BM_Reload_SamePath` | 3.62 µs | 3.47 µs | 不变 |
+| `BM_Reload_LoadFreeA`（loader 原语；两种构建代码完全相同） | 41.3 µs | 41.1 µs | 一致 |
+| `BM_EBR_Synchronize` | 7 ns | 15 ns | 每调用 +8 ns |
+| `BM_EBR_TryCollect_Empty` | 10 ns | 10 ns | 不变 |
+| `BM_EBR_ReclaimBatch/10000` | 239–259 µs | 236–238 µs | 总工作量不变 |
+
+`BM_Reload_LoadFreeA` 在两种构建里跑的是同一份代码，因此 `AlternatingPaths` 的差距只可能来自**卸载时机**：batch=8 时另一个模块保持 mapped，下次 `LoadLibrary` 只是引用计数 +1（8.6 µs/reload）；batch=1 时它被 unmap，每次 reload 都要付一次完整 map（43 µs/reload ≈ 那 41 µs 的原语）。`BM_EBR_GracePeriod/*` 变化的是**形态而非成本**：batch=8 时每 8 次 `synchronize()` 才推进一次 epoch，该基准大多只量到 `retire`；batch=1 时它量到完整的就地宽限期（100 万个退休对象 ≈ 1 ms）。两种情况下总回收工作量相同。
+
+**对默认值的结论**：epoch batch 是**模块卸载延迟**策略，不只是摊薄手段，因此默认维持 8。索引槽数组的回收已不再依赖它：`Domain::retire_eager()` + `synchronize_eager()` 会在下一次调用回收该类（见 `docs/abix/api_zh.md` 的"两类回收延迟"），于是 reload 可以复用前任的索引缓冲，而模块仍保留批量延迟。
 
 ## 5. 性能分析方法
 
@@ -102,7 +117,7 @@ build/Release/bin/bench_all \
 2. 使用 `SyncPhase` 判断同步路径是否随线程数退化。
 3. 使用 `synthetic_mixed` 比较固定总工作量的扩展性。
 4. 使用 `role_based` 判断目标 read-mostly 场景下的实际吞吐量。
-5. 对 B8、B16 和 threshold 做邻域扫描，而不是只测 8、16、32 这些整齐数字。
+5. 对 B8、B16（当回收延迟重要时还包括 B1）与 threshold 做邻域扫描，而不是只测 8、16、32 这些整齐数字。
 6. 至少重复 10 次，记录 median、p90、标准差和 CV；CV 较高时只报告"结果不确定"。
 
 需要重点关注的潜在瓶颈包括：
@@ -123,10 +138,15 @@ graph TD
 | 参数 | 作用 |
 |---|---|
 | `SKL_ABIX_RCU_CACHE_LINE_SIZE` | 竞争字段的 cache-line 隔离大小 |
-| `SKL_ABIX_RCU_EPOCH_BATCH` | 多少次同步调用后推进一次 epoch |
+| `SKL_ABIX_RCU_EPOCH_BATCH` | 批量类的回收延迟：多少次 `synchronize()` 推进一次 epoch，因而也决定换出的模块 image 保持 mapped 多久 |
 | `SKL_ABIX_RCU_BATCH_PUBLISH` | retire 对象发布到全局列表前的批量大小 |
 
-当前默认值为 epoch batch 8。它应被视为保守默认值，而不是对所有 CPU 和负载都最优。修改默认值前，应在目标平台上以 Release 构建、固定 CPU 亲和性、稳定频率和足够重复次数重新测量。
+当前默认值为 epoch batch 8。它应被视为保守默认值，而不是对所有 CPU 和负载都最优。改动前需要记住两点：
+
+- 它同时是**延后卸载**的控制量，不只是摊薄手段：调低它换来"退休对象（与可复用的索引缓冲）更早释放"，代价是每次交替重载都要付一次全新模块 map；
+- `synchronize_eager()` **不受**它影响——即时回收总在下一次调用发生——所以索引缓冲复用不依赖这个值。
+
+修改默认值前，应在目标平台上以 Release 构建、固定 CPU 亲和性、稳定频率和足够重复次数重新测量，并且**同时跑 `Reload` 家族**（不只是 EBR 家族）：该效应最先表现为 loader 退化。
 
 ## 7. 局限性
 

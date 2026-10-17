@@ -114,6 +114,11 @@ public:
     bool empty() const noexcept { return _h == 0; }
     uint64_t handle() const noexcept { return _h; }
 
+    // Invokes the stored callable. There is no read-side protection here and no
+    // lifetime tie to any module: if the callable targets module code (a raw
+    // function pointer captured by the closure), the caller has to keep that module
+    // loaded for as long as the closure may be called - a `dll::Function` handle or
+    // an Interface lease does that, a bare pointer does not.
     R operator()(Args... a) const {
         if (!_h) {
             dll::last_error() = dll::CallError::invalid;

@@ -31,7 +31,7 @@ Agent-efficiency benchmarking (TROI) is a separate concern and is documented in 
 - `BM_EBR_SyncPhase` isolates synchronization cost. `BM_EBR_Workload/role_based` is the more representative N-readers/one-writer model.
 - AMC extraction, `.abix` serialization, compatibility analysis, and generated metadata registration are build/control-plane operations. They are not included in these DLL-call or EBR hot-path measurements, and this document makes no latency claim for them.
 - `synthetic_mixed` keeps total work fixed across thread counts and is suitable for scalability comparisons. `role_based` changes the writer operation count as readers are added; it models role separation, but is not a fixed-work scaling curve.
-- CPU frequency scaling is enabled on the measurement platform, and short-run variance is high; the observations below do not establish a B8/B16 performance winner or a fixed percentage claim.
+- CPU frequency scaling is enabled on the measurement platform, and short-run variance is high; the observations below do not establish a B8/B16 performance winner or a fixed percentage claim. (`B1` was measured separately and does show a clear direction — see the Reload table in section 4.)
 
 ## 2. What Is Measured
 
@@ -79,9 +79,24 @@ build/Release/bin/bench_all \
   --benchmark_report_aggregates_only=true
 ```
 
-### B8/B16 Observations
+### Epoch Batch: B8 / B16, and B8 / B1
 
 Both `SKL_ABIX_RCU_EPOCH_BATCH=8` and `SKL_ABIX_RCU_EPOCH_BATCH=16` builds run the 20-thread role-based workloads. With CPU scaling enabled, repeated short runs show coefficients of variation of roughly 29% to 44%, which is insufficient to establish which value is faster or to claim a fixed percentage improvement.
+
+`SKL_ABIX_RCU_EPOCH_BATCH=1` was measured separately, because it decides *how soon a retired module image is reclaimed* (Windows, Defender real-time protection off, warm page cache, the two builds run interleaved, 5 rounds x 3 repetitions):
+
+| Benchmark | batch 8 | batch 1 | |
+|---|---:|---:|---|
+| `BM_Reload_AlternatingPaths` | 17.3 us | 85.9 us | **4.97x** |
+| `BM_Reload_SamePath` | 3.62 us | 3.47 us | unchanged |
+| `BM_Reload_LoadFreeA` (loader primitive; identical code in both builds) | 41.3 us | 41.1 us | identical |
+| `BM_EBR_Synchronize` | 7 ns | 15 ns | +8 ns per call |
+| `BM_EBR_TryCollect_Empty` | 10 ns | 10 ns | unchanged |
+| `BM_EBR_ReclaimBatch/10000` | 239-259 us | 236-238 us | total work unchanged |
+
+`BM_Reload_LoadFreeA` runs the same code in both builds, so the alternating-reload gap can only come from *when* the retired image is unloaded: at batch 8 the other module stays mapped and the next load is a cheap reference-count bump (8.6 us per reload), while at batch 1 it is unmapped and every reload pays a full map (43 us per reload, i.e. the 41 us primitive). `BM_EBR_GracePeriod/*` changes shape rather than cost: at batch 8 only one `synchronize()` in eight advances the epoch, so the benchmark mostly times `retire`; at batch 1 it times the full grace period inline (1M retired objects ~= 1 ms). The total reclamation work is the same either way.
+
+**Consequence for the default**: the epoch batch is a *module-unload delay* policy, not merely an amortization knob, so 8 remains the default. Reclaiming an index slot array no longer depends on it: `Domain::retire_eager()` + `synchronize_eager()` reclaim that class on their next call (see `docs/abix/api.md`, "Two reclaim classes"), so a reload can reuse its predecessor's index buffer while the module keeps the batched delay.
 
 ## 5. Analysis Method
 
@@ -89,7 +104,7 @@ Both `SKL_ABIX_RCU_EPOCH_BATCH=8` and `SKL_ABIX_RCU_EPOCH_BATCH=16` builds run t
 2. Use `SyncPhase` to identify synchronization degradation with thread count.
 3. Use `synthetic_mixed` for fixed-work scalability.
 4. Use `role_based` for target read-mostly throughput.
-5. Sweep neighboring values around B8/B16 and threshold values instead of testing only round numbers.
+5. Sweep neighboring values around B8/B16 — and include B1 when reclamation latency matters — instead of testing only round numbers.
 6. Repeat at least 10 times and record median, p90, standard deviation, and CV. When CV is high, report the result as inconclusive.
 
 The potential contention chain is:
@@ -110,10 +125,15 @@ graph TD
 | Parameter | Purpose |
 |---|---|
 | `SKL_ABIX_RCU_CACHE_LINE_SIZE` | Cache-line isolation size for contended fields |
-| `SKL_ABIX_RCU_EPOCH_BATCH` | Synchronization calls per epoch advancement |
+| `SKL_ABIX_RCU_EPOCH_BATCH` | Batched-class reclamation delay: `synchronize()` calls per epoch advancement, and therefore how long a retired module image stays mapped |
 | `SKL_ABIX_RCU_BATCH_PUBLISH` | Retired objects accumulated before global publication |
 
-The current default epoch batch is 8. Treat it as a conservative default, not as an optimum for every CPU and workload. Before changing it, rerun a Release benchmark on the target platform with stable CPU affinity, frequency, and enough repetitions.
+The current default epoch batch is 8. Treat it as a conservative default, not as an optimum for every CPU and workload. Two properties are worth keeping in mind before changing it:
+
+- it is the *deferred-unload* control as well as the amortization control, so lowering it trades a faster release of retired objects (and of reusable index buffers) for a fresh module map on every alternating reload;
+- `synchronize_eager()` is **not** affected by it — eager reclamation always happens on the next call — so index-buffer reuse does not depend on this value.
+
+Before changing it, rerun a Release benchmark on the target platform with stable CPU affinity, frequency, and enough repetitions, and include the `Reload` family (not just the EBR family): the effect shows up first as a loader regression.
 
 ## 7. Limitations
 

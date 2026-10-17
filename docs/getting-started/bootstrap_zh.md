@@ -453,7 +453,7 @@ metadata 与 C++ 投影。它不是严格编译器理论意义上的源码自托
 4. 闭环消费者验证 `type_of<TypeInfo>()`、`type_of<RegistryEntry>()`、按 TypeId/名称
    lookup、canonical registry bridge，以及生成 descriptor 的 size/align 与本机类型
    一致。
-5. `ThreadState`、`RetiredNode`、`RetiredBatch`、`Epoch` 与 `rcu_domain` 已纳入
+5. `ThreadState`、`RetiredNode`、`RetiredBatch`、`Epoch` 与 `rcu::Domain` 已纳入
    artifact；运行时类型 metadata 来自生成的 module，而非手写 metadata；Bootstrap
    Kernel 的两条自描述 wire record 是唯一刻意保留的 TCB。
 

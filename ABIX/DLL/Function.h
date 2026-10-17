@@ -113,7 +113,8 @@ public:
     }
 
     bool valid() const noexcept {
-        return _valid && _control
+        return _valid
+            && _control
             && util::load_acquire(&_control->state) == static_cast<uint32_t>(rcu::State::active)
             && util::load_acquire(&_control->image) != nullptr;
     }
@@ -121,6 +122,11 @@ public:
     runtime::index_t index() const noexcept { return _index; }
     uint64_t handle_id() const noexcept { return static_cast<uint64_t>(_index); }
 
+    // The pointer is handed out *after* the read-side section has been released, so
+    // nothing ties it to a live image: it is only valid while the image it came from
+    // is still the current one. A `reload()` (or `unload()` from another thread)
+    // invalidates it. Use `operator()`, which revalidates on every call, or hold an
+    // Interface lease, if the target has to stay valid across reloads.
     FnPtr raw() const noexcept {
         if (!valid()) return nullptr;
         rcu::LockGuard guard(rcu::Domain::instance());
@@ -147,11 +153,19 @@ public:
         // ("the function with this name and signature in this module") intact
         // while moving the per-call `strcmp` to the slow path. A stale or torn
         // snapshot can therefore only cost a revalidate, never a wrong call.
+        //
+        // The section is released *after* the call returns, so the callee must not
+        // let an exception escape: an exception would skip the `exit()` below and
+        // leave this thread inside its section for good, which blocks every later
+        // grace period in the process. Calls cross a C ABI boundary, so that is the
+        // contract rather than something the callee is expected to test for.
         {
             rcu::Domain::instance().enter();
             const Image *image = util::load_acquire(&_control->image);
-            if (image != nullptr && image == util::load_relaxed(&_verified_image)
-                && image->export_table != nullptr && _index < image->export_table->count) {
+            if (image != nullptr
+                && image == util::load_relaxed(&_verified_image)
+                && image->export_table != nullptr
+                && _index < image->export_table->count) {
                 const auto &entry = image->export_table->entries[_index];
                 if (entry.name_hash == _name_hash && entry.sig == _sig && entry.fnptr != 0) {
                     FnPtr verified = nullptr;
