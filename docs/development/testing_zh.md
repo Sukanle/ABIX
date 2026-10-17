@@ -296,7 +296,7 @@ python tools/build.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual S
 python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变体
 ```
 
-`build.py` 的常用参数：`--clean`、`--build-only` / `--build-test` / `--build-bench`、`--run-only` / `--run-test` / `--run-bench`、`--build-type`、`--generator`、`--with-dev`；`--build-*` 与 `--run-*` 不能混用。注意它跑的是聚合可执行文件，**不等于 `ctest`**（覆盖面见[测试分层](#测试分层)）。
+`build.py` 的常用参数：`--clean`、`--build-only` / `--build-test` / `--build-bench`、`--run-only` / `--run-test` / `--run-bench`、`--build-type`、`--generator`、`--with-dev`；`--build-*` 与 `--run-*` 不能混用。基准这一步已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**（覆盖面见[测试分层](#测试分层)）。
 
 ### 测试与验证
 
@@ -306,7 +306,7 @@ python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变
 | `test_amc_elf-pe.py`    | 9 阶段验证元数据段：`amc build` → `amc generate`（带平台段属性的 `amc_generated.hpp`）→ `clang++` 链出含 `.abix.metadata` 的原生二进制 → `readelf -S` → `objdump -s` → `amc metadata --from-elf` → `--verify` → 导出往返 → 错误用例 | 证明「段真的进了二进制并且能被读回」，而不只是在内存里往返                                                                      | 每个 `[Phase N]` 输出 `[PASS]`（含 `✓`）并在末尾给出汇总；依赖 `readelf` / `objdump`，主要在 Linux/macOS 上使用                                              |
 | `abix_mcp_compat.py`    | 以 stdio JSON-RPC 驱动 `amc-mcp`，回答「`plugin` 与 `host` 是否 ABI 兼容」，输出 JSON 报告                                                                                                                                          | 让 MCP 工具协议可在 CI 中验证——把 LLM 从链路中去掉，但传输与工具协议保持真实                                                    | stdout 为 JSON 报告；兼容时 stderr 打印 `COMPATIBLE`，否则 `INCOMPATIBLE: N difference(s)` 并返回非零                                                        |
 | `abix_token_cost.py`    | 比较「读源码」与「读 `amc context <file.abix> --format llm`」了解同一模块 ABI 的 token 数                                                                                                                                           | 给「元数据视图更省上下文」一个可复现的量级参考                                                                                  | stdout 为 `{"source_tokens", "metadata_tokens", "source_over_metadata"}`；用词法分词器估算，不是模型分词器，应视为**指标而非基准**                           |
-| `run_bench_isolated.py` | 让每个基准**家族各占一个进程**运行 `bench_all` 并汇总（mean/stddev）。`--list` 列出默认的 EBR/RCU 家族，可传自定义家族                                                                                                                                              | EBR/RCU 家族共享进程级 `rcu::Domain`，同一家族在别人跑完后测会慢数倍（`BM_EBR_SyncPhase/1T` 从约 6 ns 到约 1 us）；隔离后跨家族/跨机器才可比 | 逐个家族打印 `N benchmarks -> <json>`，末尾输出 `| family | benchmark | threads | mean ns | sd |` 表；产物为每家族一个 JSON |
+| `run_bench.py` | 让每个基准**家族各占一个进程**运行并汇总（mean/stddev）。`--list` 列出将要运行的内容：它通过 `--benchmark_list_tests` 自动发现 `bench_all` 里的全部家族，并额外运行未并入 `bench_all` 的独立 Google Benchmark 可执行文件（`abix_resolve_bench`、`abix_lookup_cross_bench`、`interface_dispatch_bench`）；可传显式过滤串缩小范围                                                                                                                                              | EBR/RCU 家族共享进程级 `rcu::Domain`，同一家族在别人跑完后测会慢数倍（`BM_EBR_SyncPhase/1T` 从约 6 ns 到约 1 us）；隔离后跨家族/跨机器才可比 | 逐个家族打印 `N benchmarks -> <json>`，末尾输出 `| family | benchmark | threads | mean ns | sd |` 表；产物为每家族一个 JSON |
 
 ```bash
 python tools/test_amc_bootstrap.py                       # 可用 AMC_BIN_DIR=... 复用外部构建

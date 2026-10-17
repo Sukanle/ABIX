@@ -199,7 +199,7 @@ done
 
 结果支持以下有限结论：共享写竞争在 packed false-sharing 测试中随线程数增加，而 padding 测试保持在约 3.4～4.0 ns；HashIndex 在 16K uniform lookup 中明显低于线性扫描；EBR role-based 20T 吞吐量约为 12 G/s 量级。以上不是跨平台承诺，且 role-based write-heavy 的 CV 约 14.7%，应谨慎引用。
 
-两点测量说明。其一，reload 两行是在**两个不同模块文件之间交替**，每次交换都强制对新映像做完整 map/unmap；真正对应开发者热重载循环的「同路径重建」是 `BM_Reload_SamePath`，而 `BM_Reload_LoadOnly`/`FreeOnly`/`RetireSync` 把成本拆开了。其二，EBR/RCU 各家族共享进程级 `rcu::Domain`，同一家族在别人跑完之后测会比单独过滤时慢数倍：`BM_EBR_SyncPhase/1T` 从「进程里只有它」的约 6 ns 到「全量跑之后」的约 1 us。`tools/run_bench_isolated.py` 让每个家族各占一个进程并汇总结果，这才是跨机器/跨提交可比较的形式。
+两点测量说明。其一，reload 两行是在**两个不同模块文件之间交替**，每次交换都强制对新映像做完整 map/unmap；真正对应开发者热重载循环的「同路径重建」是 `BM_Reload_SamePath`，而 `BM_Reload_LoadOnly`/`FreeOnly`/`RetireSync` 把成本拆开了。其二，EBR/RCU 各家族共享进程级 `rcu::Domain`，同一家族在别人跑完之后测会比单独过滤时慢数倍：`BM_EBR_SyncPhase/1T` 从「进程里只有它」的约 6 ns 到「全量跑之后」的约 1 us。`tools/run_bench.py` 让每个家族各占一个进程并汇总结果，这才是跨机器/跨提交可比较的形式。
 
 ### Lookup 基准测量
 
