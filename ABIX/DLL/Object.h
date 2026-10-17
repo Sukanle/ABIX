@@ -51,6 +51,10 @@ enum class CallError : uint8_t {
     invalid = 7,
     load_failed = 8,
     unloading = 9,
+    // A configured reclaim timeout also bounds how long an operation waits for the
+    // Control writer lock, so a host with a time budget is not left spinning behind
+    // another operation. Only reported when a timeout is configured.
+    lock_timeout = 10,
 };
 inline CallError &last_error() noexcept {
     static CallError e = CallError::none;
@@ -197,7 +201,9 @@ class Object {
 public:
     Object() noexcept
         : _c(make_control()) {}
-    ~Object() { unload(); }
+    // The destructor must complete, so it waits for the writer lock unconditionally
+    // (unload() itself honours a configured reclaim timeout).
+    ~Object() { unload_impl(/*bounded=*/false); }
     Object(const Object &) = delete;
     Object &operator=(const Object &) = delete;
 
@@ -208,70 +214,47 @@ public:
             last_error() = CallError::load_failed;
             return false;
         }
-        lock_writer();
-        unload_internal_locked();
-        ModuleHandle m = detail::load_module(path);
-        if (!m) {
+        // The new module is loaded and indexed with no lock held, and the writer lock
+        // is taken only for the swap (publish_image). Holding it across LoadLibrary +
+        // the index build was the long critical section that made every other
+        // operation's lock acquisition unbounded. A failed load now leaves the
+        // previous image in place, which is what reload() already did.
+        Image *new_img = load_image(path);
+        if (!new_img) {
             ABIX_LOG_ERROR("Object::load: failed to load module '%s'", path);
             last_error() = CallError::load_failed;
-            unlock_writer();
             return false;
         }
-        // The name+sig table is optional: a module may expose only ABIX
-        // Interface capabilities through the fixed `abix_module_query_v1` entry.
-        auto getter =
-            reinterpret_cast<const runtime::Table *(*)(void)>(detail::resolve_symbol(m, SKL_ABIX_TABLE_GETTER));
-        const runtime::Table *t = getter ? getter() : nullptr;
-        if (t && (t->magic != SKL_ABIX_TABLE_MAGIC || t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION)) {
-            ABIX_LOG_ERROR("Object::load: bad table magic/version in '%s'", path);
-            detail::unload_module(m);
-            last_error() = CallError::load_failed;
-            unlock_writer();
+        // Read the entry count before publishing: once published, another operation
+        // may retire the image and free it.
+        const uint32_t entries = new_img->export_table ? new_img->export_table->count : 0u;
+        if (!publish_image(new_img, rcu::State::active)) {
+            discard_image(new_img);
+            last_error() = CallError::lock_timeout;
             return false;
         }
-        Image *img = new (std::nothrow) Image{m, t, {}};
-        if (!img) {
-            ABIX_LOG_ERROR("Object::load: failed to allocate image");
-            detail::unload_module(m);
-            last_error() = CallError::load_failed;
-            unlock_writer();
-            return false;
-        }
-        if (t && t->count >= SKL_ABIX_HASH_THRESHOLD) img->index.build(*t);
-        util::store_release(&_c->image, img);
-        util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::active));
         last_error() = CallError::none;
         _path = path;
-        ABIX_LOG_INFO("Object::load: loaded '%s' (%u entries)", path, t ? t->count : 0u);
-        unlock_writer();
+        ABIX_LOG_INFO("Object::load: loaded '%s' (%u entries)", path, entries);
         return true;
     }
 
-    bool unload() noexcept {
-        if (!_c) return false;
-        if (_c.use_count() > 1) {
-            ABIX_LOG_WARNING("Object::unload: %u live handles, cannot unload", _c.use_count() - 1);
-            last_error() = CallError::stale_handle;
-            return false;
-        }
-        lock_writer();
-        bool ok = unload_internal_locked();
-        unlock_writer();
-        return ok;
-    }
+    bool unload() noexcept { return unload_impl(/*bounded=*/true); }
 
     void force_unload() noexcept {
         if (!_c) return;
         ABIX_LOG_WARNING("Object::force_unload: bypassing RCU, caller must ensure safety");
-        lock_writer();
+        // Deliberately unbounded: this is the path that must complete. The lock is
+        // held only for the swap; the image is freed outside it.
+        if (!lock_writer(/*bounded=*/false)) return;
         auto *img = util::exchange_acq_rel(&_c->image, nullptr);
         util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::zombie));
+        unlock_writer();
         if (img) {
             img->index.destroy();
             detail::unload_module(img->module);
             delete img;
         }
-        unlock_writer();
     }
 
     bool reload(const char *path) noexcept {
@@ -279,45 +262,25 @@ public:
             last_error() = CallError::load_failed;
             return false;
         }
-        ABIX_LOG_INFO("Object::reload: loading new module, then util swap and retire old");
+        ABIX_LOG_INFO("Object::reload: loading new module, then swap and retire old");
 
-        ModuleHandle new_m = detail::load_module(path);
-        if (!new_m) {
+        Image *new_img = load_image(path);
+        if (!new_img) {
             ABIX_LOG_ERROR("Object::reload: failed to load module '%s'", path);
             last_error() = CallError::load_failed;
             return false;
         }
-        auto getter =
-            reinterpret_cast<const runtime::Table *(*)()>(detail::resolve_symbol(new_m, SKL_ABIX_TABLE_GETTER));
-        const runtime::Table *new_t = getter ? getter() : nullptr;
-        if (new_t && (new_t->magic != SKL_ABIX_TABLE_MAGIC || new_t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION)) {
-            ABIX_LOG_ERROR("Object::reload: bad table magic/version in '%s'", path);
-            detail::unload_module(new_m);
-            last_error() = CallError::load_failed;
+        // Read the entry count before publishing: once published, another operation
+        // may retire the image and free it.
+        const uint32_t entries = new_img->export_table ? new_img->export_table->count : 0u;
+        if (!publish_image(new_img, rcu::State::active)) {
+            discard_image(new_img);
+            last_error() = CallError::lock_timeout;
             return false;
         }
-
-        auto *new_img = new (std::nothrow) Image{new_m, new_t, {}};
-        if (!new_img) {
-            ABIX_LOG_ERROR("Object::reload: failed to allocate image");
-            detail::unload_module(new_m);
-            last_error() = CallError::load_failed;
-            return false;
-        }
-        if (new_t && new_t->count >= SKL_ABIX_HASH_THRESHOLD) new_img->index.build(*new_t);
-
-        lock_writer();
-        auto *old_img = util::exchange_acq_rel(&_c->image, new_img);
-        util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::active));
-        unlock_writer();
-
-        if (old_img) {
-            detail::retire_image(_c.get(), old_img);
-        }
-
         last_error() = CallError::none;
         _path = path;
-        ABIX_LOG_INFO("Object::reload: reloaded '%s' (%u entries)", path, new_t ? new_t->count : 0u);
+        ABIX_LOG_INFO("Object::reload: reloaded '%s' (%u entries)", path, entries);
         return true;
     }
 
@@ -392,20 +355,94 @@ private:
         return SharedPtr<Control>(c, detail::destroy_control);
     }
 
-    void lock_writer() noexcept {
-        if (_c) {
+    // Takes the Control writer lock. `bounded == false` (the destructor and
+    // force_unload: paths that must complete) always waits; otherwise a configured
+    // reclaim timeout bounds the wait, because a host with a time budget should not
+    // spin behind another operation. Returns false on timeout, in which case the
+    // caller has changed nothing.
+    bool lock_writer(bool bounded) noexcept {
+        if (!_c) return false;
+        if (!bounded || _c->reclaim_timeout_ms == 0) {
             while (!util::cas_relaxed(&_c->writer_lock, 0U, 1U)) {}
+            return true;
         }
+        const rcu::Deadline deadline = rcu::Deadline::after_ms(_c->reclaim_timeout_ms);
+        unsigned polls = 0;
+        while (!util::cas_relaxed(&_c->writer_lock, 0U, 1U)) {
+            // Poll the clock rarely: a spin is cheap, an expired() read is not.
+            if ((++polls & 0xFFu) == 0 && deadline.expired()) return false;
+        }
+        return true;
     }
     void unlock_writer() noexcept {
         if (_c) util::store_relaxed(&_c->writer_lock, 0U);
     }
 
-    bool unload_internal_locked() noexcept {
-        auto *img = util::exchange_acq_rel(&_c->image, nullptr);
+    // Swaps `new_img` (nullptr for unload) into the object under the writer lock,
+    // then retires the previous image **outside** the lock. Holding the lock only
+    // for the swap is what keeps another operation's lock acquisition bounded:
+    // LoadLibrary, the index build and the grace-period wait all happen elsewhere.
+    // On a lock timeout nothing changes; `retired_out` (when given) receives the
+    // previous image so the caller can tell whether anything was retired.
+    bool publish_image(Image *new_img, rcu::State state, Image **retired_out = nullptr) noexcept {
+        if (!lock_writer(/*bounded=*/true)) return false;
+        Image *previous = util::exchange_acq_rel(&_c->image, new_img);
+        util::store_release(&_c->state, static_cast<uint32_t>(state));
+        unlock_writer();
+        if (retired_out) *retired_out = previous;
+        if (previous) detail::retire_image(_c.get(), previous);
+        return true;
+    }
+
+    // Loads and indexes a module without touching the writer lock. Returns nullptr
+    // on any failure; nothing is published in that case.
+    Image *load_image(const char *path) noexcept {
+        ModuleHandle m = detail::load_module(path);
+        if (!m) return nullptr;
+        auto getter =
+            reinterpret_cast<const runtime::Table *(*)(void)>(detail::resolve_symbol(m, SKL_ABIX_TABLE_GETTER));
+        const runtime::Table *t = getter ? getter() : nullptr;
+        if (t && (t->magic != SKL_ABIX_TABLE_MAGIC || t->format_version != SKL_ABIX_TABLE_FORMAT_VERSION)) {
+            detail::unload_module(m);
+            return nullptr;
+        }
+        auto *img = new (std::nothrow) Image{m, t, {}};
+        if (!img) {
+            detail::unload_module(m);
+            return nullptr;
+        }
+        if (t && t->count >= SKL_ABIX_HASH_THRESHOLD) img->index.build(*t);
+        return img;
+    }
+
+    // Frees an image that was never published, so no reader can observe it: no
+    // grace period is needed.
+    static void discard_image(Image *img) noexcept {
+        if (!img) return;
+        img->index.destroy();
+        detail::unload_module(img->module);
+        delete img;
+    }
+
+    // Detaches the image under the writer lock and retires it outside. `bounded`
+    // selects whether a configured reclaim timeout also bounds the lock wait; the
+    // destructor passes false because it must complete.
+    bool unload_impl(bool bounded) noexcept {
+        if (!_c) return false;
+        if (_c.use_count() > 1) {
+            ABIX_LOG_WARNING("Object::unload: %u live handles, cannot unload", _c.use_count() - 1);
+            last_error() = CallError::stale_handle;
+            return false;
+        }
+        if (!lock_writer(bounded)) {
+            last_error() = CallError::lock_timeout;
+            return false;
+        }
+        Image *old = util::exchange_acq_rel(&_c->image, nullptr);
         util::store_release(&_c->state, static_cast<uint32_t>(rcu::State::zombie));
-        if (img) {
-            detail::retire_image(_c.get(), img);
+        unlock_writer();
+        if (old) {
+            detail::retire_image(_c.get(), old);
             ABIX_LOG_INFO("Object::unload: unloaded");
         }
         last_error() = CallError::none;

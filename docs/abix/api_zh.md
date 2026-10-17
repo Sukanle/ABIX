@@ -255,6 +255,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 | `invalid` | 无效句柄或损坏的闭包 |
 | `load_failed` | DLL 加载失败（文件缺失、表损坏等） |
 | `unloading` | DLL 正在卸载中（RCU 宽限期） |
+| `lock_timeout` | 未能在配置的回收超时内取得 Control 写锁（仅在 `set_reclaim_timeout_ms()` 非零时可能） |
 
 ### `last_error()`
 
@@ -268,10 +269,10 @@ inline dll::CallError &last_error() noexcept;
 
 | 方法 | 返回值 | 说明 |
 |--------|---------|-------------|
-| `load(path)` | `bool` | 加载 DLL/SO，解析 `abi_get_table()`，校验魔数/版本 |
+| `load(path)` | `bool` | 加载 DLL/SO，解析 `abi_get_table()`，校验魔数/版本并建索引——**全程不持锁**，最后在写锁下发布 image。加载失败时**保留**原 image（与 `reload()` 一致） |
 | `unload()` | `bool` | 标记卸载 → 等待 RCU 读者 → 若 `ref_count() == 0` 则卸载；若有活跃句柄则返回 `false` 并设置 `stale_handle` |
 | `force_unload()` | `void` | 无条件卸载，忽略引用计数（绕过 RCU，调用者需保证无并发读者） |
-| `reload(path)` | `bool` | `force_unload()` + `load(path)` |
+| `reload(path)` | `bool` | 在锁外加载新模块并建索引，原子换入，再退休旧 image（受 EBR 保护，**不是** `force_unload()` + `load(path)`） |
 | `is_loaded()` | `bool` | 模块当前是否已加载且未处于卸载中 |
 | `get_table()` | `const runtime::Table*` | 获取已校验的导出表指针 |
 | `module()` | `module_handle` | 原始操作系统模块句柄（Windows 上为 `HMODULE`，POSIX 上为 `void*`） |
@@ -281,6 +282,8 @@ inline dll::CallError &last_error() noexcept;
 | `set_reclaim_timeout_ms(ms)` | `void` | 给"等待被换出 image 的宽限期"设上限；该值是**时长**，每个操作现算 deadline，0 = 无界。见"给回收等待设上限" |
 | `reclaim_timeout_ms()` | `uint64_t` | 当前配置的时长 |
 | `reclaim_outcome()` | `ReclaimOutcome` | 最近一次操作中被换出 image 的处置结果 |
+
+**写锁覆盖范围。** `load`/`reload`/`unload` 只在**镜像交换**期间持有每 `Object` 的 Control 写锁：加载模块、建索引、等待被换出 image 的宽限期都在锁外（image 在解锁之后才退休）。这样"等待该锁"从 O(加载 + 建索引 + 宽限期) 降为 O(一次交换)。`set_reclaim_timeout_ms()` 非零时，该时长**同样约束取锁**，超时以 `CallError::lock_timeout` 上报且不改动任何状态；默认（0）与以前一样无限等待。
 
 **使用示例：**
 ```cpp

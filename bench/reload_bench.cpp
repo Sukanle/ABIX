@@ -267,3 +267,24 @@ static void BM_Reload_RetireSync(benchmark::State &state) {
     }
 }
 BENCHMARK(BM_Reload_RetireSync);
+
+// The Object-level load/unload pair. `Object::load`/`unload` now hold the Control
+// writer lock only for the image swap - the module load, the index build and the
+// grace-period wait all happen outside it - so this covers the path that change
+// touched, and is the number to watch for a regression in it. `hotcache_dll` is the
+// indexed plugin (1020 entries), so the index build is part of the load.
+static void BM_Object_LoadUnload(benchmark::State &state) {
+    const std::string path = dll_path("hotcache_dll");
+    skl::abix::dll::Object lib;
+    for (auto _ : state) {
+        if (!lib.load(path.c_str())) {
+            state.SkipWithError("cannot load hotcache_dll");
+            return;
+        }
+        if (!lib.unload()) {
+            state.SkipWithError("cannot unload hotcache_dll");
+            return;
+        }
+    }
+}
+BENCHMARK(BM_Object_LoadUnload);

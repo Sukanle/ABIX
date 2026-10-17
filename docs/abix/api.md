@@ -262,6 +262,7 @@ Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
 | `invalid` | Invalid handle or corrupted closure |
 | `load_failed` | DLL load failed (missing file, bad table, etc.) |
 | `unloading` | DLL is currently unloading (RCU grace period) |
+| `lock_timeout` | The Control writer lock was not acquired within the configured reclaim timeout (only possible when `set_reclaim_timeout_ms()` is non-zero) |
 
 ### `last_error()`
 
@@ -275,10 +276,10 @@ Returns a reference to the thread-local last error code. Thread-safe (each threa
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `load(path)` | `bool` | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version, build the hash index |
+| `load(path)` | `bool` | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version and build the hash index **with no lock held**, then publish the image under the writer lock. A failed load leaves the previous image in place (same as `reload()`) |
 | `unload()` | `bool` | Refuses with `stale_handle` while any `Function` handle is alive (`ref_count() != 0`); otherwise swaps the image out and retires it for the domain to reclaim after a grace period |
 | `force_unload()` | `void` | Detach and free the image immediately, bypassing the grace period (the caller must already have excluded readers) |
-| `reload(path)` | `bool` | Load the new module and build its index, swap it in atomically, then retire the previous image (EBR-protected, not a `force_unload` + `load`) |
+| `reload(path)` | `bool` | Load the new module and build its index with no lock held, swap it in atomically, then retire the previous image (EBR-protected, not a `force_unload` + `load`) |
 | `is_loaded()` | `bool` | `state == rcu::State::active` and an image is published |
 | `get_table()` | `const runtime::Table*` | The validated export table of the current image |
 | `module()` | `module_handle` | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX) |
@@ -291,6 +292,8 @@ Returns a reference to the thread-local last error code. Thread-safe (each threa
 | `set_reclaim_timeout_ms(ms)` | `void` | Bound how long an operation waits for a retired image's grace period; a *duration*, derived fresh per operation, 0 = unbounded. See "Bounding a Reclaim Wait" |
 | `reclaim_timeout_ms()` | `uint64_t` | The configured duration |
 | `reclaim_outcome()` | `ReclaimOutcome` | What happened to the image retired by the most recent operation |
+
+**Writer-lock scope.** `load`/`reload`/`unload` hold the per-`Object` Control writer lock **only for the image swap**: loading the module, building the index and waiting for a retired image's grace period all happen outside it (the image is retired after the lock is released). This keeps the wait for that lock O(one swap) instead of O(module load + index build + grace period). When `set_reclaim_timeout_ms()` is non-zero that duration also bounds the lock acquisition, which then reports `CallError::lock_timeout` and changes nothing; the default (0) waits indefinitely, as before.
 
 **Usage Example:**
 ```cpp
