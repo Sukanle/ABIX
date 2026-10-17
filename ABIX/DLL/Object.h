@@ -28,6 +28,8 @@
 #ifdef SKL_ABIX_WINDOWS
 #  include <libloaderapi.h>
 #  include <winnt.h>
+#else
+#  include <dlfcn.h>
 #endif
 
 namespace skl::abix::dll {
@@ -35,7 +37,6 @@ namespace skl::abix::dll {
 #ifdef SKL_ABIX_WINDOWS
 using ModuleHandle = HMODULE;
 #else
-#  include <dlfcn.h>
 using ModuleHandle = void *;
 #endif
 

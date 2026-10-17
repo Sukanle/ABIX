@@ -57,7 +57,7 @@ public plugins are `*.dll` next to the executable.
 
 ## Expected result
 
-A healthy checkout passes **all 134 registered tests**. The named tiers and
+A healthy checkout passes **all 138 registered tests**. The named tiers and
 their summary lines:
 
 | # | Test | Summary line |
@@ -128,7 +128,7 @@ observable success (**预期现象**).
   ABI-check / shim flows.
 - **目的** — the CLI contract is what users and CI depend on; this is the closest
   test to "what a build server runs".
-- **预期现象** — `=== Results: N passed, 0 failed ===` (currently 90). Steps that
+- **预期现象** — `=== Results: N passed, 0 failed ===` (currently 106). Steps that
   need an ELF/Mach-O-only tool (`readelf`, LLDB, `dlopen` shims) print `[INFO]
   ... skipping` on Windows and do not fail.
 

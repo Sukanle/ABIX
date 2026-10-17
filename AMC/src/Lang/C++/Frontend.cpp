@@ -1232,18 +1232,26 @@ bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std:
             source +=
                 std::string("    ") + (returns_void ? "" : "return ") + "self->" + method + "(" + args + ");\n}\n";
             const std::string symbol = "abix_" + symbol_type + "_" + method;
-            const amc::Hash128 thunk_signature = register_thunk(symbol, found->return_type, signature);
-            const uint32_t thunk_index = static_cast<uint32_t>(module.functions.size() - 1);
-            exposed_methods.push_back({symbol, thunk_signature});
+            // Capture the method facts before registering the thunk: `register_thunk`
+            // pushes onto `module.functions`, which may reallocate the vector and
+            // invalidate `found`. Reading through `found` afterwards would be a
+            // use-after-free, so copy what the contract recording needs first.
+            const amc::Hash128 return_type_id = found->return_type;
+            std::vector<amc::Hash128> parameter_type_ids;
+            parameter_type_ids.reserve(found->parameters.size());
+            for (const auto &parameter : found->parameters) parameter_type_ids.push_back(parameter.type_id);
             // Record the ABIX-STD contracts of the boundary types in this
             // signature (span -> SequenceView, str -> StringView, result).
-            const amc::LoweringResult return_contract = record_contract(found->return_type);
-            for (const auto &parameter : found->parameters)
-                record_contract(parameter.type_id);
+            const amc::LoweringResult return_contract = record_contract(return_type_id);
+            for (const amc::Hash128 parameter_type_id : parameter_type_ids)
+                record_contract(parameter_type_id);
+            const amc::Hash128 thunk_signature = register_thunk(symbol, return_type_id, signature);
+            const uint32_t thunk_index = static_cast<uint32_t>(module.functions.size() - 1);
+            exposed_methods.push_back({symbol, thunk_signature});
             // A `abix_result_*` return binds to the error boundary: the status and
             // value are fields of the returned record, so a consumer can turn the
             // C aggregate into a typed Result without inspecting a bare integer.
-            if (type_name(found->return_type).rfind("abix_result_", 0) == 0
+            if (type_name(return_type_id).rfind("abix_result_", 0) == 0
                 && return_contract.status != static_cast<uint32_t>(amc::LoweringStatus::unsupported)) {
                 amc::ErrorContract contract;
                 contract.function_index = thunk_index;

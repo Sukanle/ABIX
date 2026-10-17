@@ -81,7 +81,8 @@ def main() -> int:
     r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", thunks, "-I" + source_root, "-o", module])
     if not check(r.returncode == 0, "the generated thunks compile", r.stderr[-400:]):
         return 1
-    check("abix_module_query_v1" in subprocess.run(["nm", "-D", module], capture_output=True, text=True).stdout,
+    nm_args = ["nm", "-gU", module] if sys.platform == "darwin" else ["nm", "-D", module]
+    check("abix_module_query_v1" in subprocess.run(nm_args, capture_output=True, text=True).stdout,
           "the module exports the fixed discovery entry")
 
     # 3. Project the capabilities to Rust.
@@ -237,6 +238,16 @@ def main() -> int:
     if not os.path.isdir(cmdly_include) or not cmdly_lib:
         print("  [SKIP] cmdly real-project comparison (set CMDLY_ROOT to enable)")
     else:
+        # cmdly's headers include <fmt/...>; a Homebrew fmt is not on the default
+        # search path, so ask pkg-config for its flags (same as cmdly_test.py).
+        fmt_cflags = []
+        fmt_probe = run(["pkg-config", "--cflags", "fmt"])
+        if fmt_probe.returncode == 0:
+            fmt_cflags = fmt_probe.stdout.split()
+        fmt_toml = "".join(', "%s"' % flag for flag in fmt_cflags)
+        # GNU ld-only option for transitive deps; the Apple linker rejects it.
+        rpath_link = [] if sys.platform == "darwin" else [
+            "-C", "link-arg=-Wl,-rpath-link," + cmdly_lib]
         key_header = os.path.join(cmdly_include, "cmdly", "key.h")
         key_config = os.path.join(work, "cmdly_key.abic.toml")
         open(key_config, "w", encoding="utf-8").write(f"""[package]
@@ -244,7 +255,7 @@ name = "cmdly_key"
 version = "1.0"
 [[import]]
 language = "cpp"
-flags = ["-std=c++17", "-I{cmdly_include}"]
+flags = ["-std=c++17", "-I{cmdly_include}"{fmt_toml}]
 files = ["{key_header}"]
 symbols = ["cmdly::Key"]
 [[expose]]
@@ -262,7 +273,7 @@ output = "cmdly_key.abix"
             key_module = os.path.join(work, "libcmdlykey" + suffix)
             r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "cmdly_thunks.cpp"),
                      "-I" + source_root, "-I" + cmdly_include, "-L" + cmdly_lib, "-lcmdly",
-                     "-Wl,-rpath," + cmdly_lib, "-o", key_module])
+                     "-Wl,-rpath," + cmdly_lib, "-o", key_module] + fmt_cflags)
             if check(r.returncode == 0, "cmdly thunks compile", r.stderr[-400:]):
                 key_gen = os.path.join(work, "cmdly_gen")
                 os.makedirs(key_gen, exist_ok=True)
@@ -280,8 +291,8 @@ output = "cmdly_key.abix"
                 key_bin = os.path.join(work, "consumer_key")
                 r = run([rustc, "--edition", "2021", key_src, "-o", key_bin,
                          "-L", "native=" + work, "-l", "dylib=cmdlykey",
-                         "-C", "link-arg=-Wl,-rpath-link," + cmdly_lib,
-                         "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib])
+                         "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib]
+                        + rpath_link)
                 if check(r.returncode == 0, "cmdly consumer compiles", r.stderr[-400:]):
                     r = run([key_bin], env=kenv)
                     check(r.returncode == 0 and "expose cmdly: OK" in r.stdout,
@@ -297,7 +308,7 @@ name = "cmdly_insert"
 version = "1.0"
 [[import]]
 language = "cpp"
-flags = ["-std=c++17", "-I{cmdly_include}"]
+flags = ["-std=c++17", "-I{cmdly_include}"{fmt_toml}]
 files = ["{ins_header}"]
 symbols = ["cmdly::History"]
 [[expose]]
@@ -322,7 +333,7 @@ name = "cmdly_history"
 version = "1.0"
 [[import]]
 language = "cpp"
-flags = ["-std=c++17", "-I{cmdly_include}"]
+flags = ["-std=c++17", "-I{cmdly_include}"{fmt_toml}]
 files = ["{ins_header}"]
 symbols = ["cmdly::MemoryHistory"]
 [[adapt]]
@@ -347,7 +358,7 @@ output = "cmdly_history.abix"
             history_module = os.path.join(work, "libcmdlyhistory" + suffix)
             r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "history_thunks.cpp"),
                      "-I" + source_root, "-I" + cmdly_include, "-L" + cmdly_lib, "-lcmdly",
-                     "-Wl,-rpath," + cmdly_lib, "-o", history_module])
+                     "-Wl,-rpath," + cmdly_lib, "-o", history_module] + fmt_cflags)
             if check(r.returncode == 0, "cmdly history thunks compile", r.stderr[-400:]):
                 hist_gen = os.path.join(work, "hist_gen")
                 os.makedirs(hist_gen, exist_ok=True)
@@ -362,8 +373,8 @@ output = "cmdly_history.abix"
                     hist_bin = os.path.join(work, "consumer_history")
                     r = run([rustc, "--edition", "2021", hist_src, "-o", hist_bin,
                              "-L", "native=" + work, "-l", "dylib=cmdlyhistory",
-                             "-C", "link-arg=-Wl,-rpath-link," + cmdly_lib,
-                             "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib])
+                             "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib]
+                            + rpath_link)
                     if check(r.returncode == 0, "cmdly history consumer compiles", r.stderr[-400:]):
                         hvenv = dict(env)
                         hvenv["LD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + hvenv.get("LD_LIBRARY_PATH", "")

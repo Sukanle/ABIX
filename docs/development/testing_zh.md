@@ -55,7 +55,7 @@ Windows 使用 MSYS2 UCRT64 工具链（见
 
 ## 预期结果
 
-健康的检出应通过**全部 134 个已注册测试**。各命名层与其摘要行：
+健康的检出应通过**全部 138 个已注册测试**。各命名层与其摘要行：
 
 | # | 测试 | 摘要行 |
 |---|------|--------|
@@ -113,7 +113,7 @@ Windows 使用 MSYS2 UCRT64 工具链（见
   metadata region（发射/校验/篡改）、`query`、符号服务器、region→module、adapter /
   ABI-check / shim 流程。
 - **目的** —— CLI 契约是用户与 CI 依赖的东西；这是最接近“构建服务器实际运行”的测试。
-- **预期现象** —— `=== Results: N passed, 0 failed ===`（当前 90）。需要 ELF/Mach-O 专属
+- **预期现象** —— `=== Results: N passed, 0 failed ===`（当前 106）。需要 ELF/Mach-O 专属
   工具的步骤（`readelf`、LLDB、`dlopen` shim）在 Windows 上打印 `[INFO] ... skipping` 而
   不计失败。
 
