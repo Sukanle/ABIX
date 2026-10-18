@@ -141,11 +141,13 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
-`tools/build.py` wraps the same steps and auto-detects Ninja:
+`tools/run.py` orchestrates the same steps (build, test, bench) and auto-detects
+Ninja; `tools/run_build.py` is the build stage on its own:
 
 ```bash
-python tools/build.py             # configure + build + run tests and benchmarks
-python tools/build.py --with-msvc # also build the MSVC cross-toolchain variants
+python tools/run.py               # build + tests + benchmarks
+python tools/run.py --build-only  # build only (same as tools/run_build.py)
+python tools/run.py --with-msvc   # also build the MSVC cross-toolchain variants
 ```
 
 Notes:

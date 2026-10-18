@@ -58,7 +58,7 @@ def variants_dir(build_type: str) -> Path:
 
     The Catch2 suites look for `./variants/<tag>/<dll>/...` relative to their
     working directory, which is `<build>/<build_type>/bin` for both ctest and
-    tools/build.py.
+    tools/run_build.py.
     """
     return PROJECT_ROOT / "build" / build_type / "bin" / "variants"
 

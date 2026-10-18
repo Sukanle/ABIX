@@ -1,5 +1,3 @@
-#include "src/self_types.cpp"
-
 #define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
 #include "abix_self_metadata.hpp"
 
