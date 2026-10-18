@@ -122,6 +122,23 @@ Current and planned work:
 * Runtime materialization of the metadata image.
 * ABI adaptation / shimming.
 * Dynamic-language boundary layers with differential semantic verification.
+* **Bounded reader registry** — replace the reader list that only grows with a
+  fixed-capacity per-thread slot array plus slot reuse (liburcu's
+  `rcu_register_thread`/`unregister` shape). Today a thread that ever called
+  `enter()` keeps a node with `epoch == 0`, and `readers_passed()` walks all of
+  them on **every** grace-period poll: measured ~3.4 ns per registered node
+  (10 threads ≈ 12 ns, 1,000 ≈ 2 µs, 10,000 ≈ 34 µs per poll), plus one
+  never-returned allocation per thread. A host with thread churn pays both
+  without bound. Slots are never freed, so the "unlink versus a concurrent
+  lock-free walker" hazard disappears by construction; the cost is a documented
+  maximum thread count and a slot allocator on the register path.
+  *Not* the obvious alternative: unlink plus deferred free is not clearly
+  simpler, because **two** walkers are lock-free (`readers_passed()` and
+  `try_collect()`), so freeing would need either the writer lock held across a
+  walk — which would block the advancement spin — or a second published epoch
+  for scanners. Trigger: a host that recreates threads (thread-per-request
+  servers, rebuilt worker pools). Until then `stats().registered_threads` makes
+  the growth observable, and this is on no release line.
 
 ## Release History
 
