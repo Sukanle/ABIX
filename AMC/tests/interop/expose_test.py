@@ -204,13 +204,14 @@ def main() -> int:
     # / Result, and the contracts are recorded and projected.
     for name in ("std_api.hpp", "std_api.abic.toml", "rust_consumer_std.rs"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
-    # The fixture reaches the ABIX-STD headers by a path relative to its own
-    # location; rewrite it to the real source root after the copy.
-    header = os.path.join(work, "std_api.hpp")
-    text = open(header, encoding="utf-8").read().replace(
-        "../../../../ABIX/", source_root.rstrip("/") + "/ABIX/")
-    open(header, "w", encoding="utf-8").write(text)
-    r = run([amc, "build", "-c", os.path.join(work, "std_api.abic.toml"), "-B", os.path.join(work, "std_out")])
+    # The fixture includes `ABIX/STD/...` by its include root; add the source
+    # root to the import flags so neither the header nor the generated thunks
+    # need an absolute include path.
+    std_config = os.path.join(work, "std_api.abic.toml")
+    text = open(std_config, encoding="utf-8").read().replace(
+        '"-std=c++17"', '"-std=c++17", "-I' + toml_path(source_root) + '"')
+    open(std_config, "w", encoding="utf-8").write(text)
+    r = run([amc, "build", "-c", std_config, "-B", os.path.join(work, "std_out")])
     if not check(r.returncode == 0, "amc build for the ABIX-STD api", (r.stdout + r.stderr)[-400:]):
         return 1
     std_module = module_path(work, "metrics")

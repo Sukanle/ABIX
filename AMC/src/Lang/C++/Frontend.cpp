@@ -859,6 +859,28 @@ private:
 // Only public members are supported, and only representations the bridge can
 // express: a parameter or return type that is not a known, layout-safe type is
 // rejected rather than guessed at.
+// Spelling for a generated `#include`: prefer the path relative to the config
+// directory, then relative to any `-I` directory declared in the import flags,
+// and only fall back to the declared string. This keeps generated thunks free
+// of machine-specific absolute prefixes while still resolving at compile time.
+std::string include_spelling(const std::string &file, const std::filesystem::path &base,
+    const std::vector<std::string> &flags) {
+    const std::filesystem::path declared(file);
+    if (declared.is_relative()) return file;   // already relative to the config dir
+    const auto under = [&](const std::filesystem::path &root) -> std::string {
+        std::error_code ec;
+        const std::filesystem::path rel = std::filesystem::relative(declared, root, ec);
+        if (ec || rel.empty() || *rel.begin() == "..") return {};
+        return rel.generic_string();
+    };
+    if (const std::string rel = under(base); !rel.empty()) return rel;
+    for (const std::string &flag : flags) {
+        if (flag.rfind("-I", 0) != 0 || flag.size() <= 2) continue;
+        if (const std::string rel = under(flag.substr(2)); !rel.empty()) return rel;
+    }
+    return file;
+}
+
 bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std::vector<NativeAdapt> &adaptations,
     const std::filesystem::path &base, std::string &error) {
     if (config.exposed.empty()) return true;
@@ -1017,7 +1039,7 @@ bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std:
     if (wants_string) source += "#include \"ABIX/STD/String.h\"\n";
     if (wants_span) source += "#include \"ABIX/STD/Span.h\"\n";
     for (const auto &file : config.files)
-        source += "#include \"" + file + "\"\n";
+        source += "#include \"" + include_spelling(file, base, config.flags) + "\"\n";
     source += "\n";
     // Interface manifest glue (discovered through `abix_module_query_v1`).
     std::string manifest;
@@ -1339,8 +1361,14 @@ int run_frontend(const char *config_path, const char *output_path) {
     }
     std::filesystem::path base = std::filesystem::absolute(config_path).parent_path();
     if (!c.db.empty() && std::filesystem::path(c.db).is_relative()) c.db = (base / c.db).string();
-    for (auto &f : c.files)
-        if (std::filesystem::path(f).is_relative()) f = (base / f).string();
+    // Clang needs absolute paths, but `c.files` is left exactly as declared:
+    // `expose_thunks` emits it verbatim into the generated `#include`, so a
+    // declared relative path stays relative instead of leaking a machine-
+    // specific absolute prefix. Only the tool file list is resolved here.
+    std::vector<std::string> tool_files;
+    tool_files.reserve(c.files.size());
+    for (const auto &f : c.files)
+        tool_files.push_back(std::filesystem::path(f).is_relative() ? (base / f).string() : f);
 #if defined(__APPLE__)
     append_macos_sysroot(c.flags);
 #endif
@@ -1371,11 +1399,11 @@ int run_frontend(const char *config_path, const char *output_path) {
     // check. We force it with an anchor translation unit that requires each
     // requested instantiation to be complete, so a constraint failure surfaces
     // as a normal compiler diagnostic instead of a silent opaque record.
-    std::vector<std::string> tool_files = c.files;
     std::string anchor_path;
     std::string anchor;
     if (!c.instantiations.empty()) {
-        for (const auto &file : c.files)
+        // The anchor lives in `base/.amc/`, so it needs the resolved paths.
+        for (const auto &file : tool_files)
             anchor += "#include \"" + file + "\"\n";
         for (const auto &inst : c.instantiations) {
             std::string concrete = inst.template_name + "<";

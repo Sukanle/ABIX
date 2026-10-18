@@ -145,9 +145,48 @@ std::string json_value(const std::string &line, const char *key) {
     const std::string needle = std::string("\"") + key + "\":\"";
     const auto begin = line.find(needle);
     if (begin == std::string::npos) return {};
-    const auto start = begin + needle.size();
-    const auto end = line.find('"', start);
-    return end == std::string::npos ? std::string{} : line.substr(start, end - start);
+    const auto hex = [](char c) -> unsigned {
+        if (c >= '0' && c <= '9') return static_cast<unsigned>(c - '0');
+        if (c >= 'a' && c <= 'f') return static_cast<unsigned>(c - 'a' + 10);
+        if (c >= 'A' && c <= 'F') return static_cast<unsigned>(c - 'A' + 10);
+        return 0;
+    };
+    // The sender escapes the value with `json_escape` (backslashes doubled), so
+    // the value must be unescaped here: a Windows path arrives as
+    // `F:\\Code\\...` and would otherwise keep the doubled separators.
+    std::string out;
+    const size_t size = line.size();
+    for (size_t i = begin + needle.size(); i < size; ++i) {
+        const char c = line[i];
+        if (c == '"') return out;   // the unescaped closing quote
+        if (c != '\\') {
+            out += c;
+            continue;
+        }
+        if (++i >= size) break;
+        switch (line[i]) {
+            case '"':  out += '"';  break;
+            case '\\': out += '\\'; break;
+            case '/':  out += '/';  break;
+            case 'b':  out += '\b'; break;
+            case 'f':  out += '\f'; break;
+            case 'n':  out += '\n'; break;
+            case 'r':  out += '\r'; break;
+            case 't':  out += '\t'; break;
+            case 'u':
+                // `json_escape` only emits \uXXXX for bytes below 0x20, which is
+                // always a single UTF-8 byte.
+                if (i + 4 < size) {
+                    const unsigned code = (hex(line[i + 1]) << 12) | (hex(line[i + 2]) << 8)
+                                        | (hex(line[i + 3]) << 4) | hex(line[i + 4]);
+                    out += static_cast<char>(code & 0xFF);
+                    i += 4;
+                }
+                break;
+            default: out += line[i]; break;
+        }
+    }
+    return out;
 }
 
 int run_provider(int argc, char **argv, const Provider &provider) {
