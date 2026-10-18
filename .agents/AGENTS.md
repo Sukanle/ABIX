@@ -383,6 +383,17 @@ the `.abix` format, compatibility rules, AMC behaviour, plugin interfaces or
 architectural boundaries. Update the appropriate document; do not duplicate
 detailed implementation documentation in `AGENTS.md`.
 
+### 10.1 Documentation style
+
+**One line per paragraph.** Write each prose paragraph as a single line; do not hard-wrap at a column limit. A soft line break inside a paragraph renders inconsistently across Markdown engines (a wrapped line that happens to start with `>`, `-`, `#`, a digit plus `.`, or `---` silently becomes a quote, list item, heading, ordered item or thematic break instead of continuing the sentence), and every reflow makes a later diff touch lines that did not change. The rule is about paragraph prose only: tables, code blocks, list items and headings keep their own line breaks.
+
+**Chinese punctuation.** Chinese text uses full-width punctuation (`，` `。` `：` `；` `！` `？` `、`), with exactly two exceptions:
+
+* parentheses stay half-width: `(...)`, not `（...）`;
+* quotation uses corner brackets: `「...」`, not `“...”` and not `"..."`.
+
+Mixed Chinese/English text follows this for its Chinese parts; technical tokens (identifiers, paths, flags, numbers with units) keep their ASCII form. The same rule applies to `docs/**`, `.agents/**` and the Chinese chapters of any paired document.
+
 ---
 
 ## 11. Generated Code and ABI Artifacts
