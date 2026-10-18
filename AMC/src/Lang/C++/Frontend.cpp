@@ -1371,6 +1371,8 @@ int run_frontend(const char *config_path, const char *output_path) {
         tool_files.push_back(std::filesystem::path(f).is_relative() ? (base / f).string() : f);
 #if defined(__APPLE__)
     append_macos_sysroot(c.flags);
+#else
+    append_clang_resource_dir(c.flags);
 #endif
     std::string db_error;
     std::unique_ptr<clang::tooling::CompilationDatabase> db;

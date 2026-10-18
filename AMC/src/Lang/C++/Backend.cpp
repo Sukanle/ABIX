@@ -751,4 +751,22 @@ void append_macos_sysroot(std::vector<std::string> &flags) {
 }
 #endif
 
+#if !defined(__APPLE__)
+// Point the clang we are linked against at the resource directory detected at
+// build time (`clang -print-resource-dir`, injected as ABIX_CLANG_RESOURCE_DIR).
+// A `.abic.toml` used to spell this out by hand -- `-isystem
+// /usr/lib/clang/22/include` -- which pins a toolchain version into a config
+// file: it goes stale on the next upgrade, and on a case-insensitive filesystem
+// it silently resolves a directory the source tree does not have. A config can
+// still make its own choice by naming `-resource-dir` itself.
+void append_clang_resource_dir(std::vector<std::string> &flags) {
+    if (!kClangResourceDir[0]) return;
+    for (const auto &f : flags) {
+        if (f == "-resource-dir") return;
+    }
+    flags.push_back("-resource-dir");
+    flags.push_back(kClangResourceDir);
+}
+#endif
+
 }   // namespace amc::lang::cpp
