@@ -58,6 +58,13 @@ inline bool parse_pe(const uint8_t *data, size_t size, ParseResult &result, std:
 
     const uint32_t nt = read_u32(data, 0x3C);
     const size_t coff = static_cast<size_t>(nt) + 4;
+    // `is_pe` only guarantees Signature lies in the buffer (nt + 4 <= size). The
+    // COFF file header that follows may still not fit: a truncated image with
+    // e_lfanew near EOF must be rejected before the fields are read.
+    if (!in_bounds(coff, kFileHeaderSize, size)) {
+        error = "truncated PE header";
+        return false;
+    }
     const uint16_t machine = read_u16(data, coff + 0);
     const uint16_t section_count = read_u16(data, coff + 2);
     const uint16_t optional_size = read_u16(data, coff + 16);

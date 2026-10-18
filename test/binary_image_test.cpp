@@ -115,6 +115,57 @@ std::vector<uint8_t> make_pe_with_export() {
     return bytes;
 }
 
+// A minimal PE32 (0x10B, 32-bit) image with the same shape as make_pe(): the
+// 32-bit optional header stores ImageBase at +28 and the data directories at
+// +96, so this exercises the non-PE32+ layout branch.
+std::vector<uint8_t> make_pe32() {
+    std::vector<uint8_t> bytes(0x208, 0);
+    bytes[0] = 'M';
+    bytes[1] = 'Z';
+    put_u32(bytes, 0x3C, 0x40);   // e_lfanew
+
+    const size_t nt = 0x40;
+    bytes[nt] = 'P';
+    bytes[nt + 1] = 'E';
+
+    const size_t coff = nt + 4;
+    put_u16(bytes, coff + 0, 0x014c);   // Machine = i386
+    put_u16(bytes, coff + 2, 1);        // NumberOfSections
+    put_u16(bytes, coff + 16, 224);     // SizeOfOptionalHeader (PE32)
+
+    const size_t optional = coff + 20;
+    put_u16(bytes, optional + 0, 0x10B);        // PE32
+    put_u32(bytes, optional + 28, 0x00400000);  // ImageBase (u32 in PE32)
+
+    const size_t sect = optional + 224;
+    const char name[] = ".abix";
+    for (size_t i = 0; i < 5; ++i)
+        bytes[sect + i] = static_cast<uint8_t>(name[i]);
+    put_u32(bytes, sect + 8, 8);        // VirtualSize
+    put_u32(bytes, sect + 12, 0x1000);  // VirtualAddress
+    put_u32(bytes, sect + 16, 8);       // SizeOfRawData
+    put_u32(bytes, sect + 20, 0x200);   // PointerToRawData
+
+    const char payload[] = {'A', 'B', 'I', 'X', 'D', 'A', 'T', 'A'};
+    for (size_t i = 0; i < 8; ++i)
+        bytes[0x200 + i] = static_cast<uint8_t>(payload[i]);
+    return bytes;
+}
+
+// A PE whose e_lfanew points at the last four bytes: the `PE\0\0` signature fits
+// but the 20-byte COFF file header does not. `is_pe` accepts it, so the parser
+// must reject it before reading the header fields (guards against a
+// heap-buffer-overflow on truncated input).
+std::vector<uint8_t> make_truncated_pe() {
+    std::vector<uint8_t> bytes(0x44, 0);
+    bytes[0] = 'M';
+    bytes[1] = 'Z';
+    put_u32(bytes, 0x3C, 0x40);   // signature fits, COFF header does not
+    bytes[0x40] = 'P';
+    bytes[0x41] = 'E';
+    return bytes;
+}
+
 }   // namespace
 
 TEST_CASE("39.binary image reads a PE region", "[binary]") {
@@ -168,4 +219,42 @@ TEST_CASE("41.binary image reads a PE export table", "[binary]") {
     CHECK(record->address == 0x140002000ull);
     CHECK(record->ordinal == 1);
     CHECK(image.find_export("absent") == nullptr);
+}
+
+TEST_CASE("42.binary image reads a PE32 region", "[binary]") {
+    auto bytes = make_pe32();
+    BinaryImage image;
+    std::string error;
+    REQUIRE(parse_binary_image(bytes.data(), bytes.size(), image, error));
+
+    CHECK(image.format() == Format::pe);
+    CHECK(image.os() == OperatingSystem::windows);
+    CHECK(image.architecture() == Architecture::x86);
+    CHECK(image.pointer_size() == 4);
+    CHECK(image.image_base() == 0x00400000ull);
+
+    REQUIRE(image.sections().size() == 1);
+    CHECK(image.sections()[0].name == ".abix");
+
+    const Section *region = image.find_region(".abix.metadata");
+    REQUIRE(region != nullptr);
+    CHECK(region->file_offset == 0x200);
+    CHECK(region->file_size == 8);
+
+    std::vector<uint8_t> content;
+    REQUIRE(image.read_region(".abix.metadata", content, error));
+    CHECK(std::string(content.begin(), content.end()) == "ABIXDATA");
+}
+
+TEST_CASE("43.binary image rejects a truncated PE header", "[binary]") {
+    auto bytes = make_truncated_pe();
+    // The signature is present, so detection succeeds...
+    CHECK(skl::abix::binary::is_pe(bytes.data(), bytes.size()));
+
+    // ...but the COFF file header does not fit, so parsing must fail cleanly
+    // instead of reading past the end of the buffer.
+    BinaryImage image;
+    std::string error;
+    CHECK_FALSE(parse_binary_image(bytes.data(), bytes.size(), image, error));
+    CHECK(error == "truncated PE header");
 }
