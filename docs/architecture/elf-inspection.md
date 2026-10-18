@@ -131,15 +131,14 @@ metadata region, not the names section.
 
 ## Automated Testing
 
-The project includes a test script that exercises the full pipeline on the host
-platform (readelf/objdump on ELF, otool on Mach-O):
+The project includes a test suite that exercises the full pipeline on the host platform (readelf/objdump on ELF, otool on Mach-O):
 
 ```bash
-python3 tools/test_amc_elf-pe.py           # run and auto-cleanup
-python3 tools/test_amc_elf-pe.py --keep    # keep temp files for inspection
+python3 tools/run_test.py --elf-pe           # run and auto-cleanup
+python3 tools/run_test.py --elf-pe --keep    # keep temp files for inspection
 ```
 
-The script runs 9 phases:
+The suite runs 9 phases:
 
 1. `amc build` — produce `.abix` + `.abix.meta`
 2. `amc generate` — produce C++ header with section attributes

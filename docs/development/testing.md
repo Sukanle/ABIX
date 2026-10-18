@@ -228,9 +228,9 @@ clang++ -std=c++17 -shared -O2 AMC/tests/interop/demo_lib.cpp \
 amc build -c AMC/tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
 amc generate /tmp/abix/interop_demo.abix -l rust -o /tmp/gen           # -> /tmp/gen/amc_generated.rs
 
-# consumer.rs includes the projection via #[path = "gen/amc_generated.rs"]
-rustc --edition 2021 -O /tmp/consumer.rs --cfg abix_link -L /tmp -o /tmp/consumer
-/tmp/consumer
+# rust_consumer.rs includes the projection via #[path = "gen/amc_generated.rs"]
+rustc --edition 2021 -O /tmp/rust_consumer.rs --cfg abix_link -L /tmp -o /tmp/rust_consumer
+/tmp/rust_consumer
 ```
 
 `--cfg abix_link` turns on the projection's `#[link(name = "interop_demo")]`, so the symbols bind to the native library. Expected final line: `interop ok: add=5 scale=13 div=5 err=1 types=31`. The consumer's assert_eq!s are the real assertions (layout, ownership, error boundary, ABIX-STD, Interface).
@@ -291,42 +291,45 @@ second group produces test verdicts.
 
 | Script                | What                                                                                                                                                                                                                                                                | Purpose                                                                                                                                                                                                                                | Expected                                                                                                                                   |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `build.py`            | Configures and builds the CMake project, delegates to `build_variants.py`, then runs `test_all` and `bench_all` from `build/<type>/bin/` as requested                                                                                                               | One command for the everyday "build -> variants -> test -> bench" loop                                                                                                                                                                 | `== Build complete ==` -> `== Running variant build: ... ==` -> `== Running tests ==` (green `test_all`) -> `== Running benchmarks ==`     |
+| `run.py`              | Configures and builds the CMake project, delegates to `build_variants.py`, then runs `test_all` and `bench_all` from `build/<type>/bin/` as requested                                                                                                               | One command for the everyday "build -> variants -> test -> bench" loop                                                                                                                                                                 | `== Build complete ==` -> `== Running variant build: ... ==` -> `== Running tests ==` (green `test_all`) -> `== Running benchmarks ==`     |
 | `build_variants.py`   | Compiles the plugin DLL variants with `g++` (`tool_x`) / `clang++` (`tool_y`) into `build/<type>/bin/variants/<tag>/`; with `--with-msvc` on Windows it also emits `version_dll` / `resource_dll` / `interface_dll` / `owner_dll` through `cl.exe` (tag `msvc_x64`) | Turns "cross-compiler / cross-CRT" into an executable case rather than a claim; these are what `2.cross_compiler_variant`, `12.socket_resource_lifecycle`, `13.cross_crt_msvc_resource` and `13b.…across a cross-CRT MSVC DLL` resolve | `== [<tag>] <compiler> ==` plus `Generated: <path>` per DLL, ending in `== Variant build complete ==`; the main build must already be done |
 | `gen_hotcache_dll.py` | Generates `dlls/hotcache_dll.cpp` (1000 regular plus 20 hot exports registered through `SKL_ABIX_DEFINE_TABLE`)                                                                                                                                                     | Provides a stable sample for tables past `SKL_ABIX_HASH_THRESHOLD` instead of hand-writing one                                                                                                                                         | `generated .../dlls/hotcache_dll.cpp: 1000 regular + 20 hot functions`. It is a code generator and produces no test verdict                |
 
 ```bash
-python tools/build.py                        # build + variants + tests + benchmarks
-python tools/build.py --clean --build-only   # build only
-python tools/build.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Studio/2022/Community"
+python tools/run.py                          # build + tests + benchmarks
+python tools/run.py --build-only             # build only (delegates to run_build.py)
+python tools/run_build.py --clean            # build stage alone, clean first
+python tools/run.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Studio/2022/Community"
 python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC variants alone
 ```
 
-`build.py` flags: `--clean`, `--build-only` / `--build-test` / `--build-bench`,
-`--run-only` / `--run-test` / `--run-bench`, `--build-type`, `--generator`,
-`--with-dev`; `--build-*` and `--run-*` cannot be combined. `--cmake-env KEY=VALUE`
-and `--cmake-var KEY=VALUE` are repeatable and forward environment variables to, and
-`-DKEY=VALUE` cache variables through, the CMake configure/build. The benchmark step
-delegates to `run_bench.py` (one process per family), tuned by
-`--bench-repetitions`, `--bench-out` and `--bench-min-time`; `--bench-raw` restores
-the old single-process `bench_all` run. It runs the
-aggregate executables, so it is **not** a substitute for `ctest` (see
-[test tiers](#test-tiers)).
+`run.py` picks the stages with `--build-only` / `--test-only` / `--bench-only` /
+`--build-test` / `--build-bench` and forwards the remaining flags to the stage
+scripts (`run_build.py`, `run_test.py`, `run_bench.py`). Build options: `--clean`,
+`--build-type`, `--generator`, `--with-dev`, `--skip-variants`, `--skip-hotcache`;
+`--cmake-env KEY=VALUE` and `--cmake-var KEY=VALUE` are repeatable and forward
+environment variables to, and `-DKEY=VALUE` cache variables through, the CMake
+configure/build. Test options: `--catch2` / `--elf-pe` / `--bootstrap` /
+`--interop` (see [test tiers](#test-tiers)). The benchmark stage delegates to
+`run_bench.py` (one process per family), tuned by `--bench-repetitions`,
+`--bench-out` and `--bench-min-time`; `--bench-raw` restores the old
+single-process `bench_all` run. It runs the aggregate executables, so it is
+**not** a substitute for `ctest`.
 
 ### Tests and verification
 
 | Script                  | What                                                                                                                                                                                                                                                                                                         | Purpose                                                                                                                                                                     | Expected                                                                                                                                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_amc_bootstrap.py` | Verifies AMC's metadata bootstrap for its own core IR: `amc build` -> `validate` -> `generate` -> consume the generated C++ projection through `RuntimeRegistry::type_of<T>()`                                                                                                                               | Shows the compiled AMC stage can describe its core model and consume its projection (not compiler-source self-hosting: `amc-cpp` still uses Clang to extract C++ semantics) | `[PASS] AMC core metadata bootstrap succeeded` and `[PASS] verified build -> validate -> generate -> RuntimeRegistry::type_of<T>()`; needs `cmake` + `clang++`                                     |
-| `test_amc_elf-pe.py`    | Nine phases over the metadata section: `amc build` -> `amc generate` (a `amc_generated.hpp` with the platform section attribute) -> `clang++` links a native binary carrying `.abix.metadata` -> `readelf -S` -> `objdump -s` -> `amc metadata --from-elf` -> `--verify` -> export round-trip -> error cases | Shows the section really lands in the binary and can be read back, rather than round-tripping in memory only                                                                | Each `[Phase N]` prints `[PASS]` (with a `✓`) and the run ends with a summary; needs `readelf` / `objdump`, so it is mainly for Linux/macOS                                                        |
+| `run_test.py --bootstrap` | Verifies AMC's metadata bootstrap for its own core IR: `amc_add_abi` (`AMC.cmake`) attaches `amc/self.abic.toml` to the `AMC/tests/consumers` CMake build graph, so one `cmake --build` runs `amc build` -> `validate` -> `generate` -> compiles and runs the consumer that reads types back through `RuntimeRegistry::type_of<T>()` in the generated C++ projection | Shows the compiled AMC stage can describe its core model and consume its projection (not compiler-source self-hosting: `amc-cpp` still uses Clang to extract C++ semantics); editing the `.abic.toml` or one of its declared dependencies re-runs the whole pipeline | `[PASS] AMC core metadata bootstrap succeeded` and `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`; needs `cmake` + `clang++` (and prefers `ninja` when it is installed) |
+| `run_test.py --elf-pe`    | Nine phases over the metadata section: `amc build` -> `amc generate` (a `amc_generated.hpp` with the platform section attribute) -> `clang++` links a native binary carrying `.abix.metadata` -> `readelf -S` -> `objdump -s` -> `amc metadata --from-elf` -> `--verify` -> export round-trip -> error cases | Shows the section really lands in the binary and can be read back, rather than round-tripping in memory only                                                                | Each `[Phase N]` prints `[PASS]` (with a `✓`) and the run ends with a summary; needs `readelf` / `objdump` on Linux, `otool` on macOS and `llvm-readobj` / `llvm-objcopy` on Windows |
 | `abix_mcp_compat.py`    | Drives `amc-mcp` over stdio JSON-RPC to answer "is `plugin` ABI-compatible with `host`?" and prints a JSON report                                                                                                                                                                                            | Makes the MCP tool protocol verifiable in CI: the LLM is removed from the loop while the transport and tool protocol stay real                                              | JSON report on stdout; stderr prints `COMPATIBLE`, otherwise `INCOMPATIBLE: N difference(s)` with a non-zero exit                                                                                  |
 | `abix_token_cost.py`    | Compares the token cost of learning one module's ABI from source against `amc context <file.abix> --format llm`                                                                                                                                                                                              | Gives a reproducible order-of-magnitude for "the metadata view is cheaper"                                                                                                  | `{"source_tokens", "metadata_tokens", "source_over_metadata"}` on stdout; the counts come from a lexical tokenizer, not a model tokenizer, so treat the ratio as an **indicator, not a benchmark** |
 | `run_bench.py` | Runs each benchmark **family in its own process** and summarises the results (`mean`/`stddev`); `--list` shows what would run. It discovers every family in `bench_all` via `--benchmark_list_tests` and also runs the standalone Google Benchmark executables that are not part of it (`abix_resolve_bench`, `abix_lookup_cross_bench`, `interface_dispatch_bench`); pass explicit filters to narrow it; reads the `cpu0` cpufreq governor up front and prints the fix command when CPU scaling is active, and `--pin` (default `auto`) restricts every child to the highest-frequency cores (`--pin off` disables it, `--pin 0-7` pins explicitly) | The EBR/RCU families share the process-wide `rcu::Domain`, so a family measured after the others reads several times slower (`BM_EBR_SyncPhase/1T` spans ~6 ns to ~1 us); isolating them is what makes numbers comparable across families and machines | Prints `N benchmarks -> <json>` per family, then a `| family | benchmark | threads | mean ns | sd |` table; one JSON per family |
 
 ```bash
-python tools/test_amc_bootstrap.py                       # AMC_BIN_DIR=... reuses an external build
-KEEP_ARTIFACTS=1 python tools/test_amc_bootstrap.py       # keeps amc-bootstrap.*
-python tools/test_amc_elf-pe.py --keep                    # keeps amc_elf_test_*
+python tools/run_test.py --bootstrap                       # AMC_BIN_DIR=... reuses an external build
+KEEP_ARTIFACTS=1 python tools/run_test.py --bootstrap       # keeps amc-bootstrap.*
+python tools/run_test.py --elf-pe --keep                    # keeps amc_elf_test_*
 python tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix
 python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 ```

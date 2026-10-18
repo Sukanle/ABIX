@@ -122,14 +122,14 @@ strip 后，`amc metadata --from-elf` 仍然工作，因为它读取的是 metad
 
 ## 自动化测试
 
-项目包含一个测试脚本，在宿主平台上覆盖完整流程（ELF 使用 readelf/objdump，Mach-O 使用 otool）：
+项目包含一个测试套件，在宿主平台上覆盖完整流程（ELF 使用 readelf/objdump，Mach-O 使用 otool）：
 
 ```bash
-python3 tools/test_amc_elf-pe.py           # 运行并自动清理
-python3 tools/test_amc_elf-pe.py --keep    # 保留临时文件供检查
+python3 tools/run_test.py --elf-pe           # 运行并自动清理
+python3 tools/run_test.py --elf-pe --keep    # 保留临时文件供检查
 ```
 
-脚本运行 9 个阶段：
+该套件运行 9 个阶段：
 
 1. `amc build` — 生成 `.abix` + `.abix.meta`
 2. `amc generate` — 生成带 section 属性的 C++ 头文件

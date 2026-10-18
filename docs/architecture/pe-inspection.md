@@ -285,14 +285,13 @@ amc metadata app.abix -o region.abixmeta
 
 ## Testing
 
-The existing harness `tools/test_amc_elf-pe.py` is already named for PE. The
-implementation should extend it with a Windows branch:
+The harness `tools/run_test.py --elf-pe` covers the PE path alongside ELF and Mach-O. Its Windows branch runs:
 
 1. `amc build` → `.abix` + `.abix.meta`
 2. `amc generate -l cpp` → header with the PE section attributes
 3. `clang++`/`cl.exe` → PE image with the `.abix` (+ `.abix.n`) sections
-4. `llvm-readobj --sections` / `dumpbin /HEADERS` — verify the sections exist
-5. `llvm-objcopy --dump-section` / `objcopy` — verify the `ABIX` magic
+4. `llvm-readobj --sections` — verify the sections exist
+5. `llvm-objcopy --dump-section` — verify the `ABIX` magic
 6. `amc metadata --from-elf` / `--verify` — parse and verify the region
 7. `llvm-objcopy --remove-section=.abix.n` — strip round-trip
 8. error cases — non-PE rejection, truncated PE rejection

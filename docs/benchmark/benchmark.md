@@ -111,7 +111,7 @@ Confirm these three before quoting anything from section 5:
 ### 4.3 Reproduction command
 
 ```bash
-python tools/build.py --build-bench          # build (skip when reusing an existing Release build)
+python tools/run_build.py                    # build (skip when reusing an existing Release build)
 
 # Full run: one process per family, 5 repetitions, JSON per family under build/bench/
 python tools/run_bench.py --repetitions 5

@@ -110,7 +110,7 @@ ARM 数据采集是后续工作，计划为：- (a) 在专用 ARM 与 x86 Linux 
 ### 4.3 执行命令
 
 ```bash
-python tools/build.py --build-bench          # 构建（复用已有 Release 构建时可跳过）
+python tools/run_build.py                    # 构建（复用已有 Release 构建时可跳过）
 
 # 全量采集：每家族一个进程、5 次重复，产物为 build/bench/<家族>.json
 python tools/run_bench.py --repetitions 5

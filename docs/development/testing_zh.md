@@ -228,9 +228,9 @@ clang++ -std=c++17 -shared -O2 AMC/tests/interop/demo_lib.cpp \
 amc build -c AMC/tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
 amc generate /tmp/abix/interop_demo.abix -l rust -o /tmp/gen           # -> /tmp/gen/amc_generated.rs
 
-# consumer.rs 以 #[path = "gen/amc_generated.rs"] 引入投影
-rustc --edition 2021 -O /tmp/consumer.rs --cfg abix_link -L /tmp -o /tmp/consumer
-/tmp/consumer
+# rust_consumer.rs 以 #[path = "gen/amc_generated.rs"] 引入投影
+rustc --edition 2021 -O /tmp/rust_consumer.rs --cfg abix_link -L /tmp -o /tmp/rust_consumer
+/tmp/rust_consumer
 ```
 
 `--cfg abix_link` 打开投影里的 `#[link(name = "interop_demo")]`，符号即绑定到原生库。预期最后一行：`interop ok: add=5 scale=13 div=5 err=1 types=31`。消费端的 `assert_eq!` 才是真正的断言（布局、所有权、错误边界、ABIX-STD、Interface）。
@@ -285,33 +285,34 @@ python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 
 | 脚本                  | 功能                                                                                                                                                                                                                                            | 目的                                                                                                                                                                                      | 预期现象                                                                                                                           |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `build.py`            | 配置 + 构建 CMake 工程，随后委托 `build_variants.py`，再按需运行 `build/<type>/bin/` 下的 `test_all` 与 `bench_all`                                                                                                                             | 一条命令复现「构建 → 变体 → 测试 → 基准」的日常循环                                                                                                                                       | `== Build complete ==` → `== Running variant build: ... ==` → `== Running tests ==`（`test_all` 全绿）→ `== Running benchmarks ==` |
+| `run.py`              | 配置 + 构建 CMake 工程，随后委托 `build_variants.py`，再按需运行 `build/<type>/bin/` 下的 `test_all` 与 `bench_all`                                                                                                                             | 一条命令复现「构建 → 变体 → 测试 → 基准」的日常循环                                                                                                                                       | `== Build complete ==` → `== Running variant build: ... ==` → `== Running tests ==`（`test_all` 全绿）→ `== Running benchmarks ==` |
 | `build_variants.py`   | 用 `g++`（`tool_x`）/ `clang++`（`tool_y`）编译同一批插件 DLL 变体并暂存到 `build/<type>/bin/variants/<tag>/`；`--with-msvc` 时在 Windows 上再用 `cl.exe` 产出 `version_dll` / `resource_dll` / `interface_dll` / `owner_dll`（tag `msvc_x64`） | 把「跨编译器 / 跨 CRT」变成可执行用例而不是声明；供 `2.cross_compiler_variant`、`12.socket_resource_lifecycle`、`13.cross_crt_msvc_resource`、`13b.…across a cross-CRT MSVC DLL` 解析 DLL | 逐个打印 `== [<tag>] <compiler> ==` 与 `Generated: <path>`，最后 `== Variant build complete ==`；必须先完成主构建                  |
 | `gen_hotcache_dll.py` | 生成 `dlls/hotcache_dll.cpp`（1000 个普通导出 + 20 个热导出，经 `SKL_ABIX_DEFINE_TABLE` 注册）                                                                                                                                                  | 为超过 `SKL_ABIX_HASH_THRESHOLD` 的大表提供稳定样本，免去手写                                                                                                                             | `generated .../dlls/hotcache_dll.cpp: 1000 regular + 20 hot functions`。它是代码生成器，不产生测试结论                             |
 
 ```bash
-python tools/build.py                        # 构建 + 变体 + 测试 + 基准
-python tools/build.py --clean --build-only   # 只构建
-python tools/build.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Studio/2022/Community"
+python tools/run.py                          # 构建 + 测试 + 基准
+python tools/run.py --build-only             # 只构建（委托 run_build.py）
+python tools/run_build.py --clean            # 只跑构建阶段，先清理
+python tools/run.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Studio/2022/Community"
 python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变体
 ```
 
-`build.py` 的常用参数：`--clean`、`--build-only` / `--build-test` / `--build-bench`、`--run-only` / `--run-test` / `--run-bench`、`--build-type`、`--generator`、`--with-dev`；`--build-*` 与 `--run-*` 不能混用。`--cmake-env KEY=VALUE` 与 `--cmake-var KEY=VALUE` 可重复，分别向 CMake 配置/构建注入环境变量、以及透传 `-DKEY=VALUE` 缓存变量。基准这一步已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**（覆盖面见[测试分层](#测试分层)）。
+`run.py` 用 `--build-only` / `--test-only` / `--bench-only` / `--build-test` / `--build-bench` 选择阶段，其余参数转发给各阶段脚本（`run_build.py`、`run_test.py`、`run_bench.py`）。构建参数：`--clean`、`--build-type`、`--generator`、`--with-dev`、`--skip-variants`、`--skip-hotcache`；`--cmake-env KEY=VALUE` 与 `--cmake-var KEY=VALUE` 可重复，分别向 CMake 配置/构建注入环境变量、以及透传 `-DKEY=VALUE` 缓存变量。测试参数：`--catch2` / `--elf-pe` / `--bootstrap` / `--interop`（覆盖面见[测试分层](#测试分层)）。基准阶段已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**。
 
 ### 测试与验证
 
 | 脚本                    | 功能                                                                                                                                                                                                                                | 目的                                                                                                                            | 预期现象                                                                                                                                                     |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `test_amc_bootstrap.py` | 验证 AMC 自身核心 IR 的元数据自举：`amc build` → `validate` → `generate` → 用生成的 C++ 投影经 `RuntimeRegistry::type_of<T>()` 取类型                                                                                               | 证明「已编译的 AMC 阶段能描述自己的核心模型并消费其投影」，而不是靠人工描述（非编译源自举：`amc-cpp` 仍用 Clang 提取 C++ 语义） | `[PASS] AMC core metadata bootstrap succeeded` 与 `[PASS] verified build -> validate -> generate -> RuntimeRegistry::type_of<T>()`；需要 `cmake` + `clang++` |
-| `test_amc_elf-pe.py`    | 9 阶段验证元数据段：`amc build` → `amc generate`（带平台段属性的 `amc_generated.hpp`）→ `clang++` 链出含 `.abix.metadata` 的原生二进制 → `readelf -S` → `objdump -s` → `amc metadata --from-elf` → `--verify` → 导出往返 → 错误用例 | 证明「段真的进了二进制并且能被读回」，而不只是在内存里往返                                                                      | 每个 `[Phase N]` 输出 `[PASS]`（含 `✓`）并在末尾给出汇总；依赖 `readelf` / `objdump`，主要在 Linux/macOS 上使用                                              |
+| `run_test.py --bootstrap` | 验证 AMC 自身核心 IR 的元数据自举：`amc_add_abi`（`AMC.cmake`）把 `amc/self.abic.toml` 接进 `AMC/tests/consumers` 的 CMake 构建图，一次 `cmake --build` 走完 `amc build` → `validate` → `generate` → 编译运行用生成的 C++ 投影经 `RuntimeRegistry::type_of<T>()` 取类型的消费者 | 证明「已编译的 AMC 阶段能描述自己的核心模型并消费其投影」，而不是靠人工描述（非编译源自举：`amc-cpp` 仍用 Clang 提取 C++ 语义）；`.abic.toml` 或其依赖改动会自动重跑整条流水线 | `[PASS] AMC core metadata bootstrap succeeded` 与 `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`；需要 `cmake` + `clang++`（`ninja` 存在时优选） |
+| `run_test.py --elf-pe`    | 9 阶段验证元数据段：`amc build` → `amc generate`（带平台段属性的 `amc_generated.hpp`）→ `clang++` 链出含 `.abix.metadata` 的原生二进制 → `readelf -S` → `objdump -s` → `amc metadata --from-elf` → `--verify` → 导出往返 → 错误用例 | 证明「段真的进了二进制并且能被读回」，而不只是在内存里往返                                                                      | 每个 `[Phase N]` 输出 `[PASS]`（含 `✓`）并在末尾给出汇总；Linux 需要 `readelf` / `objdump`，macOS 需要 `otool`，Windows 需要 `llvm-readobj` / `llvm-objcopy` |
 | `abix_mcp_compat.py`    | 以 stdio JSON-RPC 驱动 `amc-mcp`，回答「`plugin` 与 `host` 是否 ABI 兼容」，输出 JSON 报告                                                                                                                                          | 让 MCP 工具协议可在 CI 中验证——把 LLM 从链路中去掉，但传输与工具协议保持真实                                                    | stdout 为 JSON 报告；兼容时 stderr 打印 `COMPATIBLE`，否则 `INCOMPATIBLE: N difference(s)` 并返回非零                                                        |
 | `abix_token_cost.py`    | 比较「读源码」与「读 `amc context <file.abix> --format llm`」了解同一模块 ABI 的 token 数                                                                                                                                           | 给「元数据视图更省上下文」一个可复现的量级参考                                                                                  | stdout 为 `{"source_tokens", "metadata_tokens", "source_over_metadata"}`；用词法分词器估算，不是模型分词器，应视为**指标而非基准**                           |
 | `run_bench.py` | 让每个基准**家族各占一个进程**运行并汇总（mean/stddev）。`--list` 列出将要运行的内容：它通过 `--benchmark_list_tests` 自动发现 `bench_all` 里的全部家族，并额外运行未并入 `bench_all` 的独立 Google Benchmark 可执行文件（`abix_resolve_bench`、`abix_lookup_cross_bench`、`interface_dispatch_bench`）；可传显式过滤串缩小范围；跑前读取 `cpu0` 的 cpufreq governor，不是 `performance` 时打印切换命令；`--pin`（默认 `auto`）把每个子进程限制在最高频的核上，`--pin off` 关闭、`--pin 0-7` 指定列表                                                                                                                                              | EBR/RCU 家族共享进程级 `rcu::Domain`，同一家族在别人跑完后测会慢数倍（`BM_EBR_SyncPhase/1T` 从约 6 ns 到约 1 us）；隔离后跨家族/跨机器才可比 | 逐个家族打印 `N benchmarks -> <json>`，末尾输出 `| family | benchmark | threads | mean ns | sd |` 表；产物为每家族一个 JSON |
 
 ```bash
-python tools/test_amc_bootstrap.py                       # 可用 AMC_BIN_DIR=... 复用外部构建
-KEEP_ARTIFACTS=1 python tools/test_amc_bootstrap.py       # 保留 amc-bootstrap.*
-python tools/test_amc_elf-pe.py --keep                    # 保留 amc_elf_test_*
+python tools/run_test.py --bootstrap                       # 可用 AMC_BIN_DIR=... 复用外部构建
+KEEP_ARTIFACTS=1 python tools/run_test.py --bootstrap       # 保留 amc-bootstrap.*
+python tools/run_test.py --elf-pe --keep                    # 保留 amc_elf_test_*
 python tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix
 python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 ```

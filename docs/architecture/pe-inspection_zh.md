@@ -254,14 +254,13 @@ amc metadata app.abix -o region.abixmeta
 
 ## 测试
 
-既有测试脚本 `tools/test_amc_elf-pe.py` 的名字里本就包含 PE。实现时应为它增加
-Windows 分支：
+测试套件 `tools/run_test.py --elf-pe` 在 ELF 与 Mach-O 之外同样覆盖 PE 路径，其 Windows 分支运行：
 
 1. `amc build` → `.abix` + `.abix.meta`
 2. `amc generate -l cpp` → 带 PE 节区属性的头文件
 3. `clang++`/`cl.exe` → 含 `.abix`（与 `.abix.n`）节区的 PE 镜像
-4. `llvm-readobj --sections` / `dumpbin /HEADERS` —— 确认节区存在
-5. `llvm-objcopy --dump-section` / `objcopy` —— 确认 `ABIX` magic
+4. `llvm-readobj --sections` —— 确认节区存在
+5. `llvm-objcopy --dump-section` —— 确认 `ABIX` magic
 6. `amc metadata --from-elf` / `--verify` —— 解析并校验 Region
 7. `llvm-objcopy --remove-section=.abix.n` —— strip 往返
 8. 错误用例 —— 非 PE 拒绝、截断 PE 拒绝
