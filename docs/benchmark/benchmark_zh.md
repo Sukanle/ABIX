@@ -386,3 +386,4 @@ cd build/Release/bin && LD_LIBRARY_PATH=. ./bench_all \
 - [ABIX README](../../README_ZH.md)
 - [Google Benchmark User Guide](https://github.com/google/benchmark)
 - [User-Level Implementations of Read-Copy Update](https://doi.org/10.1109/TPDS.2011.159)
+- [ABIX 与主流插件 / 运行时框架对比](competitors_zh.md) —— 按成本层级对比 COM、Qt、Unity、Unreal,以及 ABIX 不适用的地方

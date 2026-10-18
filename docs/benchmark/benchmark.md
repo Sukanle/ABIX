@@ -386,3 +386,4 @@ cd build/Release/bin && LD_LIBRARY_PATH=. ./bench_all \
 - [ABIX README](../../README.md)
 - [Google Benchmark User Guide](https://github.com/google/benchmark)
 - [User-Level Implementations of Read-Copy Update](https://doi.org/10.1109/TPDS.2011.159)
+- [ABIX vs Mainstream Plugin / Runtime Frameworks](competitors.md) — how ABIX compares with COM, Qt, Unity and Unreal per cost class, and where it is not the answer

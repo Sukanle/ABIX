@@ -11,20 +11,20 @@
 - [Positioning](#positioning)
 - [The Landscape](#the-landscape)
 - [Direct ABI Competitors](#direct-abi-competitors)
-  - [libabigail](#1-libabigail)
-  - [ABI Compliance Checker](#2-abi-compliance-checker)
+    - [libabigail](#1-libabigail)
+    - [ABI Compliance Checker](#2-abi-compliance-checker)
 - [Package / Build Systems](#package--build-systems)
-  - [Conan](#3-conan)
-  - [vcpkg](#4-vcpkg)
+    - [Conan](#3-conan)
+    - [vcpkg](#4-vcpkg)
 - [Component Models](#component-models)
-  - [COM](#5-com)
-  - [WebAssembly Component Model](#6-webassembly-component-model)
+    - [COM](#5-com)
+    - [WebAssembly Component Model](#6-webassembly-component-model)
 - [FFI / Binding Generators](#ffi--binding-generators)
-  - [bindgen / SWIG](#7-bindgen--swig)
+    - [bindgen / SWIG](#7-bindgen--swig)
 - [RPC / Serialization](#rpc--serialization)
-  - [gRPC / Protobuf / FlatBuffers](#8-grpc--protobuf--flatbuffers)
+    - [gRPC / Protobuf / FlatBuffers](#8-grpc--protobuf--flatbuffers)
 - [Build Systems](#build-systems)
-  - [CMake / Bazel](#9-cmake--bazel)
+    - [CMake / Bazel](#9-cmake--bazel)
 - [Competitive Position Summary](#competitive-position-summary)
 - [Strategic Implications](#strategic-implications)
 - [ABIX Differentiation](#abix-differentiation)
@@ -50,30 +50,30 @@ graph TD
     A[Binary / ABI World] --> B[ABI Analysis]
     A --> C[Component Model]
     A --> D[Package/Build]
-    
+
     B --> B1[libabigail]
     B --> B2[abi-compliance-checker]
-    
+
     C --> C1[COM / Wasm CM]
-    
+
     D --> D1[Conan / vcpkg]
     D --> D2[CMake / Bazel]
-    
+
     B1 --> E[FFI / Binding]
     B2 --> E
     C1 --> E
     D1 --> E
     D2 --> E
-    
+
     E --> E1[bindgen / SWIG]
-    
+
     B1 --> F[Runtime Plugin]
     C1 --> F
     D1 --> F
-    
+
     E1 --> G[ABIX / AMC]
     F --> G
-    
+
     G --> G1[LSP]
     G --> G2[Agent]
     G --> G3[Robotics]
@@ -179,14 +179,14 @@ and interfaces have stable binary contracts.
 This proves that "native binary components + standardized interfaces" is not
 a new idea. ABIX must answer: **Why not COM?**
 
-| Aspect            | COM                     | ABIX                          |
-|-------------------|-------------------------|-------------------------------|
-| Platform          | Windows-oriented        | cross-platform                |
-| Model             | Object Model            | ABI metadata                  |
-| Identity          | Interface / IID         | existing C/C++ ABI            |
-| Lifetime          | Reference Counting      | compiler/platform/runtime aware |
-| Runtime           | predefined runtime model | arbitrary native binaries     |
-| Interaction       | component interaction   | static metadata + introspection |
+| Aspect      | COM                      | ABIX                            |
+| ----------- | ------------------------ | ------------------------------- |
+| Platform    | Windows-oriented         | cross-platform                  |
+| Model       | Object Model             | ABI metadata                    |
+| Identity    | Interface / IID          | existing C/C++ ABI              |
+| Lifetime    | Reference Counting       | compiler/platform/runtime aware |
+| Runtime     | predefined runtime model | arbitrary native binaries       |
+| Interaction | component interaction    | static metadata + introspection |
 
 COM defines a component model. ABIX describes the semantics of existing
 native ABIs. These are fundamentally different things.
@@ -290,19 +290,19 @@ This is likely a key integration line for AMC in later stages.
 
 ## Competitive Position Summary
 
-| System                  | Primary Object              | Focus                                         |
-|-------------------------|-----------------------------|-----------------------------------------------|
-| libabigail              | existing native binary ABI  | analysis / diff                                |
-| ABI Compliance Checker  | ABI dump / library          | compatibility                                 |
-| Conan                   | package / binary            | dependency / build                            |
-| vcpkg                   | package / build config      | dependency / cache / ABI hash                 |
-| COM                     | binary component            | Component Object Model                        |
-| Wasm Component Model    | portable component          | cross-language component                      |
-| bindgen                 | C/C++ source                | FFI generation                                |
-| SWIG                    | C/C++ source                | multi-language binding                        |
-| Protobuf/gRPC           | wire/service schema         | RPC / serialization                           |
-| CMake/Bazel             | build system                | build graph / reproducibility                 |
-| **ABIX**                | **native ABI state / metadata** | **ABI IR / contract / verification / composition** |
+| System                 | Primary Object                  | Focus                                              |
+| ---------------------- | ------------------------------- | -------------------------------------------------- |
+| libabigail             | existing native binary ABI      | analysis / diff                                    |
+| ABI Compliance Checker | ABI dump / library              | compatibility                                      |
+| Conan                  | package / binary                | dependency / build                                 |
+| vcpkg                  | package / build config          | dependency / cache / ABI hash                      |
+| COM                    | binary component                | Component Object Model                             |
+| Wasm Component Model   | portable component              | cross-language component                           |
+| bindgen                | C/C++ source                    | FFI generation                                     |
+| SWIG                   | C/C++ source                    | multi-language binding                             |
+| Protobuf/gRPC          | wire/service schema             | RPC / serialization                                |
+| CMake/Bazel            | build system                    | build graph / reproducibility                      |
+| **ABIX**               | **native ABI state / metadata** | **ABI IR / contract / verification / composition** |
 
 ABIX's core territory:
 
@@ -311,11 +311,11 @@ graph TD
     A[ABIX] --> B[Describe]
     A --> C[Verify]
     A --> D[Compose]
-    
+
     B --> E[ABI IR]
     C --> F[ABI Diff]
     D --> G[Runtime]
-    
+
     E --> H[AMC]
     F --> H
     G --> H
@@ -404,12 +404,12 @@ verifies the ABIX Applications above.
 
 ### Four Demonstrations
 
-| Demo             | Proves                                            |
-|------------------|---------------------------------------------------|
-| `amc-abi-ci`     | ABI / binary / compiler / tooling                  |
-| `amc-bind`       | C++ / Rust / FFI / code generation                 |
-| `amc-robotics`   | dynamic library / runtime / AI / robotics          |
-| `amc-agent`      | AI Agent / MCP / structured context / verification |
+| Demo           | Proves                                             |
+| -------------- | -------------------------------------------------- |
+| `amc-abi-ci`   | ABI / binary / compiler / tooling                  |
+| `amc-bind`     | C++ / Rust / FFI / code generation                 |
+| `amc-robotics` | dynamic library / runtime / AI / robotics          |
+| `amc-agent`    | AI Agent / MCP / structured context / verification |
 
 All four share one foundation:
 
@@ -458,21 +458,21 @@ Failure to do so will cause search and community-discovery confusion.
 
 ## References
 
-| Tool | Link |
-|------|------|
-| libabigail | https://sourceware.org/libabigail/manual/libabigail-overview.html |
-| ABI Compliance Checker | https://lvc.github.io/abi-compliance-checker/ |
-| Conan | https://docs.conan.io/2/introduction.html |
-| vcpkg binary caching | https://learn.microsoft.com/en-us/vcpkg/consume/binary-caching-overview |
-| COM | https://learn.microsoft.com/en-us/windows/win32/com/the-component-object-model |
-| Wasm Component Model | https://github.com/WebAssembly/component-model/blob/main/design/high-level/Goals.md |
-| bindgen | https://rust-lang.github.io/rust-bindgen/ |
-| Protobuf | https://protobuf.dev/overview/ |
-| gRPC | https://grpc.io/docs/what-is-grpc/introduction/ |
-| CMake File API | https://cmake.org/cmake/help/latest/manual/cmake-file-api.7.html |
-| Bazel Remote Cache | https://bazel.build/remote/caching |
-| Qt QPluginLoader | https://doc.qt.io/qt-6/qpluginloader.html |
+| Tool                   | Link                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| libabigail             | https://sourceware.org/libabigail/manual/libabigail-overview.html                   |
+| ABI Compliance Checker | https://lvc.github.io/abi-compliance-checker/                                       |
+| Conan                  | https://docs.conan.io/2/introduction.html                                           |
+| vcpkg binary caching   | https://learn.microsoft.com/en-us/vcpkg/consume/binary-caching-overview             |
+| COM                    | https://learn.microsoft.com/en-us/windows/win32/com/the-component-object-model      |
+| Wasm Component Model   | https://github.com/WebAssembly/component-model/blob/main/design/high-level/Goals.md |
+| bindgen                | https://rust-lang.github.io/rust-bindgen/                                           |
+| Protobuf               | https://protobuf.dev/overview/                                                      |
+| gRPC                   | https://grpc.io/docs/what-is-grpc/introduction/                                     |
+| CMake File API         | https://cmake.org/cmake/help/latest/manual/cmake-file-api.7.html                    |
+| Bazel Remote Cache     | https://bazel.build/remote/caching                                                  |
+| Qt QPluginLoader       | https://doc.qt.io/qt-6/qpluginloader.html                                           |
 
 ---
 
-*See also: [AI theory](../ai/ai.md), [TROI metric](../ai/troi.md), [MCP tools](../ai/MCP.md).*
+_See also: [AI theory](../ai/ai.md), [TROI metric](../ai/troi.md), [MCP tools](../ai/MCP.md)._
