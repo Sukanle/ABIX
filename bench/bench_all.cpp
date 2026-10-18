@@ -8,5 +8,6 @@
 #include "falseSharing_bench.cpp"
 #include "ABIX/interface_dispatch_bench.cpp"
 #include "ABIX/interface_lifecycle_bench.cpp"
+#include "ABIX/interface_vtable_bench.cpp"
 #include "ABIX/abix_resolve_bench.cpp"
 #include "ABIX/abix_lookup_cross_bench.cpp"

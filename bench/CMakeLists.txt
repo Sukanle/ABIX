@@ -63,6 +63,7 @@ endif()
 abi_add_bench(NAME "abix_lookup_cross_bench" SOURCES "ABIX/abix_lookup_cross_bench.cpp")
 abi_add_bench(NAME "interface_dispatch_bench" SOURCES "ABIX/interface_dispatch_bench.cpp")
 abi_add_bench(NAME "interface_lifecycle_bench" SOURCES "ABIX/interface_lifecycle_bench.cpp")
+abi_add_bench(NAME "interface_vtable_bench" SOURCES "ABIX/interface_vtable_bench.cpp")
 
 # --- EBR benchmarks (unity build — convenience binary) ---
 set(EBR_SOURCES "topology/topology.cpp" "workloads/workload.cpp" "workloads/workload_runner.cpp")
