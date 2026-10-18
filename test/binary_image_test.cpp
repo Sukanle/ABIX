@@ -3,8 +3,22 @@
 #include "ABIX/Binary/BinaryImage.h"
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#else
+#  include <sys/mman.h>
+#  include <unistd.h>
+#endif
 
 using skl::abix::binary::Architecture;
 using skl::abix::binary::BinaryImage;
@@ -42,22 +56,22 @@ std::vector<uint8_t> make_pe() {
     bytes[nt + 1] = 'E';
 
     const size_t coff = nt + 4;
-    put_u16(bytes, coff + 0, 0x8664);    // Machine = amd64
-    put_u16(bytes, coff + 2, 1);         // NumberOfSections
-    put_u16(bytes, coff + 16, 240);      // SizeOfOptionalHeader (PE32+)
+    put_u16(bytes, coff + 0, 0x8664);   // Machine = amd64
+    put_u16(bytes, coff + 2, 1);        // NumberOfSections
+    put_u16(bytes, coff + 16, 240);     // SizeOfOptionalHeader (PE32+)
 
     const size_t optional = coff + 20;
-    put_u16(bytes, optional + 0, 0x20B);            // PE32+
-    put_u64(bytes, optional + 24, 0x140000000ull);  // ImageBase
+    put_u16(bytes, optional + 0, 0x20B);             // PE32+
+    put_u64(bytes, optional + 24, 0x140000000ull);   // ImageBase
 
     const size_t sect = optional + 240;
     const char name[] = ".abix";
     for (size_t i = 0; i < 5; ++i)
         bytes[sect + i] = static_cast<uint8_t>(name[i]);
-    put_u32(bytes, sect + 8, 8);        // VirtualSize
-    put_u32(bytes, sect + 12, 0x1000);  // VirtualAddress
-    put_u32(bytes, sect + 16, 8);       // SizeOfRawData
-    put_u32(bytes, sect + 20, 0x200);   // PointerToRawData
+    put_u32(bytes, sect + 8, 8);         // VirtualSize
+    put_u32(bytes, sect + 12, 0x1000);   // VirtualAddress
+    put_u32(bytes, sect + 16, 8);        // SizeOfRawData
+    put_u32(bytes, sect + 20, 0x200);    // PointerToRawData
 
     const char payload[] = {'A', 'B', 'I', 'X', 'D', 'A', 'T', 'A'};
     for (size_t i = 0; i < 8; ++i)
@@ -94,21 +108,21 @@ std::vector<uint8_t> make_pe_with_export() {
     const char name[] = ".rdata";
     for (size_t i = 0; i < 6; ++i)
         bytes[sect + i] = static_cast<uint8_t>(name[i]);
-    put_u32(bytes, sect + 8, 0x100);   // VirtualSize
-    put_u32(bytes, sect + 12, 0x1000); // VirtualAddress
-    put_u32(bytes, sect + 16, 0x200);  // SizeOfRawData
-    put_u32(bytes, sect + 20, 0x200);  // PointerToRawData
+    put_u32(bytes, sect + 8, 0x100);     // VirtualSize
+    put_u32(bytes, sect + 12, 0x1000);   // VirtualAddress
+    put_u32(bytes, sect + 16, 0x200);    // SizeOfRawData
+    put_u32(bytes, sect + 20, 0x200);    // PointerToRawData
 
     const size_t raw = 0x200;
-    put_u32(bytes, raw + 16, 1);        // export Base
-    put_u32(bytes, raw + 20, 1);        // NumberOfFunctions
-    put_u32(bytes, raw + 24, 1);        // NumberOfNames
-    put_u32(bytes, raw + 28, 0x1028);   // AddressOfFunctions
-    put_u32(bytes, raw + 32, 0x102C);   // AddressOfNames
-    put_u32(bytes, raw + 36, 0x1030);   // AddressOfNameOrdinals
-    put_u32(bytes, raw + 0x28, 0x2000); // function RVA
-    put_u32(bytes, raw + 0x2C, 0x1040); // name RVA
-    put_u16(bytes, raw + 0x30, 0);      // ordinal index
+    put_u32(bytes, raw + 16, 1);          // export Base
+    put_u32(bytes, raw + 20, 1);          // NumberOfFunctions
+    put_u32(bytes, raw + 24, 1);          // NumberOfNames
+    put_u32(bytes, raw + 28, 0x1028);     // AddressOfFunctions
+    put_u32(bytes, raw + 32, 0x102C);     // AddressOfNames
+    put_u32(bytes, raw + 36, 0x1030);     // AddressOfNameOrdinals
+    put_u32(bytes, raw + 0x28, 0x2000);   // function RVA
+    put_u32(bytes, raw + 0x2C, 0x1040);   // name RVA
+    put_u16(bytes, raw + 0x30, 0);        // ordinal index
     const char symbol[] = "my_export";
     for (size_t i = 0; i < 9; ++i)
         bytes[raw + 0x40 + i] = static_cast<uint8_t>(symbol[i]);
@@ -134,17 +148,17 @@ std::vector<uint8_t> make_pe32() {
     put_u16(bytes, coff + 16, 224);     // SizeOfOptionalHeader (PE32)
 
     const size_t optional = coff + 20;
-    put_u16(bytes, optional + 0, 0x10B);        // PE32
-    put_u32(bytes, optional + 28, 0x00400000);  // ImageBase (u32 in PE32)
+    put_u16(bytes, optional + 0, 0x10B);         // PE32
+    put_u32(bytes, optional + 28, 0x00400000);   // ImageBase (u32 in PE32)
 
     const size_t sect = optional + 224;
     const char name[] = ".abix";
     for (size_t i = 0; i < 5; ++i)
         bytes[sect + i] = static_cast<uint8_t>(name[i]);
-    put_u32(bytes, sect + 8, 8);        // VirtualSize
-    put_u32(bytes, sect + 12, 0x1000);  // VirtualAddress
-    put_u32(bytes, sect + 16, 8);       // SizeOfRawData
-    put_u32(bytes, sect + 20, 0x200);   // PointerToRawData
+    put_u32(bytes, sect + 8, 8);         // VirtualSize
+    put_u32(bytes, sect + 12, 0x1000);   // VirtualAddress
+    put_u32(bytes, sect + 16, 8);        // SizeOfRawData
+    put_u32(bytes, sect + 20, 0x200);    // PointerToRawData
 
     const char payload[] = {'A', 'B', 'I', 'X', 'D', 'A', 'T', 'A'};
     for (size_t i = 0; i < 8; ++i)
@@ -165,6 +179,65 @@ std::vector<uint8_t> make_truncated_pe() {
     bytes[0x41] = 'E';
     return bytes;
 }
+
+// A scratch buffer of `size` bytes that ends exactly at a page boundary whose next
+// page is inaccessible: any read past `size()` faults instead of quietly returning
+// neighbouring bytes. That is what makes "the parser must not read the fields of a
+// truncated header" testable without a sanitizer (ASan is not linkable on the
+// MinGW toolchain this project also builds with).
+class GuardedBuffer {
+public:
+    explicit GuardedBuffer(size_t size)
+        : _size(size) {
+#if defined(_WIN32)
+        SYSTEM_INFO info;
+        GetSystemInfo(&info);
+        _page = info.dwPageSize;
+#else
+        _page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+#endif
+        _span = ((size + _page - 1) / _page + 1) * _page;
+#if defined(_WIN32)
+        _base = static_cast<uint8_t *>(VirtualAlloc(nullptr, _span, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        if (_base) {
+            DWORD previous = 0;
+            if (!VirtualProtect(_base + _span - _page, _page, PAGE_NOACCESS, &previous)) {
+                VirtualFree(_base, 0, MEM_RELEASE);
+                _base = nullptr;
+            }
+        }
+#else
+        void *mapped = mmap(nullptr, _span, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        _base = (mapped == MAP_FAILED) ? nullptr : static_cast<uint8_t *>(mapped);
+        if (_base && mprotect(_base + _span - _page, _page, PROT_NONE) != 0) {
+            munmap(_base, _span);
+            _base = nullptr;
+        }
+#endif
+        if (_base) _data = _base + (_span - _page - size);
+    }
+    ~GuardedBuffer() {
+        if (!_base) return;
+#if defined(_WIN32)
+        VirtualFree(_base, 0, MEM_RELEASE);
+#else
+        munmap(_base, _span);
+#endif
+    }
+    GuardedBuffer(const GuardedBuffer &) = delete;
+    GuardedBuffer &operator=(const GuardedBuffer &) = delete;
+
+    uint8_t *data() const noexcept { return _data; }
+    size_t size() const noexcept { return _size; }
+    bool valid() const noexcept { return _data != nullptr; }
+
+private:
+    uint8_t *_base = nullptr;
+    uint8_t *_data = nullptr;
+    size_t _size = 0;
+    size_t _page = 0;
+    size_t _span = 0;
+};
 
 }   // namespace
 
@@ -257,4 +330,36 @@ TEST_CASE("43.binary image rejects a truncated PE header", "[binary]") {
     std::string error;
     CHECK_FALSE(parse_binary_image(bytes.data(), bytes.size(), image, error));
     CHECK(error == "truncated PE header");
+}
+
+// Test 43 covers one shortfall value and checks the *result*. This one covers every
+// shortfall of the 20-byte COFF file header and checks that the read does not happen
+// at all: the image ends at an inaccessible page, so a parser that reads Machine /
+// NumberOfSections / SizeOfOptionalHeader before bounds-checking them faults here
+// rather than passing on whatever preceded the buffer (which is how the original
+// heap-buffer-overflow stayed invisible in a normal build).
+TEST_CASE("44.binary image never reads past a truncated PE header", "[binary]") {
+    constexpr size_t kSize = 128;   // >= 0x40, the minimum is_pe() looks at
+    for (size_t tail = 0; tail < 20; ++tail) {
+        GuardedBuffer bytes(kSize);
+        REQUIRE(bytes.valid());
+        std::memset(bytes.data(), 0, kSize);
+        bytes.data()[0] = 'M';
+        bytes.data()[1] = 'Z';
+        // Put the `PE\0\0` signature so that exactly `tail` bytes remain, i.e. the
+        // signature fits but the COFF file header that follows is cut short.
+        const uint32_t e_lfanew = static_cast<uint32_t>(kSize - 4 - tail);
+        for (int i = 0; i < 4; ++i)
+            bytes.data()[0x3C + i] = static_cast<uint8_t>(e_lfanew >> (8 * i));
+        bytes.data()[e_lfanew + 0] = 'P';
+        bytes.data()[e_lfanew + 1] = 'E';
+
+        INFO("bytes after the PE signature: " << tail);
+        CHECK(skl::abix::binary::is_pe(bytes.data(), kSize));
+
+        BinaryImage image;
+        std::string error;
+        CHECK_FALSE(parse_binary_image(bytes.data(), kSize, image, error));
+        CHECK(error == "truncated PE header");
+    }
 }
