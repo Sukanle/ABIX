@@ -3,7 +3,7 @@
 # It exists so `tools/run_test.py --bootstrap` and anyone reproducing the
 # bootstrap by hand drive the very same pipeline the library documents:
 #
-#   amc/self.abic.toml --(amc build)--> build/amc_core.abix
+#   AMC/self.abic.toml --(amc build)--> build/amc_core.abix
 #                     --(amc generate -l cpp)--> generated/amc_core.hpp
 #                     --(C++17 compile)--> self_consumer
 #
@@ -40,11 +40,11 @@ amc_add_abi(
     TARGET
     self_consumer
     CONFIG
-    "${ABIX_SOURCE_ROOT}/amc/self.abic.toml"
+    "${ABIX_SOURCE_ROOT}/AMC/self.abic.toml"
     ABIX_OUTPUT
     "${CMAKE_CURRENT_BINARY_DIR}/build/amc_core.abix"
     CPP_OUTPUT
     "${CMAKE_CURRENT_BINARY_DIR}/generated/amc_core.hpp"
     DEPENDS
-    "${ABIX_SOURCE_ROOT}/amc/self_types.cpp"
-    "${ABIX_SOURCE_ROOT}/amc/include/AMC/Core/Core.h")
+    "${ABIX_SOURCE_ROOT}/AMC/self_types.cpp"
+    "${ABIX_SOURCE_ROOT}/AMC/include/AMC/Core/Core.h")
