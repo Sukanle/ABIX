@@ -51,12 +51,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ctypes
 import functools
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+IS_WINDOWS = sys.platform == "win32"
+# Unix exposes sched_setaffinity; Windows uses SetProcessAffinityMask via ctypes.
+HAS_AFFINITY = hasattr(os, "sched_setaffinity") or IS_WINDOWS
 
 # Standalone Google Benchmark executables that are not linked into bench_all.
 # Empty by default: every suite is now part of bench_all; pass `--extra-exe` to
@@ -145,22 +150,48 @@ def format_cpu_list(cpus: list[int]) -> str:
     return ",".join(spans)
 
 
-def resolve_pin(pin: str) -> list[int]:
-    """The CPU set the children are restricted to; empty means no restriction.
+def apply_windows_affinity(pid: int, cpus: list[int]) -> bool:
+    """Restrict a running child to `cpus` through SetProcessAffinityMask.
+
+    Windows has no pre-exec hook, so the restriction is applied right after the
+    child is spawned. A benchmark run lasts far longer than that startup window.
+    """
+    if not IS_WINDOWS:
+        return False
+    mask = 0
+    for cpu in cpus:
+        mask |= 1 << cpu
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.SetProcessAffinityMask.restype = ctypes.c_int
+    kernel32.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    # PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION
+    handle = kernel32.OpenProcess(0x0200 | 0x1000, False, pid)
+    if not handle:
+        return False
+    try:
+        return bool(kernel32.SetProcessAffinityMask(handle, ctypes.c_size_t(mask)))
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def resolve_pin(pin: str) -> tuple[list[int], str]:
+    """Return (cpus, note): an empty `cpus` means unpinned, `note` says why.
 
     `topology/topology.cpp` leaves `performance_cpus` at 0 on Linux, so the P-core
-    pool is derived here. `os.sched_setaffinity` is Unix-only, so a request it cannot
-    honour on this platform is reported and then ignored.
+    pool is derived here. An explicit list is honoured on Windows as well, through
+    SetProcessAffinityMask; `auto` still needs the Linux cpufreq data.
     """
     if pin == "off":
-        return []
+        return [], ""
     cpus = performance_cpu_pool() if pin == "auto" else parse_cpu_list(pin)
     if not cpus:
-        return []
-    if not hasattr(os, "sched_setaffinity"):
-        print("  [warn] --pin is not supported on this platform, running unpinned", file=sys.stderr)
-        return []
-    return cpus
+        return [], "no P-core pool detected"
+    if not HAS_AFFINITY:
+        return [], "CPU affinity is not supported on this platform"
+    return cpus, ""
 
 
 def pin_spec(value: str) -> str:
@@ -235,18 +266,29 @@ def run_gb(
     if min_time:
         cmd.append(f"--benchmark_min_time={min_time}")
     # Decode as UTF-8 regardless of the console locale (Windows is often GBK here).
-    result = subprocess.run(
+    # Unix pins in a pre-exec hook; Windows has none, so the child is restricted
+    # immediately after it is spawned.
+    preexec = (
+        functools.partial(os.sched_setaffinity, 0, set(allowed_cpus))
+        if allowed_cpus and not IS_WINDOWS
+        else None
+    )
+    process = subprocess.Popen(
         cmd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
         cwd=cwd,
-        preexec_fn=functools.partial(os.sched_setaffinity, 0, set(allowed_cpus)) if allowed_cpus else None,
+        preexec_fn=preexec,
     )
-    if result.returncode != 0:
-        excerpt = strip_child_noise(result.stderr[-800:])
-        print(f"  [FAIL] {filter_ or exe.name}: exit {result.returncode}\n{excerpt}", file=sys.stderr)
+    if allowed_cpus and IS_WINDOWS and not apply_windows_affinity(process.pid, allowed_cpus):
+        print(f"  [warn] could not set affinity for {filter_ or exe.name}", file=sys.stderr)
+    _, stderr = process.communicate()
+    if process.returncode != 0:
+        excerpt = strip_child_noise(stderr[-800:])
+        print(f"  [FAIL] {filter_ or exe.name}: exit {process.returncode}\n{excerpt}", file=sys.stderr)
         return False
     return True
 
@@ -350,7 +392,7 @@ def main() -> int:
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    allowed_cpus = resolve_pin(args.pin)
+    allowed_cpus, pin_note = resolve_pin(args.pin)
 
     print(
         f"running {len(families)} bench_all families + {len(extra_exes)} standalone executables, "
@@ -366,8 +408,8 @@ def main() -> int:
         print(f"  [warn] {scaling}", file=sys.stderr)
     if allowed_cpus:
         print(f"  [pin] restricting every process to CPUs {format_cpu_list(allowed_cpus)}", file=sys.stderr)
-    elif args.pin != "off":
-        print("  [pin] no P-core pool detected, running unpinned", file=sys.stderr)
+    elif pin_note:
+        print(f"  [pin] {pin_note}, running unpinned", file=sys.stderr)
 
     # label -> rows, so the summary table can mix families and standalone executables.
     summary: dict[str, list[tuple[str, int, float, float]]] = {}
