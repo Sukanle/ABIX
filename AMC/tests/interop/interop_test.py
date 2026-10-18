@@ -64,7 +64,7 @@ def main() -> int:
         print(f"  [SKIP] unsupported platform for the interop demo: {sys.platform}")
         return 0
 
-    work = tempfile.mkdtemp(prefix="amc-interop.")
+    work = os.environ.get("AMC_INTEROP_WORK_DIR") or tempfile.mkdtemp(prefix="amc-interop.")
     passed = 0
     failed = 0
 
@@ -134,9 +134,9 @@ def main() -> int:
         #    `abix_link` cfg turns the projection's `#[link(name = ...)]` on, so
         #    the symbols are resolved against the native library at link time
         #    (no hand-written `-l` on the command line).
-        consumer_src = os.path.join(work, "consumer.rs")
-        shutil.copyfile(os.path.join(SCRIPT_DIR, "consumer.rs"), consumer_src)
-        consumer = os.path.join(work, exe_name("interop_consumer"))
+        consumer_src = os.path.join(work, "rust_consumer.rs")
+        shutil.copyfile(os.path.join(SCRIPT_DIR, "rust_consumer.rs"), consumer_src)
+        consumer = os.path.join(work, exe_name("rust_consumer"))
         result = run([rustc, "--edition", "2021", "-O", consumer_src,
                       "--cfg", "abix_link", "-L", work, "-o", consumer])
         check(result.returncode == 0, "Rust consumer compiled against the projection",
@@ -161,7 +161,7 @@ def main() -> int:
         if not zig:
             print("  [SKIP] zig not found: skipping the Zig projection")
         else:
-            zig_gen = os.path.join(work, "gen_zig")
+            zig_gen = os.path.join(work, "gen")
             result = run([amc, "generate", artifact, "-l", "zig", "-o", zig_gen]) if os.path.isfile(artifact) else None
             zig_projection = os.path.join(zig_gen, "amc_generated.zig")
             check(result is not None and result.returncode == 0 and os.path.isfile(zig_projection),

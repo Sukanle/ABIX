@@ -7,7 +7,7 @@
 // library and the metadata disagree, the comptime block fails the build.
 
 const std = @import("std");
-const abi = @import("gen_zig/amc_generated.zig");
+const abi = @import("gen/amc_generated.zig");
 
 pub fn main() void {
     const sum = abi.demo_add(2, 3);

@@ -23,6 +23,66 @@ import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
+def exe_name(base: str) -> str:
+    """Append `.exe` on Windows (including MSYS2/Cygwin Python), else as-is."""
+    return base + ".exe" if sys.platform == "win32" else base
+
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+
+
+def module_path(work: str, base: str) -> str:
+    """Output path of the shared module `base` (libX.so / libX.dylib / X.dll)."""
+    if IS_MACOS:
+        return os.path.join(work, "lib" + base + ".dylib")
+    if IS_WINDOWS:
+        return os.path.join(work, base + ".dll")
+    return os.path.join(work, "lib" + base + ".so")
+
+
+def import_lib(work: str, base: str) -> str:
+    """Import library emitted next to the Windows shared module `base`."""
+    return os.path.join(work, "lib" + base + ".dll.a")
+
+
+def module_flags(work: str, base: str) -> list:
+    """Extra linker flags used to build the shared module `base`.
+
+    A MinGW DLL exports nothing unless asked, but the generated thunks rely on
+    the import library, so Windows builds export every symbol and emit the
+    `lib<base>.dll.a` that rustc links against.
+    """
+    if IS_WINDOWS:
+        return ["-Wl,--export-all-symbols", "-Wl,--out-implib," + import_lib(work, base)]
+    return []
+
+
+def rustc_link(work: str, base: str, search_dirs=()) -> list:
+    """rustc arguments that link a consumer against the shared module `base`."""
+    args = ["-L", "native=" + work, "-l", "dylib=" + base]
+    if IS_WINDOWS:
+        for directory in search_dirs:
+            args += ["-L", "native=" + directory]
+        return args
+    for directory in (work, *search_dirs):
+        args += ["-C", "link-arg=-Wl,-rpath," + directory]
+    return args
+
+
+def runtime_env(work: str, search_dirs=()) -> dict:
+    """Environment that puts the module directories on the loader search path."""
+    env = dict(os.environ)
+    dirs = [work, *search_dirs]
+    if IS_WINDOWS:
+        env["PATH"] = os.pathsep.join(dirs + [env.get("PATH", "")])
+    else:
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(dirs + [env.get("LD_LIBRARY_PATH", "")])
+        env["DYLD_LIBRARY_PATH"] = os.pathsep.join(dirs + [env.get("DYLD_LIBRARY_PATH", "")])
+    return env
+
+
 # `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
 # option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory.
 if "--keep-artifacts" in sys.argv:
@@ -38,7 +98,7 @@ def main() -> int:
     bin_dir = os.path.abspath(argv[0])
     source_root = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.abspath(
         os.path.join(SCRIPT_DIR, "..", "..", ".."))
-    amc = os.path.join(bin_dir, "amc")
+    amc = os.path.join(bin_dir, exe_name("amc"))
     cxx = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("c++")
     rustc = shutil.which("rustc")
 
@@ -69,9 +129,9 @@ def main() -> int:
     def run(args, env=None):
         return subprocess.run(args, capture_output=True, text=True, env=env)
 
-    work = tempfile.mkdtemp(prefix="amc-expose.")
+    work = os.environ.get("AMC_INTEROP_WORK_DIR") or tempfile.mkdtemp(prefix="amc-expose.")
     fixture = os.path.join(SCRIPT_DIR, "expose")
-    for name in ("counter.hpp", "counter.abic.toml", "consumer.rs", "consumer.cpp"):
+    for name in ("counter.hpp", "counter.abic.toml", "rust_consumer.rs", "cpp_consumer.cpp"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
 
     # 1. Describe the class and generate its thunks.
@@ -83,12 +143,19 @@ def main() -> int:
     abix = os.path.join(work, "out", "counter_expose.abix")
 
     # 2. Compile the generated thunks into the producing module.
-    suffix = ".dylib" if sys.platform == "darwin" else ".so"
-    module = os.path.join(work, "libcounter" + suffix)
-    r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", thunks, "-I" + source_root, "-o", module])
+    module = module_path(work, "counter")
+    r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", thunks, "-I" + source_root, "-o", module]
+            + module_flags(work, "counter"))
     if not check(r.returncode == 0, "the generated thunks compile", r.stderr[-400:]):
         return 1
-    nm_args = ["nm", "-gU", module] if sys.platform == "darwin" else ["nm", "-D", module]
+    if IS_WINDOWS:
+        # `nm` cannot read a PE DLL's export table; the import library carries
+        # the exported names instead.
+        nm_args = ["nm", import_lib(work, "counter")]
+    elif IS_MACOS:
+        nm_args = ["nm", "-gU", module]
+    else:
+        nm_args = ["nm", "-D", module]
     check("abix_module_query_v1" in subprocess.run(nm_args, capture_output=True, text=True).stdout,
           "the module exports the fixed discovery entry")
 
@@ -103,34 +170,29 @@ def main() -> int:
     check("pub struct OwnedCounter" in generated, "an owner wrapper was generated")
 
     # 4. Compile and run the Rust consumer (create / get / add / destroy).
-    consumer = os.path.join(work, "consumer")
-    r = run([
-        rustc, "--edition", "2021", os.path.join(work, "consumer.rs"), "-o", consumer,
-        "-L", "native=" + work, "-l", "dylib=counter",
-        "-C", "link-arg=-Wl,-rpath," + work,
-    ])
+    consumer = os.path.join(work, exe_name("rust_consumer"))
+    r = run([rustc, "--edition", "2021", os.path.join(work, "rust_consumer.rs"), "-o", consumer]
+            + rustc_link(work, "counter"))
     if not check(r.returncode == 0, "rustc compiled the consumer", r.stderr[-400:]):
         return 1
-    env = dict(os.environ)
-    env["LD_LIBRARY_PATH"] = work + os.pathsep + env.get("LD_LIBRARY_PATH", "")
-    env["DYLD_LIBRARY_PATH"] = work + os.pathsep + env.get("DYLD_LIBRARY_PATH", "")
+    env = runtime_env(work)
     r = run([consumer], env=env)
     check(r.returncode == 0 and "expose counter" in r.stdout,
           "Rust created, called and destroyed the C++ object", (r.stdout + r.stderr)[-400:])
 
     # 5/8/9: discovery through the fixed entry, binding once, and a module lease
     # that keeps the module loaded while the object is alive.
-    consumer_cpp = os.path.join(work, "consumer_cpp")
-    r = run([cxx, "-std=c++17", os.path.join(work, "consumer.cpp"), "-I" + source_root, "-o", consumer_cpp])
+    cpp_consumer = os.path.join(work, exe_name("cpp_consumer"))
+    r = run([cxx, "-std=c++17", os.path.join(work, "cpp_consumer.cpp"), "-I" + source_root, "-o", cpp_consumer])
     if not check(r.returncode == 0, "the registry consumer compiles", r.stderr[-400:]):
         return 1
-    r = run([consumer_cpp, module], env=env)
+    r = run([cpp_consumer, module], env=env)
     check(r.returncode == 0 and "expose registry: OK" in r.stdout,
           "registry bus discovered, bound and leased the exposed capabilities", (r.stdout + r.stderr)[-400:])
 
     # ABIX-STD contract mapping: exposed methods speak SequenceView / StringView
     # / Result, and the contracts are recorded and projected.
-    for name in ("std_api.hpp", "std_api.abic.toml", "consumer_std.rs"):
+    for name in ("std_api.hpp", "std_api.abic.toml", "rust_consumer_std.rs"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
     # The fixture reaches the ABIX-STD headers by a path relative to its own
     # location; rewrite it to the real source root after the copy.
@@ -141,9 +203,9 @@ def main() -> int:
     r = run([amc, "build", "-c", os.path.join(work, "std_api.abic.toml"), "-B", os.path.join(work, "std_out")])
     if not check(r.returncode == 0, "amc build for the ABIX-STD api", (r.stdout + r.stderr)[-400:]):
         return 1
-    std_module = os.path.join(work, "libmetrics" + suffix)
+    std_module = module_path(work, "metrics")
     r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "std_thunks.cpp"),
-             "-I" + source_root, "-o", std_module])
+             "-I" + source_root, "-o", std_module] + module_flags(work, "metrics"))
     if not check(r.returncode == 0, "the ABIX-STD thunks compile", r.stderr[-400:]):
         return 1
     std_gen = os.path.join(work, "std_gen")
@@ -151,13 +213,13 @@ def main() -> int:
     r = run([amc, "generate", os.path.join(work, "std_out", "expose_std.abix"), "-l", "rust", "-o", std_gen])
     if not check(r.returncode == 0, "amc generate for the ABIX-STD api", (r.stdout + r.stderr)[-400:]):
         return 1
-    std_consumer = os.path.join(work, "consumer_std")
-    # consumer_std.rs includes `gen/amc_generated.rs`; point it at the std gen.
-    std_consumer_src = os.path.join(work, "consumer_std.rs")
+    std_consumer = os.path.join(work, exe_name("rust_consumer_std"))
+    # rust_consumer_std.rs includes `gen/amc_generated.rs`; point it at the std gen.
+    std_consumer_src = os.path.join(work, "rust_consumer_std.rs")
     text = open(std_consumer_src, encoding="utf-8").read().replace("gen/amc_generated.rs", "std_gen/amc_generated.rs")
     open(std_consumer_src, "w", encoding="utf-8").write(text)
-    r = run([rustc, "--edition", "2021", std_consumer_src, "-o", std_consumer,
-             "-L", "native=" + work, "-l", "dylib=metrics", "-C", "link-arg=-Wl,-rpath," + work])
+    r = run([rustc, "--edition", "2021", std_consumer_src, "-o", std_consumer]
+            + rustc_link(work, "metrics"))
     if not check(r.returncode == 0, "rustc compiled the ABIX-STD consumer", r.stderr[-400:]):
         return 1
     r = run([std_consumer], env=env)
@@ -168,7 +230,7 @@ def main() -> int:
     # STL parameter type onto an ABIX-STD boundary type, so the frontend exposes
     # a method that takes std::string / std::vector / std::span and generates
     # the marshalling adapter instead of refusing it.
-    for name in ("native_api.hpp", "native_api.abic.toml", "consumer_native.rs"):
+    for name in ("native_api.hpp", "native_api.abic.toml", "rust_consumer_native.rs"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
     r = run([amc, "build", "-c", os.path.join(work, "native_api.abic.toml"), "-B", os.path.join(work, "nat_out")])
     if not check(r.returncode == 0, "amc build for the native adaptation api", (r.stdout + r.stderr)[-400:]):
@@ -178,9 +240,9 @@ def main() -> int:
           "a std::string parameter becomes a StringView with a generated adapter")
     check("abix_span_i32" in native_thunks and "std::vector<" in native_thunks,
           "a std::vector parameter becomes a SequenceView with a generated adapter")
-    nat_module = os.path.join(work, "libnative" + suffix)
+    nat_module = module_path(work, "native")
     r = run([cxx, "-std=c++20", "-fPIC", "-shared", "-O2", os.path.join(work, "native_thunks.cpp"),
-             "-I" + source_root, "-o", nat_module])
+             "-I" + source_root, "-o", nat_module] + module_flags(work, "native"))
     if not check(r.returncode == 0, "the native adaptation thunks compile", r.stderr[-400:]):
         return 1
     nat_gen = os.path.join(work, "nat_gen")
@@ -188,12 +250,12 @@ def main() -> int:
     r = run([amc, "generate", os.path.join(work, "nat_out", "native_api.abix"), "-l", "rust", "-o", nat_gen])
     if not check(r.returncode == 0, "amc generate for the native adaptation api", (r.stdout + r.stderr)[-400:]):
         return 1
-    nat_consumer_src = os.path.join(work, "consumer_native.rs")
+    nat_consumer_src = os.path.join(work, "rust_consumer_native.rs")
     text = open(nat_consumer_src, encoding="utf-8").read().replace("gen/amc_generated.rs", "nat_gen/amc_generated.rs")
     open(nat_consumer_src, "w", encoding="utf-8").write(text)
-    nat_consumer = os.path.join(work, "consumer_native")
-    r = run([rustc, "--edition", "2021", nat_consumer_src, "-o", nat_consumer,
-             "-L", "native=" + work, "-l", "dylib=native", "-C", "link-arg=-Wl,-rpath," + work])
+    nat_consumer = os.path.join(work, exe_name("rust_consumer_native"))
+    r = run([rustc, "--edition", "2021", nat_consumer_src, "-o", nat_consumer]
+            + rustc_link(work, "native"))
     if not check(r.returncode == 0, "rustc compiled the native adaptation consumer", r.stderr[-400:]):
         return 1
     r = run([nat_consumer], env=env)
@@ -223,7 +285,7 @@ def main() -> int:
                 '    static_assert(amc_generated::ShapeTraits::slots == 1);\n'
                 '    return amc_generated::ShapeTraits::version == 1 ? 0 : 1;\n'
                 '}\n')
-            proxy_bin = os.path.join(work, "shapes_proxy")
+            proxy_bin = os.path.join(work, exe_name("shapes_proxy"))
             r = run([cxx, "-std=c++17", "-I" + source_root, "-I" + work, proxy_src, "-o", proxy_bin])
             if check(r.returncode == 0, "the generated interface proxy header compiles", r.stderr[-400:]):
                 r = run([proxy_bin], env=env)
@@ -236,7 +298,7 @@ def main() -> int:
     cmdly_lib = None
     for candidate in ("build/Release/libcmdly", "build/libcmdly", "build/lib", "lib"):
         directory = os.path.join(cmdly_root, candidate)
-        for name in ("libcmdly.so", "libcmdly.dylib"):
+        for name in ("libcmdly.so", "libcmdly.dylib", "libcmdly.dll", "cmdly.dll"):
             if os.path.isfile(os.path.join(directory, name)):
                 cmdly_lib = directory
                 break
@@ -252,8 +314,9 @@ def main() -> int:
         if fmt_probe.returncode == 0:
             fmt_cflags = fmt_probe.stdout.split()
         fmt_toml = "".join(', "%s"' % flag for flag in fmt_cflags)
-        # GNU ld-only option for transitive deps; the Apple linker rejects it.
-        rpath_link = [] if sys.platform == "darwin" else [
+        # GNU ld-only option for transitive deps; the Apple and PE linkers
+        # reject it.
+        rpath_link = [] if (IS_MACOS or IS_WINDOWS) else [
             "-C", "link-arg=-Wl,-rpath-link," + cmdly_lib]
         key_header = os.path.join(cmdly_include, "cmdly", "key.h")
         key_config = os.path.join(work, "cmdly_key.abic.toml")
@@ -277,29 +340,26 @@ output = "cmdly_key.abix"
         r = run([amc, "build", "-c", key_config, "-B", os.path.join(work, "cmdly_out")])
         ok = check(r.returncode == 0, "cmdly::Key exposed automatically", (r.stdout + r.stderr)[-400:])
         if ok:
-            key_module = os.path.join(work, "libcmdlykey" + suffix)
+            key_module = module_path(work, "cmdlykey")
+            key_link = ["-L" + cmdly_lib] + ([] if IS_WINDOWS else ["-Wl,-rpath," + cmdly_lib])
             r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "cmdly_thunks.cpp"),
-                     "-I" + source_root, "-I" + cmdly_include, "-L" + cmdly_lib, "-lcmdly",
-                     "-Wl,-rpath," + cmdly_lib, "-o", key_module] + fmt_cflags)
+                     "-I" + source_root, "-I" + cmdly_include, "-o", key_module]
+                    + key_link + fmt_cflags + module_flags(work, "cmdlykey"))
             if check(r.returncode == 0, "cmdly thunks compile", r.stderr[-400:]):
                 key_gen = os.path.join(work, "cmdly_gen")
                 os.makedirs(key_gen, exist_ok=True)
                 r = run([amc, "generate", os.path.join(work, "cmdly_out", "cmdly_key.abix"), "-l", "rust",
                          "-o", key_gen])
                 check(r.returncode == 0, "cmdly capabilities project to Rust", (r.stdout + r.stderr)[-400:])
-                key_src = os.path.join(work, "consumer_key.rs")
-                shutil.copy(os.path.join(fixture, "consumer_key.rs"), key_src)
+                key_src = os.path.join(work, "rust_consumer_key.rs")
+                shutil.copy(os.path.join(fixture, "rust_consumer_key.rs"), key_src)
                 key_text = open(key_src, encoding="utf-8").read().replace(
                     "gen/amc_generated.rs", "cmdly_gen/amc_generated.rs")
                 open(key_src, "w", encoding="utf-8").write(key_text)
-                kenv = dict(env)
-                kenv["LD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + kenv.get("LD_LIBRARY_PATH", "")
-                kenv["DYLD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + kenv.get("DYLD_LIBRARY_PATH", "")
-                key_bin = os.path.join(work, "consumer_key")
-                r = run([rustc, "--edition", "2021", key_src, "-o", key_bin,
-                         "-L", "native=" + work, "-l", "dylib=cmdlykey",
-                         "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib]
-                        + rpath_link)
+                kenv = runtime_env(work, [cmdly_lib])
+                key_bin = os.path.join(work, exe_name("rust_consumer_key"))
+                r = run([rustc, "--edition", "2021", key_src, "-o", key_bin]
+                        + rustc_link(work, "cmdlykey", [cmdly_lib]) + rpath_link)
                 if check(r.returncode == 0, "cmdly consumer compiles", r.stderr[-400:]):
                     r = run([key_bin], env=kenv)
                     check(r.returncode == 0 and "expose cmdly: OK" in r.stdout,
@@ -362,30 +422,27 @@ output = "cmdly_history.abix"
             history_thunks = open(os.path.join(work, "history_thunks.cpp"), encoding="utf-8").read()
             check("abix_str_utf8 line" in history_thunks and "std::string(line.data, line.len)" in history_thunks,
                   "the inherited insert takes a StringView and adapts it")
-            history_module = os.path.join(work, "libcmdlyhistory" + suffix)
+            history_module = module_path(work, "cmdlyhistory")
+            history_link = ["-L" + cmdly_lib] + ([] if IS_WINDOWS else ["-Wl,-rpath," + cmdly_lib])
             r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "history_thunks.cpp"),
-                     "-I" + source_root, "-I" + cmdly_include, "-L" + cmdly_lib, "-lcmdly",
-                     "-Wl,-rpath," + cmdly_lib, "-o", history_module] + fmt_cflags)
+                     "-I" + source_root, "-I" + cmdly_include, "-o", history_module]
+                    + history_link + fmt_cflags + module_flags(work, "cmdlyhistory"))
             if check(r.returncode == 0, "cmdly history thunks compile", r.stderr[-400:]):
                 hist_gen = os.path.join(work, "hist_gen")
                 os.makedirs(hist_gen, exist_ok=True)
                 r = run([amc, "generate", os.path.join(work, "hist_out", "cmdly_history.abix"), "-l", "rust",
                          "-o", hist_gen])
                 if check(r.returncode == 0, "cmdly history capabilities project to Rust", (r.stdout + r.stderr)[-400:]):
-                    hist_src = os.path.join(work, "consumer_history.rs")
-                    shutil.copy(os.path.join(fixture, "consumer_history.rs"), hist_src)
+                    hist_src = os.path.join(work, "rust_consumer_history.rs")
+                    shutil.copy(os.path.join(fixture, "rust_consumer_history.rs"), hist_src)
                     text = open(hist_src, encoding="utf-8").read().replace(
                         "gen/amc_generated.rs", "hist_gen/amc_generated.rs")
                     open(hist_src, "w", encoding="utf-8").write(text)
-                    hist_bin = os.path.join(work, "consumer_history")
-                    r = run([rustc, "--edition", "2021", hist_src, "-o", hist_bin,
-                             "-L", "native=" + work, "-l", "dylib=cmdlyhistory",
-                             "-C", "link-arg=-Wl,-rpath," + work, "-C", "link-arg=-Wl,-rpath," + cmdly_lib]
-                            + rpath_link)
+                    hist_bin = os.path.join(work, exe_name("rust_consumer_history"))
+                    r = run([rustc, "--edition", "2021", hist_src, "-o", hist_bin]
+                            + rustc_link(work, "cmdlyhistory", [cmdly_lib]) + rpath_link)
                     if check(r.returncode == 0, "cmdly history consumer compiles", r.stderr[-400:]):
-                        hvenv = dict(env)
-                        hvenv["LD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + hvenv.get("LD_LIBRARY_PATH", "")
-                        hvenv["DYLD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + hvenv.get("DYLD_LIBRARY_PATH", "")
+                        hvenv = runtime_env(work, [cmdly_lib])
                         r = run([hist_bin], env=hvenv)
                         check(r.returncode == 0 and "expose history: OK" in r.stdout,
                               "Rust drove the real cmdly insert through a StringView", (r.stdout + r.stderr)[-400:])

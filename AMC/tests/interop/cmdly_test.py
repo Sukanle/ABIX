@@ -26,6 +26,65 @@ import tempfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
+def exe_name(base: str) -> str:
+    """Append `.exe` on Windows (including MSYS2/Cygwin Python), else as-is."""
+    return base + ".exe" if sys.platform == "win32" else base
+
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+
+
+def module_path(work: str, base: str) -> str:
+    """Output path of the shared module `base` (libX.so / libX.dylib / X.dll)."""
+    if IS_MACOS:
+        return os.path.join(work, "lib" + base + ".dylib")
+    if IS_WINDOWS:
+        return os.path.join(work, base + ".dll")
+    return os.path.join(work, "lib" + base + ".so")
+
+
+def import_lib(work: str, base: str) -> str:
+    """Import library emitted next to the Windows shared module `base`."""
+    return os.path.join(work, "lib" + base + ".dll.a")
+
+
+def module_flags(work: str, base: str) -> list:
+    """Extra linker flags used to build the shared module `base`.
+
+    A MinGW DLL exports nothing unless asked, so Windows builds export every
+    symbol and emit the `lib<base>.dll.a` that rustc links against.
+    """
+    if IS_WINDOWS:
+        return ["-Wl,--export-all-symbols", "-Wl,--out-implib," + import_lib(work, base)]
+    return []
+
+
+def rustc_link(work: str, base: str, search_dirs=()) -> list:
+    """rustc arguments that link a consumer against the shared module `base`."""
+    args = ["-L", "native=" + work, "-l", "dylib=" + base]
+    if IS_WINDOWS:
+        for directory in search_dirs:
+            args += ["-L", "native=" + directory]
+        return args
+    for directory in (work, *search_dirs):
+        args += ["-C", "link-arg=-Wl,-rpath," + directory]
+    return args
+
+
+def runtime_env(work: str, search_dirs=()) -> dict:
+    """Environment that puts the module directories on the loader search path."""
+    env = dict(os.environ)
+    dirs = [work, *search_dirs]
+    if IS_WINDOWS:
+        env["PATH"] = os.pathsep.join(dirs + [env.get("PATH", "")])
+    else:
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(dirs + [env.get("LD_LIBRARY_PATH", "")])
+        env["DYLD_LIBRARY_PATH"] = os.pathsep.join(dirs + [env.get("DYLD_LIBRARY_PATH", "")])
+    return env
+
+
 # `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
 # option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory.
 if "--keep-artifacts" in sys.argv:
@@ -38,7 +97,7 @@ def find_cmdly():
     include = os.path.join(root, "libcmdly", "include")
     for candidate in ("build/Release/libcmdly", "build/libcmdly", "build/lib", "lib"):
         directory = os.path.join(root, candidate)
-        for name in ("libcmdly.so", "libcmdly.dylib"):
+        for name in ("libcmdly.so", "libcmdly.dylib", "libcmdly.dll", "cmdly.dll"):
             if os.path.isfile(os.path.join(directory, name)):
                 return root, include, directory
     return root, include, None
@@ -50,7 +109,7 @@ def main() -> int:
         print("usage: cmdly_test.py <amc_bin_dir> [source_root]", file=sys.stderr)
         return 2
     bin_dir = os.path.abspath(argv[0])
-    amc = os.path.join(bin_dir, "amc")
+    amc = os.path.join(bin_dir, exe_name("amc"))
     cxx = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("c++")
     rustc = shutil.which("rustc")
     cmdly_root, cmdly_include, cmdly_lib = find_cmdly()
@@ -86,13 +145,12 @@ def main() -> int:
     def run(args, env=None):
         return subprocess.run(args, capture_output=True, text=True, env=env)
 
-    work = tempfile.mkdtemp(prefix="amc-cmdly.")
+    work = os.environ.get("AMC_INTEROP_WORK_DIR") or tempfile.mkdtemp(prefix="amc-cmdly.")
     fixture = os.path.join(SCRIPT_DIR, "cmdly")
-    for name in ("cmdly_c.h", "cmdly_c.cpp", "cmdly.abic.toml", "consumer.rs"):
+    for name in ("cmdly_c.h", "cmdly_c.cpp", "cmdly.abic.toml", "rust_consumer.rs"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
 
-    suffix = ".dylib" if sys.platform == "darwin" else ".so"
-    facade = os.path.join(work, "libcmdly_c" + suffix)
+    facade = module_path(work, "cmdly_c")
 
     # 1. Build the C facade over cmdly.
     # cmdly's headers include <fmt/...>; a Linux system fmt is on the default
@@ -101,15 +159,14 @@ def main() -> int:
     fmt_probe = run(["pkg-config", "--cflags", "fmt"])
     if fmt_probe.returncode == 0:
         fmt_cflags = fmt_probe.stdout.split()
+    facade_link = ["-L" + cmdly_lib, "-lcmdly"] + ([] if IS_WINDOWS else ["-Wl,-rpath," + cmdly_lib])
     r = run([
         cxx, "-std=c++17", "-fPIC", "-shared", "-O2",
         os.path.join(work, "cmdly_c.cpp"),
         "-I" + cmdly_include,
         "-I" + os.path.join(cmdly_root, "libcmdly", "include"),
-        "-L" + cmdly_lib, "-lcmdly",
-        "-Wl,-rpath," + cmdly_lib,
         "-o", facade,
-    ] + fmt_cflags)
+    ] + facade_link + fmt_cflags + module_flags(work, "cmdly_c"))
     if not check(r.returncode == 0, "compiled the cmdly C facade", r.stderr[-400:]):
         return 1
 
@@ -130,27 +187,20 @@ def main() -> int:
         return 1
 
     # 4. Compile the Rust consumer against the generated projection.
-    consumer = os.path.join(work, "consumer")
-    link_args = [
-        "-C", "link-arg=-Wl,-rpath," + work,
-        "-C", "link-arg=-Wl,-rpath," + cmdly_lib,
-    ]
-    if sys.platform != "darwin":
-        # GNU ld resolves transitive shared-library dependencies at link time;
-        # Mach-O ld has no -rpath-link option and does not need it.
-        link_args.insert(0, "-C")
-        link_args.insert(1, "link-arg=-Wl,-rpath-link," + cmdly_lib)
+    consumer = os.path.join(work, exe_name("rust_consumer"))
+    # GNU ld resolves transitive shared-library dependencies at link time;
+    # Mach-O and PE ld have no -rpath-link option and do not need it.
+    link_args = []
+    if not (IS_MACOS or IS_WINDOWS):
+        link_args = ["-C", "link-arg=-Wl,-rpath-link," + cmdly_lib]
     r = run([
-        rustc, "--edition", "2021", os.path.join(work, "consumer.rs"), "-o", consumer,
-        "-L", "native=" + work, "-l", "dylib=cmdly_c",
-    ] + link_args)
+        rustc, "--edition", "2021", os.path.join(work, "rust_consumer.rs"), "-o", consumer,
+    ] + rustc_link(work, "cmdly_c", [cmdly_lib]) + link_args)
     if not check(r.returncode == 0, "rustc compiled the consumer", r.stderr[-400:]):
         return 1
 
     # 5. Run it.
-    env = dict(os.environ)
-    env["LD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + env.get("LD_LIBRARY_PATH", "")
-    env["DYLD_LIBRARY_PATH"] = work + os.pathsep + cmdly_lib + os.pathsep + env.get("DYLD_LIBRARY_PATH", "")
+    env = runtime_env(work, [cmdly_lib])
     r = run([consumer], env=env)
     check(r.returncode == 0 and "cmdly ABIX interop" in r.stdout,
           "the Rust consumer drove cmdly through the ABIX facade", (r.stdout + r.stderr)[-400:])

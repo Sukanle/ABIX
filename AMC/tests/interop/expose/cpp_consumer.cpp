@@ -20,7 +20,7 @@ using DestroyFn = void (*)(void *);
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: consumer <module>\n");
+        std::fprintf(stderr, "usage: cpp_consumer <module>\n");
         return 2;
     }
     dll::Object library;
