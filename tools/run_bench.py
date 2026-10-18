@@ -13,15 +13,15 @@ machines and commits, because the domain starts empty for every one of them.
 Coverage:
 
   * every family discovered in `bench_all` via `--benchmark_list_tests`, so a newly
-    added benchmark is picked up without maintaining a list here;
-  * the standalone Google Benchmark executables that are *not* part of `bench_all`
-    (`abix_resolve_bench`, `abix_lookup_cross_bench`, `interface_dispatch_bench`),
-    each run as its own process.
+    added benchmark is picked up without maintaining a list here.
 
-Note: `ebr_bench` and `ebr_profile_bench` duplicate families already in `bench_all`,
-so they are not run twice - add them back with `--extra-exe`. The plain chrono probes
-(`hashindex_build_bench`, and the dev-only `rcu_advance_probe`) are not Google
-Benchmark programs and are out of scope here.
+Every Google Benchmark suite is linked into `bench_all`, so there are no default
+standalone extras. `ebr_bench`, `ebr_profile_bench`, `interface_dispatch_bench`,
+`interface_lifecycle_bench`, `abix_resolve_bench` and `abix_lookup_cross_bench`
+still ship as standalone executables and can be run directly; add one with
+`--extra-exe <name>` to run it as a separate process instead. The plain chrono
+probes (`hashindex_build_bench`, and the dev-only `rcu_advance_probe`) are not
+Google Benchmark programs and are out of scope here.
 
 Two environment problems make short EBR runs unrepeatable, and both are handled here
 instead of being left to each child process:
@@ -59,11 +59,9 @@ import sys
 from pathlib import Path
 
 # Standalone Google Benchmark executables that are not linked into bench_all.
-DEFAULT_EXTRA_EXES = [
-    "abix_resolve_bench",
-    "abix_lookup_cross_bench",
-    "interface_dispatch_bench",
-]
+# Empty by default: every suite is now part of bench_all; pass `--extra-exe` to
+# run one of the still-existing standalone targets as a separate process.
+DEFAULT_EXTRA_EXES: list[str] = []
 
 
 def exe_name(base: str) -> str:

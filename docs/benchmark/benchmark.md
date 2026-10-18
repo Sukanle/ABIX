@@ -121,7 +121,7 @@ python tools/run_bench.py BM_EBR_SyncPhase --pin auto --repetitions 5
 python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
 ```
 
-`run_bench.py` discovers families through `bench_all --benchmark_list_tests` and additionally runs the three standalone executables that are not part of `bench_all` (`abix_resolve_bench`, `abix_lookup_cross_bench`, `interface_dispatch_bench`). Each family JSON carries a `context` block (`cpu_scaling_enabled`, `aslr_enabled`, `load_avg`, `mhz_per_cpu`, cache topology) that can be checked against the preconditions above.
+`run_bench.py` discovers families through `bench_all --benchmark_list_tests`; every Google Benchmark suite is linked into `bench_all`, so no standalone executable is run by default. Each family JSON carries a `context` block (`cpu_scaling_enabled`, `aslr_enabled`, `load_avg`, `mhz_per_cpu`, cache topology) that can be checked against the preconditions above.
 
 ### 4.4 Epoch Batch: B8 / B16, and B8 / B1
 
@@ -375,7 +375,7 @@ cd build/Release/bin && LD_LIBRARY_PATH=. ./bench_all \
   --benchmark_report_aggregates_only=true
 ```
 
-`bench_all` is the unity entry point (`bench/bench_all.cpp` pulls in the individual `*_bench.cpp` files) and its `main()` comes from `bench/ebr/profile_bench.cpp`, so every run **first prints the CPU topology, the `rcu_domain` layout, and the workload validation tables** before handing over to Google Benchmark; those lines are part of the result (the fixed-work self-check in section 3 is one of them). `bench/CMakeLists.txt` also builds `abix_resolve_bench`, `abix_lookup_cross_bench`, `interface_dispatch_bench`, and `ebr_profile_bench`, which are not part of `bench_all` and must be run separately (`run_bench.py` already covers the first three).
+`bench_all` is the unity entry point (`bench/bench_all.cpp` pulls in the individual `*_bench.cpp` files) and its `main()` comes from `bench/ebr/profile_bench.cpp`, so every run **first prints the CPU topology, the `rcu_domain` layout, and the workload validation tables** before handing over to Google Benchmark; those lines are part of the result (the fixed-work self-check in section 3 is one of them). `bench/CMakeLists.txt` also builds `abix_resolve_bench`, `abix_lookup_cross_bench`, `interface_dispatch_bench` and `interface_lifecycle_bench` as standalone executables; all four are also linked into `bench_all`, so their families run there while the standalone targets remain available for direct runs. `ebr_profile_bench` reuses the same EBR harness (its `profile_bench.cpp` supplies `bench_all`'s `main()`), so it adds no separate families.
 
 ### Result files
 

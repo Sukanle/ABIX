@@ -19,6 +19,10 @@
 #include "ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 
+// Named namespace: the file is also #included by bench_all.cpp, where all
+// included sources share one translation unit.
+namespace bench_abix_resolve {
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -63,8 +67,6 @@ struct ResolveFixture {
 
 static constexpr int kTableSizes[] = {16, 64, 256, 1'024, 4'096, 16'384};
 static constexpr const char *kSizeLabels[] = {"16", "64", "256", "1K", "4K", "16K"};
-
-namespace {
 
 void run_resolve_bench(benchmark::State &state, bool use_rcu, uint32_t table_size) {
     ResolveFixture fix(table_size);
@@ -116,8 +118,6 @@ void run_hashindex_build_bench(benchmark::State &state, uint32_t table_size) {
     state.counters["entries"] = static_cast<double>(table_size);
 }
 
-}   // anonymous namespace
-
 // ============================================================
 // Register: BM_ABIX_Resolve/rcu_off|rcu_on/{entries}
 // ============================================================
@@ -158,3 +158,5 @@ public:
 };
 
 static ABIXHashIndexRegisterer g_hashindex_registerer;
+
+}   // namespace bench_abix_resolve

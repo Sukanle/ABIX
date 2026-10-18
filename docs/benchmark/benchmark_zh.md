@@ -120,7 +120,7 @@ python tools/run_bench.py BM_EBR_SyncPhase --pin auto --repetitions 5
 python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
 ```
 
-`run_bench.py` 用 `bench_all --benchmark_list_tests` 自动发现家族，并额外运行三个未并入 `bench_all` 的独立可执行文件（`abix_resolve_bench`、`abix_lookup_cross_bench`、`interface_dispatch_bench`）。每个家族的 JSON 里含 `context` 字段（`cpu_scaling_enabled`、`aslr_enabled`、`load_avg`、`mhz_per_cpu`、缓存拓扑），可直接用于核对采集前提。
+`run_bench.py` 用 `bench_all --benchmark_list_tests` 自动发现家族；所有 Google Benchmark 套件都已并入 `bench_all`，默认不再额外运行独立可执行文件。每个家族的 JSON 里含 `context` 字段（`cpu_scaling_enabled`、`aslr_enabled`、`load_avg`、`mhz_per_cpu`、缓存拓扑），可直接用于核对采集前提。
 
 ### 4.4 Epoch Batch：B8 / B16 与 B8 / B1
 
@@ -375,7 +375,7 @@ cd build/Release/bin && LD_LIBRARY_PATH=. ./bench_all \
   --benchmark_report_aggregates_only=true
 ```
 
-`bench_all` 是 unity 入口（`bench/bench_all.cpp` 引入各 `*_bench.cpp`），其 `main()` 来自 `bench/ebr/profile_bench.cpp`，因此每次运行都会**先打印 CPU 拓扑、`rcu_domain` 布局与 workload 校验表**，再交给 Google Benchmark 执行；这些行是结果的一部分（第 3 节的 fixed-work 自检就在其中）。`bench/CMakeLists.txt` 另外生成 `abix_resolve_bench`、`abix_lookup_cross_bench`、`interface_dispatch_bench`、`ebr_profile_bench` 等独立可执行文件，它们不在 `bench_all` 内，需单独运行（`run_bench.py` 已自动纳入前三个）。
+`bench_all` 是 unity 入口（`bench/bench_all.cpp` 引入各 `*_bench.cpp`），其 `main()` 来自 `bench/ebr/profile_bench.cpp`，因此每次运行都会**先打印 CPU 拓扑、`rcu_domain` 布局与 workload 校验表**，再交给 Google Benchmark 执行；这些行是结果的一部分（第 3 节的 fixed-work 自检就在其中）。`bench/CMakeLists.txt` 另外生成 `abix_resolve_bench`、`abix_lookup_cross_bench`、`interface_dispatch_bench`、`interface_lifecycle_bench` 等独立可执行文件；四者也同时并入了 `bench_all`，家族在其中运行，独立目标仍可直接运行。`ebr_profile_bench` 复用同一套 EBR harness（`bench_all` 的 `main()` 就来自它的 `profile_bench.cpp`），不构成独立家族。
 
 ### 结果文件
 

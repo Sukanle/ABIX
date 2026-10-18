@@ -31,6 +31,10 @@
 #include "ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 
+// Named namespace: the file is also #included by bench_all.cpp, where all
+// included sources share one translation unit.
+namespace bench_abix_lookup_cross {
+
 // ============================================================
 // Access pattern generators
 // ============================================================
@@ -95,8 +99,6 @@ struct LookupFixture {
 // ============================================================
 // Benchmark functions
 // ============================================================
-
-namespace {
 
 enum class Strategy : uint8_t {
     Linear,
@@ -175,8 +177,6 @@ static void run_zipf_bench(benchmark::State &state, Strategy strategy, uint32_t 
     state.SetItemsProcessed(state.iterations());
 }
 
-}   // anonymous namespace
-
 // ============================================================
 // Register all combinations
 // ============================================================
@@ -215,3 +215,5 @@ public:
 };
 
 static ABIXLookupCrossRegisterer g_registerer;
+
+}   // namespace bench_abix_lookup_cross

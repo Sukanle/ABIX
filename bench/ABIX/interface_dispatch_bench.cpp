@@ -15,7 +15,7 @@
 
 #include "ABIX/Interface/Interface.h"
 
-namespace {
+namespace bench_interface_dispatch {
 
 using skl::abix::model::TypeId;
 using skl::abix::poly::interface_entry;
@@ -87,4 +87,4 @@ void BM_Interface_ResolvePerCall(benchmark::State &state) {
 }
 BENCHMARK(BM_Interface_ResolvePerCall);
 
-}   // namespace
+}   // namespace bench_interface_dispatch
