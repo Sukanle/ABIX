@@ -34,9 +34,10 @@ instead of being left to each child process:
     Linux, so a thread is free to migrate between a 5.5 GHz P-core and a 4.3 GHz
     E-core mid-measurement. `--pin auto` / `--pin p` restrict every child process
     to the P-cores, `--pin e` to the E-cores, `--pin <list>` to an explicit set and
-    `--pin off` leaves the scheduler alone. Detection uses EfficiencyClass on
-    Windows and cpufreq on Linux. Pinning a family with more threads than the pool
-    oversubscribes it, so read the printed pool before comparing thread counts.
+    `--pin off` / `--pin all` leaves the scheduler alone. Detection uses
+    EfficiencyClass on Windows and cpufreq on Linux. Pinning a family with more
+    threads than the pool oversubscribes it, so read the printed pool before
+    comparing thread counts.
 
 Usage:
     python tools/run_bench.py                                   # everything
@@ -45,7 +46,7 @@ Usage:
     python tools/run_bench.py --no-extra                        # bench_all families only
     python tools/run_bench.py --extra-exe ebr_bench             # add one back
     python tools/run_bench.py --bin build/Release/bin --out build/bench --repetitions 5
-    python tools/run_bench.py --pin off                         # keep every CPU available
+    python tools/run_bench.py --pin all                         # keep every CPU available
     python tools/run_bench.py --pin e                           # only the E-cores
     python tools/run_bench.py --pin 0-7                         # pin to an explicit CPU list
 """
@@ -265,11 +266,12 @@ def apply_windows_affinity(pid: int, cpus: list[int]) -> bool:
 def resolve_pin(pin: str) -> tuple[list[int], str]:
     """Return (cpus, note): an empty `cpus` means unpinned, `note` says why.
 
-    `auto` and `p` select the P-cores, `e` the E-cores, and a list is used
-    verbatim. P/E detection uses EfficiencyClass on Windows and cpufreq on
-    Linux, so `auto` now works on Windows too.
+    `auto` and `p` select the P-cores, `e` the E-cores, `off`/`all` leave the
+    scheduler alone, and a list is used verbatim. P/E detection uses
+    EfficiencyClass on Windows and cpufreq on Linux, so `auto` now works on
+    Windows too.
     """
-    if pin == "off":
+    if pin in ("off", "all"):
         return [], ""
     if pin in ("auto", "p"):
         cpus = p_core_pool()
@@ -288,7 +290,7 @@ def resolve_pin(pin: str) -> tuple[list[int], str]:
 
 def pin_spec(value: str) -> str:
     """argparse `type` for `--pin`: a typo fails before the first benchmark runs."""
-    if value in ("auto", "off", "p", "e"):
+    if value in ("auto", "off", "all", "p", "e"):
         return value
     try:
         cpus = parse_cpu_list(value)
@@ -296,7 +298,7 @@ def pin_spec(value: str) -> str:
         cpus = []
     if not cpus:
         raise argparse.ArgumentTypeError(
-            f"expected `auto`, `off`, `p`, `e` or a CPU list like `0-7`, got {value!r}"
+            f"expected `auto`, `off`, `all`, `p`, `e` or a CPU list like `0-7`, got {value!r}"
         )
     return value
 
@@ -436,7 +438,7 @@ def main() -> int:
         type=pin_spec,
         default="auto",
         help="restrict the children to a CPU set: `auto`/`p` (P-cores, the default), "
-        "`e` (E-cores), `off`, or a list like `0-7`",
+        "`e` (E-cores), `off`/`all`, or a list like `0-7`",
     )
     parser.add_argument(
         "--extra-exe",

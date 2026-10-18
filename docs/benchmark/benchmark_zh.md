@@ -102,10 +102,11 @@ ARM 数据采集是后续工作，计划为：- (a) 在专用 ARM 与 x86 Linux 
 1. **频率固定**：Linux 侧 governor 必须是 `performance`。否则 Google Benchmark 会打印`***WARNING*** CPU scaling is enabled`，且短跑变异系数可达 29%～44%，无法判定任何百分比收益。在固定频率、`repetitions=5` 下，本文绝大多数条目的 sd 小于均值的 1%。
 2. **超线程关闭，按物理核心取负载**：20 逻辑核 = 8 P-core + 12 E-core。`threads:32` 与 workload 的 20T 均已用满或超过物理核数，其中 `threads:32` 属超额订阅，只用于看退化，不作扩展性上限解读。
 3. **显式 CPU 亲和性**：`tools/run_bench.py --pin` 控制子进程的 CPU 集合：
-    - `--pin auto`（默认）：限制到 8 个 P-core（按 `cpufreq/cpuinfo_max_freq` 分级识别）；
-    - `--pin off`：不做限制；
+    - `--pin auto`（默认，等价 `--pin p`）：限制到 8 个 P-core（Linux 按 `cpufreq/cpuinfo_max_freq`、Windows 按 `EfficiencyClass` 分级识别）；
+    - `--pin e`：限制到 12 个 E-core；
+    - `--pin all`（等价 `--pin off`）：不做限制（全部 20 个逻辑核可调度）；
     - `--pin <列表>`：指定集合。
-    > **注意 `--pin 0-20` 与 `--pin off` 等价**：在线 CPU 只有 0–19，内核会忽略掩码中不存在的 CPU；跨线程数比较伸缩曲线时不要绑定到少于线程数的核。
+    > **注意 `--pin 0-20`、`--pin all` 与 `--pin off` 等价**：在线 CPU 只有 0–19，内核会忽略掩码中不存在的 CPU；跨线程数比较伸缩曲线时不要绑定到少于线程数的核。
 
 ### 4.3 执行命令
 
@@ -117,7 +118,7 @@ python tools/run_bench.py --repetitions 5
 
 # 单个家族 + P-core 绑定对照
 python tools/run_bench.py BM_EBR_SyncPhase --pin auto --repetitions 5
-python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
+python tools/run_bench.py BM_EBR_SyncPhase --pin all  --repetitions 5
 ```
 
 `run_bench.py` 用 `bench_all --benchmark_list_tests` 自动发现家族；所有 Google Benchmark 套件都已并入 `bench_all`，默认不再额外运行独立可执行文件。每个家族的 JSON 里含 `context` 字段（`cpu_scaling_enabled`、`aslr_enabled`、`load_avg`、`mhz_per_cpu`、缓存拓扑），可直接用于核对采集前提。
@@ -204,7 +205,7 @@ python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
 | `BM_Atomic_PerThread_Inc`（未补位） |     88.675 |       113.228 |
 | `BM_Atomic_Load_Contention`         |      0.193 |         0.211 |
 
-`Inc_Contention`（同一变量争用）两平台一致，而 `IncShared` 与 `PerThread_Inc` 在 8T/16T 上 Linux 慢28%～34%。这是**尚未定论**的差异，两个候选解释是落核差异（Windows 的 Thread Director 倾向把线程留在P-core，Linux 侧不区分 P/E）与共享 cache line 的跨核往返；`IncShared` 在 8T（未超出 P-core 数量）就已慢34%，而 `PerThread_Inc` 在 8T 基本持平，因此落核不足以解释全部。用 `--pin auto` 与 `--pin off` 对照重跑即可分离。
+`Inc_Contention`（同一变量争用）两平台一致，而 `IncShared` 与 `PerThread_Inc` 在 8T/16T 上 Linux 慢28%～34%。这是**尚未定论**的差异，两个候选解释是落核差异（Windows 的 Thread Director 倾向把线程留在P-core，Linux 侧不区分 P/E）与共享 cache line 的跨核往返；`IncShared` 在 8T（未超出 P-core 数量）就已慢34%，而 `PerThread_Inc` 在 8T 基本持平，因此落核不足以解释全部。用 `--pin auto` 与 `--pin all` 对照重跑即可分离。
 
 ### 5.3 查找与解析
 
@@ -291,6 +292,71 @@ python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
 - **`role_based` 随读线程数增长**：1T→20T 约 80～100×，与线程数同阶（读侧只做 enter/exit，无协调）。Windows 的 20T 比 Linux 高 8%～17%，与 5.2 节的多线程争用差异同源（20T 必然有线程落在 E-core 上）。
 - **一处未解释的差异**：`synthetic_mixed` 的 1T 档 Linux 比 Windows 快 12%～51%，而 20T 档两者一致（≤ 3%）。同批采集里其它 1T 基准差异都在 ±10% 内，因此不能用"频率更高"统一解释。**引用 workload 的 1T 绝对值时请在同一平台内比较**；sd 很小（1T read_heavy 合计 0.43 M），这不是噪声。
 
+### 5.7 CPU 亲和性（P8 / E12 / C20）
+
+i7-14700K 是 8 P-core + 12 E-core 的混合设计。本节固定其余变量、只改变 CPU 亲和性掩码来对比三种配置：**P8** = `--pin p`（8 个 P-core）、**E12** = `--pin e`（12 个 E-core）、**C20** = `--pin all`（不限制，全部 20 个逻辑核都可调度）。第 5.1–5.6 节的基线数据即对应 P8（`--pin auto`，默认只绑 P-core）。本节数据来自 2026-10-18 的一轮专项采集（Windows 21:08–22:07、Linux 23:21–23:58），环境与第 4.1、4.2 节一致，唯一变量是亲和性掩码。
+
+**单线程热路径（ns/op）**
+
+| 基准                   | Win P8 | Win E12 | Win C20 | Lin P8 | Lin E12 | Lin C20 |
+| ---------------------- | -----: | ------: | ------: | -----: | ------: | ------: |
+| `BM_Atomic_Inc_U32`    |  3.345 |   4.551 |   3.376 |  3.350 |   4.547 |   3.346 |
+| `BM_Atomic_Load_U32`   |  0.188 |   0.234 |   0.188 |  0.186 |   0.233 |   0.186 |
+| `BM_Atomic_CAS_U32`    |  5.062 |   5.062 |   5.000 |  5.035 |   5.027 |   5.036 |
+| `BM_DirectCall`        |  0.092 |   0.117 |   0.094 |  0.093 |   0.117 |   0.093 |
+| `BM_StdFunctionCall`   |  0.858 |   1.401 |   0.858 |  0.745 |   0.967 |   0.745 |
+| `BM_ABIX_Call`         |  2.942 |  11.544 |   2.942 |  2.985 |   4.664 |   2.994 |
+| `BM_ABIX_Call_Stamped` |  2.302 |   8.000 |   2.324 |  2.206 |   3.498 |   2.203 |
+| `BM_Strcmp_ShortName`  |  0.746 |   4.934 |   0.746 |  0.931 |   2.565 |   0.935 |
+
+**符号查找与解析（ns/op）**
+
+| 基准                                 |    Win P8 |  Win E12 |    Win C20 |    Lin P8 |  Lin E12 |    Lin C20 |
+| ------------------------------------ | --------: | -------: | ---------: | --------: | -------: | ---------: |
+| `LookupCross/uniform/hash_index/16`  |     5.999 |   15.318 |      6.188 |     5.927 |   10.607 |      5.931 |
+| `LookupCross/uniform/hash_index/16K` |    14.690 |   26.744 |     15.555 |    14.029 |   24.465 |     13.854 |
+| `LookupCross/uniform/linear/16`      |    19.587 |   26.800 |     19.587 |    18.082 |   25.464 |     18.067 |
+| `LookupCross/uniform/linear/16K`     | 1,556.919 | 5,031.250 | 1,562.500 | 1,553.568 | 5,039.891 | 1,550.864 |
+| `LookupCross/zipf/hash_index/16`     |     6.138 |   15.123 |      6.083 |     5.925 |   10.603 |      5.924 |
+| `BM_Resolve_Linear`                  |   206.055 |        — |          — |   202.701 |  871.156 |    202.393 |
+| `BM_ResolvePath_OneHash`             |         — |        — |          — |     5.483 |   11.980 |      5.538 |
+
+> Windows 侧 `BM_Resolve_Linear` 的一处参考值取自第 5.3 节（该家族未做三档采集）；`—` 表示本次未采集。
+
+**多线程竞争（16T，ns/op）**
+
+| 基准                                   | Win P8 | Win E12 | Win C20 | Lin P8 | Lin E12 | Lin C20 |
+| -------------------------------------- | -----: | ------: | ------: | -----: | ------: | ------: |
+| `BM_Atomic_IncShared/threads:16`       | 70.117 |  58.665 |  99.792 | 49.538 | 153.281 | 111.349 |
+| `BM_Atomic_PerThread_Inc/threads:16`   | 53.951 |  46.735 |  89.111 | 51.855 | 142.240 | 121.261 |
+| `BM_Atomic_Inc_Contention/threads:16`  |      — |       — |       — | 50.724 | 113.694 | 112.195 |
+
+**EBR 扩展性（ns/op）**
+
+| 基准                               | Win P8 |  Win E12 |  Win C20 |  Lin P8 |  Lin E12 |  Lin C20 |
+| ---------------------------------- | -----: | -------: | -------: | ------: | -------: | -------: |
+| `EBR_ReaderScalability/threads:1`  |  0.547 |    1.094 |    0.675 |   0.466 |    0.816 |    0.466 |
+| `EBR_ReaderScalability/threads:32` |  0.523 |    1.122 |    0.746 |   0.474 |    0.850 |    0.750 |
+| `EBR_WriterScalability/8/4`        | 202.148 |  661.281 |  150.670 | 377.472 |  285.987 |  317.145 |
+| `EBR_SyncPhase/8T`                 | 562.668 |  347.656 |  730.469 | 769.545 | 1,036.315 | 830.274 |
+| `EBR_SyncPhase/20T`                |      — |        — | 2,906.250 | 1,797.147 | 4,126.695 | 2,895.090 |
+
+**热重载（ns/op）**
+
+| 基准                   |    Win P8 |   Win E12 |    Win C20 |    Lin P8 |    Lin E12 |    Lin C20 |
+| ---------------------- | --------: | --------: | ---------: | --------: | ---------: | ---------: |
+| `BM_Reload_SamePath`   | 3,632.806 | 5,998.884 |  3,574.916 |   166.428 |    229.334 |    168.319 |
+| `BM_Reload_LoadOnly`   | 48,242.188 | 94,164.323 | 48,759.459 | 8,580.031 | 16,438.093 | 8,502.812 |
+| `BM_Object_LoadUnload` | 12,779.018 | 25,020.870 | 12,555.804 | 3,483.972 |  6,539.611 |  3,509.796 |
+
+**要点**：
+
+- **单线程：P8 ≈ C20 ≫ E12，且与平台无关**。两个平台上 C20/P8 都落在 1.00× 附近，而 E12/P8 为 1.25–1.36×（原子与调用），在访存密集路径上进一步拉大：Linux 侧 `BM_Resolve_Linear` 4.30×、`BM_Resolve_Linear_80_20` 3.98×、`BM_Interface_ModuleFindFirst` 3.65×、`BM_Strcmp_ShortName` 2.75×；Windows 侧 `BM_Strcmp_ShortName` 6.61×、`BM_ABIX_Call` 3.92×。这说明两个平台的调度器在"不限制"时都把计算密集线程留在 P-core。**单线程性能由核心类型决定，与可用核数无关**。
+- **多线程竞争：两平台结论相反**。16T 的 `IncShared`/`PerThread_Inc` 上，Windows 的 E12 反而优于 P8（58.665 vs 70.117，与"12 个 E-core 之间的通信比跨 P/E 簇更省"一致）；Linux 的 E12 却显著劣于 P8（153.281 vs 49.538，约 3.1×）。C20 在两个平台上都劣于 P8（Windows 99.792、Linux 111.349），即"跨 P/E 簇 + 超额订阅"会抬高一致性成本。这是第 6 节"尚未定论"一栏的近因之一，但**不足以解释 8T 档**——8T 未超出 P-core 数，仍需单独定位。
+- **同步：两平台结论同样相反**。`EBR_SyncPhase/8T` 在 Windows 上 E12 最优（347.656 vs P8 562.668），在 Linux 上 E12 最差（1,036.315 vs P8 769.545）。
+- **热重载**：E12 为 P8 的 1.65–2.09×，C20 与 P8 一致（0.99–1.02×）——该路径同样由核心类型而非核数决定，且与第 5.4 节的平台 loader 差异彼此独立。
+- **引用规则**：亲和性 / 核心类型结论与第 6 节一致，**必须区分平台**；同一平台内以 P8 为基线、用相对值比较，不要把不同平台的 C20/E12 绝对值混排。
+
 ## 6. 跨平台差异的来源
 
 | 类别                  | 表现                                                                                 | 引用规则                                            |
@@ -299,7 +365,7 @@ python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
 | OS loader 决定        | `Reload` / `Object::load-unload` / 路径解析：Linux 快 2.7～21×                       | **必须注明平台**；跨平台只用同平台内的相对值        |
 | OS 分配器决定         | `BM_EBR_ReclaimBatch` 的斜率（Linux 16.3 ns/项 vs Windows 24～32 ns/项）             | 线性性是 ABIX 的，斜率是平台的                      |
 | 平台无关（ABIX 自身） | `BM_EBR_GracePeriod` 每项 0.125 ns（两平台一致）；`SyncPhase` 的近线性放大           | 可跨平台引用                                        |
-| 尚未定论              | 多线程自增 8T/16T（Linux 慢 28～34%）、`synthetic_mixed` 1T 档                       | 只作同平台内的相对比较；待用 `--pin` 对照与重测定位 |
+| 尚未定论              | 多线程自增 8T/16T（Linux 慢 28～34%）、`synthetic_mixed` 1T 档                       | 只作同平台内的相对比较；第 5.7 节的 P8/E12/C20 对照给出了 16T 档的近因（跨 P/E 簇 + 超额订阅），8T 档仍需重测定位 |
 
 因此本文不提供"两平台总排名"：同一个基准在两列里可能相差 1.0×（芯片主导）或 21×（OS 主导），把两列混在一起排序会得到无意义的结论。
 

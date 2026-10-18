@@ -103,10 +103,11 @@ Confirm these three before quoting anything from section 5:
 1. **Fixed frequency**: on Linux the governor must be `performance`. Otherwise Google Benchmark prints `***WARNING*** CPU scaling is enabled`, and short-run coefficients of variation reach 29–44%, which cannot establish any percentage claim. With a fixed frequency and `repetitions=5`, almost every entry below has sd under 1% of its mean.
 2. **Hyper-threading off, load taken on physical cores**: 20 logical CPUs = 8 P-cores + 12 E-cores. `threads:32` and the 20T workload entries already fill or exceed the physical core count, and `threads:32` is oversubscription — read it as degradation only, not as a scalability ceiling.
 3. **Explicit CPU affinity**: `tools/run_bench.py --pin` controls the child processes' CPU set:
-    - `--pin auto` (the default): restrict them to the 8 P-cores (identified by `cpufreq/cpuinfo_max_freq`);
-    - `--pin off`: leave the scheduler alone;
+    - `--pin auto` / `--pin p` (the default): restrict them to the 8 P-cores (identified by `cpufreq/cpuinfo_max_freq` on Linux and `EfficiencyClass` on Windows);
+    - `--pin e`: restrict them to the 12 E-cores;
+    - `--pin all` (same as `--pin off`): leave the scheduler alone (all 20 logical CPUs available);
     - `--pin <list>`: pin explicitly.
-    > **Note that `--pin 0-20` is equivalent to `--pin off`**: only CPUs 0–19 are online and the kernel ignores non-existent CPUs in the mask; do not pin to fewer cores than the thread count when comparing scalability.
+    > **Note that `--pin 0-20`, `--pin all` and `--pin off` are equivalent**: only CPUs 0–19 are online and the kernel ignores non-existent CPUs in the mask; do not pin to fewer cores than the thread count when comparing scalability.
 
 ### 4.3 Reproduction command
 
@@ -118,7 +119,7 @@ python tools/run_bench.py --repetitions 5
 
 # One family, with and without P-core pinning
 python tools/run_bench.py BM_EBR_SyncPhase --pin auto --repetitions 5
-python tools/run_bench.py BM_EBR_SyncPhase --pin off  --repetitions 5
+python tools/run_bench.py BM_EBR_SyncPhase --pin all  --repetitions 5
 ```
 
 `run_bench.py` discovers families through `bench_all --benchmark_list_tests`; every Google Benchmark suite is linked into `bench_all`, so no standalone executable is run by default. Each family JSON carries a `context` block (`cpu_scaling_enabled`, `aslr_enabled`, `load_avg`, `mhz_per_cpu`, cache topology) that can be checked against the preconditions above.
@@ -205,7 +206,7 @@ Multi-threaded contention (16T, ns/op):
 | `BM_Atomic_PerThread_Inc` (unpadded) |     88.675 |       113.228 |
 | `BM_Atomic_Load_Contention`          |      0.193 |         0.211 |
 
-`Inc_Contention` (contending on one variable) agrees on both platforms, while `IncShared` and `PerThread_Inc` are 28–34% slower on Linux at 8T/16T. This is **not yet resolved**; the two candidates are core placement (the Windows Thread Director tends to keep such threads on P-cores, while Linux does not distinguish P/E) and cross-core round trips on a shared cache line. Core placement alone cannot explain it: `IncShared` is already 34% slower at 8T, before the thread count exceeds the P-core count, while `PerThread_Inc` is level at 8T. Re-running the two families with `--pin auto` versus `--pin off` separates the two.
+`Inc_Contention` (contending on one variable) agrees on both platforms, while `IncShared` and `PerThread_Inc` are 28–34% slower on Linux at 8T/16T. This is **not yet resolved**; the two candidates are core placement (the Windows Thread Director tends to keep such threads on P-cores, while Linux does not distinguish P/E) and cross-core round trips on a shared cache line. Core placement alone cannot explain it: `IncShared` is already 34% slower at 8T, before the thread count exceeds the P-core count, while `PerThread_Inc` is level at 8T. Re-running the two families with `--pin auto` versus `--pin all` separates the two.
 
 ### 5.3 Lookup and resolution
 
@@ -292,6 +293,71 @@ The gap narrows with how much the run can stay on the already-loaded fast path: 
 - **`role_based` scales with read threads**: 1T→20T is about 80–100×, the same order as the thread count (readers only do enter/exit, with no coordination). Windows is 8–17% faster at 20T, from the same source as the contention difference in section 5.2 (at 20T some threads necessarily land on E-cores).
 - **One unexplained difference**: the 1T entries of `synthetic_mixed` are 12–51% faster on Linux, while the 20T entries agree (within 3%). Every other 1T benchmark in the same collection is within ±10%, so "higher frequency" cannot explain it uniformly. **Compare workload 1T absolute values within one platform only**; sd is tiny (1T read_heavy totals 0.43 M), so this is not noise.
 
+### 5.7 CPU Affinity (P8 / E12 / C20)
+
+The i7-14700K is a hybrid design with 8 P-cores and 12 E-cores. This section holds everything else fixed and varies only the CPU affinity mask, comparing three configurations: **P8** = `--pin p` (the 8 P-cores), **E12** = `--pin e` (the 12 E-cores), and **C20** = `--pin all` (unrestricted, all 20 logical CPUs schedulable). The baseline data in sections 5.1–5.6 corresponds to P8 (`--pin auto`, which pins to the P-core pool by default). The numbers here come from a dedicated run on 2026-10-18 (Windows 21:08–22:07, Linux 23:21–23:58), with the environment of sections 4.1 and 4.2 and the affinity mask as the only variable.
+
+**Single-threaded hot paths (ns/op)**
+
+| Benchmark              | Win P8 | Win E12 | Win C20 | Lin P8 | Lin E12 | Lin C20 |
+| ---------------------- | -----: | ------: | ------: | -----: | ------: | ------: |
+| `BM_Atomic_Inc_U32`    |  3.345 |   4.551 |   3.376 |  3.350 |   4.547 |   3.346 |
+| `BM_Atomic_Load_U32`   |  0.188 |   0.234 |   0.188 |  0.186 |   0.233 |   0.186 |
+| `BM_Atomic_CAS_U32`    |  5.062 |   5.062 |   5.000 |  5.035 |   5.027 |   5.036 |
+| `BM_DirectCall`        |  0.092 |   0.117 |   0.094 |  0.093 |   0.117 |   0.093 |
+| `BM_StdFunctionCall`   |  0.858 |   1.401 |   0.858 |  0.745 |   0.967 |   0.745 |
+| `BM_ABIX_Call`         |  2.942 |  11.544 |   2.942 |  2.985 |   4.664 |   2.994 |
+| `BM_ABIX_Call_Stamped` |  2.302 |   8.000 |   2.324 |  2.206 |   3.498 |   2.203 |
+| `BM_Strcmp_ShortName`  |  0.746 |   4.934 |   0.746 |  0.931 |   2.565 |   0.935 |
+
+**Lookup and resolution (ns/op)**
+
+| Benchmark                            |    Win P8 | Win E12 |    Win C20 |    Lin P8 | Lin E12 |    Lin C20 |
+| ------------------------------------ | --------: | ------: | ---------: | --------: | ------: | ---------: |
+| `LookupCross/uniform/hash_index/16`  |     5.999 |  15.318 |      6.188 |     5.927 |  10.607 |      5.931 |
+| `LookupCross/uniform/hash_index/16K` |    14.690 |  26.744 |     15.555 |    14.029 |  24.465 |     13.854 |
+| `LookupCross/uniform/linear/16`      |    19.587 |  26.800 |     19.587 |    18.082 |  25.464 |     18.067 |
+| `LookupCross/uniform/linear/16K`     | 1,556.919 | 5,031.250 | 1,562.500 | 1,553.568 | 5,039.891 | 1,550.864 |
+| `LookupCross/zipf/hash_index/16`     |     6.138 |  15.123 |      6.083 |     5.925 |  10.603 |      5.924 |
+| `BM_Resolve_Linear`                  |   206.055 |       — |          — |   202.701 | 871.156 |    202.393 |
+| `BM_ResolvePath_OneHash`             |         — |       — |          — |     5.483 |  11.980 |      5.538 |
+
+> The Windows `BM_Resolve_Linear` reference value is taken from section 5.3 (that family was not measured in all three configurations); `—` means not measured in this run.
+
+**Multi-threaded contention (16T, ns/op)**
+
+| Benchmark                             | Win P8 | Win E12 | Win C20 | Lin P8 | Lin E12 | Lin C20 |
+| ------------------------------------- | -----: | ------: | ------: | -----: | ------: | ------: |
+| `BM_Atomic_IncShared/threads:16`      | 70.117 |  58.665 |  99.792 | 49.538 | 153.281 | 111.349 |
+| `BM_Atomic_PerThread_Inc/threads:16`  | 53.951 |  46.735 |  89.111 | 51.855 | 142.240 | 121.261 |
+| `BM_Atomic_Inc_Contention/threads:16` |      — |       — |       — | 50.724 | 113.694 | 112.195 |
+
+**EBR scalability (ns/op)**
+
+| Benchmark                          | Win P8 |  Win E12 |  Win C20 |  Lin P8 |  Lin E12 |  Lin C20 |
+| ---------------------------------- | -----: | -------: | -------: | ------: | -------: | -------: |
+| `EBR_ReaderScalability/threads:1`  |  0.547 |    1.094 |    0.675 |   0.466 |    0.816 |    0.466 |
+| `EBR_ReaderScalability/threads:32` |  0.523 |    1.122 |    0.746 |   0.474 |    0.850 |    0.750 |
+| `EBR_WriterScalability/8/4`        | 202.148 |  661.281 |  150.670 | 377.472 |  285.987 |  317.145 |
+| `EBR_SyncPhase/8T`                 | 562.668 |  347.656 |  730.469 | 769.545 | 1,036.315 | 830.274 |
+| `EBR_SyncPhase/20T`                |      — |        — | 2,906.250 | 1,797.147 | 4,126.695 | 2,895.090 |
+
+**Reload and plugin loading (ns/op)**
+
+| Benchmark              |    Win P8 |   Win E12 |    Win C20 |    Lin P8 |    Lin E12 |    Lin C20 |
+| ---------------------- | --------: | --------: | ---------: | --------: | ---------: | ---------: |
+| `BM_Reload_SamePath`   | 3,632.806 | 5,998.884 |  3,574.916 |   166.428 |    229.334 |    168.319 |
+| `BM_Reload_LoadOnly`   | 48,242.188 | 94,164.323 | 48,759.459 | 8,580.031 | 16,438.093 | 8,502.812 |
+| `BM_Object_LoadUnload` | 12,779.018 | 25,020.870 | 12,555.804 | 3,483.972 |  6,539.611 |  3,509.796 |
+
+**Observations**:
+
+- **Single-threaded: P8 ≈ C20 ≫ E12, independent of the platform.** C20/P8 lands at about 1.00× on both platforms, while E12/P8 is 1.25–1.36× (atomics and calls) and widens further on memory-heavy paths: on Linux `BM_Resolve_Linear` 4.30×, `BM_Resolve_Linear_80_20` 3.98×, `BM_Interface_ModuleFindFirst` 3.65×, `BM_Strcmp_ShortName` 2.75×; on Windows `BM_Strcmp_ShortName` 6.61×, `BM_ABIX_Call` 3.92×. So on both platforms the scheduler keeps compute-heavy threads on P-cores when unrestricted. **Single-threaded performance is decided by core type, not by the number of available cores.**
+- **Multi-threaded contention: the two platforms disagree.** For 16T `IncShared`/`PerThread_Inc`, Windows E12 is actually _faster_ than P8 (58.665 versus 70.117, consistent with communication among the 12 E-cores being cheaper than across the P/E clusters), whereas Linux E12 is markedly _slower_ than P8 (153.281 versus 49.538, about 3.1×). C20 is slower than P8 on both platforms (Windows 99.792, Linux 111.349), i.e. "cross-cluster plus oversubscription" raises coherence cost. This is one of the immediate causes behind the "unresolved" row in section 6, but it **does not explain the 8T entry** — 8T does not exceed the P-core count and still needs separate localization.
+- **Synchronization: the platforms disagree here too.** `EBR_SyncPhase/8T` is fastest on E12 under Windows (347.656 versus P8 562.668) and slowest on E12 under Linux (1,036.315 versus P8 769.545).
+- **Reload**: E12 is 1.65–2.09× P8 while C20 matches P8 (0.99–1.02×) — that path is likewise decided by core type rather than core count, and it is independent of the OS-loader difference in section 5.4.
+- **Quoting rule**: affinity and core-type results follow section 6 and **must state their platform**; within one platform, use P8 as the baseline and compare relatively, and never mix C20/E12 absolute values across platforms.
+
 ## 6. Where the Cross-Platform Differences Come From
 
 | Category                           | Behaviour                                                                                                            | Quoting rule                                                                              |
@@ -300,7 +366,7 @@ The gap narrows with how much the run can stay on the already-loaded fast path: 
 | OS loader                          | `Reload` / `Object::load-unload` / path resolution: Linux is 2.7–21× faster                                          | **Must name the platform**; cross-platform use same-platform relative values only         |
 | OS allocator                       | `BM_EBR_ReclaimBatch` slope (Linux 16.3 ns/item versus Windows 24–32 ns/item)                                        | Linearity belongs to ABIX, the slope belongs to the platform                              |
 | Platform-independent (ABIX itself) | `BM_EBR_GracePeriod` at 0.125 ns/item (identical on both platforms); the near-linear growth of `SyncPhase`           | Portable across platforms                                                                 |
-| Unresolved                         | Multi-threaded increments at 8T/16T (Linux 28–34% slower), `synthetic_mixed` 1T                                      | Same-platform relative comparison only; needs a `--pin` A/B and a re-measurement          |
+| Unresolved                         | Multi-threaded increments at 8T/16T (Linux 28–34% slower), `synthetic_mixed` 1T                                      | Same-platform relative comparison only; the P8/E12/C20 comparison in section 5.7 explains the 16T entry (cross-cluster plus oversubscription), but the 8T entry still needs a re-measurement |
 
 This is why the document gives no combined ranking: the same benchmark can differ by 1.0× (chip-dominated) or 21× (OS-dominated), and sorting both columns together produces a meaningless ordering.
 
