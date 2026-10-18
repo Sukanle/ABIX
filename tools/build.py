@@ -12,13 +12,29 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CURRENT_DIR = Path(__file__).resolve().parent
 
 
-def run(cmd: list[str], cwd: Path | None = None) -> None:
+def run(
+    cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
+) -> None:
     print(f"  \033[90m{' '.join(cmd)}\033[0m")
-    result = subprocess.run(cmd, cwd=cwd)
+    # Merge into the ambient environment instead of replacing it, so `env` only
+    # adds/overrides variables (dropping PATH would break compiler lookups).
+    child_env = None if env is None else {**os.environ, **env}
+    result = subprocess.run(cmd, cwd=cwd, env=child_env)
     if result.returncode != 0:
         raise SystemExit(
             f"Command failed (exit code {result.returncode}): {' '.join(cmd)}"
         )
+
+
+def parse_key_values(items: list[str], flag: str) -> dict[str, str]:
+    """Parse repeatable `KEY=VALUE` flags into a dict (the last value wins)."""
+    parsed: dict[str, str] = {}
+    for item in items:
+        key, separator, value = item.partition("=")
+        if not separator or not key:
+            raise SystemExit(f"{flag} expects KEY=VALUE, got: {item!r}")
+        parsed[key] = value
+    return parsed
 
 
 def get_executable_name(base: str) -> str:
@@ -73,6 +89,20 @@ def main() -> None:
         "--with-dev", action="store_true", help="Build with development features"
     )
     parser.add_argument(
+        "--cmake-env",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Environment variable for the CMake configure/build (repeatable)",
+    )
+    parser.add_argument(
+        "--cmake-var",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="CMake cache variable, forwarded as -DKEY=VALUE (repeatable)",
+    )
+    parser.add_argument(
         "--bench-repetitions",
         type=int,
         default=5,
@@ -106,6 +136,9 @@ def main() -> None:
         )
     args = parser.parse_args()
 
+    cmake_env = parse_key_values(args.cmake_env, "--cmake-env")
+    cmake_vars = parse_key_values(args.cmake_var, "--cmake-var")
+
     build_dir = PROJECT_ROOT / "build" / args.build_type
 
     if args.clean and build_dir.exists():
@@ -129,6 +162,9 @@ def main() -> None:
     else:
         should_build = should_test = should_bench = True
 
+    if (cmake_env or cmake_vars) and not should_build:
+        parser.error("--cmake-env/--cmake-var require a build step (cannot use --run-*)")
+
     if should_build:
         generator = args.generator
         if not generator:
@@ -141,20 +177,20 @@ def main() -> None:
 
         print(f"== Using generator: {generator} ==")
 
-        run(
-            [
-                "cmake",
-                "-S",
-                str(PROJECT_ROOT),
-                "-B",
-                str(build_dir),
-                "-G",
-                generator,
-                f"-DCMAKE_BUILD_TYPE={args.build_type}",
-                f"-DSKL_ABIX_DEVELOPMENT={'ON' if args.with_dev else 'OFF'}",
-            ]
-        )
-        run(["cmake", "--build", str(build_dir), "--parallel"])
+        configure = [
+            "cmake",
+            "-S",
+            str(PROJECT_ROOT),
+            "-B",
+            str(build_dir),
+            "-G",
+            generator,
+            f"-DCMAKE_BUILD_TYPE={args.build_type}",
+            f"-DSKL_ABIX_DEVELOPMENT={'ON' if args.with_dev else 'OFF'}",
+        ]
+        configure.extend(f"-D{key}={value}" for key, value in cmake_vars.items())
+        run(configure, env=cmake_env)
+        run(["cmake", "--build", str(build_dir), "--parallel"], env=cmake_env)
 
         print("== Build complete ==")
 

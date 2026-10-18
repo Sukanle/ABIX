@@ -304,7 +304,9 @@ python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC v
 
 `build.py` flags: `--clean`, `--build-only` / `--build-test` / `--build-bench`,
 `--run-only` / `--run-test` / `--run-bench`, `--build-type`, `--generator`,
-`--with-dev`; `--build-*` and `--run-*` cannot be combined. The benchmark step
+`--with-dev`; `--build-*` and `--run-*` cannot be combined. `--cmake-env KEY=VALUE`
+and `--cmake-var KEY=VALUE` are repeatable and forward environment variables to, and
+`-DKEY=VALUE` cache variables through, the CMake configure/build. The benchmark step
 delegates to `run_bench.py` (one process per family), tuned by
 `--bench-repetitions`, `--bench-out` and `--bench-min-time`; `--bench-raw` restores
 the old single-process `bench_all` run. It runs the

@@ -296,7 +296,7 @@ python tools/build.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual S
 python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变体
 ```
 
-`build.py` 的常用参数：`--clean`、`--build-only` / `--build-test` / `--build-bench`、`--run-only` / `--run-test` / `--run-bench`、`--build-type`、`--generator`、`--with-dev`；`--build-*` 与 `--run-*` 不能混用。基准这一步已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**（覆盖面见[测试分层](#测试分层)）。
+`build.py` 的常用参数：`--clean`、`--build-only` / `--build-test` / `--build-bench`、`--run-only` / `--run-test` / `--run-bench`、`--build-type`、`--generator`、`--with-dev`；`--build-*` 与 `--run-*` 不能混用。`--cmake-env KEY=VALUE` 与 `--cmake-var KEY=VALUE` 可重复，分别向 CMake 配置/构建注入环境变量、以及透传 `-DKEY=VALUE` 缓存变量。基准这一步已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**（覆盖面见[测试分层](#测试分层)）。
 
 ### 测试与验证
 
