@@ -32,9 +32,10 @@ instead of being left to each child process:
     is printed with it.
   * Hybrid P-core/E-core scheduling. `topology/topology.cpp` reports 0 P-cores on
     Linux, so a thread is free to migrate between a 5.5 GHz P-core and a 4.3 GHz
-    E-core mid-measurement. `--pin auto` restricts every child process to the
-    fastest cores, `--pin <list>` restricts it to an explicit set and `--pin off`
-    leaves the scheduler alone. Pinning a family with more threads than the pool
+    E-core mid-measurement. `--pin auto` / `--pin p` restrict every child process
+    to the P-cores, `--pin e` to the E-cores, `--pin <list>` to an explicit set and
+    `--pin off` leaves the scheduler alone. Detection uses EfficiencyClass on
+    Windows and cpufreq on Linux. Pinning a family with more threads than the pool
     oversubscribes it, so read the printed pool before comparing thread counts.
 
 Usage:
@@ -45,6 +46,7 @@ Usage:
     python tools/run_bench.py --extra-exe ebr_bench             # add one back
     python tools/run_bench.py --bin build/Release/bin --out build/bench --repetitions 5
     python tools/run_bench.py --pin off                         # keep every CPU available
+    python tools/run_bench.py --pin e                           # only the E-cores
     python tools/run_bench.py --pin 0-7                         # pin to an explicit CPU list
 """
 
@@ -55,6 +57,7 @@ import ctypes
 import functools
 import json
 import os
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -124,6 +127,88 @@ def performance_cpu_pool() -> list[int]:
     return pool if len(pool) < len(freqs) else []
 
 
+def online_cpus() -> list[int]:
+    """Logical CPUs the kernel lists as online (Linux only)."""
+    try:
+        text = Path("/sys/devices/system/cpu/online").read_text(encoding="ascii").strip()
+    except OSError:
+        return []
+    try:
+        return parse_cpu_list(text)
+    except ValueError:
+        return []
+
+
+def _windows_core_classes() -> dict[int, list[int]]:
+    """Windows logical CPUs grouped by `EfficiencyClass`.
+
+    P-cores report the higher class, E-cores the lower one. Parsed from
+    `GetLogicalProcessorInformationEx(RelationProcessorCore)`.
+    """
+    if not IS_WINDOWS:
+        return {}
+    relation_processor_core = 0
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetLogicalProcessorInformationEx.argtypes = [
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_uint32),
+    ]
+    kernel32.GetLogicalProcessorInformationEx.restype = ctypes.c_int
+    size = ctypes.c_uint32(0)
+    kernel32.GetLogicalProcessorInformationEx(relation_processor_core, None, ctypes.byref(size))
+    if size.value == 0:
+        return {}
+    buffer = ctypes.create_string_buffer(size.value)
+    if not kernel32.GetLogicalProcessorInformationEx(relation_processor_core, buffer, ctypes.byref(size)):
+        return {}
+    raw = bytes(buffer[: size.value])
+    classes: dict[int, list[int]] = {}
+    offset = 0
+    while offset + 8 <= len(raw):
+        relationship, record_size = struct.unpack_from("<II", raw, offset)
+        if record_size < 8:
+            break
+        body = raw[offset + 8 : offset + record_size]
+        if relationship == relation_processor_core and len(body) >= 24:
+            _flags, efficiency = struct.unpack_from("<BB", body, 0)
+            group_count = struct.unpack_from("<H", body, 22)[0]
+            for group_index in range(group_count):
+                base = 24 + group_index * 16
+                if base + 10 > len(body):
+                    break
+                mask, group = struct.unpack_from("<QH", body, base)
+                for bit in range(64):
+                    if mask & (1 << bit):
+                        classes.setdefault(efficiency, []).append(group * 64 + bit)
+        offset += record_size
+    return classes
+
+
+def p_core_pool() -> list[int]:
+    """Logical CPUs in the highest performance class (P-cores)."""
+    if IS_WINDOWS:
+        classes = _windows_core_classes()
+        if len(classes) < 2:
+            return []
+        return sorted(classes[max(classes)])
+    return performance_cpu_pool()
+
+
+def e_core_pool() -> list[int]:
+    """Logical CPUs below the P-core class (Windows) or outside the P-core pool (Linux)."""
+    if IS_WINDOWS:
+        classes = _windows_core_classes()
+        if len(classes) < 2:
+            return []
+        top = max(classes)
+        return sorted(cpu for efficiency, cpus in classes.items() if efficiency != top for cpu in cpus)
+    p_cores = set(performance_cpu_pool())
+    if not p_cores:
+        return []
+    return [cpu for cpu in online_cpus() if cpu not in p_cores]
+
+
 def parse_cpu_list(spec: str) -> list[int]:
     """`0-3,8,10-11` -> [0, 1, 2, 3, 8, 10, 11]."""
     cpus: list[int] = []
@@ -180,15 +265,22 @@ def apply_windows_affinity(pid: int, cpus: list[int]) -> bool:
 def resolve_pin(pin: str) -> tuple[list[int], str]:
     """Return (cpus, note): an empty `cpus` means unpinned, `note` says why.
 
-    `topology/topology.cpp` leaves `performance_cpus` at 0 on Linux, so the P-core
-    pool is derived here. An explicit list is honoured on Windows as well, through
-    SetProcessAffinityMask; `auto` still needs the Linux cpufreq data.
+    `auto` and `p` select the P-cores, `e` the E-cores, and a list is used
+    verbatim. P/E detection uses EfficiencyClass on Windows and cpufreq on
+    Linux, so `auto` now works on Windows too.
     """
     if pin == "off":
         return [], ""
-    cpus = performance_cpu_pool() if pin == "auto" else parse_cpu_list(pin)
-    if not cpus:
-        return [], "no P-core pool detected"
+    if pin in ("auto", "p"):
+        cpus = p_core_pool()
+        if not cpus:
+            return [], "no P-core pool detected"
+    elif pin == "e":
+        cpus = e_core_pool()
+        if not cpus:
+            return [], "no E-core pool detected"
+    else:
+        cpus = parse_cpu_list(pin)
     if not HAS_AFFINITY:
         return [], "CPU affinity is not supported on this platform"
     return cpus, ""
@@ -196,14 +288,16 @@ def resolve_pin(pin: str) -> tuple[list[int], str]:
 
 def pin_spec(value: str) -> str:
     """argparse `type` for `--pin`: a typo fails before the first benchmark runs."""
-    if value in ("auto", "off"):
+    if value in ("auto", "off", "p", "e"):
         return value
     try:
         cpus = parse_cpu_list(value)
     except ValueError:
         cpus = []
     if not cpus:
-        raise argparse.ArgumentTypeError(f"expected `auto`, `off` or a CPU list like `0-7`, got {value!r}")
+        raise argparse.ArgumentTypeError(
+            f"expected `auto`, `off`, `p`, `e` or a CPU list like `0-7`, got {value!r}"
+        )
     return value
 
 
@@ -341,7 +435,8 @@ def main() -> int:
         "--pin",
         type=pin_spec,
         default="auto",
-        help="restrict the children to a CPU set: `auto` (fastest cores, the default), `off`, or a list like `0-7`",
+        help="restrict the children to a CPU set: `auto`/`p` (P-cores, the default), "
+        "`e` (E-cores), `off`, or a list like `0-7`",
     )
     parser.add_argument(
         "--extra-exe",
