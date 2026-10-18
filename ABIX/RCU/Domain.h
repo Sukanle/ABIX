@@ -112,8 +112,8 @@ public:
     //   * deferred_batched is not a timeout at all and is reported by the Object
     //     layer (`ReclaimOutcome`), not here.
     //
-    // `retired_backlog` and `retired_oldest_age_ns` are gauges sampled from the
-    // retired list by `stats()`, not counters.
+    // `registered_threads`, `retired_backlog` and `retired_oldest_age_ns` are gauges
+    // sampled from the domain's lists by `stats()`, not counters.
     struct Stats {
         uint64_t advance_attempts = 0;        // times a thread tried to take the advancement
         uint64_t advance_contentions = 0;     // attempts that found another owner in `sync`
@@ -123,6 +123,11 @@ public:
         uint64_t grace_period_timeouts = 0;   // owned the advancement, did not prove the grace period
         uint64_t retired_backlog = 0;         // nodes still queued at the time of the snapshot
         uint64_t retired_oldest_age_ns = 0;   // age of the oldest queued node at the snapshot
+        // Threads that ever entered a read-side section. Monotonically non-decreasing:
+        // a thread that leaves keeps its node with `epoch == 0` (see readers_passed), and
+        // every grace-period poll walks all of them. Watch this on a host with thread
+        // churn; the plan to bound it is a fixed-capacity slot array (roadmap, "Research").
+        uint64_t registered_threads = 0;
     };
 
     // Whether this build collects the diagnostics above. When false, `stats()`
@@ -240,6 +245,10 @@ public:
                     if (age > snapshot.retired_oldest_age_ns) snapshot.retired_oldest_age_ns = age;
                 }
             }
+            // Appends to the thread list also happen under the writer lock, so this
+            // walk is exclusive with a new registration.
+            for (const ThreadState *t = _reader.threads; t; t = t->next)
+                ++snapshot.registered_threads;
             unlock_writer();
         }
         return snapshot;

@@ -408,6 +408,7 @@ unload() / force_unload() -> zombie （image 已摘除，稍后回收）
 **设计要点：**
 
 - **线程局部状态**：每个线程首次调用 `enter()` 时在 TLS 中注册 `rcu_thread`，`exit()` 仅写本地 cache-line，零竞争。
+- **读者注册表只增不减**：曾经调用过 `enter()` 的线程会留下一个 `epoch == 0` 的节点，而**每一次**宽限期轮询都要遍历全部节点。这是刻意为之——`readers_passed()` 与 `try_collect()` **都**在不持有写锁的情况下遍历该链表，因此"摘链"对并发遍历者就是 use-after-free。代价以「**曾经**进入过的线程数」为上界：实测约 **3.4 ns/节点**（10 线程 ≈ 12 ns、1,000 ≈ 2 µs、10,000 ≈ **34 µs/次轮询**——而该轮询位于自旋循环内），另有每线程一次**永不归还**的分配。若宿主会反复创建线程，请观察 `stats().registered_threads`；把注册表变成有界的是路线图项。
 - **Retire 批量化**：`BATCH_PUBLISH_SIZE = 64`，本地累积以减少全局锁竞争。
 - **两类回收延迟**：批量类（默认 8 次同步）让换出的 image 保持 mapped，使 a/b 交替热重载仍走 loader 的"已驻留"快路径；即时类（下一次同步）让换出的索引缓冲立刻可被下一次 `build` 复用。两者各自维护"已回收至"水位，互不吞并对方的安全 epoch。
 - **推进权归属**：取得推进权的线程拥有 `sync`，且**所有退出路径都必须清理它**；发现 `sync` 被占的线程只能等待、重试或超时返回，**绝不清除不属于自己的 `sync`**。
@@ -446,7 +447,7 @@ public:
 auto s = skl::abix::rcu::Domain::instance().stats();
 // s.advance_attempts, s.advance_contentions, s.advance_retries,
 // s.advance_timeouts, s.advance_max_wait_ns, s.grace_period_timeouts,
-// s.retired_backlog, s.retired_oldest_age_ns
+// s.retired_backlog, s.retired_oldest_age_ns, s.registered_threads
 ```
 
 这些计数器把"一个 RCU 超时数"会混为一谈的情况分开：
@@ -461,6 +462,7 @@ auto s = skl::abix::rcu::Domain::instance().stats();
 | `grace_period_timeouts` | 取得了推进权但未能证明宽限期——**读者卡住了它** |
 | `retired_backlog` | 快照时刻：已发布但尚未回收的退休节点数 |
 | `retired_oldest_age_ns` | 快照时刻：最老那个节点的等待时长 |
+| `registered_threads` | 快照时刻：**曾经**进入过读侧临界区的线程数。单调不减——线程退出后会留下 `epoch == 0` 的节点，而每次宽限期轮询都会遍历全部节点（见上文的注册表说明）。宿主线程反复创建时该看这个值 |
 
 `advance_timeouts` 与 `grace_period_timeouts` 是两种不同的失败；`deferred_batched`（正常的批量节奏）两者都不是，它由 `dll::Object` 层以 `ReclaimOutcome` 报告，不在这里。后两个字段是在写锁下从退休链表采样的**仪表值**，所以 `stats()` 是诊断端点，而非热路径调用。为何先测量、再决定是否需要可取消的 FIFO 仲裁，见 `Optimize-plan.md`（D-1）。
 

@@ -160,4 +160,27 @@ TEST_CASE("47.advance_diagnostics", "[rcu][stats]") {
         REQUIRE(s.retired_backlog == 0);
         log_info("backlog gauge: %d published nodes visible, then drained to 0", SKL_ABIX_RCU_BATCH_PUBLISH);
     }
+
+    SECTION("47e.registered_threads only grows: a thread that left keeps its node") {
+        const uint64_t before = dom.stats().registered_threads;
+        REQUIRE(before >= 1);   // this thread registered on its first stats()/enter()
+
+        // Threads that enter and leave entirely: their nodes stay in the list with
+        // epoch == 0, which is exactly the behaviour this gauge exists to expose.
+        constexpr int kThreads = 4;
+        std::vector<std::thread> workers;
+        workers.reserve(kThreads);
+        for (int i = 0; i < kThreads; ++i)
+            workers.emplace_back([&dom] {
+                dom.enter();
+                dom.exit();
+            });
+        for (auto &w : workers)
+            w.join();
+
+        const uint64_t after = dom.stats().registered_threads;
+        REQUIRE(after >= before + kThreads);
+        log_info("registry gauge: %llu -> %llu registered threads (never shrinks)", (unsigned long long)before,
+            (unsigned long long)after);
+    }
 }

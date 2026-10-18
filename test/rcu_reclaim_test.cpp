@@ -193,6 +193,7 @@ TEST_CASE("47.advance_diagnostics_are_compiled_out_by_default", "[rcu][reclaim][
     REQUIRE(s.grace_period_timeouts == 0);
     REQUIRE(s.retired_backlog == 0);
     REQUIRE(s.retired_oldest_age_ns == 0);
+    REQUIRE(s.registered_threads == 0);
 
     dom.reset_stats();   // must be a no-op, not an error
     log_info("diagnostics compiled out: stats() is an all-zero no-op");

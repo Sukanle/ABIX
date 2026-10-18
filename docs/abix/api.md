@@ -362,6 +362,7 @@ lib.unload();  // retires the old image -> synchronize -> reclaim
 **Design notes**
 
 - **Thread-local state**: the first `enter()` on a thread registers it in TLS; `exit()` writes only that cache line.
+- **The reader registry only grows**: a thread that ever called `enter()` keeps its node with `epoch == 0`, and every grace-period poll walks all of them. This is deliberate — `readers_passed()` and `try_collect()` both walk the list *without* the writer lock, so unlinking a node could be a use-after-free for a concurrent walker. The cost is bounded by the number of threads that *ever* entered: measured ~**3.4 ns per registered node** (10 threads ≈ 12 ns, 1,000 ≈ 2 µs, 10,000 ≈ **34 µs per poll** — and the poll sits in a spin loop), plus one never-returned allocation per thread. Watch `stats().registered_threads` on a host that recreates threads; bounding the registry is a roadmap item.
 - **Retire batching**: `SKL_ABIX_RCU_BATCH_PUBLISH` (default 64) objects accumulate locally to reduce global lock contention.
 - **Two reclaim delays**: the batched class (default 8 synchronizations) keeps a swapped-out image mapped so that alternating hot reloads still hit the loader's already-resident path; the eager class (next synchronization) makes a swapped-out index buffer reusable by the next `build`. Each class has its own watermark, so one cannot swallow the other's safe epoch.
 - **Advancement ownership**: a thread that takes the advancement owns `sync` and clears it on every path out; a thread that finds `sync` taken waits, retries, or times out, and never clears a `sync` it does not own.
@@ -400,7 +401,7 @@ Advancement (who gets to run a grace period) is **preemptive and has no fairness
 auto s = skl::abix::rcu::Domain::instance().stats();
 // s.advance_attempts, s.advance_contentions, s.advance_retries,
 // s.advance_timeouts, s.advance_max_wait_ns, s.grace_period_timeouts,
-// s.retired_backlog, s.retired_oldest_age_ns
+// s.retired_backlog, s.retired_oldest_age_ns, s.registered_threads
 ```
 
 The counters keep apart what a single "RCU timeout" number would conflate:
@@ -415,6 +416,7 @@ The counters keep apart what a single "RCU timeout" number would conflate:
 | `grace_period_timeouts` | Owned the advancement but did not prove the grace period — **a reader held it open** |
 | `retired_backlog` | Retired nodes published but not yet reclaimed, at the snapshot |
 | `retired_oldest_age_ns` | Age of the oldest such node, at the snapshot |
+| `registered_threads` | Threads that have **ever** entered a read-side section, at the snapshot. Monotonically non-decreasing: a thread that leaves keeps its `epoch == 0` node, and every grace-period poll walks all of them (see the registry note above). The gauge to watch on a host with thread churn |
 
 `advance_timeouts` and `grace_period_timeouts` are the two distinct failures; `deferred_batched` (the normal batched schedule) is neither and is reported by the `dll::Object` layer as a `ReclaimOutcome`, not here. The last two fields are gauges sampled from the retired list under the writer lock, which is why `stats()` is a diagnostics endpoint, not a hot-loop call. See `Optimize-plan.md` (D-1) for why the plan is to measure first and only then decide whether a cancellable FIFO arbitration is warranted.
 
