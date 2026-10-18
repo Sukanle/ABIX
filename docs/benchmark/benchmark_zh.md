@@ -89,10 +89,14 @@ read_heavy:      9,000,000 reads + 900,000 retires + 100,000 syncs
 | ABIX 选项 | `SKL_ABIX_DEVELOPMENT=OFF` | 同 |
 | RCU 布局 | `sizeof(rcu_domain)=192`（3 条 cache line）、`epoch alignas=64`、`epoch_batch=8` | 同 |
 
-两个平台都是 **x86-64**。ABIX 的二进制能力层已经适配 AArch64——ELF `EM_AARCH64`、Mach-O
+两个对照平台都是 **x86-64**。ABIX 的二进制能力层已经适配 AArch64——ELF `EM_AARCH64`、Mach-O
 `CPU_TYPE_ARM64`、PE `0xaa64` 都映射到 `Architecture::arm64`，`.abix` 的 `arch` 字段也包含 aarch64
-（见 [`docs/abix/abix_zh.md`](../abix/abix_zh.md)）——但**本文不含 ARM 数据**。ARM 平台的采集是后续工作：
-届时 §6 的"平台差异来源"要按架构重新确认，尤其是 `BM_EBR_ReclaimBatch` 的分配器斜率与原子路径的内存序成本。
+（见 [`docs/abix/abix_zh.md`](../abix/abix_zh.md)）。AArch64 构建与完整基准套件已在 Apple Silicon 笔记本上验证
+可端到端运行（**MacBook Air M4，16 GB，无主动散热**），即**可移植性已确认**；但**本文不给出 ARM 性能数字**：
+该机器的操作系统、内存容量和散热预算与第 5 节对照的两个 x86-64 平台差距过大，其绝对吞吐量没有参考意义。
+ARM 数据采集是后续工作，计划为：(a) 在专用 ARM 与 x86 Linux 服务器上做 AArch64 与 x86-64 的吞吐量对照，
+这样的比较才成立；(b) 在 **M4 Max 32 GB** 平台上跑一轮基准性能测试。采集后，§6 的"平台差异来源"要按架构
+重新确认，尤其是 `BM_EBR_ReclaimBatch` 的分配器斜率与原子路径的内存序成本。
 
 ### 4.2 采集前提
 
@@ -354,7 +358,7 @@ graph TD
 ## 9. 局限性
 
 - 当前结果只说明 ABIX 在给定实现和给定负载下的行为，不能推广为通用 RCU 或通用并发容器结论。
-- 本文的两个平台是**同一台机器**的双系统，所以"跨平台"指的是跨操作系统与工具链，**不是跨硬件或跨架构**；不同 CPU 拓扑（核数、P/E 比例、NUMA）与不同架构（x86-64 / AArch64）的绝对吞吐量都不可直接排名；ABIX 已适配 AArch64，但 ARM 数据尚未采集（见 §4.1）。
+- 本文的两个平台是**同一台机器**的双系统，所以"跨平台"指的是跨操作系统与工具链，**不是跨硬件或跨架构**；不同 CPU 拓扑（核数、P/E 比例、NUMA）与不同架构（x86-64 / AArch64）的绝对吞吐量都不可直接排名；ABIX 已适配 AArch64，且基准套件可在 Apple Silicon 上运行（见 §4.1），但本文尚未给出 ARM 性能数据。
 - 绝对吞吐量随平台、编译器、频率策略与后台负载变化；`docs/benchmark` 之外的历史数字若无原始输出与完整环境信息，无法独立复核。
 - CPU scaling、线程迁移、Turbo、温度、NUMA、ASLR 和后台任务都会影响短 benchmark；本文数据的前提是第 4.2 节的三条。
 - 第 5.2 节的多线程争用差异与第 5.6 节的 1T 差异仍未定论，已按"待查"标注。

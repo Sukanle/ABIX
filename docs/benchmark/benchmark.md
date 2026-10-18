@@ -100,12 +100,17 @@ Both platforms are **the same physical machine** (dual boot), with identical CPU
 | ABIX options | `SKL_ABIX_DEVELOPMENT=OFF` | same |
 | RCU layout | `sizeof(rcu_domain)=192` (3 cache lines), `epoch alignas=64`, `epoch_batch=8` | same |
 
-Both platforms are **x86-64**. ABIX's binary capability layer already covers AArch64 — ELF `EM_AARCH64`,
+Both compared platforms are **x86-64**. ABIX's binary capability layer already covers AArch64 — ELF `EM_AARCH64`,
 Mach-O `CPU_TYPE_ARM64` and PE `0xaa64` all map to `Architecture::arm64`, and the `.abix` `arch` field includes
-aarch64 (see [`docs/abix/abix.md`](../abix/abix.md)) — but **this document contains no ARM data**. Measuring on ARM
-is follow-up work: the "where the differences come from" table in section 6 then has to be re-confirmed per
-architecture, in particular the allocator slope of `BM_EBR_ReclaimBatch` and the memory-order cost of the atomic
-paths.
+aarch64 (see [`docs/abix/abix.md`](../abix/abix.md)). The AArch64 build and the full benchmark suite were verified
+to run end-to-end on an Apple Silicon laptop (**MacBook Air M4, 16 GB, fanless — no active cooling**), so
+**portability is confirmed**; but **this document reports no ARM performance numbers**, because that machine's OS,
+memory size and thermal budget differ too far from the two x86-64 platforms compared in section 5 for its absolute
+throughput to have any reference value. ARM data collection is follow-up work, planned as: (a) an AArch64 vs x86-64
+throughput comparison on dedicated ARM and x86 Linux servers, where the ISA comparison actually holds; and (b) a
+benchmark run on an **M4 Max 32 GB** platform. Once measured, the "where the differences come from" table in
+section 6 has to be re-confirmed per architecture, in particular the allocator slope of `BM_EBR_ReclaimBatch` and
+the memory-order cost of the atomic paths.
 
 ### 4.2 Measurement preconditions
 
@@ -366,7 +371,7 @@ Before changing the default, re-measure on the target platform with a Release bu
 ## 9. Limitations
 
 - These results describe ABIX under a given implementation and a given load; they do not generalize to RCU or concurrent containers in general.
-- The two platforms here are dual boots of **the same machine**, so "cross-platform" means across operating systems and toolchains, **not across hardware or architectures**; absolute throughput on different CPU topologies (core count, P/E ratio, NUMA) and on different architectures (x86-64 / AArch64) cannot be ranked directly. ABIX already covers AArch64, but no ARM data has been collected yet (see section 4.1).
+- The two platforms here are dual boots of **the same machine**, so "cross-platform" means across operating systems and toolchains, **not across hardware or architectures**; absolute throughput on different CPU topologies (core count, P/E ratio, NUMA) and on different architectures (x86-64 / AArch64) cannot be ranked directly. ABIX already covers AArch64 and the benchmark suite runs on Apple Silicon (see section 4.1), but this document reports no ARM performance numbers yet.
 - Absolute throughput varies with platform, compiler, frequency policy, and background load. Historical numbers outside `docs/benchmark` cannot be independently checked without raw output and full environment information.
 - CPU scaling, thread migration, Turbo, temperature, NUMA, ASLR, and background tasks all affect short benchmarks; the data here rests on the three preconditions in section 4.2.
 - The contention difference in section 5.2 and the 1T difference in section 5.6 are unresolved and marked as such.
