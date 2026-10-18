@@ -83,6 +83,16 @@ def runtime_env(work: str, search_dirs=()) -> dict:
     return env
 
 
+def toml_path(path: str) -> str:
+    """A path safe to embed in a TOML string literal.
+
+    TOML treats a backslash as an escape introducer, so a Windows path like
+    `F:\\Code\\cmdly` would fail to parse (`unknown escape sequence '\\C'`).
+    Forward slashes are accepted by both TOML and the C++ compiler.
+    """
+    return path.replace("\\", "/")
+
+
 # `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
 # option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory.
 if "--keep-artifacts" in sys.argv:
@@ -312,7 +322,7 @@ def main() -> int:
         fmt_cflags = []
         fmt_probe = run(["pkg-config", "--cflags", "fmt"])
         if fmt_probe.returncode == 0:
-            fmt_cflags = fmt_probe.stdout.split()
+            fmt_cflags = [flag.replace("\\", "/") for flag in fmt_probe.stdout.split()]
         fmt_toml = "".join(', "%s"' % flag for flag in fmt_cflags)
         # GNU ld-only option for transitive deps; the Apple and PE linkers
         # reject it.
@@ -325,8 +335,8 @@ name = "cmdly_key"
 version = "1.0"
 [[import]]
 language = "cpp"
-flags = ["-std=c++17", "-I{cmdly_include}"{fmt_toml}]
-files = ["{key_header}"]
+flags = ["-std=c++17", "-I{toml_path(cmdly_include)}"{fmt_toml}]
+files = ["{toml_path(key_header)}"]
 symbols = ["cmdly::Key"]
 [[expose]]
 type = "cmdly::Key"
@@ -375,8 +385,8 @@ name = "cmdly_insert"
 version = "1.0"
 [[import]]
 language = "cpp"
-flags = ["-std=c++17", "-I{cmdly_include}"{fmt_toml}]
-files = ["{ins_header}"]
+flags = ["-std=c++17", "-I{toml_path(cmdly_include)}"{fmt_toml}]
+files = ["{toml_path(ins_header)}"]
 symbols = ["cmdly::History"]
 [[expose]]
 type = "cmdly::History"
@@ -400,8 +410,8 @@ name = "cmdly_history"
 version = "1.0"
 [[import]]
 language = "cpp"
-flags = ["-std=c++17", "-I{cmdly_include}"{fmt_toml}]
-files = ["{ins_header}"]
+flags = ["-std=c++17", "-I{toml_path(cmdly_include)}"{fmt_toml}]
+files = ["{toml_path(ins_header)}"]
 symbols = ["cmdly::MemoryHistory"]
 [[adapt]]
 native = "std::string"
