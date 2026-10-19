@@ -67,6 +67,10 @@ contracts in an optional metadata-region extension directory) is complete.
 - documentation and examples;
 - external validation and adoption.
 
+## Post-0.2.0 — toolchain and ecosystem follow-ups
+
+These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 ecosystem work.
+
 ### P1 — broaden the toolchain
 
 - build-system / package-manager integration;

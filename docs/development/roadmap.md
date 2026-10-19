@@ -53,12 +53,16 @@ The main line: ABIX IR as the common ABI representation across languages.
 
 Delivered: the `amc-rust` provider (`frontend` + `backend`) and the C++ → ABIX → Rust closed loop — a real C++ library → `.abix` → generated Rust that links and runs, with ownership, error-boundary and target contracts carried in a versioned metadata-region extension directory. Also a minimal `amc-zig` **backend-only** provider, so the same `.abix` drives both the Rust and the Zig projection and both consumers link the same native library (`AMC/tests/interop/`).
 
+Build-system / package-manager integration and deeper debugger integration are post-0.2.0 goals, tracked with the 0.3.0 ecosystem work; they are not part of the 0.2.0 release gate.
+
 ### ABIX 0.3.0 — Ecosystem (future)
 
 Target areas, not hard commitments:
 
 * AI / Agent integration (MCP, TROI).
-* LSP, plugin ecosystem, package management, application areas.
+* LSP, plugin ecosystem, package management and build-system integration.
+* Deeper debugger / editor integration (LLDB go-to-definition, Source Origin).
+* Application areas.
 
 ### Version independence
 

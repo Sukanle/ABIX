@@ -53,12 +53,16 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 
 已交付：`amc-rust` provider（`frontend` + `backend`）与 C++ → ABIX → Rust 闭环——真实 C++ 库 → `.abix` → 生成 Rust 并链接运行，所有权/错误边界/目标契约承载在版本化的 metadata-region 扩展目录中；以及最小化的 `amc-zig` **仅后端** provider，使同一份 `.abix` 同时驱动 Rust 与 Zig 投影，两个消费者链接同一个原生库（`AMC/tests/interop/`）。
 
+构建系统/包管理器集成与更深的调试器集成属于 0.2.0 之后的目标，随 0.3.0 生态工作跟踪；它们不属于 0.2.0 的发布门槛。
+
 ### ABIX 0.3.0 — Ecosystem（未来）
 
 目标方向，而非硬性承诺：
 
-* AI / Agent 集成（MCP、TROI）。
-* LSP、插件生态、包管理、应用领域。
+* AI / Agent 集成 (MCP、TROI)。
+* LSP、插件生态、包管理与构建系统集成。
+* 更深的调试器/编辑器集成 (LLDB go-to-definition、Source Origin)。
+* 应用领域。
 
 ### 版本独立性
 
