@@ -162,6 +162,13 @@ struct MetadataTargetRecord {
     uint32_t flags;
 };
 
+// Extension kind 12: the Canonical Layout Encoding version used by every
+// LayoutHash in the region.
+struct MetadataLayoutEncodingRecord {
+    uint32_t version;
+    uint32_t reserved;
+};
+
 // ABIX-STD lowering result, carried as an extension (kind = 4). Types are
 // referenced by their index in the type table. A lowering record lets a reader
 // discover that an adapter is required; it does not by itself execute anything.
@@ -267,6 +274,9 @@ constexpr uint32_t metadata_extension_interface_method = 8;
 constexpr uint32_t metadata_extension_implementation = 9;
 constexpr uint32_t metadata_extension_method_binding = 10;
 constexpr uint32_t metadata_extension_interface_parameter = 11;
+// Canonical Layout Encoding version carried by the region (1 = CLE v1). It
+// lets a consumer interpret the LayoutHash values without reading the .abix.
+constexpr uint32_t metadata_extension_layout_encoding = 12;
 
 // Semantics of an accessor adapter, as a contract flag (not a layout fact).
 constexpr uint32_t metadata_adapter_borrowed = 1u << 0;   // view over live data
@@ -288,6 +298,7 @@ struct MetadataExtensionEntry {
     uint32_t reserved;
 };
 
+static_assert(sizeof(MetadataLayoutEncodingRecord) == 8, "MetadataLayoutEncodingRecord wire layout changed");
 static_assert(sizeof(MetadataTypeRecord) == 64, "MetadataTypeRecord wire layout changed");
 static_assert(sizeof(MetadataFieldRecord) == 48, "MetadataFieldRecord wire layout changed");
 static_assert(sizeof(MetadataFunctionRecord) == 72, "MetadataFunctionRecord wire layout changed");
@@ -448,6 +459,11 @@ struct TargetDescription {
 };
 bool read_target_description(const uint8_t *data, size_t size, TargetDescription &out, std::string &error);
 bool read_target_description(const std::vector<uint8_t> &region, TargetDescription &out, std::string &error);
+// Read the Canonical Layout Encoding version from the region. `present` is
+// false for a region written before the extension existed; a present value
+// other than 1 is rejected as unsupported.
+bool read_layout_encoding(const uint8_t *data, size_t size, uint32_t &version, bool &present, std::string &error);
+bool read_layout_encoding(const std::vector<uint8_t> &region, uint32_t &version, bool &present, std::string &error);
 
 // Target ABI verification. A field of 0 in the expectation means "do not
 // check". The result separates the three outcomes the plan calls for:

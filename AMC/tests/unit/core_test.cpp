@@ -1361,9 +1361,10 @@ int main() {
             point.size = 8;
             point.align = 4;
             point.field_count = 2;
+            const amc::Hash128 nested_id = amc::hash_text("Nested", 0x54595045);
             std::vector<amc::Field> amc_fields = {
                 {point.id, "x", amc::hash_text("prim:i32", 0x54595045), 0, 0},
-                {point.id, "y", amc::hash_text("prim:i32", 0x54595045), 4, 0},
+                {point.id, "y", nested_id, 4, (1u << 0) | (2u << 8) | (3u << 16) | (5u << 24)},
             };
             const std::vector<uint8_t> amc_bytes = amc::canonical_layout_encoding(layout_module, point, amc_fields);
             const amc::Hash128 amc_layout = amc::canonical_layout_hash(layout_module, point, amc_fields);
@@ -1375,10 +1376,10 @@ int main() {
                 point.size, point.align, 0, point.field_count, {0, 0}
             };
             const skl::abix::model::Field abix_fields[] = {
-                {0, {amc_fields[0].type_id.lo, amc_fields[0].type_id.hi}, amc_fields[0].offset, amc_fields[0].flags, 0,
-                 0},
-                {0, {amc_fields[1].type_id.lo, amc_fields[1].type_id.hi}, amc_fields[1].offset, amc_fields[1].flags, 0,
-                 0},
+                {0, {amc_fields[0].type_id.lo, amc_fields[0].type_id.hi}, amc_fields[0].offset,                 amc_fields[0].flags, 0,
+                 0                                                                                                                       },
+                // Visibility is deliberately different: CLE masks it out.
+                {0,                         {nested_id.lo, nested_id.hi}, amc_fields[1].offset, (1u << 0) | (3u << 16) | (5u << 24), 0, 0},
             };
             uint8_t buffer[256] = {};
             const size_t encoded = skl::abix::model::encode_canonical_layout(
@@ -1430,6 +1431,16 @@ int main() {
             check(loaded_layout.layout_encoding_version == amc::canonical_layout_version
                       && loaded_layout.types[1].layout_hash == layout_module.types[1].layout_hash,
                 "CLE v1 selector and hash round-trip");
+
+            std::vector<uint8_t> layout_region;
+            check(amc::build_metadata_region(layout_module, amc::MetadataOptions{}, layout_region, error),
+                "build metadata region with a CLE version");
+            uint32_t region_layout_version = 0;
+            bool region_layout_present = false;
+            check(amc::read_layout_encoding(layout_region, region_layout_version, region_layout_present, error)
+                      && region_layout_present
+                      && region_layout_version == amc::canonical_layout_version,
+                "metadata region records the CLE version");
 
             // Tamper the on-disk type table's layout hash; the reader must
             // recompute CLE and reject the mismatch.

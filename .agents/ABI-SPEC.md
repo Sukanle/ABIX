@@ -451,12 +451,11 @@ the `desc` section, after the fixed record tables:
 - An unknown directory version, a duplicate `kind`, or an out-of-bounds entry is
   rejected rather than guessed at.
 
-Known extension kinds: `1` ownership, `2` error boundary, `3` target
-description, `4` ABIX-STD lowering, `5` view adapter, `6` range adapter. Adding a
-kind does not require a format version change. A view/range adapter carries a
-`semantics` flag (borrowed / owned / copy); the lifetime and invalidation rules
-remain the caller's contract — the region only reports them, it never enforces a
-lifetime at run time.
+Known extension kinds: `1` ownership, `2` error boundary, `3` target description, `4` ABIX-STD lowering, `5` view adapter, `6` range adapter, `7`–`11` interface contracts/methods/parameters/implementations/bindings, `12` layout encoding.
+
+Kind `12` carries one `MetadataLayoutEncodingRecord` (`version`, `reserved`); `version` is the Canonical Layout Encoding version (§11.2) that applies to every `LayoutHash` in the region. A region written by this toolchain always carries it with `version = 1`.
+
+Adding a kind does not require a format version change. A view/range adapter carries a `semantics` flag (borrowed / owned / copy); the lifetime and invalidation rules remain the caller's contract — the region only reports them, it never enforces a lifetime at run time.
 
 ## 14. Versioning
 

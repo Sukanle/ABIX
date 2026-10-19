@@ -361,6 +361,11 @@ bool build_metadata_region(
         out.flags = binding.flags;
         append_record(binding_records, &out, sizeof(out));
     }
+    std::vector<uint8_t> layout_encoding_records;
+    MetadataLayoutEncodingRecord layout_encoding{};
+    layout_encoding.version =
+        module.layout_encoding_version != 0 ? module.layout_encoding_version : canonical_layout_version;
+    append_record(layout_encoding_records, &layout_encoding, sizeof(layout_encoding));
     std::vector<PendingExtension> pending;
     if (!ownership_records.empty())
         pending.push_back(
@@ -395,6 +400,7 @@ bool build_metadata_region(
     if (!binding_records.empty())
         pending.push_back({metadata_extension_method_binding, 1,
             static_cast<uint32_t>(binding_records.size() / sizeof(MetadataMethodBindingRecord)), &binding_records});
+    pending.push_back({metadata_extension_layout_encoding, 1, 1, &layout_encoding_records});
     if (!pending.empty()) {
         const uint64_t directory_begin = desc.size();
         const uint64_t entries_begin = directory_begin + sizeof(MetadataExtensionHeader);
@@ -1282,6 +1288,42 @@ bool read_target_description(const uint8_t *data, size_t size, TargetDescription
 
 bool read_target_description(const std::vector<uint8_t> &region, TargetDescription &out, std::string &error) {
     return read_target_description(region.data(), region.size(), out, error);
+}
+
+bool read_layout_encoding(const uint8_t *data, size_t size, uint32_t &version, bool &present, std::string &error) {
+    version = 0;
+    present = false;
+    MetadataHeader header;
+    if (!read_metadata_header(data, size, header, error)) return false;
+    bool found = false;
+    uint32_t extension_version = 0, count = 0;
+    const uint8_t *records = nullptr;
+    size_t byte_size = 0;
+    if (!find_extension(data, size, header, metadata_extension_layout_encoding, found, extension_version, count,
+            records, byte_size, error))
+        return false;
+    if (!found) return true;
+    if (extension_version != 1) {
+        error = "unsupported layout encoding extension version";
+        return false;
+    }
+    if (count < 1 || byte_size < sizeof(MetadataLayoutEncodingRecord)) {
+        error = "layout encoding extension is malformed";
+        return false;
+    }
+    MetadataLayoutEncodingRecord record{};
+    std::memcpy(&record, records, sizeof(record));
+    if (record.version != canonical_layout_version) {
+        error = "unsupported layout encoding version";
+        return false;
+    }
+    version = record.version;
+    present = true;
+    return true;
+}
+
+bool read_layout_encoding(const std::vector<uint8_t> &region, uint32_t &version, bool &present, std::string &error) {
+    return read_layout_encoding(region.data(), region.size(), version, present, error);
 }
 
 bool verify_target_abi(
