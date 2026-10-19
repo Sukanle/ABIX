@@ -469,7 +469,7 @@ registry.unregister_module(control.id);   // 现在可以卸载
 | `ABIX/Interface/Discovery.h` | `discover_module` —— 加载 → 校验 → 注册 |
 | `ABIX/Interface/Owner.h` | Owner ABI —— `handle` / `ref` 的借用/拥有/复制语义 |
 | `ABIX/Interface/Proxy.h` | C++ 代理 API —— `InterfaceProxy<Traits>`、`bind`/`call`、签名校验 |
-| `ABIX/Interface/Declaration.h` | 可选声明宏 —— `ABIX_DECLARE_INTERFACE`（手写签名）与 `ABIX_DECLARE_INTERFACE_AUTO`（由 `method_signature` 计算） |
+| `ABIX/Interface/Declaration.h` | 可选声明宏 —— `ABIX_DECLARE_INTERFACE`，用于自动签名（`util::StaticArray` 或数组 + count 两种条目） |
 
 ### `Contract.h` —— 接口身份与方法
 
@@ -729,41 +729,54 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `call<Fn>(slot, args...)`（protected） | `Fn` 的返回 | 直调缓存入口（首参自动补对象句柄）；前置条件：`valid()` 且槽位已绑定 |
 | `call_checked<Fn>(out, slot, args...)`（protected） | `InterfaceStatus` | 状态与结果分离：未绑定返回 `method_not_found`，合法结果绝不会被当成失败 |
 
-`ABIX_DECLARE_INTERFACE`（`Declaration.h`，可选语法糖）用 X-macro 去掉样板，**不推断签名**——
-签名哈希与槽位显式给出，正是预处理器能可靠完成的部分。接口身份不再手写：宏用
-`interface_id("Shape", version, 方法表)` 从**规范名 + 版本 + 按槽位排序的签名**算出，与 AMC 完全一致：
+`ABIX_DECLARE_INTERFACE`（`Declaration.h`，可选语法糖）用于**自动签名**：用 X-macro 去掉样板，**不推断签名**——每个条目给出 AMC TypeID，由 `method_signature(...)` 计算签名。接口身份也不手写：宏用 `interface_id("Shape", version, 方法表)` 从**规范名 + 版本 + 按槽位排序的签名**算出，与 AMC 完全一致。
+
+手动 `{lo, hi}` 注册不再提供宏：直接手写 `Traits` + `InterfaceProxy`（下面的示例仍可用编译期 helper 计算值），或交给 AMC 生成。
+
+自动方法表有两种条目形式。
+
+**`util::StaticArray` 形式（不需要 count）：**
 
 ```cpp
-#define SHAPE_METHODS(X)                 \
-    X(area, 0x1234, 0x5678, int32_t, 0)  \
-    X(size, 0x9abc, 0xdef0, int32_t, 1)
-
-ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
+X(method, return_type_id, static_array, return_type, slot)
 ```
 
-另一个版本用编译期函数生成签名：`ABIX_DECLARE_INTERFACE_AUTO` 的条目是
-「方法名、返回 TypeID、参数 TypeID 数组、参数个数、返回类型、槽位」，签名由
-`method_signature(...)` 算出，代理还会转发方法参数：
+`static_array` 是 `util::StaticArray`，count 就是它自己的大小。内联 `util::StaticArray{...}` 必须加括号，让逗号留在一个宏参数里：
 
 ```cpp
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
 constexpr util::StaticArray resize_params{i32, i32};
 
-#define SHAPE_AUTO(X)                             \
-    X(area,   i32, nullptr,      0, int32_t, 0)   \
+#define SHAPE_STATIC(X)                                          \
+    X(area,   i32, (util::StaticArray{i32, i32}), int32_t, 0)    \
+    X(resize, i32, resize_params, int32_t, 1)
+
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_STATIC)
+```
+
+**数组 + count 形式：**
+
+```cpp
+X(method, return_type_id, array, parameter_count, return_type, slot)
+```
+
+`array` 是具名数组/指针，外加显式 count：
+
+```cpp
+constexpr model::TypeId resize_params[] = {i32, i32};
+
+#define SHAPE_ARRAY(X)                                    \
+    X(area,   i32, nullptr,      0, int32_t, 0)           \
     X(resize, i32, resize_params, 2, int32_t, 1)
 
-ABIX_DECLARE_INTERFACE_AUTO(Shape, 1, SHAPE_AUTO)
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_ARRAY)
 
 // shape.area()             对象句柄在首位，0 参数
 // shape.resize(3, 4)       转发两个参数
 // shape.resize(out, 3, 4)  显式状态重载
 ```
 
-两个宏只差签名来源：`ABIX_DECLARE_INTERFACE` 手写 `{lo, hi}`，`ABIX_DECLARE_INTERFACE_AUTO`
-用 `method_signature` 从 TypeID 计算；`id`、槽位与 `slots` 的生成方式相同。参数表必须
-是作用域内已有的名字（预处理器无法按 `{i32, i32}` 生成数组）；可以是原生
-`model::TypeId[]`，也可以是 `util::StaticArray`。
+两种形式生成相同的 `ShapeTraits` 和转发代理。参数表必须是作用域内已有的名字（预处理器无法按 `{i32, i32}` 生成数组）；无 count 形式需要 `util::StaticArray`，带 count 形式接受原生 `model::TypeId[]` 或指针。
 
 手写 `Traits` 时连签名与 `id` 都可以由编译期 helper 生成（它们复刻 `AMC::signature_hash` /
 `AMC::interface_identity` 的字节串与算法，`amc-core-test` 有跨工具一致性检查）：

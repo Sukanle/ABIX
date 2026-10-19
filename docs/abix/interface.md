@@ -504,7 +504,7 @@ layer on its own, `#include "ABIX/Interface/Interface.h"`.
 | `ABIX/Interface/Discovery.h` | `discover_module` — load → validate → register |
 | `ABIX/Interface/Owner.h` | Owner ABI — borrow/own/copy semantics for `handle` / `ref` |
 | `ABIX/Interface/Proxy.h` | C++ proxy API — `InterfaceProxy<Traits>`, `bind`/`call`, signature checks |
-| `ABIX/Interface/Declaration.h` | optional declaration macros — `ABIX_DECLARE_INTERFACE` (hand-written signature) and `ABIX_DECLARE_INTERFACE_AUTO` (computed by `method_signature`) |
+| `ABIX/Interface/Declaration.h` | optional declaration macro — `ABIX_DECLARE_INTERFACE` for automatic signatures (`util::StaticArray` or array + count entry forms) |
 
 ### `Contract.h` — interface identity and methods
 
@@ -795,43 +795,54 @@ only its methods, and `Traits` supplies the interface difference:
 | `call<Fn>(slot, args...)` (protected) | the `Fn` result | Directly call a cached entry (the object handle is supplied first); precondition: `valid()` and the slot is bound |
 | `call_checked<Fn>(out, slot, args...)` (protected) | `InterfaceStatus` | Status and result are separate: an unbound slot is `method_not_found`, so a legitimate result is never read as a failure |
 
-`Declaration.h` (optional sugar) offers two declaration macros that differ only
-in how a method's signature hash is obtained. Both remove the
-boilerplate with an X-macro and **never let the preprocessor parse a signature**.
-The identity is not written by hand either: both compute it with
-`interface_id("Shape", version, methods)`, matching AMC exactly.
+`Declaration.h` (optional sugar) provides `ABIX_DECLARE_INTERFACE(Name, version, list)` for **automatic** signatures. It removes the boilerplate with an X-macro and **never lets the preprocessor parse a signature**. The identity is not written by hand either: it computes it with `interface_id("Shape", version, methods)`, matching AMC exactly.
 
-`ABIX_DECLARE_INTERFACE` takes the signature as a `{lo, hi}` constant:
+Manual `{lo, hi}` registration has no macro: write a `Traits` + `InterfaceProxy` by hand (the helpers below can still compute the values), or let AMC generate them.
+
+The auto method list has two entry forms.
+
+**`util::StaticArray` form (no count):**
 
 ```cpp
-#define SHAPE_METHODS(X)                 \
-    X(area, 0x1234, 0x5678, int32_t, 0)  \
-    X(size, 0x9abc, 0xdef0, int32_t, 1)
-
-ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
+X(method, return_type_id, static_array, return_type, slot)
 ```
 
-`ABIX_DECLARE_INTERFACE_AUTO` computes it with `method_signature(...)` from AMC
-TypeIDs. Each entry is `X(method, return_type_id, parameters, parameter_count,
-return_type, slot)`, and the proxy forwards the method arguments:
+`static_array` is a `util::StaticArray`; the count is its own size. An inline `util::StaticArray{...}` must be parenthesized so its commas stay inside one macro argument:
 
 ```cpp
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
 constexpr util::StaticArray resize_params{i32, i32};
 
-#define SHAPE_AUTO(X)                             \
-    X(area,   i32, nullptr,      0, int32_t, 0)   \
+#define SHAPE_STATIC(X)                                          \
+    X(area,   i32, (util::StaticArray{i32, i32}), int32_t, 0)    \
+    X(resize, i32, resize_params, int32_t, 1)
+
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_STATIC)
+```
+
+**Array + count form:**
+
+```cpp
+X(method, return_type_id, array, parameter_count, return_type, slot)
+```
+
+`array` is a named array/pointer plus an explicit count:
+
+```cpp
+constexpr model::TypeId resize_params[] = {i32, i32};
+
+#define SHAPE_ARRAY(X)                                    \
+    X(area,   i32, nullptr,      0, int32_t, 0)           \
     X(resize, i32, resize_params, 2, int32_t, 1)
 
-ABIX_DECLARE_INTERFACE_AUTO(Shape, 1, SHAPE_AUTO)
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_ARRAY)
 
 // shape.area()             object handle first, no arguments
 // shape.resize(3, 4)       forwards two arguments
 // shape.resize(out, 3, 4)  explicit-status overload
 ```
 
-The parameter list must be a name already in scope (the preprocessor cannot
-build `{i32, i32}`); it may be a raw `model::TypeId[]` or a `util::StaticArray`.
+Both forms produce the same `ShapeTraits` and a forwarding proxy. The parameter list must be a name already in scope (the preprocessor cannot build `{i32, i32}`); the no-count form needs a `util::StaticArray`, the count form accepts a raw `model::TypeId[]` or pointer.
 
 A hand-written `Traits` can compute the signatures and the identity too (the
 helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`;

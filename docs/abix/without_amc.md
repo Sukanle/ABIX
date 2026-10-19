@@ -18,7 +18,7 @@ The trade-off is that the contract becomes manual: you write the adapter tables 
 | Capability                               | Header                                                                           | AMC required?                                                                   |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Interface identity and method signatures | `ABIX/Interface/Contract.h`                                                      | No — `interface_id`, `method_signature` and `canonical_type_id` are `constexpr` |
-| Hand-written `Traits` and proxies        | `ABIX/Interface/Declaration.h`                                                   | No — `ABIX_DECLARE_INTERFACE` / `ABIX_DECLARE_INTERFACE_AUTO`                   |
+| Hand-written `Traits` and proxies        | `ABIX/Interface/Declaration.h`                                                   | No — `ABIX_DECLARE_INTERFACE` (automatic signatures)                            |
 | In-process register / resolve / call     | `Registry.h`, `Ref.h`, `Proxy.h`                                                 | No                                                                              |
 | Dynamic-library discovery and leases     | `Module.h`, `ModuleRegistry.h`, `Discovery.h`, `Lease.h`                         | No — write the `ModuleManifest` by hand and use `SKL_ABIX_DEFINE_MODULE_QUERY`  |
 | Owner ABI                                | `Owner.h`                                                                        | No                                                                              |
@@ -31,12 +31,13 @@ A minimal C++-only declaration:
 #include "ABIX/Interface/Declaration.h"
 #include "ABIX/Interface/Interface.h"
 
+using namespace skl::abix;
 using namespace skl::abix::poly;
 
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
 
-#define SHAPE_METHODS(X) X(area, i32, int32_t, 0)
-ABIX_DECLARE_INTERFACE_AUTO(Shape, 1, SHAPE_METHODS)
+#define SHAPE_METHODS(X) X(area, i32, nullptr, 0, int32_t, 0)
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
 
 // Provider side: adapters receive the object handle first.
 constexpr model::TypeId square_id{0x51, 0x52};   // the concrete type's TypeID
@@ -76,7 +77,7 @@ const std::string &square_name(const void *self) {
 // registration and `proxy.call<NameFn>(slot)` work as usual.
 ```
 
-The signature is still a contract tag, not a layout check: use the same TypeID for `std::string` on both sides (for example `canonical_type_id("std::string")`, or your own fixed value). ABIX does not verify the STL layout, so the same-toolchain assumption is what makes the call well-defined. `ABIX_DECLARE_INTERFACE_AUTO` only emits object-only pass-throughs; for STL parameters, write the `call<Fn>` wrapper by hand or let AMC generate it.
+The signature is still a contract tag, not a layout check: use the same TypeID for `std::string` on both sides (for example `canonical_type_id("std::string")`, or your own fixed value). ABIX does not verify the STL layout, so the same-toolchain assumption is what makes the call well-defined. `ABIX_DECLARE_INTERFACE` forwards method arguments; for STL parameters, pass their TypeIDs in the entry (or write the `Traits` by hand, or let AMC generate them).
 
 **Do not use STL types across a plugin, foreign-language or foreign-toolchain boundary.** A different `std::string` / `std::vector` ABI, allocator, exception model or RTTI setting makes the call undefined, and an object created in one module must not be destroyed in another with a different allocator. Use the ABIX-STD boundary types (`StringView`, `SequenceView<T>`, `Opaque<T>`) or explicit marshalling instead — the same rule as `[[adapt]]`: a native STL parameter needs a declared boundary contract.
 
