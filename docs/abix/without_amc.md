@@ -30,7 +30,7 @@ and `Traits`, and you supply the TypeIDs instead of letting Clang extract them.
 | Dynamic-library discovery and leases | `Module.h`, `ModuleRegistry.h`, `Discovery.h`, `Lease.h` | No — write the `ModuleManifest` by hand and use `SKL_ABIX_DEFINE_MODULE_QUERY` |
 | Owner ABI | `Owner.h` | No |
 | Runtime table / descriptors | `ABIX/Runtime/Registry.h`, `ABIX/Metadata/Descriptor.h`, `SKL_ABIX_DEFINE_TABLE` | No — the structures are public and can be written by hand |
-| ABIX's own type/layout hashes | `ABIX/Model/Compat.h` | No — `type_hash`, `layout_hash`, `signature_hash` |
+| ABIX's own type/layout digests | `ABIX/Model/ABI.h`, `ABIX/Model/Compat.h` | No — `canonical_type_id`, `structural_layout_hash`, `abi_signature_hash` |
 
 A minimal C++-only declaration:
 
@@ -74,19 +74,28 @@ Without AMC you lose the automatic parts:
   template aliases), which you would have to implement yourself with
   `if constexpr`, traits or hand-written constants.
 
-## Two hash schemes — pick one deliberately
+## One engine, distinct identities
 
-ABIX currently exposes two identity families:
+All identity and digest functions share `util::canonical_hash` (the same engine
+AMC calls `hash_text`). They differ in canonical input and domain, not in the
+algorithm:
 
-| Family | Functions | Matches AMC artifacts? |
+| API | Semantic | Matches AMC artifacts? |
 |---|---|---|
-| ABIX internal | `model::type_hash`, `model::layout_hash`, `model::signature_hash` (`Compat.h`, `util::fnv1a`) | No |
-| AMC-compatible | `model::canonical_type_id`, `poly::method_signature`, `poly::interface_id` (`util::canonical_hash`) | Yes |
+| `model::canonical_type_id` | type identity | yes — `TypeID` |
+| `poly::method_signature` | method identity | yes — `Function.signature` |
+| `poly::interface_id` | interface identity | yes — `InterfaceRecord.id` |
+| `model::structural_layout_hash` | structural layout compatibility | no direct match; a distinct digest |
+| `model::abi_signature_hash` | call ABI (return/params + calling convention/qualifiers) | not `method_signature`; method identity ≠ call ABI |
 
-A purely C++ project that will never use AMC may choose either family, as long
-as it is consistent. If the project may later add AMC or another language, use
-the AMC-compatible family; do not feed `model::type_hash` values into
-`method_signature` and expect them to match an AMC artifact.
+Do not collapse these into one value. The same type can keep its `TypeID` while
+its layout changes across targets; a method's logical identity does not prove
+that two calling conventions are interchangeable.
+
+`model::type_hash` and `model::signature_hash` were removed: use
+`canonical_type_id` for type identity and `abi_signature_hash` for the call ABI.
+The legacy `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` family was also
+removed; it was a second engine and was not used for identity.
 
 ## Three ways to build
 

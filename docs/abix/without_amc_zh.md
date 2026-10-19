@@ -26,7 +26,7 @@ AMC；而手写的 C++ 契约在构建期同样不需要它。
 | 动态库发现与租约 | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h` | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY` |
 | Owner ABI | `Owner.h` | 否 |
 | 运行时表 / descriptor | `ABIX/Runtime/Registry.h`、`ABIX/Metadata/Descriptor.h`、`SKL_ABIX_DEFINE_TABLE` | 否——结构是公开的，可以手写 |
-| ABIX 自己的类型/布局哈希 | `ABIX/Model/Compat.h` | 否——`type_hash`、`layout_hash`、`signature_hash` |
+| ABIX 自己的类型/布局摘要 | `ABIX/Model/ABI.h`、`ABIX/Model/Compat.h` | 否——`canonical_type_id`、`structural_layout_hash`、`abi_signature_hash` |
 
 一个最小的 C++-only 声明：
 
@@ -65,17 +65,25 @@ registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 - C++ 拼写 → 规范名（`prim:i32`、指针拼写、模板别名）的映射，需要你自己用
   `if constexpr`、traits 或手写常量实现。
 
-## 两套哈希——要有意识地选一套
+## 一套引擎，多种身份语义
 
-ABIX 目前有两组身份函数：
+所有身份与摘要函数共用 `util::canonical_hash`（AMC 里叫 `hash_text` 的同一套引擎）。它们的
+区别在规范化输入与 domain，而不是算法：
 
-| 组 | 函数 | 与 AMC 产物一致？ |
+| API | 语义 | 与 AMC 产物一致？ |
 |---|---|---|
-| ABIX 内部 | `model::type_hash`、`model::layout_hash`、`model::signature_hash`（`Compat.h`，`util::fnv1a`） | 否 |
-| AMC 兼容 | `model::canonical_type_id`、`poly::method_signature`、`poly::interface_id`（`util::canonical_hash`） | 是 |
+| `model::canonical_type_id` | 类型身份 | 是——`TypeID` |
+| `poly::method_signature` | 方法身份 | 是——`Function.signature` |
+| `poly::interface_id` | 接口身份 | 是——`InterfaceRecord.id` |
+| `model::structural_layout_hash` | 结构布局兼容性 | 不直接对应；独立的布局摘要 |
+| `model::abi_signature_hash` | 调用 ABI（返回/参数 + 调用约定/限定符） | 不是 `method_signature`；方法身份 ≠ 调用 ABI |
 
-纯 C++、永远不用 AMC 的项目可以任选一套，只要前后一致。若以后可能接 AMC 或其他语言，请使用
-AMC 兼容组；不要把 `model::type_hash` 的值喂给 `method_signature` 再指望它与 AMC 产物匹配。
+不要把这几者压成同一个值。同一个类型可以保持 `TypeID` 不变，而布局随目标平台变化；方法的逻辑
+身份相同，也不能证明两种调用约定可以安全互调。
+
+`model::type_hash` 与 `model::signature_hash` 已移除：类型身份用 `canonical_type_id`，调用 ABI
+用 `abi_signature_hash`。旧的 `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` 系列也一并移除；
+它是第二套引擎，且并不用于身份生成。
 
 ## 三种落地方式
 

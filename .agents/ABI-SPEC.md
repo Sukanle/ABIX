@@ -104,6 +104,7 @@ A primitive and a nominal type may still be ABI-compatible; that is decided by
   particular, a primitive's layout is a function of its ABI descriptor (§4), not
   of its name, so a C `double` and a Rust `f64` of the same target share a
   `LayoutHash`.
+- `model::structural_layout_hash` is an in-memory digest over the same layout facts and is **not** the artifact `LayoutHash`; it must not be compared with the value stored in the artifact.
 - A concrete type with size or alignment zero is invalid.
 
 ## 6. Function ABI
@@ -333,6 +334,32 @@ independently (exit `1` when any is incompatible).
 - `SignatureHash` identifies a function signature.
 - **Source origin is not ABI identity**: the optional debug `sources` section is
   excluded from `ABIHash`.
+
+### 11.1 Canonical hash engine and semantic identities
+
+Every ABI identity and digest is produced by one deterministic engine, implemented as `util::canonical_hash` in ABIX and mirrored by `amc::hash_text` in the toolchain.
+
+The engine is a two-lane 64-bit state, not standard FNV-1a-128: `lo` starts at the FNV-1a 64 offset basis `0xCBF29CE484222325` XOR the domain, `hi` starts at the FNV prime `0x100000001B3` plus the domain, and each input byte `b` updates `lo = (lo ^ b) * 0x100000001B3` and `hi = (hi ^ (b + 31)) * 0xC2B2AE3D27D4EB4F` (XXH64 `PRIME64_2`). The result is `{lo, hi}` in that order.
+
+The domain is mixed into the initial state as an integer and is never serialized as a byte prefix; a reader must not `reinterpret_cast` it. Changing the offset basis, either multiplier, the `+ 31` perturbation or a domain invalidates every artifact produced under the old rule.
+
+Identity APIs share the engine but not their meaning. Each has its own canonical input and domain:
+
+| Identity | Canonical input | Domain |
+|---|---|---|
+| `TypeID` (primitive) | `prim:` ABI descriptor, e.g. `prim:i32`, `prim:u64`, `prim:fieee64` | `0x54595045` (`"TYPE"`) |
+| `TypeID` (nominal) | canonical qualified name, e.g. `cv::Point`, `std::errc` | `0x54595045` (`"TYPE"`) |
+| `SignatureHash` (method identity) | `name + decimal(return.lo) + decimal(return.hi) + Σ(decimal(param.lo) + decimal(param.hi))`; parameter names are excluded | `0x5349474E41545552` (`"SIGNATUR"`) |
+| `InterfaceId` | `"ABIX-INTERFACE:" + name + ":" + version`, then `":" + decimal(sig.lo) + ":" + decimal(sig.hi)` per method in slot order | `0x494E544552464143` (`"INTERFAC"`) |
+| Artifact `LayoutHash` | canonical layout description defined by §5 and the metadata generator | `0x4C41594F5554` (`"LAYOUT"`) |
+| ABIX `structural_layout_hash` | fixed-width big-endian layout description: TypeID, size, align, field count, then each field's TypeID, offset, flags, bit offset and bit width | `0x4C41594F55545F31` (`"LAYOUT_1"`) |
+| ABIX `abi_signature_hash` | fixed-width big-endian return/parameter TypeIDs, parameter count, calling convention and qualifiers | `0x4142495349475F31` (`"ABISIG_1"`) |
+
+Type identity, layout identity, method identity, call-ABI signature and interface identity are different facts. The same `TypeID` does not imply the same `LayoutHash`; the same `SignatureHash` does not imply that two calling conventions are interchangeable, and the call-ABI digest together with §8 and §12 decides that.
+
+`model::type_hash` and `model::signature_hash` were removed during the devel-beta identity migration. `model::canonical_type_id` is the type entry, `poly::method_signature` the method entry, `poly::interface_id` the interface entry, and `model::structural_layout_hash` / `model::abi_signature_hash` the distinct layout and call-ABI digests. The legacy `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` family was removed; it was a second engine and was not used for identity.
+
+This migration changes every derived hash (primitive TypeIDs, signatures, layouts, interface ids and artifact hashes). Artifacts, caches and generated projections produced before it must be regenerated.
 
 ## 12. Compat Rules
 
