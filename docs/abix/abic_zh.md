@@ -146,9 +146,7 @@ output = "build/mylib.abix"
 | `release` | string | `owned` 返回值的释放函数名 |
 | `params` | string[] | 各参数位置的模式 |
 
-所有权是**契约而非布局事实**：永不参与 `TypeID` / `LayoutHash` / `ABIHash`。缺失即
-`unspecified`，reader **不得**推断为 `borrowed` 或 `owned`。见
-[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §9。
+所有权是**契约而非布局事实**：永不参与 `TypeID` / `LayoutHash` / `ABIHash`。缺失即 `unspecified`，reader **不得**推断为 `borrowed` 或 `owned`。见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §9。
 
 ### `[[error]]` — 错误边界
 
@@ -159,10 +157,7 @@ output = "build/mylib.abix"
 | `success` | int | 表示成功的状态值（默认 `0`） |
 | `value` | int | 承载结果值的参数下标（返回值为结果时可省略） |
 
-它让后端把裸 C 状态码变成类型化结果；语言原生的异常/panic **不得**穿越 ABI 边界。
-`status = return_field` 时状态与结果值是返回记录的两个字段：`[[expose]]` 生成返回
-`abix_result_*` 的 thunk 时会记录 `return_field` 及其状态/值字段下标，消费者因此得到
-类型化的 `Result`。见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1。
+它让后端把裸 C 状态码变成类型化结果；语言原生的异常/panic **不得**穿越 ABI 边界。`status = return_field` 时状态与结果值是返回记录的两个字段：`[[expose]]` 生成返回 `abix_result_*` 的 thunk 时会记录 `return_field` 及其状态/值字段下标，消费者因此得到类型化的 `Result`。见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1。
 
 ### `[[instantiate]]` — 泛型实例化
 
@@ -175,11 +170,7 @@ output = "build/mylib.abix"
 | `element` | string | 契约要求的元素拼写，如 `int`（可选；按指针 pointee 的 `TypeID` 匹配） |
 | `mutable` | bool | 要求非常量数据指针（可选，默认 `false`） |
 
-**语言前端**负责实例化与约束检查（C++ 为 Clang/Sema）；AMC 协调请求并记录具体
-ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` 时，AMC 还会把具体类型对该
-契约做 **lowering** 并记录结果：`direct`（类型本身即边界实体）、`needs_adapter`（形状兼容，
-生成薄适配器）或拒绝。实例化成功**并不**等于满足 ABIX-STD 契约。见
-[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18。
+**语言前端**负责实例化与约束检查（C++ 为 Clang/Sema）；AMC 协调请求并记录具体 ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` 时，AMC 还会把具体类型对该契约做 **lowering** 并记录结果：`direct`（类型本身即边界实体）、`needs_adapter`（形状兼容，生成薄适配器）或拒绝。实例化成功**并不**等于满足 ABIX-STD 契约。见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18。
 
 ### `[[view]]` — 容器 accessor 适配
 
@@ -189,8 +180,7 @@ ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` �
 | `data_accessor` | string | 返回数据指针的函数 |
 | `size_accessor` | string | 返回元素个数的函数 |
 
-通过 accessor 把容器 lower 成连续序列视图（例如 `std::vector<T>` 的 `data()`/`size()`），
-不暴露内部布局。AMC 生成薄适配器；借用生命周期与失效条件仍属于调用方契约。
+通过 accessor 把容器 lower 成连续序列视图（例如 `std::vector<T>` 的 `data()`/`size()`），不暴露内部布局。AMC 生成薄适配器；借用生命周期与失效条件仍属于调用方契约。
 
 ### `[[contract-type]]` — 非模板契约类型
 
@@ -199,8 +189,7 @@ ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` �
 | `type` | string | 具体类型（如 `abix_callback`、`DemoMap`） |
 | `contract` | string | ABIX-STD 契约：`callback` 或 `opaque` |
 
-用于非模板的契约类型（回调结构体，或 opaque 的 Map/Set 句柄），无需 `[[instantiate]]`。
-`opaque` 类型经 accessor 操作使用，不消费其布局。
+用于非模板的契约类型（回调结构体，或 opaque 的 Map/Set 句柄），无需 `[[instantiate]]`。`opaque` 类型经 accessor 操作使用，不消费其布局。
 
 ### `[[range]]` — 可迭代范围适配
 
@@ -222,12 +211,7 @@ ABI 事实。ABIX 记录具体实体，而非泛型参数。给出 `contract` �
 | `destructor` | bool | 是否生成销毁入口（默认 `true`） |
 | `opaque` | bool | 消费者视为不透明句柄（默认 `true`） |
 
-C++ 前端生成 `abix_<Type>_create/_destroy/_<method>` **thunk** 并登记为 ABI 实体，
-生产者与消费者都无需手写适配器。仅支持 public 成员，且只接受桥接能表达的表示：
-无法确定的参数/返回类型会被拒绝（`... needs a contract`）而不是猜测。签名里出现
-ABIX-STD 边界类型（`abix_span_*`、`abix_str_*`、`abix_result_*`）时会自动记录对应契约；
-原生 STL 参数类型需要显式的 `[[adapt]]` 映射。`abix_result_*` 返回值会自动绑定错误边界
-（见 `[[error]]`）。
+C++ 前端生成 `abix_<Type>_create/_destroy/_<method>` **thunk** 并登记为 ABI 实体，生产者与消费者都无需手写适配器。仅支持 public 成员，且只接受桥接能表达的表示：无法确定的参数/返回类型会被拒绝（`... needs a contract`）而不是猜测。签名里出现 ABIX-STD 边界类型（`abix_span_*`、`abix_str_*`、`abix_result_*`）时会自动记录对应契约；原生 STL 参数类型需要显式的 `[[adapt]]` 映射。`abix_result_*` 返回值会自动绑定错误边界（见 `[[error]]`）。
 
 ### `[thunks]` — 生成 thunk 源
 
@@ -245,11 +229,7 @@ ABIX-STD 边界类型（`abix_span_*`、`abix_str_*`、`abix_result_*`）时会�
 | `target` | string | 参数被马歇尔到的 ABIX-STD 边界类型（如 `abix_str_utf8`、`abix_span_i32`） |
 | `element` | string | `std::vector`/`std::span` 的元素拼写（如 `int32_t`）；其它种类忽略 |
 
-STL 类型不能裸穿边界（见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18）：必须显式声明
-映射，`[[expose]]` 才会适配使用它的方法。命中后生成的 thunk 参数取边界类型，并在调用点
-马歇尔回原生类型（`std::string(data, len)`、`std::vector<T>(data, data + len)` 等）；
-适配器被真正生成并链接，绝不推断。**仅适配参数**——返回值映射为借用视图会悬垂，仍需
-自己的契约。非常量左值引用与可变的 `std::span<T>` 不适配（不建模通过借用视图回写）。
+STL 类型不能裸穿边界（见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18）：必须显式声明映射，`[[expose]]` 才会适配使用它的方法。命中后生成的 thunk 参数取边界类型，并在调用点马歇尔回原生类型（`std::string(data, len)`、`std::vector<T>(data, data + len)` 等）；适配器被真正生成并链接，绝不推断。**仅适配参数**——返回值映射为借用视图会悬垂，仍需自己的契约。非常量左值引用与可变的 `std::span<T>` 不适配（不建模通过借用视图回写）。
 
 ### `[[interface]]` — 命名接口契约
 
@@ -259,9 +239,7 @@ STL 类型不能裸穿边界（见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §
 | `version` | int | 接口版本（默认 `1`） |
 | `methods` | string[] | 接口方法，**顺序即 slot 顺序**；每项是一个已记录函数的名字，其签名成为该方法的契约 |
 
-接口身份是对「名字 + 版本 + 有序方法签名」计算的内容哈希——不是类名，也不是 vtable 地址。
-它是**契约而非布局事实**，永不参与 `TypeID` / `LayoutHash` / `ABIHash`。见
-[`interface_zh.md`](interface_zh.md)。
+接口身份是对「名字 + 版本 + 有序方法签名」计算的内容哈希——不是类名，也不是 vtable 地址。它是**契约而非布局事实**，永不参与 `TypeID` / `LayoutHash` / `ABIHash`。见 [`interface_zh.md`](interface_zh.md)。
 
 ### `[[implements]]` — 把具体类型绑定到接口
 
@@ -271,12 +249,7 @@ STL 类型不能裸穿边界（见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §
 | `type` | string | 实现它的具体类型 |
 | `methods` | string[] | 按 slot 顺序，每个接口方法绑定到一个已记录的适配器函数；数量必须与接口方法数一致 |
 
-绑定把 `(interface_id, slot)` 映射到适配器函数的签名；适配器的第一个参数是对象句柄。ABIX
-不规定任何私有 vtable：provider 保留自己的布局与虚函数，适配器是唯一的桥。`amc generate -l cpp`
-会把每个接口投影为 `k<Name>Interface`、`k<Name>Version`、`enum class <Name>Slot`、
-`<Name>_<method>_fn` typedef、一个 `Traits`（id / version / slots / 期望签名），并在**每个方法首参
-都是对象句柄**时生成 `InterfaceProxy<Traits>` 派生代理类——消费者因此能声明、绑定并调用该接口，
-而不触碰 provider 的布局。见 [`interface_zh.md`](interface_zh.md) 与 ABI-SPEC §19。
+绑定把 `(interface_id, slot)` 映射到适配器函数的签名；适配器的第一个参数是对象句柄。ABIX 不规定任何私有 vtable：provider 保留自己的布局与虚函数，适配器是唯一的桥。`amc generate -l cpp` 会把每个接口投影为 `k<Name>Interface`、`k<Name>Version`、`enum class <Name>Slot`、`<Name>_<method>_fn` typedef、一个 `Traits`（id / version / slots / 期望签名），并在**每个方法首参都是对象句柄**时生成 `InterfaceProxy<Traits>` 派生代理类——消费者因此能声明、绑定并调用该接口，而不触碰 provider 的布局。见 [`interface_zh.md`](interface_zh.md) 与 ABI-SPEC §19。
 
 ### `[target]`
 
@@ -288,8 +261,7 @@ STL 类型不能裸穿边界（见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §
 | `pointer_bits` | uint | 指针宽度（bit，`0` = 未知） |
 | `endianness` | string | `little` / `big` |
 
-`[target]` 描述**目标平台**；未知事实在运行期验证中报告为 `unverifiable`，而不是假定兼容。
-见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §10。
+`[target]` 描述**目标平台**；未知事实在运行期验证中报告为 `unverifiable`，而不是假定兼容。见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §10。
 
 ## 运行模式
 

@@ -30,8 +30,7 @@ It should be built on:
 
 > **"Even when LLMs understand ABI, they still need ABIX to turn ABI into a standardized, predictable, verifiable, operable external world."**
 
-Knowing what ABI is and owning a verifiable, instantiable, organized ABI
-standard are two different things.
+Knowing what ABI is and owning a verifiable, instantiable, organized ABI standard are two different things.
 
 ## Two Eras of ABIX AI Value
 
@@ -42,8 +41,7 @@ graph TD
     A[Traditional source context] --> B[ABIX context] --> C[fewer tokens] --> D[same or better reasoning]
 ```
 
-ABIX compresses complex ABI information into a structured,
-machine-readable format. The LLM reads less and reasons better.
+ABIX compresses complex ABI information into a structured, machine-readable format. The LLM reads less and reasons better.
 
 This is the short-term AI selling point: **TROI (Token ROI)**.
 
@@ -54,10 +52,7 @@ graph TD
     A[LLM already understands ABI] --> B[ABIX provides a standardized ABI World] --> C[Agent queries / reasons / executes / verifies] --> D[System proves correctness]
 ```
 
-ABIX does not disappear when models get smarter. It becomes more
-valuable as the **standardized, deterministic, verifiable external
-representation** that even a strong LLM needs to operate on real binary
-systems.
+ABIX does not disappear when models get smarter. It becomes more valuable as the **standardized, deterministic, verifiable external representation** that even a strong LLM needs to operate on real binary systems.
 
 This is the long-term AI value: **Ground Truth**.
 
@@ -113,8 +108,7 @@ graph TD
     A[LLM knows the ABIX schema] --> B[knows field semantics] --> C[knows constraints] --> D[knows what hash / version / layout mean] --> E[can reason around a standard]
 ```
 
-ABIX does not替 LLM think. It gives LLM **a set of world rules it can
-safely depend on**.
+ABIX does not替 LLM think. It gives LLM **a set of world rules it can safely depend on**.
 
 When the model sees:
 
@@ -140,8 +134,7 @@ It can immediately ask:
 
 > "Is this Widget ABI-compatible with the old version?"
 
-This is **Search Space Constraint** / **Semantic Constraint**: ABIX narrows
-the reasoning space so the model can focus on the actual decision.
+This is **Search Space Constraint** / **Semantic Constraint**: ABIX narrows the reasoning space so the model can focus on the actual decision.
 
 ## The Five-Layer AI Value Model
 
@@ -209,14 +202,11 @@ verify
 recover
 ```
 
-ABIX defines "what the facts are."
-Agent decides "which facts are needed now and how to use them."
-LLM reasons over the structured facts.
+ABIX defines "what the facts are." Agent decides "which facts are needed now and how to use them." LLM reasons over the structured facts.
 
 ## Agent Verification Loop
 
-When an agent needs to upgrade a library without breaking ABI, the full
-closed-loop looks like this:
+When an agent needs to upgrade a library without breaking ABI, the full closed-loop looks like this:
 
 ```mermaid
 sequenceDiagram
@@ -244,15 +234,13 @@ sequenceDiagram
     Agent-->>User: verified result
 ```
 
-This is where TROI, Ground Truth, Agent orchestration and deterministic
-verification converge into a single workflow.
+This is where TROI, Ground Truth, Agent orchestration and deterministic verification converge into a single workflow.
 
 ## Why ABIX Matters Even When LLMs Know ABI
 
 Example: upgrade `libfoo v1 → v2`, ensure all plugins keep working.
 
-A strong LLM might read all source, headers, CMake, and binary, then
-conclude:
+A strong LLM might read all source, headers, CMake, and binary, then conclude:
 
 > "Looks compatible."
 
@@ -284,8 +272,7 @@ Verification:
     passed
 ```
 
-Even if the LLM could read every line of source code, ABIX still
-matters. The gap it bridges is:
+Even if the LLM could read every line of source code, ABIX still matters. The gap it bridges is:
 
 ```mermaid
 graph LR
@@ -350,17 +337,10 @@ It is:
 
 Or more precisely:
 
-> ABIX does not make AI understand ABI. It makes "what AI understands
-> about ABI" into a standardized, deterministic, exchangeable, and
-> verifiable external world.
+> ABIX does not make AI understand ABI. It makes "what AI understands about ABI" into a standardized, deterministic, exchangeable, and verifiable external world.
 
-**TROI can be weakened as models evolve. But "standardized binary
-semantics + external ground truth + deterministic verification" will not
-disappear because LLMs get smarter.**
+**TROI can be weakened as models evolve. But "standardized binary semantics + external ground truth + deterministic verification" will not disappear because LLMs get smarter.**
 
 ---
 
-*This document captures the theoretical foundation for ABIX × AI. For the
-MCP tool interface, see [MCP.md](MCP.md). For the token-efficiency metric,
-see [troi.md](troi.md). For the Agent architecture, see
-**AGENT.md** (planned).*
+*This document captures the theoretical foundation for ABIX × AI. For the MCP tool interface, see [MCP.md](MCP.md). For the token-efficiency metric, see [troi.md](troi.md). For the Agent architecture, see **AGENT.md** (planned).*

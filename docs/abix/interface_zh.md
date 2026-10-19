@@ -4,31 +4,25 @@
   <a href="interface.md">English</a> · 中文
 </p>
 
-ABIX Interface 层定义**跨语言接口契约**与**方法分派**机制。它是 ABIX 的一层，而不是任何编译器对象模型
-的一部分：接口是一份独立契约，实现方类型不需要为它做任何修改。
+ABIX Interface 层定义**跨语言接口契约**与**方法分派**机制。它是 ABIX 的一层，而不是任何编译器对象模型的一部分：接口是一份独立契约，实现方类型不需要为它做任何修改。
 
 它位于 `ABIX/Interface/`（命名空间 `skl::abix::poly`），由 `ABIX/ABIX.h` 暴露。
 
 ## 为什么统一 Interface，而不是统一 vtable
 
-C++ 虚调用并不只是从对象取出一个函数指针：它可能涉及多重继承、`this` 调整、thunk、RTTI 以及
-编译器私有的 vtable 布局。Rust trait object、Zig 函数表又是另一种表示。即使两边都叫 “vtable”，
-表项顺序、指针调整和调用规则也可能不同。
+C++ 虚调用并不只是从对象取出一个函数指针：它可能涉及多重继承、`this` 调整、thunk、RTTI 以及编译器私有的 vtable 布局。Rust trait object、Zig 函数表又是另一种表示。即使两边都叫 “vtable”，表项顺序、指针调整和调用规则也可能不同。
 
 因此 ABIX **不规定任何私有 vtable**，而是在 vtable 之上定义接口：
 
 - **Interface 身份** —— 接口名、版本与有序方法签名的稳定内容哈希。不是类名，也不是 vtable 地址。
 - **方法身份** —— `(interface_id, slot)`，方法签名独立校验；名称或形状相同并不等于两个接口兼容。
-- **实现绑定** —— 具体类型如何到达某个方法，通过生成的适配器完成；适配器以对象句柄为第一个参数，
-  绑定按签名命名，从不暴露 vtable 槽位。
+- **实现绑定** —— 具体类型如何到达某个方法，通过生成的适配器完成；适配器以对象句柄为第一个参数，绑定按签名命名，从不暴露 vtable 槽位。
 
-这些是**契约而非布局事实**：它们不会改变 `TypeID` / `LayoutHash` / `ABIHash`。接口也可以写入
-Metadata Region（扩展 kind 7–11），供消费端在运行时发现。
+这些是**契约而非布局事实**：它们不会改变 `TypeID` / `LayoutHash` / `ABIHash`。接口也可以写入 Metadata Region（扩展 kind 7–11），供消费端在运行时发现。
 
 ## 与 C++ 虚函数对比
 
-同一件事——三个形状各自算面积，再对一组形状做多态调用——两种写法。左栏是 C++ 原生虚函数，右栏是
-ABIX Interface；两段程序都输出 `area=9`、`area=12`、`area=10`，都能直接编译运行。
+同一件事——三个形状各自算面积，再对一组形状做多态调用——两种写法。左栏是 C++ 原生虚函数，右栏是 ABIX Interface；两段程序都输出 `area=9`、`area=12`、`area=10`，都能直接编译运行。
 
 <table>
 <tr>
@@ -160,11 +154,8 @@ int main() {
 
 差别不在「能不能多态」，而在**多态的载体是什么**：
 
-- 左栏把多态编码进**类型系统**：`Shape` 是基类，`Square`/`Rectangle`/`Triangle` 必须继承并
-  `override`，`area()` 的分派靠对象里的 vptr 指向编译器私有的 vtable。
-- 右栏把多态编码进**接口契约**：`ShapeTraits` 描述接口身份、版本与 slot，`Shape` 代理缓存已解析的
-  适配器入口；`Square`/`Rectangle`/`Triangle` 是普通 `struct`，不继承、不含虚函数。绑定后
-  `shape.area()` 就是原生间接调用。
+- 左栏把多态编码进**类型系统**：`Shape` 是基类，`Square`/`Rectangle`/`Triangle` 必须继承并 `override`，`area()` 的分派靠对象里的 vptr 指向编译器私有的 vtable。
+- 右栏把多态编码进**接口契约**：`ShapeTraits` 描述接口身份、版本与 slot，`Shape` 代理缓存已解析的适配器入口；`Square`/`Rectangle`/`Triangle` 是普通 `struct`，不继承、不含虚函数。绑定后 `shape.area()` 就是原生间接调用。
 
 ### 逐项对照
 
@@ -183,18 +174,12 @@ int main() {
 ### 何时用哪个
 
 - **纯 C++、编译期同构、无跨边界需求**：虚函数足够，零额外约定。
-- **跨 DLL / 跨语言 / 需要「面向接口、不认具体类型」**：用 Interface。消费者代码里可以只出现
-  `InterfaceId`（见[示例 2](#示例)的跨模块路径），provider 换了具体类型也无需重编消费者。
-- **两者共存**：ABIX 不要求你放弃 C++ 语义——provider 内部照常用虚函数，只在边界处用适配器把某个
-  具体类型的方法绑定到接口槽位（AMC 的 `[[interface]]` / `[[implements]]` 声明）。接口可以像 C++
-  抽象类一样在头文件里声明：`[[interface]]` 定义契约、`[[implements]]` 建立绑定，`amc generate -l cpp`
-  生成 `k<Name>Interface` / `k<Name>Version` / `enum class <Name>Slot` / `<Name>_<method>_fn`，消费者据此
-  封装出 `Shape s = Shape::bind(...); s.area();` 这样的用法。
+- **跨 DLL / 跨语言 / 需要「面向接口、不认具体类型」**：用 Interface。消费者代码里可以只出现 `InterfaceId`（见[示例 2](#示例)的跨模块路径），provider 换了具体类型也无需重编消费者。
+- **两者共存**：ABIX 不要求你放弃 C++ 语义——provider 内部照常用虚函数，只在边界处用适配器把某个具体类型的方法绑定到接口槽位（AMC 的 `[[interface]]` / `[[implements]]` 声明）。接口可以像 C++ 抽象类一样在头文件里声明：`[[interface]]` 定义契约、`[[implements]]` 建立绑定，`amc generate -l cpp` 生成 `k<Name>Interface` / `k<Name>Version` / `enum class <Name>Slot` / `<Name>_<method>_fn`，消费者据此封装出 `Shape s = Shape::bind(...); s.area();` 这样的用法。
 
 ## 快速开始
 
-三步：**注册**（把「某具体类型实现某接口」写入注册表）→ **解析**（一次性查表并缓存适配器入口）
-→ **调用**（普通原生间接调用）。下面的完整程序不需要动态库。
+三步：**注册**（把「某具体类型实现某接口」写入注册表）→ **解析**（一次性查表并缓存适配器入口） → **调用**（普通原生间接调用）。下面的完整程序不需要动态库。
 
 ```cpp
 #include <cstdio>
@@ -233,14 +218,11 @@ int main() {
 }
 ```
 
-`resolve()` 是唯一的查表动作——`registry.lookup_count()` 始终是 `1`；之后调用不经过任何查找、
-名比较或类型检查。完整的 API 见 [API 参考](#api-参考)，更多场景见[示例](#示例)。
+`resolve()` 是唯一的查表动作——`registry.lookup_count()` 始终是 `1`；之后调用不经过任何查找、名比较或类型检查。完整的 API 见 [API 参考](#api-参考)，更多场景见[示例](#示例)。
 
 ## 绑定期解析，调用期原生调用
 
-运行时设施刻意是*绑定期*的。`InterfaceRegistry` 保存「该具体类型实现了该接口」的记录；
-`InterfaceRef` 只解析一次并按 slot 缓存适配器入口，之后每次调用都是普通原生间接调用。runtime
-不会变成通用 dispatch loop。
+运行时设施刻意是*绑定期*的。`InterfaceRegistry` 保存「该具体类型实现了该接口」的记录；`InterfaceRef` 只解析一次并按 slot 缓存适配器入口，之后每次调用都是普通原生间接调用。runtime 不会变成通用 dispatch loop。
 
 ```cpp
 #include "ABIX/Interface/Interface.h"
@@ -265,13 +247,11 @@ const auto axis = ref.method<int (*)(const void *, int)>(0);
 int x = axis(ref.object(), 0);
 ```
 
-`resolve()` 会区分 `interface_not_found`、`version_mismatch`、`method_not_found` 与
-`method_capacity_exceeded`，而不是猜测。
+`resolve()` 会区分 `interface_not_found`、`version_mismatch`、`method_not_found` 与 `method_capacity_exceeded`，而不是猜测。
 
 ## 跨模块的动态发现
 
-生产者（动态库）暴露一个固定入口 `abix_module_query_v1`，返回稳定的 `ModuleManifest`，列出它实现的
-接口。平台导出表只用于找到该入口：不解码 mangled name，也不从符号推断接口含义。
+生产者（动态库）暴露一个固定入口 `abix_module_query_v1`，返回稳定的 `ModuleManifest`，列出它实现的接口。平台导出表只用于找到该入口：不解码 mangled name，也不从符号推断接口含义。
 
 ```cpp
 const InterfaceMethod methods[] = {
@@ -286,8 +266,7 @@ const ModuleManifest manifest = {
 SKL_ABIX_DEFINE_MODULE_QUERY(&manifest)
 ```
 
-消费端先 `validate_manifest` 校验清单，再注册与查询。每次加载都得到新的 `ModuleInstanceId`；只要
-绑定持有租约，模块就不能卸载。
+消费端先 `validate_manifest` 校验清单，再注册与查询。每次加载都得到新的 `ModuleInstanceId`；只要绑定持有租约，模块就不能卸载。
 
 ```cpp
 ModuleControl control;
@@ -313,9 +292,7 @@ registry.unregister_module(control.id);           // 租约未释放前返回 bu
 
 ## Owner ABI
 
-Interface ABI 说明「怎么调用对象」，Owner ABI 说明「谁拥有、谁释放」。只正式化三种语义——
-**borrowed / owned / copied**——且释放必须回到创建方的分配域：消费者不得 `free()`/`delete` 指针，也不得
-按地址或布局推断析构方式。
+Interface ABI 说明「怎么调用对象」，Owner ABI 说明「谁拥有、谁释放」。只正式化三种语义—— **borrowed / owned / copied**——且释放必须回到创建方的分配域：消费者不得 `free()`/`delete` 指针，也不得按地址或布局推断析构方式。
 
 ```cpp
 #include "ABIX/Interface/Owner.h"
@@ -329,8 +306,7 @@ skl::abix::owner::ref object = skl::abix::owner::ref::adopt(h, &control);
 // 释放时恰好调用一次 destroy_renderer，然后归还租约。
 ```
 
-Owner handle 会在释放前保持其创建模块处于加载状态，因此长期存活的对象不会比负责销毁它的模块更长寿。
-移动 handle 即转移所有权；重复释放为无操作。
+Owner handle 会在释放前保持其创建模块处于加载状态，因此长期存活的对象不会比负责销毁它的模块更长寿。移动 handle 即转移所有权；重复释放为无操作。
 
 ## 示例
 
@@ -603,8 +579,7 @@ int main() {
 }
 ```
 
-要点：`discover_module` 只在导出表里查 `abix_module_query_v1` 一个符号；绑定持有租约期间模块无法
-卸载，因此缓存的 `width` 指针永远不会悬垂。
+要点：`discover_module` 只在导出表里查 `abix_module_query_v1` 一个符号；绑定持有租约期间模块无法卸载，因此缓存的 `width` 指针永远不会悬垂。
 
 ### 示例 3 —— 一个接口的多个实现与版本共存
 
@@ -634,8 +609,7 @@ const auto *v1 = registry.find_first(kInterface, 1);        // 版本 1
 const auto *newest = registry.find_first(kInterface, 0);    // 最新，即版本 2
 ```
 
-规则：请求版本精确匹配，`0` 取最新；同一模块内重复的 `(id, version)` 被拒绝
-（`duplicate_interface`），不同模块之间允许并存，查询返回全部且从不互相覆盖。
+规则：请求版本精确匹配，`0` 取最新；同一模块内重复的 `(id, version)` 被拒绝（`duplicate_interface`），不同模块之间允许并存，查询返回全部且从不互相覆盖。
 
 ### 示例 4 —— Owner ABI：跨模块创建与释放
 
@@ -679,8 +653,7 @@ registry.unregister_module(control.id);   // 现在可以卸载
 
 ## API 参考
 
-以下符号由 `ABIX/ABIX.h` 引入；除 Owner ABI（`skl::abix::owner`）外，其余都在命名空间
-`skl::abix::poly`。要单独引入整层，`#include "ABIX/Interface/Interface.h"`。
+以下符号由 `ABIX/ABIX.h` 引入；除 Owner ABI（`skl::abix::owner`）外，其余都在命名空间 `skl::abix::poly`。要单独引入整层，`#include "ABIX/Interface/Interface.h"`。
 
 | 头文件 | 内容 |
 |------|------|
@@ -727,29 +700,21 @@ registry.unregister_module(control.id);   // 现在可以卸载
 | `version` | `uint32_t` | 接口版本 |
 | `flags` | `uint32_t` | 保留 |
 
-`InterfaceStatus`：`ok`、`invalid_table`、`duplicate_implementation`、`capacity_exceeded`、
-`interface_not_found`、`version_mismatch`、`method_not_found`、`method_capacity_exceeded`。
+`InterfaceStatus`：`ok`、`invalid_table`、`duplicate_implementation`、`capacity_exceeded`、`interface_not_found`、`version_mismatch`、`method_not_found`、`method_capacity_exceeded`。
 
-**跨工具身份契约**：`InterfaceId` 由 `AMC::interface_identity` 与
-`ABIX::poly::interface_id` 共同定义，算法完全一致：
+**跨工具身份契约**：`InterfaceId` 由 `AMC::interface_identity` 与 `ABIX::poly::interface_id` 共同定义，算法完全一致：
 
 ```
 hash_text("ABIX-INTERFACE:" + 规范名 + ":" + 版本 + 按槽位排序的签名, 域 = 0x494E544552464143)
 ```
 
-域标签是 8 字节 ASCII `"INTERFAC"`（`"INTERFACE"` 的大端截断，装不进 `uint64_t` 的是第 9 个字符 `E`），
-即字节 `49 4E 54 45 52 46 41 43`。它**作为整数混入哈希初始状态**（`lo ^= 域`、`hi += 域`），
-**不是**字节前缀；因此不存在字节序歧义，其他语言实现必须用同一个整数与同一混合方式，而不是
-`reinterpret_cast` 整数的内存表示。
+域标签是 8 字节 ASCII `"INTERFAC"`（`"INTERFACE"` 的大端截断，装不进 `uint64_t` 的是第 9 个字符 `E`），即字节 `49 4E 54 45 52 46 41 43`。它**作为整数混入哈希初始状态**（`lo ^= 域`、`hi += 域`），**不是**字节前缀；因此不存在字节序歧义，其他语言实现必须用同一个整数与同一混合方式，而不是 `reinterpret_cast` 整数的内存表示。
 
-哈希种子也与 ABIX 自身的 `fnv1a` 统一：`lo` 使用标准 **FNV-1a 64 offset basis**
-`0xCBF29CE484222325`，`hi` 使用 FNV prime `0x100000001B3` + 域，`hi` lane 的乘子是
-XXH64 的 `PRIME64_2`。`amc-core-test` 用固定向量钉住这些常量，并校验两端一致。
+哈希种子也与 ABIX 自身的 `fnv1a` 统一：`lo` 使用标准 **FNV-1a 64 offset basis** `0xCBF29CE484222325`，`hi` 使用 FNV prime `0x100000001B3` + 域，`hi` lane 的乘子是 XXH64 的 `PRIME64_2`。`amc-core-test` 用固定向量钉住这些常量，并校验两端一致。
 
 ### `Registry.h` —— 绑定期注册表
 
-`InterfaceRegistry<Capacity = 64>`：固定容量、无分配。注册与解析都是 setup 工作，线性扫描即可
-——它永远不在调用路径上。`add()` 是**注册**，`find()` 是**解析**。
+`InterfaceRegistry<Capacity = 64>`：固定容量、无分配。注册与解析都是 setup 工作，线性扫描即可 ——它永远不在调用路径上。`add()` 是**注册**，`find()` 是**解析**。
 
 | 方法 | 返回值 | 说明 |
 |------|--------|------|
@@ -763,8 +728,7 @@ XXH64 的 `PRIME64_2`。`amc-core-test` 用固定向量钉住这些常量，并�
 
 ### `Ref.h` —— 解析句柄
 
-`InterfaceRef<MaxMethods = 32>`：一次解析把绑定的适配器入口拷入按槽位索引的缓存，之后每次调用都是
-普通原生间接调用——没有逐次查找、名比较或类型检查。
+`InterfaceRef<MaxMethods = 32>`：一次解析把绑定的适配器入口拷入按槽位索引的缓存，之后每次调用都是普通原生间接调用——没有逐次查找、名比较或类型检查。
 
 | 方法 | 返回值 | 说明 |
 |------|--------|------|
@@ -777,11 +741,9 @@ XXH64 的 `PRIME64_2`。`amc-core-test` 用固定向量钉住这些常量，并�
 | `interface_id()` / `version()` | | 已解析的接口身份 / 版本 |
 | `method_count()` | `uint32_t` | 实现跨越的槽位数（最高绑定槽 + 1） |
 
-`query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type, interface_id, version = 0)`
-——便利函数，按值返回 `InterfaceRef`；检查 `valid()`。
+`query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type, interface_id, version = 0)` ——便利函数，按值返回 `InterfaceRef`；检查 `valid()`。
 
-provider 对象必须比句柄长寿，且必须正是适配器所针对的对象（句柄创建者拥有正确的指针与
-任何 `this` 调整）。
+provider 对象必须比句柄长寿，且必须正是适配器所针对的对象（句柄创建者拥有正确的指针与任何 `this` 调整）。
 
 ### `Module.h` —— 动态发现的清单
 
@@ -808,16 +770,11 @@ provider 对象必须比句柄长寿，且必须正是适配器所针对的对�
 | `method_count` | `uint32_t` | 表项个数 |
 | `reserved` | `uint32_t` | |
 
-`ModuleManifest`（40 字节）：`manifest_version`、`module_abi_version`、`flags`、
-`interface_count`、`interfaces`、`extension_count`、`reserved`、`extensions`。`extensions` 是不透明、
-可选、向前兼容的区域：不认识的消费者跳过它，但仍须校验其声明的边界。
+`ModuleManifest`（40 字节）：`manifest_version`、`module_abi_version`、`flags`、`interface_count`、`interfaces`、`extension_count`、`reserved`、`extensions`。`extensions` 是不透明、可选、向前兼容的区域：不认识的消费者跳过它，但仍须校验其声明的边界。
 
-`ManifestStatus`：`ok`、`null_manifest`、`unsupported_version`、`invalid_interface`、
-`invalid_binding`、`too_many_interfaces`、`too_many_methods`。
+`ManifestStatus`：`ok`、`null_manifest`、`unsupported_version`、`invalid_interface`、`invalid_binding`、`too_many_interfaces`、`too_many_methods`。
 
-`validate_manifest` 在**不解引用任意内存**的前提下拒绝：空清单、未知 `manifest_version`、
-超界的 `interface_count` / `method_count`、空 `interface_id`、声明方法却空方法表、或方法表含重复槽位。
-绑定槽位 `entry == 0` 是允许的（未绑定）。它无法在一般情况下证明指针安全。
+`validate_manifest` 在**不解引用任意内存**的前提下拒绝：空清单、未知 `manifest_version`、超界的 `interface_count` / `method_count`、空 `interface_id`、声明方法却空方法表、或方法表含重复槽位。绑定槽位 `entry == 0` 是允许的（未绑定）。它无法在一般情况下证明指针安全。
 
 ### `Lease.h` —— 模块生命周期与租约
 
@@ -842,25 +799,15 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `ModuleLease` | RAII 类 | 可移动、不可拷贝；`valid()`、`release()`；析构释放；释放未持有的租约是无操作 |
 | `acquire_lease(control)` | `ModuleLease` | 模块非 `active` 时返回无效租约（绝不返回半成品） |
 
-租约在活跃调用或存活对象句柄期间持有，这正是缓存方法绑定安全的原因：调用方持有租约的期间，
-绑定有效。
+租约在活跃调用或存活对象句柄期间持有，这正是缓存方法绑定安全的原因：调用方持有租约的期间，绑定有效。
 
-**OS 级固定（pinning）**：当加载方绑定平台身份（`Discovery.h` →
-`bind_module_platform`）后，**首个**租约调用 `pin`、**末个**租约调用 `unpin`：Windows 上
-`pin` 以 `GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)` 解析模块基址、
-`unpin` 调用 `FreeLibrary`；POSIX 上 `pin` 按加载路径重新 `dlopen(path)`（只增加引用计数、
-不重跑初始化），`unpin` 调用 `dlclose`。因此持有的租约在 **OS 层直接阻止**
-`FreeLibrary`/`dlclose`，而不仅靠状态机——即使拥有者在持有租约时卸载，也无法把模块解除
-映射。该引用在所有租约期间只取一次，依赖加载方持有的 `module_path`，因此加载方需在租约
-存续期间保持 `Object`（及其路径）存活。
+**OS 级固定（pinning）**：当加载方绑定平台身份（`Discovery.h` → `bind_module_platform`）后，**首个**租约调用 `pin`、**末个**租约调用 `unpin`：Windows 上 `pin` 以 `GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)` 解析模块基址、`unpin` 调用 `FreeLibrary`；POSIX 上 `pin` 按加载路径重新 `dlopen(path)`（只增加引用计数、不重跑初始化），`unpin` 调用 `dlclose`。因此持有的租约在 **OS 层直接阻止** `FreeLibrary`/`dlclose`，而不仅靠状态机——即使拥有者在持有租约时卸载，也无法把模块解除映射。该引用在所有租约期间只取一次，依赖加载方持有的 `module_path`，因此加载方需在租约存续期间保持 `Object`（及其路径）存活。
 
 ### `ModuleRegistry.h` —— 动态模块接口注册表
 
-`ModuleInterface` —— 一个已发现模块接口：`module`、`interface_id`、`version`、`methods`、
-`method_count`、`control`（调用前必须持有租约的寿命令牌）。
+`ModuleInterface` —— 一个已发现模块接口：`module`、`interface_id`、`version`、`methods`、`method_count`、`control`（调用前必须持有租约的寿命令牌）。
 
-`ModuleStatus`：`ok`、`already_registered`、`invalid_manifest`、`invalid_state`、
-`capacity_exceeded`、`interface_capacity_exceeded`、`duplicate_interface`、`not_registered`、`busy`。
+`ModuleStatus`：`ok`、`already_registered`、`invalid_manifest`、`invalid_state`、`capacity_exceeded`、`interface_capacity_exceeded`、`duplicate_interface`、`not_registered`、`busy`。
 
 `ModuleRegistry<ModuleCapacity = 16, InterfaceCapacity = 128>`：
 
@@ -876,10 +823,7 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 
 多个模块可实现同一接口，查询返回全部且从不互相覆盖；请求版本精确匹配，`0` 取最新。
 
-`BoundInterface<MaxMethods = 32>` —— 已解析绑定 + 保持模块加载的租约；`valid()` 同时要求
-`ref.valid()` 与 `lease.valid()`；只要对象存活，经 `ref` 调用就有效。
-`bind_interface<MaxMethods = 32>(binding, object)` —— 获取租约并解析；模块不再活跃时返回无效绑定
-（无租约、未解析）。
+`BoundInterface<MaxMethods = 32>` —— 已解析绑定 + 保持模块加载的租约；`valid()` 同时要求 `ref.valid()` 与 `lease.valid()`；只要对象存活，经 `ref` 调用就有效。`bind_interface<MaxMethods = 32>(binding, object)` —— 获取租约并解析；模块不再活跃时返回无效绑定（无租约、未解析）。
 
 ### `Discovery.h` —— 加载即发现
 
@@ -888,13 +832,11 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `DiscoveryResult` | struct | `manifest`（`ManifestStatus`）、`registration`（`ModuleStatus`）、`queried`（清单指针）、`ok()` |
 | `discover_module<ModuleCapacity = 16, InterfaceCapacity = 128>(module, control, registry)` | `DiscoveryResult` | 从已加载模块解析 `abix_module_query_v1`，`validate_manifest` 校验后 `register_module` |
 
-平台导出表**只为这一个符号**被查询：不解码任何其它导出，也不从符号推断接口含义。缺入口、
-未知清单版本、结构损坏或重复声明都明确失败。成功后 `control` 变为 `active`。
+平台导出表**只为这一个符号**被查询：不解码任何其它导出，也不从符号推断接口含义。缺入口、未知清单版本、结构损坏或重复声明都明确失败。成功后 `control` 变为 `active`。
 
 ### `Owner.h` —— Owner ABI
 
-命名空间 `skl::abix::owner`。Interface ABI 说明「怎么调用对象」，Owner ABI 说明「谁拥有、谁释放、
-释放代码在哪」。
+命名空间 `skl::abix::owner`。Interface ABI 说明「怎么调用对象」，Owner ABI 说明「谁拥有、谁释放、释放代码在哪」。
 
 | 符号 | 类型 | 说明 |
 |------|------|------|
@@ -907,11 +849,9 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `make_owned(object, destroy, module_instance = invalid)` | `handle` | 独占所有权，经 `destroy` 释放 |
 | `make_copied(object, destroy, module_instance = invalid)` | `handle` | 独立副本，经 `destroy` 释放 |
 
-`handle` 字段：`object`（对消费者不透明）、`mode`、`flags`、`destroy`（owned 必填、copied 可选）、
-`module_instance`（诊断用：哪次加载创建了它）。
+`handle` 字段：`object`（对消费者不透明）、`mode`、`flags`、`destroy`（owned 必填、copied 可选）、`module_instance`（诊断用：哪次加载创建了它）。
 
-`ref` —— 运行时 owner handle：创建方的 POD `handle` 加上一个模块租约，使负责销毁的模块在对象存活
-期间保持加载。
+`ref` —— 运行时 owner handle：创建方的 POD `handle` 加上一个模块租约，使负责销毁的模块在对象存活期间保持加载。
 
 | 方法 | 返回值 | 说明 |
 |------|--------|------|
@@ -925,14 +865,11 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `raw()` | `const handle&` | 底层 POD 句柄 |
 | `release()` | `void` | 恰好释放一次：owned/copied 调用创建方 `destroy`，然后释放租约；borrowed 不销毁。`handle` 被清零，重复释放无操作 |
 
-创建失败返回无效句柄（`object == nullptr`）而非半成品；`destroy` 返回 `void`——释放不会失败，
-任何失败都必须在创建时报告。移动 handle 即转移所有权。
+创建失败返回无效句柄（`object == nullptr`）而非半成品；`destroy` 返回 `void`——释放不会失败，任何失败都必须在创建时报告。移动 handle 即转移所有权。
 
 ### `Proxy.h` —— C++ 代理 API
 
-一个接口代理是「对象句柄 + 已解析的适配器」的轻量封装，读起来像 `Shape*`，但不是基类——具体类型
-不被修改，也不使用编译器 vtable。`InterfaceProxy<Traits>` 承担绑定/状态/取入口的公共部分，每个接口
-只补自己的方法；`Traits` 描述接口差异：
+一个接口代理是「对象句柄 + 已解析的适配器」的轻量封装，读起来像 `Shape*`，但不是基类——具体类型不被修改，也不使用编译器 vtable。`InterfaceProxy<Traits>` 承担绑定/状态/取入口的公共部分，每个接口只补自己的方法；`Traits` 描述接口差异：
 
 | `Traits` 成员 | 说明 |
 |------|------|
@@ -953,8 +890,7 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `call<Fn>(slot, args...)`（protected） | `Fn` 的返回 | 直调缓存入口（首参自动补对象句柄）；前置条件：`valid()` 且槽位已绑定 |
 | `call_checked<Fn>(out, slot, args...)`（protected） | `InterfaceStatus` | 状态与结果分离：未绑定返回 `method_not_found`，合法结果绝不会被当成失败 |
 
-手写 `Traits` 时连签名与 `id` 都可以由编译期 helper 生成（它们复刻 `AMC::signature_hash` /
-`AMC::interface_identity` 的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
+手写 `Traits` 时连签名与 `id` 都可以由编译期 helper 生成（它们复刻 `AMC::signature_hash` / `AMC::interface_identity` 的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
 
 ```cpp
 struct ShapeTraits {
@@ -973,17 +909,11 @@ struct ShapeTraits {
 };
 ```
 
-`method_signature` / `canonical_type_id` 只解决**最后一跳**：它们的输入——方法名与返回/参数
-TypeID——仍然是 AMC 派生的值。原始类型的 TypeID 是 ABI key（`int32_t` → `prim:i32`，随目标的
-位宽/符号变化），预处理器无法从 C++ 拼写推出。因此带参数、重载与复杂签名的接口仍应由
-`amc generate` 生成签名表，手写 helper 只用于简单且双方约定一致的契约。把 `ShapeTraits` 交给 `InterfaceProxy<ShapeTraits>`
-即可得到 `Shape` 代理，方法为「对象句柄在首位」的直通调用，并提供返回 `InterfaceStatus` 的重载。
+`method_signature` / `canonical_type_id` 只解决**最后一跳**：它们的输入——方法名与返回/参数 TypeID——仍然是 AMC 派生的值。原始类型的 TypeID 是 ABI key（`int32_t` → `prim:i32`，随目标的位宽/符号变化），预处理器无法从 C++ 拼写推出。因此带参数、重载与复杂签名的接口仍应由 `amc generate` 生成签名表，手写 helper 只用于简单且双方约定一致的契约。把 `ShapeTraits` 交给 `InterfaceProxy<ShapeTraits>` 即可得到 `Shape` 代理，方法为「对象句柄在首位」的直通调用，并提供返回 `InterfaceStatus` 的重载。
 
 #### 注册 `signatures` —— 基础类型与自定义类型的 TypeID
 
-`signatures` 按槽位索引，条目必须按 slot 顺序写。每个条目会与 provider 的
-`InterfaceMethod.signature` 比较；`interface_id` 也会哈希同一组值。不符时返回
-`signature_mismatch`，绝不会被静默调用。
+`signatures` 按槽位索引，条目必须按 slot 顺序写。每个条目会与 provider 的 `InterfaceMethod.signature` 比较；`interface_id` 也会哈希同一组值。不符时返回 `signature_mismatch`，绝不会被静默调用。
 
 `method_signature(name, return_type, parameters, count)` 复刻 `AMC::signature_hash`：
 
@@ -992,10 +922,7 @@ name + decimal(return_type.lo) + decimal(return_type.hi)
      + 每个参数：decimal(type.lo) + decimal(type.hi)
 ```
 
-域是 `0x5349474E41545552`（`"SIGNATUR"`），参数名不参与哈希。`name`/`parameters`
-是 AMC 记录的**契约函数**的名字与参数，不是随手写的标签。若该函数的首参是对象句柄
-（常见的适配器约定），句柄就是第 0 个参数；自由函数没有句柄。AMC 生成的头文件里已经
-有精确的 `signatures[]`，不确定时直接抄。
+域是 `0x5349474E41545552`（`"SIGNATUR"`），参数名不参与哈希。`name`/`parameters` 是 AMC 记录的**契约函数**的名字与参数，不是随手写的标签。若该函数的首参是对象句柄（常见的适配器约定），句柄就是第 0 个参数；自由函数没有句柄。AMC 生成的头文件里已经有精确的 `signatures[]`，不确定时直接抄。
 
 参数表有三种等价、零分配的形式：
 
@@ -1006,11 +933,9 @@ method_signature("resize", v, util::StaticArray{i32, i32});     // 内联定长�
 method_signature("resize", v, i32, i32);                  // 变参
 ```
 
-`util::StaticArray` 是 `ABIX/Util/Array.h` 里的最小定长类型；其 deduction guide 让
-`util::StaticArray{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
+`util::StaticArray` 是 `ABIX/Util/Array.h` 里的最小定长类型；其 deduction guide 让 `util::StaticArray{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
 
-签名里是 **TypeID**，不是 C++ 类型。对基于名字的身份，`model::canonical_type_id(规范名)`
-可以复刻 AMC 的值：
+签名里是 **TypeID**，不是 C++ 类型。对基于名字的身份，`model::canonical_type_id(规范名)` 可以复刻 AMC 的值：
 
 | C++ 类型 | 规范名 | 说明 |
 |---|---|---|
@@ -1035,8 +960,7 @@ constexpr model::TypeId move_params[] = {point};
 method_signature("move", void_id, move_params, 1);   // move(cv::Point)
 ```
 
-如果契约传 `cv::Point*`，参数要用指针的 TypeID，而不是 `cv::Point` 的；从
-`amc query` / `amc-dump` 读，不要猜 Clang 的拼写。
+如果契约传 `cv::Point*`，参数要用指针的 TypeID，而不是 `cv::Point` 的；从 `amc query` / `amc-dump` 读，不要猜 Clang 的拼写。
 
 **字符串 —— `std::string`**：STL 类型不能裸过边界，必须声明映射：
 
@@ -1056,17 +980,11 @@ method_signature("label", text, nullptr, 0);       // 返回借用视图
 method_signature("open", i32, open_params, 1);     // open(abix_str_utf8) -> status
 ```
 
-适配器由 AMC 生成并链接，负责把边界值转成 `std::string`/`std::string_view`。只有参数会被
-适配；返回的视图遵循 borrow/own/copy 所有权契约，消费者要长期持有就必须复制或接管。
+适配器由 AMC 生成并链接，负责把边界值转成 `std::string`/`std::string_view`。只有参数会被适配；返回的视图遵循 borrow/own/copy 所有权契约，消费者要长期持有就必须复制或接管。
 
-**枚举 —— `std::errc`**：枚举有 TypeID（`canonical_type_id("std::errc")`），但 AMC 的
-`[[expose]]` 可表示性检查会拒绝裸 `std::*` 参数。错误状态请传底层整数（`prim:i32`），并用 `[[error]]`
-（`status`/`success`/`value`）描述，或返回 `abix_result_*`；错误边界用 `Result<T, E>`
-承载，不暴露枚举布局。手写 provider/consumer 双方约定一致时可以直接用枚举 TypeID，
-但它不会匹配 AMC `[[expose]]` 生成的 thunk。
+**枚举 —— `std::errc`**：枚举有 TypeID（`canonical_type_id("std::errc")`），但 AMC 的 `[[expose]]` 可表示性检查会拒绝裸 `std::*` 参数。错误状态请传底层整数（`prim:i32`），并用 `[[error]]` （`status`/`success`/`value`）描述，或返回 `abix_result_*`；错误边界用 `Result<T, E>` 承载，不暴露枚举布局。手写 provider/consumer 双方约定一致时可以直接用枚举 TypeID，但它不会匹配 AMC `[[expose]]` 生成的 thunk。
 
-**完整示例**：`draw()`、`move(cv::Point)`、`label() -> abix_str_utf8`、
-`open(abix_str_utf8) -> int32_t`（`std::errc` 码）：
+**完整示例**：`draw()`、`move(cv::Point)`、`label() -> abix_str_utf8`、`open(abix_str_utf8) -> int32_t`（`std::errc` 码）：
 
 ```cpp
 constexpr model::TypeId i32   = model::canonical_type_id("prim:i32");
@@ -1085,8 +1003,7 @@ static constexpr util::StaticArray sigs = {
 static constexpr InterfaceId id = interface_id("Canvas", 1, sigs);
 ```
 
-若 provider 是 AMC 生成的、契约函数首参是对象句柄，请把句柄 TypeID 加到每个参数表的最前面
-（或直接抄生成的 `signatures[]`）。
+若 provider 是 AMC 生成的、契约函数首参是对象句柄，请把句柄 TypeID 加到每个参数表的最前面（或直接抄生成的 `signatures[]`）。
 
 **拿到精确值**：指针、typedef、模板别名、嵌套记录不要猜规范拼写，从 artifact 读：
 
@@ -1095,11 +1012,9 @@ amc query module.abix --type cv::Point     # id=0X... name=cv::Point
 amc-dump module.abix                       # 完整 section dump
 ```
 
-`amc-core-test` 用固定向量把 `method_signature` 对到 `AMC::signature_hash`、
-`canonical_type_id` 对到 `AMC::hash_text`，helper 不会和生成器漂移。
+`amc-core-test` 用固定向量把 `method_signature` 对到 `AMC::signature_hash`、`canonical_type_id` 对到 `AMC::hash_text`，helper 不会和生成器漂移。
 
-`amc generate -l cpp` 会为 `[[interface]]` 生成与上面等价的 `Traits`，并在**每个方法首参都是对象
-句柄**时一并生成 `InterfaceProxy` 派生类（否则只生成 `Traits`，并注明原因）。
+`amc generate -l cpp` 会为 `[[interface]]` 生成与上面等价的 `Traits`，并在**每个方法首参都是对象句柄**时一并生成 `InterfaceProxy` 派生类（否则只生成 `Traits`，并注明原因）。
 
 #### 三种写法对比
 
@@ -1252,10 +1167,8 @@ int main() {
 三者对照：
 
 - **C++ 虚函数**把多态编码进**类型系统**：实现类必须继承 `Shape`，分派靠编译器生成的 vtable。
-- **ABIX 手动注册**是最底层的显式步骤（写适配器 → 注册 → 解析 → 调用），无额外抽象；`adapter`
-  的首参是对象句柄。
-- **ABIX 代理**把绑定/状态/调用封装成一个类型：具体类型仍是普通 `struct`（不继承、不含虚函数），
-  绑定一次后 `shape.area()` 即普通原生间接调用；`Traits` 可手写，也可由 `amc generate -l cpp` 生成。
+- **ABIX 手动注册**是最底层的显式步骤（写适配器 → 注册 → 解析 → 调用），无额外抽象；`adapter` 的首参是对象句柄。
+- **ABIX 代理**把绑定/状态/调用封装成一个类型：具体类型仍是普通 `struct`（不继承、不含虚函数），绑定一次后 `shape.area()` 即普通原生间接调用；`Traits` 可手写，也可由 `amc generate -l cpp` 生成。
 
 ### `Version.h` —— 版本打包辅助宏
 

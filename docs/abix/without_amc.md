@@ -60,10 +60,7 @@ InterfaceRegistry<4> registry;
 registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 ```
 
-No AMC-generated file is involved. For a shared library, expose the same
-information through a hand-written `ModuleManifest` and
-`SKL_ABIX_DEFINE_MODULE_QUERY`; consumers use `discover_module` and
-`ModuleRegistry` as usual.
+No AMC-generated file is involved. For a shared library, expose the same information through a hand-written `ModuleManifest` and `SKL_ABIX_DEFINE_MODULE_QUERY`; consumers use `discover_module` and `ModuleRegistry` as usual.
 
 ## STL types: allowed inside one C++ toolchain, forbidden at a foreign boundary
 

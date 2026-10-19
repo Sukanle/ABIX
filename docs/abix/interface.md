@@ -4,44 +4,25 @@
   <a href="interface_zh.md">中文</a> · English
 </p>
 
-The ABIX Interface layer defines the **cross-language interface contract** and
-the **method dispatch** mechanism. It is a layer of ABIX, not of any compiler's
-object model: an interface is an independent contract, and a provider type is
-never modified to implement it.
+The ABIX Interface layer defines the **cross-language interface contract** and the **method dispatch** mechanism. It is a layer of ABIX, not of any compiler's object model: an interface is an independent contract, and a provider type is never modified to implement it.
 
-It lives in `ABIX/Interface/` (namespace `skl::abix::poly`) and is exposed by
-`ABIX/ABIX.h`.
+It lives in `ABIX/Interface/` (namespace `skl::abix::poly`) and is exposed by `ABIX/ABIX.h`.
 
 ## Why an interface ABI, not a vtable ABI
 
-A C++ virtual call is not just a function pointer fetched from an object: it may
-involve multiple inheritance, `this` adjustment, thunks, RTTI and
-compiler-specific vtable layouts. Rust trait objects, Zig function tables and
-other languages have yet another representation. Even when two languages both
-say "vtable", their entry order, pointer adjustment and calling rules differ.
+A C++ virtual call is not just a function pointer fetched from an object: it may involve multiple inheritance, `this` adjustment, thunks, RTTI and compiler-specific vtable layouts. Rust trait objects, Zig function tables and other languages have yet another representation. Even when two languages both say "vtable", their entry order, pointer adjustment and calling rules differ.
 
-ABIX therefore does **not** standardise any private vtable. It defines an
-interface above the vtable:
+ABIX therefore does **not** standardise any private vtable. It defines an interface above the vtable:
 
-- **Interface identity** — a stable content hash over the interface name,
-  version and ordered method signatures. Not a class name, not a vtable address.
-- **Method identity** — `(interface_id, slot)`, with the method signature
-  verified independently. A matching name or shape alone never makes two
-  interfaces compatible.
-- **Implementation binding** — how one concrete type reaches a method, through a
-  generated adapter that receives the provider's object handle as its first
-  argument. The binding names the adapter by signature, never a vtable slot.
+- **Interface identity** — a stable content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address.
+- **Method identity** — `(interface_id, slot)`, with the method signature verified independently. A matching name or shape alone never makes two interfaces compatible.
+- **Implementation binding** — how one concrete type reaches a method, through a generated adapter that receives the provider's object handle as its first argument. The binding names the adapter by signature, never a vtable slot.
 
-These are **contracts, not layout facts**: they never change `TypeID` /
-`LayoutHash` / `ABIHash`. Interfaces can also be carried in the metadata region
-(extension kinds 7–11) so a consumer discovers them at run time.
+These are **contracts, not layout facts**: they never change `TypeID` / `LayoutHash` / `ABIHash`. Interfaces can also be carried in the metadata region (extension kinds 7–11) so a consumer discovers them at run time.
 
 ## Compared with C++ virtual functions
 
-The same task — three shapes each computing an area, then one polymorphic call
-over a set of shapes — written two ways. The left column is a native C++ virtual
-function; the right column is ABIX Interface. Both programs print `area=9`,
-`area=12` and `area=10`, and both compile and run as shown.
+The same task — three shapes each computing an area, then one polymorphic call over a set of shapes — written two ways. The left column is a native C++ virtual function; the right column is ABIX Interface. Both programs print `area=9`, `area=12` and `area=10`, and both compile and run as shown.
 
 <table>
 <tr>
@@ -173,14 +154,8 @@ int main() {
 
 The difference is not whether polymorphism is possible, but **what carries it**:
 
-- The left encodes polymorphism in the **type system**: `Shape` is a base class,
-  `Square`/`Rectangle`/`Triangle` must inherit and `override`, and `area()`
-  dispatches through the object's vptr into a compiler-private vtable.
-- The right encodes polymorphism in an **interface contract**: `ShapeTraits`
-  describes the identity, version and slots, and the `Shape` proxy caches the
-  resolved adapter entries; `Square`/`Rectangle`/`Triangle` are plain `struct`s
-  with no inheritance and no virtual function. After binding, `shape.area()` is a
-  native indirect call.
+- The left encodes polymorphism in the **type system**: `Shape` is a base class, `Square`/`Rectangle`/`Triangle` must inherit and `override`, and `area()` dispatches through the object's vptr into a compiler-private vtable.
+- The right encodes polymorphism in an **interface contract**: `ShapeTraits` describes the identity, version and slots, and the `Shape` proxy caches the resolved adapter entries; `Square`/`Rectangle`/`Triangle` are plain `struct`s with no inheritance and no virtual function. After binding, `shape.area()` is a native indirect call.
 
 ### Side by side
 
@@ -198,28 +173,13 @@ The difference is not whether polymorphism is possible, but **what carries it**:
 
 ### Which to use
 
-- **Plain C++, one compile-time world, no cross-boundary need**: virtual
-  functions are enough, with zero extra ceremony.
-- **Across DLLs / across languages / "program to the interface, not the type"**:
-  use Interface. A consumer can mention only `InterfaceId` (see the cross-module
-  path in [Example 2](#examples)) and keep working when the provider changes its
-  concrete type.
-- **They coexist**: ABIX does not ask you to give up C++ semantics — a provider
-  keeps using virtual functions internally and binds one concrete type's methods
-  to interface slots at the boundary only (AMC's `[[interface]]` /
-  `[[implements]]` declarations). The interface can be declared in a header like a
-  C++ abstract class: `[[interface]]` defines the contract, `[[implements]]`
-  establishes the binding, and `amc generate -l cpp` emits
-  `k<Name>Interface` / `k<Name>Version` / `enum class <Name>Slot` /
-  `<Name>_<method>_fn`, so a consumer can wrap it as
-  `Shape s = Shape::bind(...); s.area();`.
+- **Plain C++, one compile-time world, no cross-boundary need**: virtual functions are enough, with zero extra ceremony.
+- **Across DLLs / across languages / "program to the interface, not the type"**: use Interface. A consumer can mention only `InterfaceId` (see the cross-module path in [Example 2](#examples)) and keep working when the provider changes its concrete type.
+- **They coexist**: ABIX does not ask you to give up C++ semantics — a provider keeps using virtual functions internally and binds one concrete type's methods to interface slots at the boundary only (AMC's `[[interface]]` / `[[implements]]` declarations). The interface can be declared in a header like a C++ abstract class: `[[interface]]` defines the contract, `[[implements]]` establishes the binding, and `amc generate -l cpp` emits `k<Name>Interface` / `k<Name>Version` / `enum class <Name>Slot` / `<Name>_<method>_fn`, so a consumer can wrap it as `Shape s = Shape::bind(...); s.area();`.
 
 ## Quick start
 
-Three steps: **register** (record "this concrete type implements this interface"
-in the registry) → **resolve** (look the binding up once and cache the adapter
-entries) → **call** (a plain native indirect call). The complete program below
-needs no shared library.
+Three steps: **register** (record "this concrete type implements this interface" in the registry) → **resolve** (look the binding up once and cache the adapter entries) → **call** (a plain native indirect call). The complete program below needs no shared library.
 
 ```cpp
 #include <cstdio>
@@ -259,16 +219,11 @@ int main() {
 }
 ```
 
-`resolve()` is the only lookup — `registry.lookup_count()` stays `1`; calls after
-it run no lookup, name comparison or type inspection. The full API is in the
-[API reference](#api-reference), and more scenarios are in [Examples](#examples).
+`resolve()` is the only lookup — `registry.lookup_count()` stays `1`; calls after it run no lookup, name comparison or type inspection. The full API is in the [API reference](#api-reference), and more scenarios are in [Examples](#examples).
 
 ## Binding-time resolution, native call
 
-The runtime facility is deliberately a *binding-time* one. `InterfaceRegistry`
-holds "this concrete type implements this interface" records. `InterfaceRef`
-resolves once and caches the adapter pointers by slot; every call afterwards is
-a plain native indirect call. The runtime never becomes a generic dispatch loop.
+The runtime facility is deliberately a *binding-time* one. `InterfaceRegistry` holds "this concrete type implements this interface" records. `InterfaceRef` resolves once and caches the adapter pointers by slot; every call afterwards is a plain native indirect call. The runtime never becomes a generic dispatch loop.
 
 ```cpp
 #include "ABIX/Interface/Interface.h"
@@ -293,15 +248,11 @@ const auto axis = ref.method<int (*)(const void *, int)>(0);
 int x = axis(ref.object(), 0);
 ```
 
-`resolve()` distinguishes `interface_not_found`, `version_mismatch`,
-`method_not_found` and `method_capacity_exceeded` instead of guessing.
+`resolve()` distinguishes `interface_not_found`, `version_mismatch`, `method_not_found` and `method_capacity_exceeded` instead of guessing.
 
 ## Dynamic discovery across a module boundary
 
-A provider (a shared library) exposes one fixed entry, `abix_module_query_v1`,
-returning a stable `ModuleManifest` that lists the interfaces it implements.
-The platform export table is only consulted to find that entry: no mangled name
-is decoded and no interface meaning is inferred from a symbol.
+A provider (a shared library) exposes one fixed entry, `abix_module_query_v1`, returning a stable `ModuleManifest` that lists the interfaces it implements. The platform export table is only consulted to find that entry: no mangled name is decoded and no interface meaning is inferred from a symbol.
 
 ```cpp
 const InterfaceMethod methods[] = {
@@ -316,9 +267,7 @@ const ModuleManifest manifest = {
 SKL_ABIX_DEFINE_MODULE_QUERY(&manifest)
 ```
 
-A consumer validates the manifest (`validate_manifest`), registers it, and
-queries. Every module instance has a fresh `ModuleInstanceId`; a module may not
-unload while a binding holds a lease.
+A consumer validates the manifest (`validate_manifest`), registers it, and queries. Every module instance has a fresh `ModuleInstanceId`; a module may not unload while a binding holds a lease.
 
 ```cpp
 ModuleControl control;
@@ -338,20 +287,13 @@ Rules:
 
 - several modules may implement one interface; queries return all of them;
 - a version is exact when requested and "newest" when `0` is requested;
-- re-registering the same instance is idempotent; a module that declares the
-  same `(interface_id, version)` twice is rejected;
-- unload begins a drain (no new leases) and completes only after every lease is
-  released, so a cached binding is never a dangling function pointer;
-- an unknown manifest version, or a malformed shape, fails clearly rather than
-  being guessed at.
+- re-registering the same instance is idempotent; a module that declares the same `(interface_id, version)` twice is rejected;
+- unload begins a drain (no new leases) and completes only after every lease is released, so a cached binding is never a dangling function pointer;
+- an unknown manifest version, or a malformed shape, fails clearly rather than being guessed at.
 
 ## Owner ABI
 
-Interface ABI says how to call an object; the owner ABI says who owns it and who
-releases it. Only three modes are formalised — **borrowed**, **owned**,
-**copied** — and release always returns to the creator's allocation domain: a
-consumer never `free()`s or `delete`s the pointer, and never infers a
-deallocator from the address or the layout.
+Interface ABI says how to call an object; the owner ABI says who owns it and who releases it. Only three modes are formalised — **borrowed**, **owned**, **copied** — and release always returns to the creator's allocation domain: a consumer never `free()`s or `delete`s the pointer, and never infers a deallocator from the address or the layout.
 
 ```cpp
 #include "ABIX/Interface/Owner.h"
@@ -365,21 +307,15 @@ skl::abix::owner::ref object = skl::abix::owner::ref::adopt(handle, &control);
 // release calls destroy_renderer exactly once, then drops the lease.
 ```
 
-An owner handle keeps its creating module loaded until released, so a
-long-lived object can never outlive the module that must destroy it. Moving the
-handle transfers ownership; releasing twice is a no-op.
+An owner handle keeps its creating module loaded until released, so a long-lived object can never outlive the module that must destroy it. Moving the handle transfers ownership; releasing twice is a no-op.
 
 ## Examples
 
-Example 1 is a complete in-process program (one interface, three implementation
-classes, registration, resolution and calls); Examples 2–4 cover cross-module
-discovery, version coexistence and the Owner ABI.
+Example 1 is a complete in-process program (one interface, three implementation classes, registration, resolution and calls); Examples 2–4 cover cross-module discovery, version coexistence and the Owner ABI.
 
 ### Example 1 — end to end: an interface class and three implementations
 
-The contract lives in a shared header: `Traits` carries the interface identity,
-version, slot capacity and expected signatures, and the proxy class only adds the
-methods.
+The contract lives in a shared header: `Traits` carries the interface identity, version, slot capacity and expected signatures, and the proxy class only adds the methods.
 
 ```cpp
 // shape.h — the shared contract
@@ -421,9 +357,7 @@ public:
 }  // namespace demo
 ```
 
-On the provider side, three plain implementations; each method has one adapter
-whose first parameter is the object handle, and each implementation has one
-method table and one registration.
+On the provider side, three plain implementations; each method has one adapter whose first parameter is the object handle, and each implementation has one method table and one registration.
 
 ```cpp
 // shapes.cpp
@@ -552,19 +486,14 @@ triangle  area=12 perimeter=16
 
 Takeaways:
 
-- `Square` / `Rectangle` / `Triangle` never inherit from `Shape` and are never
-  modified; they stay plain aggregates.
-- `signatures` makes `bind()` verify every slot: a method table `signature` that
-  disagrees with the contract reports `signature_mismatch` instead of calling.
-- Each `bind()` resolves once; the `area()` / `perimeter()` calls in the loop
-  are plain native indirect calls.
-- The caller only holds `demo::Shape` and never names a concrete type; adding an
-  implementation means adding one method table and one registration.
+- `Square` / `Rectangle` / `Triangle` never inherit from `Shape` and are never modified; they stay plain aggregates.
+- `signatures` makes `bind()` verify every slot: a method table `signature` that disagrees with the contract reports `signature_mismatch` instead of calling.
+- Each `bind()` resolves once; the `area()` / `perimeter()` calls in the loop are plain native indirect calls.
+- The caller only holds `demo::Shape` and never names a concrete type; adding an implementation means adding one method table and one registration.
 
 ### Example 2 — discover and call across a module
 
-The provider and the consumer share one contract-constant header (the interface
-identity and version must match):
+The provider and the consumer share one contract-constant header (the interface identity and version must match):
 
 ```cpp
 // canvas_interface.h
@@ -578,8 +507,7 @@ using WidthFn = int (*)(const void *, int);
 }  // namespace canvas
 ```
 
-The provider builds to `libcanvas.so` and exposes only the fixed entry and its
-own object handle — never the object layout:
+The provider builds to `libcanvas.so` and exposes only the fixed entry and its own object handle — never the object layout:
 
 ```cpp
 // canvas_plugin.cpp
@@ -657,9 +585,7 @@ int main() {
 }
 ```
 
-The point: `discover_module` consults the export table for the single symbol
-`abix_module_query_v1`; while a binding holds a lease the module cannot unload,
-so the cached `width` pointer can never dangle.
+The point: `discover_module` consults the export table for the single symbol `abix_module_query_v1`; while a binding holds a lease the module cannot unload, so the cached `width` pointer can never dangle.
 
 ### Example 3 — several implementations of one interface, and versions
 
@@ -689,14 +615,11 @@ const auto *v1 = registry.find_first(kInterface, 1);        // version 1
 const auto *newest = registry.find_first(kInterface, 0);    // newest, i.e. version 2
 ```
 
-A requested version is exact and `0` selects the newest; a duplicate
-`(id, version)` within one module is rejected (`duplicate_interface`), different
-modules may coexist, and queries return all of them without overwriting.
+A requested version is exact and `0` selects the newest; a duplicate `(id, version)` within one module is rejected (`duplicate_interface`), different modules may coexist, and queries return all of them without overwriting.
 
 ### Example 4 — the owner ABI: create and release across a module
 
-The provider returns an owner handle from its own entry; the destroy entry lives
-inside that module:
+The provider returns an owner handle from its own entry; the destroy entry lives inside that module:
 
 ```cpp
 // owner_plugin.cpp (excerpt)
@@ -706,8 +629,7 @@ skl::abix::owner::handle owner_counter_create(int base) {
 }
 ```
 
-The consumer adopts the handle and holds a lease, destroying exactly once when it
-goes out of scope (continues Example 2's `lib` / `control` / `binding`):
+The consumer adopts the handle and holds a lease, destroying exactly once when it goes out of scope (continues Example 2's `lib` / `control` / `binding`):
 
 ```cpp
 #include <cstdio>
@@ -738,9 +660,7 @@ registry.unregister_module(control.id);   // now it can unload
 
 ## API reference
 
-The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace
-`skl::abix::poly` except the owner ABI (`skl::abix::owner`). To pull in the whole
-layer on its own, `#include "ABIX/Interface/Interface.h"`.
+The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace `skl::abix::poly` except the owner ABI (`skl::abix::owner`). To pull in the whole layer on its own, `#include "ABIX/Interface/Interface.h"`.
 
 | Header | Contents |
 |------|------|
@@ -767,26 +687,16 @@ layer on its own, `#include "ABIX/Interface/Interface.h"`.
 | `interface_entry<Fn>(fn)` | `uintptr_t` | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way |
 | `to_string(status)` | `const char*` | Readable name for an `InterfaceStatus` |
 
-**Cross-tool identity contract.** `InterfaceId` is defined identically by
-`AMC::interface_identity` and `ABIX::poly::interface_id`:
+**Cross-tool identity contract.** `InterfaceId` is defined identically by `AMC::interface_identity` and `ABIX::poly::interface_id`:
 
 ```
 hash_text("ABIX-INTERFACE:" + canonical_name + ":" + version + slot-ordered signatures,
           domain = 0x494E544552464143)
 ```
 
-The domain tag is the 8-byte ASCII `"INTERFAC"` — a big-endian truncation of
-`"INTERFACE"` (the 9th byte, `E`, does not fit a `uint64_t`) — i.e. bytes
-`49 4E 54 45 52 46 41 43`. It is **mixed into the hash's initial state as an
-integer** (`lo ^= domain`, `hi += domain`), **not** used as a byte prefix. There
-is therefore no endianness choice to make; another language must use the same
-integer and the same mixing, not `reinterpret_cast` the integer's memory.
+The domain tag is the 8-byte ASCII `"INTERFAC"` — a big-endian truncation of `"INTERFACE"` (the 9th byte, `E`, does not fit a `uint64_t`) — i.e. bytes `49 4E 54 45 52 46 41 43`. It is **mixed into the hash's initial state as an integer** (`lo ^= domain`, `hi += domain`), **not** used as a byte prefix. There is therefore no endianness choice to make; another language must use the same integer and the same mixing, not `reinterpret_cast` the integer's memory.
 
-The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard
-**FNV-1a 64 offset basis** `0xCBF29CE484222325`, `hi` from FNV prime
-`0x100000001B3` + domain, and the `hi` lane multiplier is XXH64's `PRIME64_2`.
-`amc-core-test` pins these constants with fixed vectors and checks that both
-sides agree.
+The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard **FNV-1a 64 offset basis** `0xCBF29CE484222325`, `hi` from FNV prime `0x100000001B3` + domain, and the `hi` lane multiplier is XXH64's `PRIME64_2`. `amc-core-test` pins these constants with fixed vectors and checks that both sides agree.
 
 `InterfaceMethod` — one method's adapter entry:
 
@@ -808,15 +718,11 @@ sides agree.
 | `version` | `uint32_t` | Interface version |
 | `flags` | `uint32_t` | Reserved |
 
-`InterfaceStatus`: `ok`, `invalid_table`, `duplicate_implementation`,
-`capacity_exceeded`, `interface_not_found`, `version_mismatch`,
-`method_not_found`, `method_capacity_exceeded`.
+`InterfaceStatus`: `ok`, `invalid_table`, `duplicate_implementation`, `capacity_exceeded`, `interface_not_found`, `version_mismatch`, `method_not_found`, `method_capacity_exceeded`.
 
 ### `Registry.h` — binding-time registry
 
-`InterfaceRegistry<Capacity = 64>`: fixed capacity, allocation-free. Adding and
-resolving are setup work, so a linear scan is fine — it never runs on the call
-path. `add()` **registers**, `find()` **resolves**.
+`InterfaceRegistry<Capacity = 64>`: fixed capacity, allocation-free. Adding and resolving are setup work, so a linear scan is fine — it never runs on the call path. `add()` **registers**, `find()` **resolves**.
 
 | Method | Return | Description |
 |------|--------|------|
@@ -830,9 +736,7 @@ path. `add()` **registers**, `find()` **resolves**.
 
 ### `Ref.h` — resolved handle
 
-`InterfaceRef<MaxMethods = 32>`: one resolve copies the bound adapter pointers
-into a slot-indexed cache; every call afterwards is a plain native indirect call
-— no per-call lookup, name comparison or type inspection.
+`InterfaceRef<MaxMethods = 32>`: one resolve copies the bound adapter pointers into a slot-indexed cache; every call afterwards is a plain native indirect call — no per-call lookup, name comparison or type inspection.
 
 | Method | Return | Description |
 |------|--------|------|
@@ -845,13 +749,9 @@ into a slot-indexed cache; every call afterwards is a plain native indirect call
 | `interface_id()` / `version()` | | Resolved interface identity / version |
 | `method_count()` | `uint32_t` | Slots spanned by the implementation (highest bound slot + 1) |
 
-`query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type,
-interface_id, version = 0)` — convenience that returns an `InterfaceRef` by value;
-check `valid()`.
+`query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type, interface_id, version = 0)` — convenience that returns an `InterfaceRef` by value; check `valid()`.
 
-The provider's object must outlive the handle and must be the object the adapters
-were generated for (the handle creator owns the correct pointer and any `this`
-adjustment).
+The provider's object must outlive the handle and must be the object the adapters were generated for (the handle creator owns the correct pointer and any `this` adjustment).
 
 ### `Module.h` — the discovery manifest
 
@@ -878,20 +778,11 @@ adjustment).
 | `method_count` | `uint32_t` | Number of entries |
 | `reserved` | `uint32_t` | |
 
-`ModuleManifest` (40 bytes): `manifest_version`, `module_abi_version`, `flags`,
-`interface_count`, `interfaces`, `extension_count`, `reserved`, `extensions`.
-`extensions` is an opaque, optional, forward-compatible region: a consumer that
-does not know it skips it, but must still validate its declared boundary.
+`ModuleManifest` (40 bytes): `manifest_version`, `module_abi_version`, `flags`, `interface_count`, `interfaces`, `extension_count`, `reserved`, `extensions`. `extensions` is an opaque, optional, forward-compatible region: a consumer that does not know it skips it, but must still validate its declared boundary.
 
-`ManifestStatus`: `ok`, `null_manifest`, `unsupported_version`,
-`invalid_interface`, `invalid_binding`, `too_many_interfaces`, `too_many_methods`.
+`ManifestStatus`: `ok`, `null_manifest`, `unsupported_version`, `invalid_interface`, `invalid_binding`, `too_many_interfaces`, `too_many_methods`.
 
-`validate_manifest` rejects, **without dereferencing arbitrary memory**: a null
-manifest, an unknown `manifest_version`, an `interface_count` / `method_count`
-above the bounds, a zero `interface_id`, a null method table when it claims
-methods, or a method table with a duplicate slot. A bound slot with
-`entry == 0` is allowed (an unbound slot). It cannot prove a pointer is safe in
-general.
+`validate_manifest` rejects, **without dereferencing arbitrary memory**: a null manifest, an unknown `manifest_version`, an `interface_count` / `method_count` above the bounds, a zero `interface_id`, a null method table when it claims methods, or a method table with a duplicate slot. A bound slot with `entry == 0` is allowed (an unbound slot). It cannot prove a pointer is safe in general.
 
 ### `Lease.h` — module lifecycle and leases
 
@@ -916,32 +807,15 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `ModuleLease` | RAII class | Movable, non-copyable; `valid()`, `release()`; the destructor releases; releasing an unheld lease is a no-op |
 | `acquire_lease(control)` | `ModuleLease` | An invalid lease (never a partial one) when the module is not `active` |
 
-A lease is held for the duration of an active call or a live object handle. This
-is what makes a cached method binding safe: the binding stays valid exactly as
-long as the caller holds a lease.
+A lease is held for the duration of an active call or a live object handle. This is what makes a cached method binding safe: the binding stays valid exactly as long as the caller holds a lease.
 
-**OS-level pinning.** When the loader binds the platform identity
-(`Discovery.h` → `bind_module_platform`), the first lease calls `pin` and the
-last calls `unpin`: on Windows `pin` resolves the module base address with
-`GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)` and `unpin` calls
-`FreeLibrary`; on POSIX `pin` re-opens the module by its load path
-(`dlopen(path)`, which increments the reference count without re-running
-initializers) and `unpin` calls `dlclose`. A held lease therefore **directly
-blocks** `FreeLibrary`/`dlclose` at the OS level, not only through the state
-machine — an owner that unloads while a lease is held cannot map the module out.
-The reference is taken once across all leases and needs the loader-owned
-`module_path`, so the loader must keep the `Object` (and its path) alive while
-leases are held.
+**OS-level pinning.** When the loader binds the platform identity (`Discovery.h` → `bind_module_platform`), the first lease calls `pin` and the last calls `unpin`: on Windows `pin` resolves the module base address with `GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS)` and `unpin` calls `FreeLibrary`; on POSIX `pin` re-opens the module by its load path (`dlopen(path)`, which increments the reference count without re-running initializers) and `unpin` calls `dlclose`. A held lease therefore **directly blocks** `FreeLibrary`/`dlclose` at the OS level, not only through the state machine — an owner that unloads while a lease is held cannot map the module out. The reference is taken once across all leases and needs the loader-owned `module_path`, so the loader must keep the `Object` (and its path) alive while leases are held.
 
 ### `ModuleRegistry.h` — dynamically discovered module interfaces
 
-`ModuleInterface` — one discovered module interface: `module`, `interface_id`,
-`version`, `methods`, `method_count`, `control` (the lifetime token a caller must
-lease before calling).
+`ModuleInterface` — one discovered module interface: `module`, `interface_id`, `version`, `methods`, `method_count`, `control` (the lifetime token a caller must lease before calling).
 
-`ModuleStatus`: `ok`, `already_registered`, `invalid_manifest`, `invalid_state`,
-`capacity_exceeded`, `interface_capacity_exceeded`, `duplicate_interface`,
-`not_registered`, `busy`.
+`ModuleStatus`: `ok`, `already_registered`, `invalid_manifest`, `invalid_state`, `capacity_exceeded`, `interface_capacity_exceeded`, `duplicate_interface`, `not_registered`, `busy`.
 
 `ModuleRegistry<ModuleCapacity = 16, InterfaceCapacity = 128>`:
 
@@ -955,16 +829,9 @@ lease before calling).
 | `find_interface(id, version, out, max)` | `size_t` | Writes **all** implementations in registration order (`version == 0` matches any); returns the count written (up to `max`) |
 | `find_first(id, version = 0)` | `const ModuleInterface*` | The newest implementation, or `nullptr` |
 
-Several modules may implement one interface; queries return all of them and never
-overwrite one with another; a version is exact when requested and "newest" when
-`0` is requested.
+Several modules may implement one interface; queries return all of them and never overwrite one with another; a version is exact when requested and "newest" when `0` is requested.
 
-`BoundInterface<MaxMethods = 32>` — a resolved binding plus the lease that keeps
-its module loaded; `valid()` requires both `ref.valid()` and `lease.valid()`.
-Calling through `ref` is only valid while this object is alive.
-`bind_interface<MaxMethods = 32>(binding, object)` — acquires the lease and
-resolves; returns an invalid binding (no lease, unresolved ref) when the module
-is no longer active.
+`BoundInterface<MaxMethods = 32>` — a resolved binding plus the lease that keeps its module loaded; `valid()` requires both `ref.valid()` and `lease.valid()`. Calling through `ref` is only valid while this object is alive. `bind_interface<MaxMethods = 32>(binding, object)` — acquires the lease and resolves; returns an invalid binding (no lease, unresolved ref) when the module is no longer active.
 
 ### `Discovery.h` — load and discover
 
@@ -973,15 +840,11 @@ is no longer active.
 | `DiscoveryResult` | struct | `manifest` (`ManifestStatus`), `registration` (`ModuleStatus`), `queried` (the manifest pointer), `ok()` |
 | `discover_module<ModuleCapacity = 16, InterfaceCapacity = 128>(module, control, registry)` | `DiscoveryResult` | Resolves `abix_module_query_v1` from a loaded module, validates it with `validate_manifest`, then `register_module` |
 
-The platform export table is consulted for **that one symbol only**: no other
-export is decoded and no interface meaning is inferred from a symbol. A missing
-entry, an unknown manifest version, a malformed manifest or a duplicate
-declaration all fail explicitly. On success `control` becomes `active`.
+The platform export table is consulted for **that one symbol only**: no other export is decoded and no interface meaning is inferred from a symbol. A missing entry, an unknown manifest version, a malformed manifest or a duplicate declaration all fail explicitly. On success `control` becomes `active`.
 
 ### `Owner.h` — the owner ABI
 
-Namespace `skl::abix::owner`. Interface ABI says how to call an object; the
-owner ABI says who owns it, who releases it, and where the releasing code lives.
+Namespace `skl::abix::owner`. Interface ABI says how to call an object; the owner ABI says who owns it, who releases it, and where the releasing code lives.
 
 | Symbol | Type | Description |
 |------|------|------|
@@ -994,12 +857,9 @@ owner ABI says who owns it, who releases it, and where the releasing code lives.
 | `make_owned(object, destroy, module_instance = invalid)` | `handle` | Exclusive ownership, released through `destroy` |
 | `make_copied(object, destroy, module_instance = invalid)` | `handle` | Independent copy, released through `destroy` |
 
-`handle` fields: `object` (opaque to the consumer), `mode`, `flags`, `destroy`
-(required for owned, optional for copied), `module_instance` (diagnostic: which
-load created it).
+`handle` fields: `object` (opaque to the consumer), `mode`, `flags`, `destroy` (required for owned, optional for copied), `module_instance` (diagnostic: which load created it).
 
-`ref` — the runtime owner handle: the creator's POD `handle` plus a module lease
-that keeps the destroying module loaded for as long as the object lives.
+`ref` — the runtime owner handle: the creator's POD `handle` plus a module lease that keeps the destroying module loaded for as long as the object lives.
 
 | Method | Return | Description |
 |------|--------|------|
@@ -1013,17 +873,11 @@ that keeps the destroying module loaded for as long as the object lives.
 | `raw()` | `const handle&` | The underlying POD handle |
 | `release()` | `void` | Releases exactly once: for owned/copied it calls the creator's `destroy`, then drops the module lease; a borrowed handle is not destroyed. The handle is cleared, so releasing twice is a no-op |
 
-A failed creation returns an invalid handle (`object == nullptr`) rather than a
-partial one; `destroy` returns `void` — a release cannot fail, so any failure
-must be reported at creation time. Moving the handle transfers ownership.
+A failed creation returns an invalid handle (`object == nullptr`) rather than a partial one; `destroy` returns `void` — a release cannot fail, so any failure must be reported at creation time. Moving the handle transfers ownership.
 
 ### `Proxy.h` — the C++ proxy API
 
-An interface proxy is a lightweight handle over "an object handle plus resolved
-adapters". It reads like a C++ `Shape*`, but it is not a base class — the
-concrete type is never modified and no compiler vtable is used.
-`InterfaceProxy<Traits>` holds the shared machinery; a per-interface class adds
-only its methods, and `Traits` supplies the interface difference:
+An interface proxy is a lightweight handle over "an object handle plus resolved adapters". It reads like a C++ `Shape*`, but it is not a base class — the concrete type is never modified and no compiler vtable is used. `InterfaceProxy<Traits>` holds the shared machinery; a per-interface class adds only its methods, and `Traits` supplies the interface difference:
 
 | `Traits` member | Description |
 |------|------|
@@ -1044,9 +898,7 @@ only its methods, and `Traits` supplies the interface difference:
 | `call<Fn>(slot, args...)` (protected) | the `Fn` result | Directly call a cached entry (the object handle is supplied first); precondition: `valid()` and the slot is bound |
 | `call_checked<Fn>(out, slot, args...)` (protected) | `InterfaceStatus` | Status and result are separate: an unbound slot is `method_not_found`, so a legitimate result is never read as a failure |
 
-A hand-written `Traits` can compute the signatures and the identity too (the
-helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`;
-`amc-core-test` checks them against AMC):
+A hand-written `Traits` can compute the signatures and the identity too (the helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`; `amc-core-test` checks them against AMC):
 
 ```cpp
 struct ShapeTraits {
@@ -1066,35 +918,20 @@ struct ShapeTraits {
 };
 ```
 
-`method_signature` / `canonical_type_id` only solve the last hop: their inputs —
-the method name and the return/parameter TypeIDs — are still AMC-derived. A
-primitive TypeID is an ABI key (`int32_t` → `prim:i32`, which varies with the
-target's width and signedness) that the preprocessor cannot infer from a C++
-spelling. Interfaces with parameters, overloads or complex signatures should
-still have AMC generate the signature table; the helpers are for simple contracts
-where both sides agree.
+`method_signature` / `canonical_type_id` only solve the last hop: their inputs — the method name and the return/parameter TypeIDs — are still AMC-derived. A primitive TypeID is an ABI key (`int32_t` → `prim:i32`, which varies with the target's width and signedness) that the preprocessor cannot infer from a C++ spelling. Interfaces with parameters, overloads or complex signatures should still have AMC generate the signature table; the helpers are for simple contracts where both sides agree.
 
 #### Registering `signatures` — TypeIDs for basic and custom types
 
-`signatures` is indexed by slot, so write the entries in slot order. Each entry
-is compared with the provider's `InterfaceMethod.signature`, and `interface_id`
-hashes the same values; a mismatch is reported as `signature_mismatch`, never
-called silently.
+`signatures` is indexed by slot, so write the entries in slot order. Each entry is compared with the provider's `InterfaceMethod.signature`, and `interface_id` hashes the same values; a mismatch is reported as `signature_mismatch`, never called silently.
 
-`method_signature(name, return_type, parameters, count)` reproduces
-`AMC::signature_hash`:
+`method_signature(name, return_type, parameters, count)` reproduces `AMC::signature_hash`:
 
 ```
 name + decimal(return_type.lo) + decimal(return_type.hi)
      + for each parameter: decimal(type.lo) + decimal(type.hi)
 ```
 
-with domain `0x5349474E41545552` (`"SIGNATUR"`). Parameter names are not hashed.
-`name` and `parameters` are those of the **contract function** AMC recorded, not
-an arbitrary label. If that function takes the object handle first (the usual
-adapter convention), the handle is parameter 0 and belongs in `parameters`; a
-free function has no handle. AMC already emits the exact `signatures[]` in the
-generated header — copy it when in doubt.
+with domain `0x5349474E41545552` (`"SIGNATUR"`). Parameter names are not hashed. `name` and `parameters` are those of the **contract function** AMC recorded, not an arbitrary label. If that function takes the object handle first (the usual adapter convention), the handle is parameter 0 and belongs in `parameters`; a free function has no handle. AMC already emits the exact `signatures[]` in the generated header — copy it when in doubt.
 
 The parameter list can be passed in three equivalent, allocation-free forms:
 
@@ -1105,12 +942,9 @@ method_signature("resize", v, util::StaticArray{i32, i32});     // inline fixed 
 method_signature("resize", v, i32, i32);                  // variadic
 ```
 
-`util::StaticArray` is the minimal fixed-size type in `ABIX/Util/Array.h`; its
-deduction guide makes `util::StaticArray{i32, i32}` name its own type. All three forms
-hash the same bytes and allocate nothing.
+`util::StaticArray` is the minimal fixed-size type in `ABIX/Util/Array.h`; its deduction guide makes `util::StaticArray{i32, i32}` name its own type. All three forms hash the same bytes and allocate nothing.
 
-A signature mentions **TypeIDs**, not C++ types. For name-based identities,
-`model::canonical_type_id(canonical_name)` reproduces AMC's value:
+A signature mentions **TypeIDs**, not C++ types. For name-based identities, `model::canonical_type_id(canonical_name)` reproduces AMC's value:
 
 | C++ type | canonical name | Notes |
 |---|---|---|
@@ -1126,8 +960,7 @@ A signature mentions **TypeIDs**, not C++ types. For name-based identities,
 | `std::vector<int32_t>` | `abix_span_i32` | via `[[adapt]]` / `[[instantiate]]` |
 | `T*` / `const T*` | Clang's pointer spelling | not stable to hand-write; read it from `amc query` / `amc-dump` |
 
-**Custom value records — `cv::Point`.** A plain value record is representable;
-its TypeID is the qualified name:
+**Custom value records — `cv::Point`.** A plain value record is representable; its TypeID is the qualified name:
 
 ```cpp
 constexpr model::TypeId void_id = model::canonical_type_id("prim:void");
@@ -1136,12 +969,9 @@ constexpr model::TypeId move_params[] = {point};
 method_signature("move", void_id, move_params, 1);   // move(cv::Point)
 ```
 
-If the contract passes `cv::Point*`, use the pointer's TypeID, not
-`cv::Point`'s; get that value from `amc query` / `amc-dump` rather than guessing Clang's
-spelling.
+If the contract passes `cv::Point*`, use the pointer's TypeID, not `cv::Point`'s; get that value from `amc query` / `amc-dump` rather than guessing Clang's spelling.
 
-**Strings — `std::string`.** An STL type must not cross the boundary raw.
-Declare the mapping:
+**Strings — `std::string`.** An STL type must not cross the boundary raw. Declare the mapping:
 
 ```toml
 [[adapt]]
@@ -1149,8 +979,7 @@ native = "std::string"
 target = "abix_str_utf8"
 ```
 
-The thunk then takes `abix_str_utf8` (data + length + encoding), and the
-signature uses that boundary TypeID:
+The thunk then takes `abix_str_utf8` (data + length + encoding), and the signature uses that boundary TypeID:
 
 ```cpp
 constexpr model::TypeId i32  = model::canonical_type_id("prim:i32");
@@ -1160,23 +989,11 @@ method_signature("label", text, nullptr, 0);       // returns a borrowed view
 method_signature("open", i32, open_params, 1);     // open(abix_str_utf8) -> status
 ```
 
-The adapter is generated and linked; it converts the boundary value to
-`std::string` / `std::string_view`. Only parameters are adapted. A returned view
-follows the borrow/own/copy ownership contract; a value the consumer keeps must
-be copied or owned.
+The adapter is generated and linked; it converts the boundary value to `std::string` / `std::string_view`. Only parameters are adapted. A returned view follows the borrow/own/copy ownership contract; a value the consumer keeps must be copied or owned.
 
-**Enums — `std::errc`.** An enum has a TypeID
-(`canonical_type_id("std::errc")`), but AMC's `[[expose]]` representability check
-rejects a raw `std::*` parameter. For an error status, pass the underlying integer
-(`prim:i32`) and describe it with `[[error]]` (`status`, `success`, `value`), or
-return an `abix_result_*` record; the error boundary carries `Result<T, E>`
-without exposing the enum layout. A hand-written provider/consumer pair may use
-the enum TypeID directly if both sides agree, but it will not match an
-AMC-generated `[[expose]]` thunk.
+**Enums — `std::errc`.** An enum has a TypeID (`canonical_type_id("std::errc")`), but AMC's `[[expose]]` representability check rejects a raw `std::*` parameter. For an error status, pass the underlying integer (`prim:i32`) and describe it with `[[error]]` (`status`, `success`, `value`), or return an `abix_result_*` record; the error boundary carries `Result<T, E>` without exposing the enum layout. A hand-written provider/consumer pair may use the enum TypeID directly if both sides agree, but it will not match an AMC-generated `[[expose]]` thunk.
 
-**Complete example.** `draw()`, `move(cv::Point)`,
-`label() -> abix_str_utf8`, and `open(abix_str_utf8) -> int32_t` (a `std::errc`
-code):
+**Complete example.** `draw()`, `move(cv::Point)`, `label() -> abix_str_utf8`, and `open(abix_str_utf8) -> int32_t` (a `std::errc` code):
 
 ```cpp
 constexpr model::TypeId i32   = model::canonical_type_id("prim:i32");
@@ -1195,30 +1012,22 @@ static constexpr util::StaticArray sigs = {
 static constexpr InterfaceId id = interface_id("Canvas", 1, sigs);
 ```
 
-If the provider is AMC-generated and its contract functions take the object
-handle first, prepend the handle TypeID to each parameter list (or simply copy
-the generated `signatures[]`).
+If the provider is AMC-generated and its contract functions take the object handle first, prepend the handle TypeID to each parameter list (or simply copy the generated `signatures[]`).
 
-**Getting the exact value.** For pointers, typedefs, template aliases and nested
-records, do not guess the canonical spelling. Read it from the artifact:
+**Getting the exact value.** For pointers, typedefs, template aliases and nested records, do not guess the canonical spelling. Read it from the artifact:
 
 ```sh
 amc query module.abix --type cv::Point     # id=0X... name=cv::Point
 amc-dump module.abix                       # full section dump
 ```
 
-`amc-core-test` pins `method_signature` against `AMC::signature_hash` and
-`canonical_type_id` against `AMC::hash_text`, so the helpers cannot drift from
-the generator.
+`amc-core-test` pins `method_signature` against `AMC::signature_hash` and `canonical_type_id` against `AMC::hash_text`, so the helpers cannot drift from the generator.
 
-`amc generate -l cpp` emits the equivalent `Traits` for a `[[interface]]`, and —
-when **every** method takes the object handle first — an `InterfaceProxy`-derived
-class as well (otherwise only `Traits`, with a note explaining why).
+`amc generate -l cpp` emits the equivalent `Traits` for a `[[interface]]`, and — when **every** method takes the object handle first — an `InterfaceProxy`-derived class as well (otherwise only `Traits`, with a note explaining why).
 
 #### Three ways to do it
 
-The same task — measure three shapes' areas and call them polymorphically —
-written three ways, all printing `area=25`, `area=24` and `area=12`.
+The same task — measure three shapes' areas and call them polymorphically — written three ways, all printing `area=25`, `area=24` and `area=12`.
 
 Left: C++ virtual functions; middle: ABIX manual registration (a hand-written adapter + `InterfaceRegistry` + `InterfaceRef`); right: an ABIX proxy (`Traits` + `InterfaceProxy`).
 
@@ -1366,16 +1175,9 @@ int main() {
 
 Comparing the three:
 
-- **C++ virtual function** encodes polymorphism in the **type system**: the
-  implementation must inherit `Shape`, and dispatch goes through a
-  compiler-generated vtable.
-- **ABIX manual registration** is the lowest-level explicit path (write an
-  adapter → register → resolve → call), with no extra abstraction; the adapter's
-  first parameter is the object handle.
-- **ABIX proxy** packages binding / status / calls into one type: the concrete
-  type stays a plain `struct` (no inheritance, no virtual function), and after a
-  single bind `shape.area()` is a plain native indirect call. The `Traits` can be
-  written by hand, or generated by `amc generate -l cpp`.
+- **C++ virtual function** encodes polymorphism in the **type system**: the implementation must inherit `Shape`, and dispatch goes through a compiler-generated vtable.
+- **ABIX manual registration** is the lowest-level explicit path (write an adapter → register → resolve → call), with no extra abstraction; the adapter's first parameter is the object handle.
+- **ABIX proxy** packages binding / status / calls into one type: the concrete type stays a plain `struct` (no inheritance, no virtual function), and after a single bind `shape.area()` is a plain native indirect call. The `Traits` can be written by hand, or generated by `amc generate -l cpp`.
 
 ### `Version.h` — version packing helpers
 
@@ -1400,8 +1202,7 @@ SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);
 
 - Not a shared object model, and not an object lifetime runtime.
 - Not a per-call lookup, name comparison or type inspection.
-- Not a promise to understand an arbitrary compiler's private object layout: if
-  the provider supplies no adapter, ABIX cannot safely invent one.
+- Not a promise to understand an arbitrary compiler's private object layout: if the provider supplies no adapter, ABIX cannot safely invent one.
 
 ## Related
 

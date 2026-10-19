@@ -40,8 +40,7 @@
 
 </details>
 
-> 本文档定义 ABIX 官方量化指标、公式和报告方法。这是**定义**文档；
-> 实际测量数据见 [`benchmark.md`](../benchmark/benchmark_zh.md) 和 [`troi.md`](troi_zh.md)。
+> 本文档定义 ABIX 官方量化指标、公式和报告方法。这是**定义**文档；实际测量数据见 [`benchmark.md`](../benchmark/benchmark_zh.md) 和 [`troi.md`](troi_zh.md)。
 
 ---
 

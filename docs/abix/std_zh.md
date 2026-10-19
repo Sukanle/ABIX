@@ -4,9 +4,7 @@
   中文 · <a href="std.md">English</a>
 </p>
 
-ABIX-STD 是**跨语言标准 ABI 原语层**。它不是替代 STL，也不会把整个标准库塞进每个
-`.abix`。它定义一组小规模的 ABI 类型与契约，让不同语言无需各自重造一套库接口即可
-共同消费。
+ABIX-STD 是**跨语言标准 ABI 原语层**。它不是替代 STL，也不会把整个标准库塞进每个 `.abix`。它定义一组小规模的 ABI 类型与契约，让不同语言无需各自重造一套库接口即可共同消费。
 
 规范见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §9.1。
 
@@ -18,8 +16,7 @@ ABIX-STD 是**跨语言标准 ABI 原语层**。它不是替代 STL，也不会�
 | `owned`  | 接收方取得所有权 | 接收方，通过生产者声明的释放入口 |
 | `copy`   | 由显式复制产生的独立数据 | 接收方拥有副本 |
 
-它们是**契约而非布局**：永不改变 `TypeID` / `LayoutHash` / `ABIHash`。它们由所有权
-契约（`[[owned]]` / `[[contract]]`）承载，并可从 metadata-region 扩展目录在运行期读取。
+它们是**契约而非布局**：永不改变 `TypeID` / `LayoutHash` / `ABIHash`。它们由所有权契约（`[[owned]]` / `[[contract]]`）承载，并可从 metadata-region 扩展目录在运行期读取。
 
 ## 按能力匹配契约，而非按容器
 
@@ -42,9 +39,7 @@ ABIX-STD 是**跨语言标准 ABI 原语层**。它不是替代 STL，也不会�
 | P1 | Optional、Result、回调、通用迭代范围 |
 | P2 | Map、Set、Deque、复杂图结构、各语言专属容器 |
 
-P2 类型通过 `Opaque` 句柄 + accessor、能力适配或显式复制暴露——**不是**统一实现。
-`std::vector<T>` 本身不是独立契约：当元素类型、布局、借用生命周期与失效条件满足时，
-AMC 通过 `data()`/`size()` 把它 lower 成 `SequenceView<T>`，否则用 `Opaque` 或复制。
+P2 类型通过 `Opaque` 句柄 + accessor、能力适配或显式复制暴露——**不是**统一实现。`std::vector<T>` 本身不是独立契约：当元素类型、布局、借用生命周期与失效条件满足时， AMC 通过 `data()`/`size()` 把它 lower 成 `SequenceView<T>`，否则用 `Opaque` 或复制。
 
 ## 第一个原语：borrowed span
 
@@ -79,8 +74,7 @@ pub struct abix_span_i32 { pub data: *const core::ffi::c_int, pub len: core::ffi
 pub const abix_span_i32 = extern struct { data: [*c]const c_int, len: c_ulonglong };
 ```
 
-生产者保持底层内存存活并交出视图；消费者读取它，但永不释放。所有权契约把该交互标记
-为 `borrowed`：
+生产者保持底层内存存活并交出视图；消费者读取它，但永不释放。所有权契约把该交互标记为 `borrowed`：
 
 ```toml
 [[contract]]
@@ -99,9 +93,7 @@ P1 增加四个契约，均按能力匹配（形状 + 元素 `TypeID`）：
 | `callback` | `{ 函数入口; opaque context }`                       |
 | `range`    | 非连续容器，经长度 + 索引访问 accessor 暴露          |
 
-实例化与契约匹配是两件事：`abix_span<int32_t>` 实例化成功，并不等于它满足 ABIX-STD 的
-`SequenceView<i32>` 契约；AMC 需证明兼容，或生成薄适配器。声明契约后，AMC 会对具体类型
-做 lowering：
+实例化与契约匹配是两件事：`abix_span<int32_t>` 实例化成功，并不等于它满足 ABIX-STD 的 `SequenceView<i32>` 契约；AMC 需证明兼容，或生成薄适配器。声明契约后，AMC 会对具体类型做 lowering：
 
 ```toml
 [[instantiate]]
@@ -119,14 +111,11 @@ pub fn abix_view_rev_i32_to_abix_span_i32(value: abix_view_rev_i32) -> abix_span
 }
 ```
 
-泛型参数属于前端职责，见
-[`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md) 与
-[`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18。
+泛型参数属于前端职责，见 [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md) 与 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18。
 
 ## 第二个原语：string view
 
-`abix_str_utf8` 是 `{ const char *data; uint64_t len; uint32_t encoding; }`，对
-`string-view` 契约做 lowering：
+`abix_str_utf8` 是 `{ const char *data; uint64_t len; uint32_t encoding; }`，对 `string-view` 契约做 lowering：
 
 ```toml
 [[instantiate]]
@@ -137,15 +126,10 @@ contract = "string-view"
 element = "char"
 ```
 
-code unit 按数据指针 pointee 的 `TypeID` 匹配；encoding 是**运行期值**（构建阶段只检查
-字段存在与类型）。默认只读、借用。`std::string_view`、Rust `&str` 与 Zig slice 不被视为
-天然等价——先验证编码、长度单位、布局与借用。
+code unit 按数据指针 pointee 的 `TypeID` 匹配；encoding 是**运行期值**（构建阶段只检查字段存在与类型）。默认只读、借用。`std::string_view`、Rust `&str` 与 Zig slice 不被视为天然等价——先验证编码、长度单位、布局与借用。
 
 ## 范围
 
-范围内：各语言共享的 ABI 类型与契约（span、string view、owned handle、result、callback）。
-范围外：重写完整 STL、定义通用对象模型、或运行时所有权系统（见
-[`AGENTS.md`](../../.agents/AGENTS.md) §1.3）。
+范围内：各语言共享的 ABI 类型与契约（span、string view、owned handle、result、callback）。范围外：重写完整 STL、定义通用对象模型、或运行时所有权系统（见 [`AGENTS.md`](../../.agents/AGENTS.md) §1.3）。
 
-端到端示例位于 `AMC/tests/interop/`：一个 C++ 库、一份 `.abix`，以及 Rust 与 Zig 两个
-消费者读取同一个 borrowed span。
+端到端示例位于 `AMC/tests/interop/`：一个 C++ 库、一份 `.abix`，以及 Rust 与 Zig 两个消费者读取同一个 borrowed span。

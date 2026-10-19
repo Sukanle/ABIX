@@ -17,11 +17,9 @@
 
 </details>
 
-> The authoritative design map and invariants live in
-> [`../../ARCHITECTURE.md`](../../.agents/ARCHITECTURE.md).
+> The authoritative design map and invariants live in [`../../ARCHITECTURE.md`](../../.agents/ARCHITECTURE.md).
 
-ABIX turns the ABI into an explicit, machine-readable object and keeps a single
-source of ABI truth across the toolchain and the runtime.
+ABIX turns the ABI into an explicit, machine-readable object and keeps a single source of ABI truth across the toolchain and the runtime.
 
 ## Layers
 
@@ -35,18 +33,14 @@ graph TD
     RT --> NB["Native Binary"]
 ```
 
-* **ABIX IR** — the language-independent ABI model: types, fields, functions,
-  parameters, symbols, hashes, compatibility and mapping records.
+* **ABIX IR** — the language-independent ABI model: types, fields, functions, parameters, symbols, hashes, compatibility and mapping records.
 * **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../ABIX/abix.md).
-* **AMC** — extracts ABI from a language AST, projects/compares modules and
-  generates native code. See [`amc.md`](../AMC/amc.md).
-* **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation.
-  See [`runtime.md`](runtime.md).
+* **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](../AMC/amc.md).
+* **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation. See [`runtime.md`](runtime.md).
 
 ## Runtime Interaction
 
-The following sequence shows how a typical inspect/diff operation flows through
-the system layers:
+The following sequence shows how a typical inspect/diff operation flows through the system layers:
 
 ```mermaid
 sequenceDiagram
@@ -64,16 +58,13 @@ sequenceDiagram
     AMC-->>User: result
 ```
 
-This diagram only shows "who talks to whom"; implementation details live in
-the specialized documents for each layer.
+This diagram only shows "who talks to whom"; implementation details live in the specialized documents for each layer.
 
 ## One source of ABI truth
 
-> The runtime may use a **projection** of the ABI model, but must not
-> independently redefine ABI semantics.
+> The runtime may use a **projection** of the ABI model, but must not independently redefine ABI semantics.
 
-The same model drives every consumer. The toolchain is split into libraries so
-that each consumer links only what it needs while sharing exactly one parser:
+The same model drives every consumer. The toolchain is split into libraries so that each consumer links only what it needs while sharing exactly one parser:
 
 | Library | Responsibility |
 |---------|----------------|
@@ -96,8 +87,7 @@ ABIX separates four identities that are frequently conflated:
 | **BuildID** | binary build identity | locate the matching artifact |
 | **MetadataID** | metadata content identity | dedup / integrity |
 
-Lookup chain: `Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`.
-See [`compatibility.md`](compatibility.md).
+Lookup chain: `Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`. See [`compatibility.md`](compatibility.md).
 
 ## Metadata modes
 
@@ -109,18 +99,14 @@ graph TD
     B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
 ```
 
-* The **Region** is offset-based and relocation-free; it can be shipped as a
-  file, embedded in an ELF section, or mmap'd by an offline parser.
-* The **Runtime Descriptor** is a one-time materialization of the Region at
-  initialization; after that the hot path is close to a static ABI.
+* The **Region** is offset-based and relocation-free; it can be shipped as a file, embedded in an ELF section, or mmap'd by an offline parser.
+* The **Runtime Descriptor** is a one-time materialization of the Region at initialization; after that the hot path is close to a static ABI.
 
 See [`metadata_modes.md`](../ABIX/metadata_modes.md).
 
 ## Execution model
 
-ABIX is **not** a VM, RPC framework or universal object runtime. For a
-compatible native function, ABIX establishes the relationship and then executes
-through the native ABI:
+ABIX is **not** a VM, RPC framework or universal object runtime. For a compatible native function, ABIX establishes the relationship and then executes through the native ABI:
 
 ```mermaid
 graph LR

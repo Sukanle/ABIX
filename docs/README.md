@@ -6,9 +6,7 @@
 
 > The [project README](README.md) is the entry point. This file navigates the `docs/` tree.
 
-> **Platform support:** Linux, macOS and Windows are supported; see
-> [`../CONTRIBUTING.md`](../CONTRIBUTING.md#windows-msys2-ucrt64) for the Windows
-> (MSYS2 UCRT64) setup.
+> **Platform support:** Linux, macOS and Windows are supported; see [`../CONTRIBUTING.md`](../CONTRIBUTING.md#windows-msys2-ucrt64) for the Windows (MSYS2 UCRT64) setup.
 
 ```mermaid
 graph TD

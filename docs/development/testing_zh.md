@@ -183,8 +183,7 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 ## 手动功能走查与生成文件
 
-各套件在临时目录生成并在结束时清理。要查看产物，可以手动执行，也可以用
-[`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#保留临时产物) 保留目录：
+各套件在临时目录生成并在结束时清理。要查看产物，可以手动执行，也可以用 [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#保留临时产物) 保留目录：
 
 ```bash
 AMC=build/Release/bin/amc.exe           # Linux/macOS 去掉 .exe
@@ -237,9 +236,7 @@ rustc --edition 2021 -O /tmp/rust_consumer.rs --cfg abix_link -L /tmp -o /tmp/ru
 
 ## 保留临时产物
 
-凡是在临时目录里生成产物的套件，结束时都会删除该目录，所以全绿的一次跑完
-后没有任何东西可查。配置时加上 `-DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON`，即以
-`KEEP_ARTIFACTS=1` 运行：各套件会保留自己的工作目录并打印路径。
+凡是在临时目录里生成产物的套件，结束时都会删除该目录，所以全绿的一次跑完后没有任何东西可查。配置时加上 `-DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON`，即以 `KEEP_ARTIFACTS=1` 运行：各套件会保留自己的工作目录并打印路径。
 
 ```bash
 cmake -B build/Release -DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON -G Ninja -S .
@@ -251,8 +248,7 @@ ctest --test-dir build/Release -R amc- --output-on-failure
   [KEEP] retained artifacts: C:/Users/.../Temp/amc-feature.a1b2c3
 ```
 
-同样可以在不重新配置的情况下对单次运行生效：既可用环境变量，也可用各套件都
-接受的参数：
+同样可以在不重新配置的情况下对单次运行生效：既可用环境变量，也可用各套件都接受的参数：
 
 ```bash
 KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .

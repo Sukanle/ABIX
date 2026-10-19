@@ -16,8 +16,7 @@
 
 </details>
 
-ABIX 把经常被混用的几种身份区分开来，使"是不是同一个类型"和"这个二进制能不能安全使用"
-成为精确的问题。
+ABIX 把经常被混用的几种身份区分开来，使"是不是同一个类型"和"这个二进制能不能安全使用" 成为精确的问题。
 
 ## 四种身份
 
@@ -75,8 +74,7 @@ diff 结果将每个类型分类为下面的兼容性等级。
 | `map_compatible` | 布局不同但存在映射 |
 | `incompatible` | 无 adapter 时不能安全使用 |
 
-`amc verify` 更严格：**任何**差异（包括新增类型/函数）都算 drift，因为扩大 ABI surface
-必须是一个显式决策。
+`amc verify` 更严格：**任何**差异（包括新增类型/函数）都算 drift，因为扩大 ABI surface 必须是一个显式决策。
 
 ## 加载期跨 Module 校验
 
@@ -93,5 +91,4 @@ graph TD
 
 ## Source Origin
 
-为支持 go-to-definition，`.abix` 可携带可选、仅 debug 的 `sources` 段，映射
-`TypeID → file:line:column`。它**不参与 `abi_hash`**——声明位置是诊断信息，不是 ABI 身份。
+为支持 go-to-definition，`.abix` 可携带可选、仅 debug 的 `sources` 段，映射 `TypeID → file:line:column`。它**不参与 `abi_hash`**——声明位置是诊断信息，不是 ABI 身份。

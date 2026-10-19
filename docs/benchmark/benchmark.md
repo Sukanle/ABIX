@@ -22,10 +22,7 @@
 
 </details>
 
-> This document records the benchmark scope, method, and conclusions that can be checked against the current source tree.
-> Section 5 compares **Windows and Linux**, which run on **the same physical machine** (dual boot), so the differences come
-> from the operating system, toolchain, and build only — not from hardware. Every throughput value is a platform-specific
-> observation, not a cross-machine guarantee, and must not be quoted without its platform, compiler, and workload model.
+> This document records the benchmark scope, method, and conclusions that can be checked against the current source tree. Section 5 compares **Windows and Linux**, which run on **the same physical machine** (dual boot), so the differences come from the operating system, toolchain, and build only — not from hardware. Every throughput value is a platform-specific observation, not a cross-machine guarantee, and must not be quoted without its platform, compiler, and workload model.
 
 Agent-efficiency benchmarking (TROI) is a separate concern and is documented in [troi.md](../ai/troi.md).
 

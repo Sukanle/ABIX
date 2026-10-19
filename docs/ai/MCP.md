@@ -22,8 +22,7 @@
 
 ## Positioning
 
-Standalone ABIX Metadata Region + external `.abix` files provide AMC with a
-machine/AI-agent-facing ABI information gateway.
+Standalone ABIX Metadata Region + external `.abix` files provide AMC with a machine/AI-agent-facing ABI information gateway.
 
 ```mermaid
 graph TD
@@ -55,20 +54,11 @@ sequenceDiagram
     MCP-->>Agent: structured result
 ```
 
-MCP is a thin JSON-RPC transport; all query and verification logic lives in AMC.
-The agent receives structured JSON that it can reason over directly.
+MCP is a thin JSON-RPC transport; all query and verification logic lives in AMC. The agent receives structured JSON that it can reason over directly.
 
 ## `amc-mcp` Prototype
 
-`amc-mcp` implements MCP JSON-RPC over stdio (newline-delimited), supporting
-`initialize` / `ping` / `tools/list` / `tools/call`; notifications produce no
-response, unknown methods return `-32601`, and parse failures return `-32700`.
-Two MCP protocol versions are supported, `2024-11-05` and `2025-06-18`, with
-`2025-06-18` the preferred newest. On `initialize` the server echoes the
-client's requested `protocolVersion` when that version is supported, and
-otherwise negotiates down to the preferred newest supported version;
-`serverInfo` always reports `{"name": "amc-mcp", "version": "0.1.0"}`.
-The exposed tools are:
+`amc-mcp` implements MCP JSON-RPC over stdio (newline-delimited), supporting `initialize` / `ping` / `tools/list` / `tools/call`; notifications produce no response, unknown methods return `-32601`, and parse failures return `-32700`. Two MCP protocol versions are supported, `2024-11-05` and `2025-06-18`, with `2025-06-18` the preferred newest. On `initialize` the server echoes the client's requested `protocolVersion` when that version is supported, and otherwise negotiates down to the preferred newest supported version; `serverInfo` always reports `{"name": "amc-mcp", "version": "0.1.0"}`. The exposed tools are:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
@@ -85,10 +75,7 @@ The exposed tools are:
 | `abix.list_modules` | — | list all indexed modules in the knowledge base |
 | `abix.search_type` | `name`\|`id` | cross-module type search, grouped by name with ABI consistency flags |
 
-All tools reuse AMC's query and verify implementations, returning
-`structuredContent` (structured JSON) and `content[].text` (text form of the
-same JSON), so the CLI, MCP, and other consumers share one implementation.
-Usage:
+All tools reuse AMC's query and verify implementations, returning `structuredContent` (structured JSON) and `content[].text` (text form of the same JSON), so the CLI, MCP, and other consumers share one implementation. Usage:
 
 ```sh
 amc-mcp path/to/module.abix        # use a module as default data source
@@ -97,8 +84,7 @@ amc-mcp --list-tools               # print the tool catalogue
 
 ### Human-readable Names in `abix.get_module`
 
-The `target` object returned by `abix.get_module` pairs each numeric code with
-a human-readable name:
+The `target` object returned by `abix.get_module` pairs each numeric code with a human-readable name:
 
 ```json
 {
@@ -113,37 +99,23 @@ a human-readable name:
 }
 ```
 
-The encodings are: `arch` (0=x86_64, 1=aarch64, 2=riscv64, ...), `os`
-(0=linux, 1=windows, 2=macos, ...), `compiler` (0=gcc, 1=clang, 2=msvc, ...)
-and `calling_convention` (0=sysv_abi, 1=ms_abi, 2=aapcs, ...). `target.abi`
-stays numeric only: there is no documented encoding for it, so no name field
-exists for it.
+The encodings are: `arch` (0=x86_64, 1=aarch64, 2=riscv64, ...), `os` (0=linux, 1=windows, 2=macos, ...), `compiler` (0=gcc, 1=clang, 2=msvc, ...) and `calling_convention` (0=sysv_abi, 1=ms_abi, 2=aapcs, ...). `target.abi` stays numeric only: there is no documented encoding for it, so no name field exists for it.
 
-These `*_name` fields are diagnostic only. They never participate in ABI
-identity or compatibility, which remain decided by TypeID / LayoutHash /
-ABIHash.
+These `*_name` fields are diagnostic only. They never participate in ABI identity or compatibility, which remain decided by TypeID / LayoutHash / ABIHash.
 
 ### `abix.list_functions`: Calling Convention Names
 
-Each function item also carries `calling_convention_name` next to the numeric
-`calling_convention`, using the per-function AMC numbering: 0=unspecified,
-1=c, 2=stdcall, 3=fastcall, 4=thiscall, 5=aarch64_sve.
+Each function item also carries `calling_convention_name` next to the numeric `calling_convention`, using the per-function AMC numbering: 0=unspecified, 1=c, 2=stdcall, 3=fastcall, 4=thiscall, 5=aarch64_sve.
 
 ### Type Lookup Parameters
 
-`abix.get_type`, `abix.get_layout`, `abix.resolve_type` and `abix.search_type`
-formally require one of `name` or `id` in their input schemas (JSON Schema
-`anyOf`), so a call must pass exactly one of the two.
+`abix.get_type`, `abix.get_layout`, `abix.resolve_type` and `abix.search_type` formally require one of `name` or `id` in their input schemas (JSON Schema `anyOf`), so a call must pass exactly one of the two.
 
-For `abix.resolve_type` and `abix.search_type`, `id` accepts a partial TypeID
-prefix such as `0x18da104f` as well as a full TypeID, and `name` accepts a
-full name or a name substring.
+For `abix.resolve_type` and `abix.search_type`, `id` accepts a partial TypeID prefix such as `0x18da104f` as well as a full TypeID, and `name` accepts a full name or a name substring.
 
 ### Multi-module ABI Knowledge Base
 
-`amc-mcp` can index multiple artifacts (`.abix` or binaries with embedded
-Metadata Regions) at once, loading them all at startup so that cross-module
-queries are a single index walk instead of repeated file parsing:
+`amc-mcp` can index multiple artifacts (`.abix` or binaries with embedded Metadata Regions) at once, loading them all at startup so that cross-module queries are a single index walk instead of repeated file parsing:
 
 ```sh
 amc-mcp libfoo.abix libbar.abix plugin.so    # positional args are all indexed
@@ -153,17 +125,10 @@ amc-mcp --index libfoo.abix --index plugin.so # equivalent form
 After indexing:
 
 * `abix.list_modules` enumerates each module's path / package / ABIHash / counts;
-* `abix.search_type "Foo"` looks up matching types in every module, groups hits
-  by type name, and flags each group as `consistent` — whether all occurrences
-  share one TypeID and LayoutHash. This directly answers "find all types that
-  implement the same ABI";
-* `abix.find_compatible "Foo"` (without `other`) uses the default module as
-  source and checks compatibility against every other indexed module; when no
-  other indexed module declares the requested type, the result reports a
-  `reason` field saying so.
+* `abix.search_type "Foo"` looks up matching types in every module, groups hits by type name, and flags each group as `consistent` — whether all occurrences share one TypeID and LayoutHash. This directly answers "find all types that implement the same ABI";
+* `abix.find_compatible "Foo"` (without `other`) uses the default module as source and checks compatibility against every other indexed module; when no other indexed module declares the requested type, the result reports a `reason` field saying so.
 
-Single-module usage is unchanged: giving one path makes that module the default
-data source.
+Single-module usage is unchanged: giving one path makes that module the default data source.
 
 ## Simplifying `amc dump`
 
@@ -197,9 +162,7 @@ direct mmap
 amc dump
 ```
 
-After adopting Header + TypeRecords + FieldRecords + FunctionRecords with an
-**offset-based, pointer-free** layout, `amc dump` is primarily a Metadata
-parser, not an ELF parser.
+After adopting Header + TypeRecords + FieldRecords + FunctionRecords with an **offset-based, pointer-free** layout, `amc dump` is primarily a Metadata parser, not an ELF parser.
 
 ### Supported Operations
 
@@ -214,8 +177,7 @@ amc query foo.abix "Foo::bar"          # query by name
 
 ## MCP Integration
 
-The design targets MCP: agents no longer need LLMs to read tens of MB of ELF,
-headers, or decompiled output for each query.
+The design targets MCP: agents no longer need LLMs to read tens of MB of ELF, headers, or decompiled output for each query.
 
 ### Architecture
 
@@ -276,8 +238,7 @@ private:
 };
 ```
 
-The agent must infer from source: ABI, layout, visibility, calling convention,
-parameter types, inheritance, template instantiation, actual export status.
+The agent must infer from source: ABI, layout, visibility, calling convention, parameter types, inheritance, template instantiation, actual export status.
 
 ABIX directly provides already-parsed results:
 
@@ -303,9 +264,7 @@ ABIX directly provides already-parsed results:
 }
 ```
 
-What is returned is ABI fact after AMC semantic normalization, not an inference
-the AI derives by analyzing the C++ AST. The [TROI](troi.md) metric measures
-this token-efficiency benefit for AMC and MCP agent workflows.
+What is returned is ABI fact after AMC semantic normalization, not an inference the AI derives by analyzing the C++ AST. The [TROI](troi.md) metric measures this token-efficiency benefit for AMC and MCP agent workflows.
 
 ## ABIX as the Agent's "ABI API"
 
@@ -347,8 +306,7 @@ Functions:          compatible
 ABI patch:          possible
 ```
 
-This query is performed at the Metadata layer by ABIX, with no source reading
-required.
+This query is performed at the Metadata layer by ABIX, with no source reading required.
 
 ## External `.abix`
 
@@ -374,8 +332,7 @@ program
         MCP / AMC / Debugger
 ```
 
-The release binary contains only minimal Runtime Metadata; the analysis
-environment associates `.abix` via BuildID to obtain full ABI information.
+The release binary contains only minimal Runtime Metadata; the analysis environment associates `.abix` via BuildID to obtain full ABI information.
 
 ## `.abix` as an ABI Knowledge Base
 
@@ -414,8 +371,7 @@ This structure maps from Metadata to an ABI Knowledge Graph to Agent reasoning:
 
 ## Three-layer Unified Entry Point
 
-"Compact Runtime Metadata + standalone Metadata Region + external `.abix`"
-simultaneously correspond to ABIX's three entry points:
+"Compact Runtime Metadata + standalone Metadata Region + external `.abix`" simultaneously correspond to ABIX's three entry points:
 
 | Entry Point | Consumption Method | Purpose |
 |-------------|-------------------|---------|
@@ -423,6 +379,4 @@ simultaneously correspond to ABIX's three entry points:
 | **AMC** | fast dump / query / verify / generate | development debugging, compatibility analysis |
 | **AI Agent / MCP** | structured ABI query / comparison / reasoning / auto-generation | intelligent code generation, ABI reasoning |
 
-ABIX Metadata is therefore also the machine-readable ABI interface in the ABIX
-ecosystem, not merely descriptive data attached to the Runtime for dynamic
-binding.
+ABIX Metadata is therefore also the machine-readable ABI interface in the ABIX ecosystem, not merely descriptive data attached to the Runtime for dynamic binding.

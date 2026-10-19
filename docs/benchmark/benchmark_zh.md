@@ -22,9 +22,7 @@
 
 </details>
 
-> 本文记录基准套件的范围、方法，以及可以由当前源码复核的结论。第 5 节给出 **Windows 与 Linux 两个平台的对照**，
-> 两个平台是**同一台物理机**（双系统），因此差异只来自操作系统、工具链与构建，不含硬件差异。
-> 所有吞吐量都是特定平台上的观测值，不是跨机器承诺，也不应脱离平台、编译器与负载模型单独引用。
+> 本文记录基准套件的范围、方法，以及可以由当前源码复核的结论。第 5 节给出 **Windows 与 Linux 两个平台的对照**，两个平台是**同一台物理机**（双系统），因此差异只来自操作系统、工具链与构建，不含硬件差异。所有吞吐量都是特定平台上的观测值，不是跨机器承诺，也不应脱离平台、编译器与负载模型单独引用。
 
 Agent 效率基准（TROI）是另一项独立的关注，记录在 [troi_zh.md](../ai/troi_zh.md) 中。
 
@@ -430,8 +428,7 @@ python tools/run_bench.py BM_EBR_SyncPhase --pin auto     # 只跑指定家族�
 python tools/run_bench.py --list                          # 列出将要运行的内容
 ```
 
-需要手工运行单个二进制时（例如为了看到被 runner 捕获的诊断输出），必须从 `build/Release/bin` 启动并设置
-`LD_LIBRARY_PATH=.`：
+需要手工运行单个二进制时（例如为了看到被 runner 捕获的诊断输出），必须从 `build/Release/bin` 启动并设置 `LD_LIBRARY_PATH=.`：
 
 ```bash
 cd build/Release/bin && LD_LIBRARY_PATH=. ./bench_all \

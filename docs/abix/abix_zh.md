@@ -125,29 +125,15 @@ Hash 算法明确记录在 Header 中，而非隐含在实现里，从而使 `.a
 
 ### 当前 AMC v4 实现 Profile
 
-当前开发版本的 `amc-core` 已实现并且只读取 `format_version = 4`。早期 v1/v2/v3 artifact
-在 devel 阶段被主动废弃，不提供兼容读取。v4 使用本节 Header 与
-Section Directory，当前 required sections 的 ID 为：`1 Strings`、`2 Identity`、`13 Target`、`3 Types`、
-`4 Fields`、`5 Functions`、`6 Parameters`、`7 Symbols`、`8 HashDescriptor`、`9 HashTable`。
+当前开发版本的 `amc-core` 已实现并且只读取 `format_version = 4`。早期 v1/v2/v3 artifact 在 devel 阶段被主动废弃，不提供兼容读取。v4 使用本节 Header 与 Section Directory，当前 required sections 的 ID 为：`1 Strings`、`2 Identity`、`13 Target`、`3 Types`、`4 Fields`、`5 Functions`、`6 Parameters`、`7 Symbols`、`8 HashDescriptor`、`9 HashTable`。
 
 `layout_encoding`（section id 28）携带一个 big-endian `u32`，当前为 `1`（Canonical Layout Encoding v1）。本工具链写出的每个 artifact 都包含它；reader 必须拒绝缺少它的 artifact，并在接受 artifact 前从布局记录独立复算每个 `LayoutHash`。
 
-已实现的 string 引用一律为 `(offset, length)`；Identity record 还携带 package name 和
-package version 的该引用。读者会拒绝错误目录范围、错误 required entry size、越界字符串
-引用、非法 TypeKind/SymbolKind，以及不满足 Core layout/type 引用不变量的 artifact。
-Hash Table 已作为当前 required profile 实现；Compat、Map IR、Dependency 和
-目录项为 `{section_id, offset, byte_length, count, entry_size, flags}`。`flags.required`
-要求 reader 认识该 section；未知 optional section 会被安全跳过。Compat、Map 和
-MapOperation 当前是 optional section。Hash Cache sections 仍为后续扩展。
+已实现的 string 引用一律为 `(offset, length)`；Identity record 还携带 package name 和 package version 的该引用。读者会拒绝错误目录范围、错误 required entry size、越界字符串引用、非法 TypeKind/SymbolKind，以及不满足 Core layout/type 引用不变量的 artifact。 Hash Table 已作为当前 required profile 实现；Compat、Map IR、Dependency 和目录项为 `{section_id, offset, byte_length, count, entry_size, flags}`。`flags.required` 要求 reader 认识该 section；未知 optional section 会被安全跳过。Compat、Map 和 MapOperation 当前是 optional section。Hash Cache sections 仍为后续扩展。
 
-运行时集成使用 `ABIX/Metadata/Descriptor.h` 的固定布局 descriptor。MICS Runtime 的
-`TypeId` 与 ABIX `model::TypeId` 均为完整 Hash128；跨命名空间转换必须通过显式的
-`ABIX/Bridge/MICS.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
+运行时集成使用 `ABIX/Metadata/Descriptor.h` 的固定布局 descriptor。MICS Runtime 的 `TypeId` 与 ABIX `model::TypeId` 均为完整 Hash128；跨命名空间转换必须通过显式的 `ABIX/Bridge/MICS.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
 
-`ABIX/Runtime/Registry.h` 提供 `runtime::Registry<Capacity>` bridge。它接收生成的
-`ModuleDescriptor`，在写入前完成 module 级完整性检查、重复 TypeId 检查和字段/函数类型
-引用检查；失败时不会留下部分注册结果。成功后同时保留 runtime descriptor 指针和
-canonical `metadata::Registry` entry，可按 Hash128 或名称查询。
+`ABIX/Runtime/Registry.h` 提供 `runtime::Registry<Capacity>` bridge。它接收生成的 `ModuleDescriptor`，在写入前完成 module 级完整性检查、重复 TypeId 检查和字段/函数类型引用检查；失败时不会留下部分注册结果。成功后同时保留 runtime descriptor 指针和 canonical `metadata::Registry` entry，可按 Hash128 或名称查询。
 
 ### Section Directory
 
@@ -183,8 +169,7 @@ Offset  Size  Field
 0x30    u32   package_version_length
 ```
 
-后续 Canonical ABIHash 将定义为 `hash(全部 ABI Identity 字段 + 所有 Type/Layout/Function/Symbol)`，
-使用 Hash128。当前 v2 profile 的该字段保存完整 canonical ABIHash。
+后续 Canonical ABIHash 将定义为 `hash(全部 ABI Identity 字段 + 所有 Type/Layout/Function/Symbol)`，使用 Hash128。当前 v2 profile 的该字段保存完整 canonical ABIHash。
 
 ### String Table
 
@@ -216,12 +201,9 @@ Offset  Size  Field             (per record)
 0x40    u32   array_count
 ```
 
-当前 AMC v2 profile 的 Type record 为 68 字节，并直接携带 LayoutHash、布局尺寸和字段范围。
-独立 Layout Table 及多继承 Base Table 保留为后续 schema 扩展。
+当前 AMC v2 profile 的 Type record 为 68 字节，并直接携带 LayoutHash、布局尺寸和字段范围。独立 Layout Table 及多继承 Base Table 保留为后续 schema 扩展。
 
-当前 AMC devel profile 为支持成员级 projection，在 Field record 前增加 Hash128
-`owner_type`，Field record 为 48 字节；在 Function record 前增加 Hash128 `owner_type`，
-Function record 为 72 字节。free function 使用零值 owner。
+当前 AMC devel profile 为支持成员级 projection，在 Field record 前增加 Hash128 `owner_type`，Field record 为 48 字节；在 Function record 前增加 Hash128 `owner_type`， Function record 为 72 字节。free function 使用零值 owner。
 
 **多继承支持**：`base_type_index` 改为 `base_begin` + `base_count`，指向 Base Table（或内联在 Type Table 末尾的基类索引数组）。
 
@@ -280,14 +262,9 @@ Offset  Size  Field             (per record)
 0x38    u32   vtable_index      ← vtable 索引（UINT32_MAX = 非 virtual）
 ```
 
-AMC 当前 profile 在上述字段前增加 Hash128 `owner_type`。零值表示 namespace/free
-function；选择 `Foo` 保留全部成员，选择 `Foo::method` 只保留指定方法。
+AMC 当前 profile 在上述字段前增加 Hash128 `owner_type`。零值表示 namespace/free function；选择 `Foo` 保留全部成员，选择 `Foo::method` 只保留指定方法。
 
-AMC-M8 frontend 目前将 namespace 和 typedef/alias 作为独立 Type record（kind
-`namespace` / `alias`）。Field flags 使用 `field_bitfield`、`field_base`、visibility
-位域以及 bit offset/width 位域记录 bitfield、继承和访问级别；具体模板特化按其实例化
-类型记录，依赖模板主体不作为可布局 ABI 输出。Function flags 记录访问级别，
-`calling_convention` 使用稳定的 AMC 编号（C、stdcall、fastcall、thiscall、aarch64 SVE）。
+AMC-M8 frontend 目前将 namespace 和 typedef/alias 作为独立 Type record（kind `namespace` / `alias`）。Field flags 使用 `field_bitfield`、`field_base`、visibility 位域以及 bit offset/width 位域记录 bitfield、继承和访问级别；具体模板特化按其实例化类型记录，依赖模板主体不作为可布局 ABI 输出。Function flags 记录访问级别，`calling_convention` 使用稳定的 AMC 编号（C、stdcall、fastcall、thiscall、aarch64 SVE）。
 
 ### Parameter Table
 
@@ -351,9 +328,7 @@ Offset  Size  Field             (per record)
 0x38    u32   flags             ← bidirectional / lossy / ...
 ```
 
-当前 AMC v2 Map record 为 60 字节。兼容性报告可跨两个 artifact 保存，因此
-Map record 同时保存 source/target 的稳定名称，避免 source TypeId 必须存在于
-target artifact 的 Type Table。
+当前 AMC v2 Map record 为 60 字节。兼容性报告可跨两个 artifact 保存，因此 Map record 同时保存 source/target 的稳定名称，避免 source TypeId 必须存在于 target artifact 的 Type Table。
 
 ### Map Operation Table (ABI IR)
 
@@ -387,12 +362,7 @@ Offset  Size  Field
 0x14    u64   auxiliary_hi      ← 附加数据高 64 位
 ```
 
-Runtime 执行 Map 时必须先验证 source/target Layout、字段索引以及
-`offset + copy_size <= layout.size`，验证失败不得执行部分写入。当前核心
-执行器支持 `COPY_FIELD`、`RENAME_FIELD`、`DEFAULT_FIELD`、`ADD_DEFAULT`
-和 `SKIP_FIELD`；`CONVERT_INT`、`CONVERT_FLOAT`、`CALL_CONVERTER` 通过
-已注册的无异常 Converter 回调执行。RuntimeKey 或任何单独的 hash 不能
-替代这些边界和类型检查。
+Runtime 执行 Map 时必须先验证 source/target Layout、字段索引以及 `offset + copy_size <= layout.size`，验证失败不得执行部分写入。当前核心执行器支持 `COPY_FIELD`、`RENAME_FIELD`、`DEFAULT_FIELD`、`ADD_DEFAULT` 和 `SKIP_FIELD`；`CONVERT_INT`、`CONVERT_FLOAT`、`CALL_CONVERTER` 通过已注册的无异常 Converter 回调执行。RuntimeKey 或任何单独的 hash 不能替代这些边界和类型检查。
 
 ### Dependency Table
 
@@ -450,8 +420,7 @@ struct Hash128 {
 };
 ```
 
-`.abix` 的 canonical 元数据使用 Hash128；现有 ABIX DLL 表和 MICS
-运行时接口继续使用 64 位哈希，以保持既有二进制兼容性：
+`.abix` 的 canonical 元数据使用 Hash128；现有 ABIX DLL 表和 MICS 运行时接口继续使用 64 位哈希，以保持既有二进制兼容性：
 
 | 哈希类型 | 宽度 | 说明 |
 |----------|------|------|
@@ -460,16 +429,11 @@ struct Hash128 {
 | `SignatureHash` | Hash128 | `.abix` 中的规范函数签名；现有 DLL 函数表仍使用 Hash64 |
 | `ABIHash` | Hash128 | 整个 ABI artifact |
 
-现有运行时接口中的 `type_hash` / `sig_t` 保持 `uint64_t`。第一版
-`.abix` 使用 Hash128 表示 TypeId、LayoutHash、SignatureHash 和 ABIHash；算法可替换为
-XXH3 / BLAKE3 / SHA-256 truncated，**不改变 `.abix` 模型**。Hash 算法由
-Header 中的 `hash_algorithm` 字段标识。
+现有运行时接口中的 `type_hash` / `sig_t` 保持 `uint64_t`。第一版 `.abix` 使用 Hash128 表示 TypeId、LayoutHash、SignatureHash 和 ABIHash；算法可替换为 XXH3 / BLAKE3 / SHA-256 truncated，**不改变 `.abix` 模型**。Hash 算法由 Header 中的 `hash_algorithm` 字段标识。
 
-实现必须使用算法的规范定义。当前 C++ 参考代码中的双 lane FNV 值仅用于
-测试和过渡，并使用独立的 algorithm ID；它不能被标记为标准 FNV1A-128。
+实现必须使用算法的规范定义。当前 C++ 参考代码中的双 lane FNV 值仅用于测试和过渡，并使用独立的 algorithm ID；它不能被标记为标准 FNV1A-128。
 
-哈希只用于快速身份定位，不是内容正确性的证明。加载器发现相同 ID 时，
-应继续验证 canonical name、layout 或 signature，避免碰撞导致静默错误。
+哈希只用于快速身份定位，不是内容正确性的证明。加载器发现相同 ID 时，应继续验证 canonical name、layout 或 signature，避免碰撞导致静默错误。
 
 ### HashDescriptor 与 Hash Domain
 
@@ -494,9 +458,7 @@ u64 hash_lo
 u64 hash_hi
 ```
 
-Identity 中的 artifact hash 是 `ABIHash`。它来自独立的 canonical encoding，不包含
-section offset、directory offset、padding 或 String Table 的物理排列。canonical version
-和 hash algorithm 变化都会使 ABIHash 变化；package name/version 不参与 ABIHash。
+Identity 中的 artifact hash 是 `ABIHash`。它来自独立的 canonical encoding，不包含 section offset、directory offset、padding 或 String Table 的物理排列。canonical version 和 hash algorithm 变化都会使 ABIHash 变化；package name/version 不参与 ABIHash。
 
 每个 canonical hash value 都必须携带以下描述信息：
 
@@ -509,20 +471,13 @@ struct HashDescriptor {
 };
 ```
 
-`TypeId`、`LayoutHash`、`SignatureHash` 和 `ABIHash` 使用不同的 domain，
-即使输入字节相同也不能互相当作同一个 hash。算法、版本、位宽和 domain
-共同决定 hash 的语义。
+`TypeId`、`LayoutHash`、`SignatureHash` 和 `ABIHash` 使用不同的 domain，即使输入字节相同也不能互相当作同一个 hash。算法、版本、位宽和 domain 共同决定 hash 的语义。
 
-一个 `.abix` 可以携带多个 hash representation，例如 legacy FNV1A-64
-和 modern BLAKE3-128。Runtime 选择自己支持的 representation；canonical
-value 一旦写入 artifact 就不能在运行时改变。
+一个 `.abix` 可以携带多个 hash representation，例如 legacy FNV1A-64 和 modern BLAKE3-128。Runtime 选择自己支持的 representation；canonical value 一旦写入 artifact 就不能在运行时改变。
 
-Runtime 可以从完整 Hash128 生成 64 位 `RuntimeKey` 用于 HashIndex，但
-`RuntimeKey` 仅用于定位候选项，最终必须比较完整 digest 和 descriptor。
+Runtime 可以从完整 Hash128 生成 64 位 `RuntimeKey` 用于 HashIndex，但 `RuntimeKey` 仅用于定位候选项，最终必须比较完整 digest 和 descriptor。
 
-用户自定义算法使用保留的 algorithm ID，并且只有 Runtime 显式注册并支持
-该算法时才能验证。未知算法的 artifact 应报告 unsupported，而不能静默
-降级为另一种算法。
+用户自定义算法使用保留的 algorithm ID，并且只有 Runtime 显式注册并支持该算法时才能验证。未知算法的 artifact 应报告 unsupported，而不能静默降级为另一种算法。
 
 ### TypeId（类型标识）
 

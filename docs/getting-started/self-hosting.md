@@ -15,9 +15,7 @@
 
 </details>
 
-ABIX 0.1.0 is self-hosting for its own public ABI: it describes its public ABI
-with its own model, and uses that description to build and verify later
-versions.
+ABIX 0.1.0 is self-hosting for its own public ABI: it describes its public ABI with its own model, and uses that description to build and verify later versions.
 
 ```mermaid
 graph TD
@@ -67,28 +65,20 @@ sequenceDiagram
     Stage1-->>Stage0: self-hosted toolchain
 ```
 
-Stage 0 is the initial hand-built loader; Stage 1 is the first version built
-by the toolchain itself. From this point forward each new version is described
-and verified by its predecessor.
+Stage 0 is the initial hand-built loader; Stage 1 is the first version built by the toolchain itself. From this point forward each new version is described and verified by its predecessor.
 
 ## Bootstrap artifacts
 
-ABIX describes its own core IR through its own configuration and validates the
-result:
+ABIX describes its own core IR through its own configuration and validates the result:
 
 * `ABIX/self.abic.toml` — the ABIX runtime's public types
 * `AMC/self.abic.toml` — the AMC core IR
 * `src/self_types.cpp`, `AMC/self_types.cpp` — the inputs described
 
-The integration suite builds these artifacts, validates them, generates a
-native projection and compiles a consumer that uses
-`runtime::Registry::type_of<T>()` — proving the bootstrap loop is intact.
+The integration suite builds these artifacts, validates them, generates a native projection and compiles a consumer that uses `runtime::Registry::type_of<T>()` — proving the bootstrap loop is intact.
 
 ## Why it matters
 
-Self-hosting shows that the model is expressive enough to describe the system
-that implements it. It also gives the project a stable contract to evolve
-against, rather than an implicit ABI that changes whenever internals change.
+Self-hosting shows that the model is expressive enough to describe the system that implements it. It also gives the project a stable contract to evolve against, rather than an implicit ABI that changes whenever internals change.
 
-[`bootstrap.md`](bootstrap.md) documents the bootstrap model, its phases and
-the milestone history.
+[`bootstrap.md`](bootstrap.md) documents the bootstrap model, its phases and the milestone history.

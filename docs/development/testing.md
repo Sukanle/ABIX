@@ -48,8 +48,7 @@ ctest --test-dir build/Release --output-on-failure
 ctest --test-dir build/Release -R amc-feature-test --output-on-failure
 ```
 
-On Windows use the MSYS2 UCRT64 toolchain (see
-[`CONTRIBUTING.md#windows-msys2-ucrt64`](../../CONTRIBUTING.md#windows-msys2-ucrt64)).
+On Windows use the MSYS2 UCRT64 toolchain (see [`CONTRIBUTING.md#windows-msys2-ucrt64`](../../CONTRIBUTING.md#windows-msys2-ucrt64)).
 
 Binaries are `*.exe`, the test scripts resolve `amc.exe` automatically, and public plugins are `*.dll` next to the executable.
 
@@ -237,10 +236,7 @@ rustc --edition 2021 -O /tmp/rust_consumer.rs --cfg abix_link -L /tmp -o /tmp/ru
 
 ## Keeping the temporary artifacts
 
-Every suite that generates into a temporary directory deletes it when it
-finishes, so a green run leaves nothing to inspect. Configure with
-`-DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON` to run them with `KEEP_ARTIFACTS=1` instead:
-each suite then keeps its working directory and prints the path.
+Every suite that generates into a temporary directory deletes it when it finishes, so a green run leaves nothing to inspect. Configure with `-DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON` to run them with `KEEP_ARTIFACTS=1` instead: each suite then keeps its working directory and prints the path.
 
 ```bash
 cmake -B build/Release -DSKL_ABIX_KEEP_TEST_ARTIFACTS=ON -G Ninja -S .
@@ -252,8 +248,7 @@ ctest --test-dir build/Release -R amc- --output-on-failure
   [KEEP] retained artifacts: C:/Users/.../Temp/amc-feature.a1b2c3
 ```
 
-The same switch works for one run without reconfiguring, either through the
-environment variable or the flag every suite accepts:
+The same switch works for one run without reconfiguring, either through the environment variable or the flag every suite accepts:
 
 ```bash
 KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .
@@ -274,18 +269,13 @@ Retained locations (all under the platform temp directory):
 | `amc-e2e-test`               | `amc_e2e_*` files                                                       |
 | `amc-core-test`              | `amc_cache_test_*`, `amc_symbol_test_store`                             |
 
-Retain deliberately: the directories are not removed afterwards, so clean them
-up once you are done inspecting.
+Retain deliberately: the directories are not removed afterwards, so clean them up once you are done inspecting.
 
-The switch only reaches the suites registered in `ctest` (CMake injects
-`KEEP_ARTIFACTS=1` for them). The `tools/` scripts are not registered and carry
-their own keep switches (`--keep`, `--keep-artifacts`, `KEEP_ARTIFACTS=1`); see
-the next section.
+The switch only reaches the suites registered in `ctest` (CMake injects `KEEP_ARTIFACTS=1` for them). The `tools/` scripts are not registered and carry their own keep switches (`--keep`, `--keep-artifacts`, `KEEP_ARTIFACTS=1`); see the next section.
 
 ## Tool scripts (`tools/`)
 
-These scripts are **not registered in `ctest`** and are run by hand. Only the
-second group produces test verdicts.
+These scripts are **not registered in `ctest`** and are run by hand. Only the second group produces test verdicts.
 
 ### Build and code-generation helpers
 
@@ -303,18 +293,7 @@ python tools/run.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Stu
 python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC variants alone
 ```
 
-`run.py` picks the stages with `--build-only` / `--test-only` / `--bench-only` /
-`--build-test` / `--build-bench` and forwards the remaining flags to the stage
-scripts (`run_build.py`, `run_test.py`, `run_bench.py`). Build options: `--clean`,
-`--build-type`, `--generator`, `--with-dev`, `--skip-variants`, `--skip-hotcache`;
-`--cmake-env KEY=VALUE` and `--cmake-var KEY=VALUE` are repeatable and forward
-environment variables to, and `-DKEY=VALUE` cache variables through, the CMake
-configure/build. Test options: `--catch2` / `--elf-pe` / `--bootstrap` /
-`--interop` (see [test tiers](#test-tiers)). The benchmark stage delegates to
-`run_bench.py` (one process per family), tuned by `--bench-repetitions`,
-`--bench-out` and `--bench-min-time`; `--bench-raw` restores the old
-single-process `bench_all` run. It runs the aggregate executables, so it is
-**not** a substitute for `ctest`.
+`run.py` picks the stages with `--build-only` / `--test-only` / `--bench-only` / `--build-test` / `--build-bench` and forwards the remaining flags to the stage scripts (`run_build.py`, `run_test.py`, `run_bench.py`). Build options: `--clean`, `--build-type`, `--generator`, `--with-dev`, `--skip-variants`, `--skip-hotcache`; `--cmake-env KEY=VALUE` and `--cmake-var KEY=VALUE` are repeatable and forward environment variables to, and `-DKEY=VALUE` cache variables through, the CMake configure/build. Test options: `--catch2` / `--elf-pe` / `--bootstrap` / `--interop` (see [test tiers](#test-tiers)). The benchmark stage delegates to `run_bench.py` (one process per family), tuned by `--bench-repetitions`, `--bench-out` and `--bench-min-time`; `--bench-raw` restores the old single-process `bench_all` run. It runs the aggregate executables, so it is **not** a substitute for `ctest`.
 
 ### Tests and verification
 
@@ -341,8 +320,7 @@ python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 | `lldb_abix.cpp` | Native plugin built by the CMake target `abix-lldb` (when LLDB headers and library are found), producing `build/<type>/bin/abix_lldb` | Queries the `.abix.metadata` embedded in the loaded binary from the debugger (`abix info` / `type` / `function` / `verify` / `check`); parsing and querying are delegated to `amc` | `plugin load build/Release/bin/abix_lldb` in an LLDB session, then `abix …`; the target is skipped when LLDB is not found |
 | `lldb_abix.py`  | Script implementation of the same commands                                                                                            | Alternative to the native plugin, for environments without an LLDB C++ toolchain                                                                                                   | `command script import tools/lldb_abix.py`, then `abix …`; set `ABIX_AMC` when `amc` is not on PATH                       |
 
-Both follow "LLDB never grows a second `.abix`/ELF parser".
-`tools/__pycache__/` is just the Python cache directory, not a script.
+Both follow "LLDB never grows a second `.abix`/ELF parser". `tools/__pycache__/` is just the Python cache directory, not a script.
 
 ## Sanitizers and platform notes
 

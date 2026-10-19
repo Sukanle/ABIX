@@ -21,33 +21,19 @@
 
 </details>
 
-ABIX is intended to describe its own internal types — `Registry`, `TypeInfo`,
-RCU/EBR state and the rest — with the same cross-ABI model it provides to
-users. Describing that machinery recursively raises a chicken-and-egg problem.
-The bootstrap route resolves it by splitting the work into four phases and
-placing a small, manually maintained kernel at the base.
+ABIX is intended to describe its own internal types — `Registry`, `TypeInfo`, RCU/EBR state and the rest — with the same cross-ABI model it provides to users. Describing that machinery recursively raises a chicken-and-egg problem. The bootstrap route resolves it by splitting the work into four phases and placing a small, manually maintained kernel at the base.
 
-This page documents that route: the meta-model, the bootstrap kernel, the
-runtime dependency and state model, and the self-hosting closure it enables.
-The artifact format itself is specified in [`abix.md`](../ABIX/abix.md); the runtime
-API is in [`runtime.md`](../architecture/runtime.md).
+This page documents that route: the meta-model, the bootstrap kernel, the runtime dependency and state model, and the self-hosting closure it enables. The artifact format itself is specified in [`abix.md`](../ABIX/abix.md); the runtime API is in [`runtime.md`](../architecture/runtime.md).
 
 ## The problem
 
-The goal "ABIX describes itself" means that ABIX's own internal types should be
-consumable through ABIX's cross-ABI mechanisms. A direct implementation is
-circular: the machinery that describes a type is itself a type that must be
-described before it can run. Without a fixed base there is no starting point.
+The goal "ABIX describes itself" means that ABIX's own internal types should be consumable through ABIX's cross-ABI mechanisms. A direct implementation is circular: the machinery that describes a type is itself a type that must be described before it can run. Without a fixed base there is no starting point.
 
-The resolution is to freeze the data model first, implement the smallest
-possible loader on top of it, grow the runtime from that loader, and only then
-let the runtime describe its own components.
+The resolution is to freeze the data model first, implement the smallest possible loader on top of it, grow the runtime from that loader, and only then let the runtime describe its own components.
 
 ## Four-phase route
 
-The original plan was three phases — `Bootstrap → Runtime → Self-hosting`. It
-was adjusted to four by moving the ABI meta-model forward as an independent
-Phase 0.
+The original plan was three phases — `Bootstrap → Runtime → Self-hosting`. It was adjusted to four by moving the ABI meta-model forward as an independent Phase 0.
 
 ```mermaid
 graph TD
@@ -58,10 +44,7 @@ graph TD
     P0 --> P1 --> P2 --> P3
 ```
 
-Phase 0 carries the weight. What the bootstrap kernel must consume depends on
-the final shape of `.abix`, `TypeInfo`, `Registry` and `Map`; freezing the
-meta-model first prevents late rework when those data models turn out to
-depend on each other.
+Phase 0 carries the weight. What the bootstrap kernel must consume depends on the final shape of `.abix`, `TypeInfo`, `Registry` and `Map`; freezing the meta-model first prevents late rework when those data models turn out to depend on each other.
 
 ### Phase 0 — ABI meta-model
 
@@ -82,29 +65,21 @@ graph TD
 
 ### Phase 1 — Bootstrap kernel
 
-A static metadata loader, not a cut-down registry. It moves generated metadata
-from read-only storage into the runtime and then stops being used. Its
-constraints are described under [Bootstrap kernel](#bootstrap-kernel).
+A static metadata loader, not a cut-down registry. It moves generated metadata from read-only storage into the runtime and then stops being used. Its constraints are described under [Bootstrap kernel](#bootstrap-kernel).
 
 ### Phase 2 — ABIX runtime
 
-Builds `Registry`, the type system, `Map` and finally RCU/EBR on top of the
-loaded metadata. Development proceeds single-threaded first, so that the
-`Bootstrap → Registry → Type lookup → self metadata` loop can be proven before
-concurrency is introduced.
+Builds `Registry`, the type system, `Map` and finally RCU/EBR on top of the loaded metadata. Development proceeds single-threaded first, so that the `Bootstrap → Registry → Type lookup → self metadata` loop can be proven before concurrency is introduced.
 
 ### Phase 3 — Self-hosting
 
-ABIX's own type, registry, map, RCU, compatibility and bootstrap metadata are
-produced by ABIX tooling and registered at runtime, with the bootstrap kernel
-retained as the only hand-written trusted base.
+ABIX's own type, registry, map, RCU, compatibility and bootstrap metadata are produced by ABIX tooling and registered at runtime, with the bootstrap kernel retained as the only hand-written trusted base.
 
 ## Type and hash model
 
 ### TypeInfo split into three types
 
-A single `TypeInfo` is not allowed to carry every responsibility. It is split
-by question answered:
+A single `TypeInfo` is not allowed to carry every responsibility. It is split by question answered:
 
 | Type | Question | Content |
 |------|----------|---------|
@@ -133,8 +108,7 @@ struct TypeLayout {
 };
 ```
 
-The separation keeps identity, description and physical layout independent, so
-compatibility can reason about each without conflating them.
+The separation keeps identity, description and physical layout independent, so compatibility can reason about each without conflating them.
 
 ### TypeHash and LayoutHash
 
@@ -159,10 +133,7 @@ LayoutHash = hash(
 )
 ```
 
-`TypeHash ≠ LayoutHash` is the foundation of the compatibility system. The same
-type identity may appear with different layouts across build configurations,
-and compatibility checks key off the distinction. See
-[`compatibility.md`](../architecture/compatibility.md).
+`TypeHash ≠ LayoutHash` is the foundation of the compatibility system. The same type identity may appear with different layouts across build configurations, and compatibility checks key off the distinction. See [`compatibility.md`](../architecture/compatibility.md).
 
 ### Hash128
 
@@ -178,10 +149,7 @@ constexpr TypeId type_id(...);
 constexpr LayoutHash layout_hash(...);
 ```
 
-The first implementation may use FNV-1a; later implementations may substitute
-XXH3, BLAKE3 or truncated SHA-256 without changing the `.abix` model. The hash
-algorithm is recorded as explicit schema/version information in the artifact
-rather than being implied by the implementation.
+The first implementation may use FNV-1a; later implementations may substitute XXH3, BLAKE3 or truncated SHA-256 without changing the `.abix` model. The hash algorithm is recorded as explicit schema/version information in the artifact rather than being implied by the implementation.
 
 ### Supporting concepts
 
@@ -209,8 +177,7 @@ graph TD
 ```
 
 * `.abix` — a stable ABI artifact shared across processes, tools and languages.
-* `generated/*.abix.hpp` — zero-cost C++ compile-time metadata specialized for
-  the current compilation environment.
+* `generated/*.abix.hpp` — zero-cost C++ compile-time metadata specialized for the current compilation environment.
 
 The v0 layout is a flat sequence:
 
@@ -229,17 +196,13 @@ graph TD
     SymbolTable["Symbol Table"] --> SyT["count, entries (name, kind, type_id / function_id)"]
 ```
 
-The current implementation uses a Section Directory layout with a deduplicated
-String Table and offset/index references (including length, flags and optional
-sections), together with ABI Identity, Target, Hash Table and Symbol Table
-sections. The authoritative description is in [`abix.md`](../ABIX/abix.md).
+The current implementation uses a Section Directory layout with a deduplicated String Table and offset/index references (including length, flags and optional sections), together with ABI Identity, Target, Hash Table and Symbol Table sections. The authoritative description is in [`abix.md`](../ABIX/abix.md).
 
 ## Bootstrap kernel
 
 ### Interface
 
-The kernel is a static metadata loader with one entry point, not a registry.
-No `lookup()` / `insert()` / `erase()` API is defined for it.
+The kernel is a static metadata loader with one entry point, not a registry. No `lookup()` / `insert()` / `erase()` API is defined for it.
 
 ```cpp
 namespace skl::abix::model {
@@ -274,8 +237,7 @@ BootStatus abix_bootstrap(const BootImage& image);
 
 ### Wire format
 
-`sizeof(BootstrapType)` is not assumed to match across compilers. The bootstrap
-ABI is an explicitly defined wire format instead:
+`sizeof(BootstrapType)` is not assumed to match across compilers. The bootstrap ABI is an explicitly defined wire format instead:
 
 ```cpp
 struct BootstrapType {
@@ -285,8 +247,7 @@ struct BootstrapType {
 };
 ```
 
-The kernel can be reduced further to handling only a byte span plus offset and
-length.
+The kernel can be reduced further to handling only a byte span plus offset and length.
 
 ### Startup sequence
 
@@ -313,8 +274,7 @@ void abix_initialize() {
 
 ### Implementation order
 
-RCU/EBR is not implemented first. The initial goal is to prove the
-`Bootstrap → Registry → Type lookup → self metadata` loop:
+RCU/EBR is not implemented first. The initial goal is to prove the `Bootstrap → Registry → Type lookup → self metadata` loop:
 
 ```mermaid
 graph TD
@@ -362,9 +322,7 @@ flowchart TD
     PROMOTE --> READY
 ```
 
-`BOOTSTRAP`, `SELF_METADATA`, `RUNTIME` and `PROMOTE` exist only on the
-initialization thread. Ordinary user threads observe only `NOT_READY` and
-`READY`, so the hot path carries no state-check overhead.
+`BOOTSTRAP`, `SELF_METADATA`, `RUNTIME` and `PROMOTE` exist only on the initialization thread. Ordinary user threads observe only `NOT_READY` and `READY`, so the hot path carries no state-check overhead.
 
 ### Thread-safety handoff
 
@@ -388,8 +346,7 @@ if (state.load(std::memory_order_acquire) == State::READY) {
 }
 ```
 
-This check happens only when a thread first enters the runtime, never on each
-registry lookup.
+This check happens only when a thread first enters the runtime, never on each registry lookup.
 
 ### RCU bootstrap ordering
 
@@ -401,9 +358,7 @@ graph TD
     B1["RCU"] --> B2["Registry"] --> B3["Type metadata"]
 ```
 
-Before RCU initialization, `ThreadState`, `RetiredNode` and `Epoch` are
-ordinary C++ types. After RCU initialization they are registered in the ABIX
-registry, after which RCU itself can consume ABIX metadata.
+Before RCU initialization, `ThreadState`, `RetiredNode` and `Epoch` are ordinary C++ types. After RCU initialization they are registered in the ABIX registry, after which RCU itself can consume ABIX metadata.
 
 ## Map model
 
@@ -424,10 +379,7 @@ graph TD
 | Debug | `MapInfo` → runtime validation |
 | Release | `MapPrivate` → direct access (zero-cost) |
 
-`MapPrivate` is implemented after the runtime map: the runtime semantics are
-validated first, then an equivalent static form is generated. The two are
-verified to agree on copy and default operations; other conversions require a
-native converter.
+`MapPrivate` is implemented after the runtime map: the runtime semantics are validated first, then an equivalent static form is generated. The two are verified to agree on copy and default operations; other conversions require a native converter.
 
 ## Self-hosting closure
 
@@ -442,55 +394,31 @@ graph TD
     Kernel --> Runtime --> SelfDesc --> UserABI
 ```
 
-The bootstrap kernel is the trusted computing base (TCB). Like BIOS/firmware or
-compiler bootstrap stage 0, it is never required to describe itself. See
-[`self-hosting.md`](self-hosting.md).
+The bootstrap kernel is the trusted computing base (TCB). Like BIOS/firmware or compiler bootstrap stage 0, it is never required to describe itself. See [`self-hosting.md`](self-hosting.md).
 
 ### Verified capabilities
 
 * generation chain from C++ headers to `.abix` to static runtime descriptors;
 * type, field, function, layout, `Hash128` and symbol metadata;
-* extraction of namespaces, aliases, bitfields, inheritance, access levels,
-  template specializations and calling conventions;
-* `runtime::Registry` registration, `TypeId` lookup and the canonical registry
-  bridge;
+* extraction of namespaces, aliases, bitfields, inheritance, access levels, template specializations and calling conventions;
+* `runtime::Registry` registration, `TypeId` lookup and the canonical registry bridge;
 * compatibility / map IR and the `MapPrivate` constexpr operation plan;
 * a separate provider process and JSON-lines IPC;
-* `AMC/self.abic.toml` generates `amc_core.abix` from a clean directory, and
-  the generated C++ descriptors register into `runtime::Registry`; lookups for
-  `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and
-  `type_of<amc::CompatibilityRecord>()` resolve.
+* `AMC/self.abic.toml` generates `amc_core.abix` from a clean directory, and the generated C++ descriptors register into `runtime::Registry`; lookups for `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and `type_of<amc::CompatibilityRecord>()` resolve.
 
 ### Boundaries
 
-The AMC verification shows that the compiled AMC stage can parse its own core
-IR and emit consumable ABIX metadata and C++ projections. It is not strict
-source-level self-hosting in the compiler-theory sense: the build and semantic
-extraction of `amc-cpp` still depend on Clang/LLVM, and the generated
-descriptors do not yet build `amc-cpp` itself.
+The AMC verification shows that the compiled AMC stage can parse its own core IR and emit consumable ABIX metadata and C++ projections. It is not strict source-level self-hosting in the compiler-theory sense: the build and semantic extraction of `amc-cpp` still depend on Clang/LLVM, and the generated descriptors do not yet build `amc-cpp` itself.
 
 ### Self-hosting bootstrap
 
-1. `ABIX/self.abic.toml` covers the core type, registry, map,
-   bootstrap and RCU/EBR types.
-2. AMC generates `build/abix_self.abix` from a clean build directory and emits
-   `abix_self_metadata.hpp` for consumers.
-3. The generated `ModuleDescriptor` is attached through
-   `runtime::Registry::register_module()`; only two bootstrap kernel wire records
-   remain in `metadata::Registry::bootstrap_self()` as the TCB.
-4. Closure consumers verify `type_of<TypeInfo>()`, `type_of<RegistryEntry>()`,
-   lookup by `TypeId` and name, the canonical registry bridge, and that
-   generated descriptor size/alignment match the native types.
-5. `ThreadState`, `RetiredNode`, `RetiredBatch`, `Epoch` and `rcu::Domain` are
-   included in the artifact; runtime type metadata comes from the generated
-   module rather than hand-written metadata, with the two bootstrap kernel
-   wire records as the only intentional TCB.
+1. `ABIX/self.abic.toml` covers the core type, registry, map, bootstrap and RCU/EBR types.
+2. AMC generates `build/abix_self.abix` from a clean build directory and emits `abix_self_metadata.hpp` for consumers.
+3. The generated `ModuleDescriptor` is attached through `runtime::Registry::register_module()`; only two bootstrap kernel wire records remain in `metadata::Registry::bootstrap_self()` as the TCB.
+4. Closure consumers verify `type_of<TypeInfo>()`, `type_of<RegistryEntry>()`, lookup by `TypeId` and name, the canonical registry bridge, and that generated descriptor size/alignment match the native types.
+5. `ThreadState`, `RetiredNode`, `RetiredBatch`, `Epoch` and `rcu::Domain` are included in the artifact; runtime type metadata comes from the generated module rather than hand-written metadata, with the two bootstrap kernel wire records as the only intentional TCB.
 
-Acceptance criterion: a single build from a clean directory produces the
-self-description artifact and the C++ projection; the runtime depends only on
-the bootstrap kernel and that generated projection to register descriptors and
-query ABIX's own core and RCU/EBR types. A runtime binary loader for `.abix` is
-outside this stage.
+Acceptance criterion: a single build from a clean directory produces the self-description artifact and the C++ projection; the runtime depends only on the bootstrap kernel and that generated projection to register descriptors and query ABIX's own core and RCU/EBR types. A runtime binary loader for `.abix` is outside this stage.
 
 ## Milestones
 
