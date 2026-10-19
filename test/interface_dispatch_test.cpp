@@ -5,7 +5,6 @@
  */
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Interface/Declaration.h"
 #include "ABIX/Interface/Interface.h"
 
 namespace {
@@ -275,70 +274,6 @@ TEST_CASE("an interface proxy binds, verifies and calls through cached entries")
     REQUIRE_FALSE(missing.valid());
 }
 
-namespace {
-int auto_area(const void *self) { return static_cast<const Counter *>(self)->n; }
-int auto_add(const void *self, int a, int b) { return static_cast<const Counter *>(self)->n + a + b; }
-}   // namespace
-
-// The auto variant computes each signature with `method_signature` from AMC
-// TypeIDs (int32_t is the ABI key `prim:i32`) and forwards method arguments.
-constexpr skl::abix::model::TypeId kAutoI32 = skl::abix::model::canonical_type_id("prim:i32");
-constexpr skl::abix::model::TypeId kAutoAddParams[] = {kAutoI32, kAutoI32};
-constexpr skl::abix::util::StaticArray kAutoStaticParams{kAutoI32, kAutoI32};
-
-// Array + count form (6 fields).
-#define ABIX_TEST_AUTO_METHODS(X)         \
-    X(area, kAutoI32, nullptr, 0, int, 0) \
-    X(add, kAutoI32, kAutoAddParams, 2, int, 1)
-ABIX_DECLARE_INTERFACE(TestAuto, 1, ABIX_TEST_AUTO_METHODS)
-
-// StaticArray form (5 fields, no count): a named array...
-#define ABIX_TEST_AUTO_STATIC_METHODS(X) X(add, kAutoI32, kAutoStaticParams, int, 0)
-ABIX_DECLARE_INTERFACE(TestAutoStatic, 1, ABIX_TEST_AUTO_STATIC_METHODS)
-
-// ...and an inline, parenthesized StaticArray.
-#define ABIX_TEST_AUTO_INLINE_METHODS(X) X(add, kAutoI32, (skl::abix::util::StaticArray{kAutoI32, kAutoI32}), int, 0)
-ABIX_DECLARE_INTERFACE(TestAutoInline, 1, ABIX_TEST_AUTO_INLINE_METHODS)
-
-TEST_CASE("the auto declaration computes signatures and forwards arguments") {
-    constexpr TypeId counter_id{0x21, 0x22};
-    const InterfaceMethod methods[] = {
-        {TestAutoTraits::signatures[0], interface_entry(&auto_area), 0, 0},
-        {TestAutoTraits::signatures[1],  interface_entry(&auto_add), 1, 0},
-    };
-    InterfaceRegistry<4> registry;
-    REQUIRE(registry.add({TestAutoTraits::id, counter_id, methods, 2, 1, 0}) == InterfaceStatus::ok);
-
-    Counter c{7};
-    TestAuto shape(registry, &c, counter_id);
-    REQUIRE(shape.valid());
-    REQUIRE(shape.area() == 7);
-
-    // A parameterised method forwards its arguments without a hand-written wrapper.
-    REQUIRE(shape.add(3, 4) == 14);
-    int out = 0;
-    REQUIRE(shape.add(out, 3, 4) == InterfaceStatus::ok);
-    REQUIRE(out == 14);
-}
-
-TEST_CASE("the auto declaration accepts named and inline StaticArray parameters") {
-    // Both StaticArray forms produce the same `add` signature as the array form.
-    STATIC_REQUIRE(TestAutoStaticTraits::signatures[0] == TestAutoTraits::signatures[1]);
-    STATIC_REQUIRE(TestAutoInlineTraits::signatures[0] == TestAutoTraits::signatures[1]);
-
-    constexpr TypeId counter_id{0x21, 0x22};
-    const InterfaceMethod methods[] = {
-        {TestAutoStaticTraits::signatures[0], interface_entry(&auto_add), 0, 0},
-    };
-    InterfaceRegistry<4> registry;
-    REQUIRE(registry.add({TestAutoStaticTraits::id, counter_id, methods, 1, 1, 0}) == InterfaceStatus::ok);
-
-    Counter c{7};
-    TestAutoStatic shape(registry, &c, counter_id);
-    REQUIRE(shape.valid());
-    REQUIRE(shape.add(3, 4) == 14);
-}
-
 TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter lists") {
     constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
     constexpr auto v = skl::abix::model::canonical_type_id("prim:void");
@@ -352,4 +287,19 @@ TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter 
     STATIC_REQUIRE(by_pointer == by_variadic);
     STATIC_REQUIRE(
         skl::abix::poly::method_signature("clear", v) == skl::abix::poly::method_signature("clear", v, nullptr, 0));
+}
+
+TEST_CASE("version helper macros pack and extract a semantic version") {
+    constexpr unsigned int version = SKL_ABIX_VERSION_NUMBER(1, 2, 3);
+    STATIC_REQUIRE(version == 10'200'003U);
+    SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);
+    REQUIRE(major == 1);
+    REQUIRE(minor == 2);
+    REQUIRE(patch == 3);
+
+    constexpr unsigned int largest = SKL_ABIX_VERSION_NUMBER(99, 99, 99'999);
+    SKL_ABIX_VERSION_EXTRACT(largest, largest_major, largest_minor, largest_patch);
+    REQUIRE(largest_major == 99);
+    REQUIRE(largest_minor == 99);
+    REQUIRE(largest_patch == 99'999);
 }

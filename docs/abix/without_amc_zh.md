@@ -18,7 +18,7 @@ ABIX 和 AMC 的职责不同：
 | 能力                     | 头文件                                                                           | 需要 AMC？                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Interface 身份与方法签名 | `ABIX/Interface/Contract.h`                                                      | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
-| 手写 `Traits` 与代理     | `ABIX/Interface/Declaration.h`                                                   | 否——`ABIX_DECLARE_INTERFACE`（自动签名）                                     |
+| 手写 `Traits` 与代理     | `ABIX/Interface/Proxy.h`                                                         | 否——`InterfaceProxy<Traits>` 是 header-only                                  |
 | 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h`                                                 | 否                                                                           |
 | 动态库发现与租约         | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h`                         | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY`                   |
 | Owner ABI                | `Owner.h`                                                                        | 否                                                                           |
@@ -28,7 +28,6 @@ ABIX 和 AMC 的职责不同：
 一个最小的 C++-only 声明：
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
 #include "ABIX/Interface/Interface.h"
 
 using namespace skl::abix;
@@ -36,8 +35,20 @@ using namespace skl::abix::poly;
 
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
 
-#define SHAPE_METHODS(X) X(area, i32, nullptr, 0, int32_t, 0)
-ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
+struct ShapeTraits {
+    static constexpr util::StaticArray signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 1;
+    static constexpr uint32_t area_slot = 0;
+};
+class Shape : public InterfaceProxy<ShapeTraits> {
+    using Base = InterfaceProxy<ShapeTraits>;
+
+public:
+    using Base::Base;
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::area_slot); }
+};
 
 // Provider 侧：适配器首参是对象句柄。
 constexpr model::TypeId square_id{0x51, 0x52};   // 具体类型的 TypeID
@@ -74,7 +85,7 @@ const std::string &square_name(const void *self) {
 // 注册与 `proxy.call<NameFn>(slot)` 照常使用。
 ```
 
-签名仍然只是契约标签，不是布局校验：两端必须为 `std::string` 使用同一个 TypeID（例如 `canonical_type_id("std::string")`，或你自己固定的值）。ABIX 不校验 STL 的实际布局，调用成立的前提是「同一工具链」这个约定。`ABIX_DECLARE_INTERFACE` 会转发方法参数；带 STL 参数的方法在条目里给出对应 TypeID 即可（也可以手写 `Traits`，或交给 AMC 生成）。
+签名仍然只是契约标签，不是布局校验：两端必须为 `std::string` 使用同一个 TypeID（例如 `canonical_type_id("std::string")`，或你自己固定的值）。ABIX 不校验 STL 的实际布局，调用成立的前提是「同一工具链」这个约定。手写 `Traits` 与代理（或交给 AMC 生成），并把 STL 参数的 TypeID 传给 `method_signature`。
 
 **不要跨越插件、外部语言或外部工具链边界使用 STL 类型。** 不同的 `std::string` / `std::vector` ABI、allocator、异常模型或 RTTI 设置会让调用变成未定义行为，而且在一个模块中创建的对象不能交给另一个使用不同 allocator 的模块销毁。请改用 ABIX-STD 边界类型（`StringView`、`SequenceView<T>`、`Opaque<T>`）或显式 marshalling——这与 `[[adapt]]` 的规则一致：原生 STL 参数需要声明的边界契约。
 
