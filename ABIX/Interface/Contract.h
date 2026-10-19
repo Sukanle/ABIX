@@ -19,7 +19,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <type_traits>
+
 #include "ABIX/Model/ABI.h"
+#include "ABIX/Util/Array.h"
 
 // ABIX Interface layer — the cross-language interface contract.
 //
@@ -173,6 +176,39 @@ constexpr InterfaceMethodHash method_signature(
         state = interface_hash_u64(state, parameters[i].hi);
     }
     return InterfaceMethodHash{state.lo, state.hi};
+}
+
+// Inline parameter list, zero allocation:
+//   method_signature("resize", void_id, util::StaticArray{i32, i32})
+template<size_t Count>
+constexpr InterfaceMethodHash method_signature(
+    const char *name, model::TypeId return_type, const util::StaticArray<model::TypeId, Count> &parameters) noexcept {
+    return method_signature(name, return_type, parameters.data(), Count);
+}
+
+// Same inline form with an explicit count (the declaration macro passes one).
+// The array's own size is authoritative; `count` exists only to keep the macro
+// entry shape uniform.
+template<size_t Count>
+constexpr InterfaceMethodHash method_signature(const char *name, model::TypeId return_type,
+    const util::StaticArray<model::TypeId, Count> &parameters, size_t) noexcept {
+    return method_signature(name, return_type, parameters.data(), Count);
+}
+
+// Variadic parameter list, zero allocation:
+//   method_signature("resize", void_id, i32, i32)
+// The `enable_if` keeps this overload out of the pointer + count calls and the
+// `util::StaticArray` form; a non-TypeId argument is a compile error, not a silent
+// conversion.
+template<typename... Params, typename = std::enable_if_t<(std::is_same<Params, model::TypeId>::value && ...)>>
+constexpr InterfaceMethodHash method_signature(
+    const char *name, model::TypeId return_type, Params... parameters) noexcept {
+    if constexpr (sizeof...(Params) == 0) {
+        return method_signature(name, return_type, nullptr, 0);
+    } else {
+        const model::TypeId list[] = {parameters...};
+        return method_signature(name, return_type, list, sizeof...(Params));
+    }
 }
 
 enum class InterfaceStatus : uint32_t {

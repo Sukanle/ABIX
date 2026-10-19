@@ -747,7 +747,7 @@ ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
 
 ```cpp
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
-constexpr model::TypeId resize_params[] = {i32, i32};
+constexpr util::StaticArray resize_params{i32, i32};
 
 #define SHAPE_AUTO(X)                             \
     X(area,   i32, nullptr,      0, int32_t, 0)   \
@@ -761,8 +761,9 @@ ABIX_DECLARE_INTERFACE_AUTO(Shape, 1, SHAPE_AUTO)
 ```
 
 两个宏只差签名来源：`ABIX_DECLARE_INTERFACE` 手写 `{lo, hi}`，`ABIX_DECLARE_INTERFACE_AUTO`
-用 `method_signature` 从 TypeID 计算；`id`、槽位与 `slots` 的生成方式相同。参数数组必须
-是作用域内已有的名字（预处理器无法按 `{i32, i32}` 生成数组）。
+用 `method_signature` 从 TypeID 计算；`id`、槽位与 `slots` 的生成方式相同。参数表必须
+是作用域内已有的名字（预处理器无法按 `{i32, i32}` 生成数组）；可以是原生
+`model::TypeId[]`，也可以是 `util::StaticArray`。
 
 手写 `Traits` 时连签名与 `id` 都可以由编译期 helper 生成（它们复刻 `AMC::signature_hash` /
 `AMC::interface_identity` 的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
@@ -808,6 +809,18 @@ name + decimal(return_type.lo) + decimal(return_type.hi)
 是 AMC 记录的**契约函数**的名字与参数，不是随手写的标签。若该函数的首参是对象句柄
 （常见的适配器约定），句柄就是第 0 个参数；自由函数没有句柄。AMC 生成的头文件里已经
 有精确的 `signatures[]`，不确定时直接抄。
+
+参数表有三种等价、零分配的形式：
+
+```cpp
+constexpr TypeId params[] = {i32, i32};
+method_signature("resize", v, params, 2);                 // 指针 + 数量
+method_signature("resize", v, util::StaticArray{i32, i32});     // 内联定长数组
+method_signature("resize", v, i32, i32);                  // 变参
+```
+
+`util::StaticArray` 是 `ABIX/Util/Array.h` 里的最小定长类型；其 deduction guide 让
+`util::StaticArray{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
 
 签名里是 **TypeID**，不是 C++ 类型。对基于名字的身份，`model::canonical_type_id(规范名)`
 可以复刻 AMC 的值：

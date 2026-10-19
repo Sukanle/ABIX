@@ -290,3 +290,18 @@ TEST_CASE("the auto declaration computes signatures and forwards arguments") {
     REQUIRE(shape.add(out, 3, 4) == InterfaceStatus::ok);
     REQUIRE(out == 14);
 }
+
+TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter lists") {
+    constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
+    constexpr auto v = skl::abix::model::canonical_type_id("prim:void");
+    constexpr skl::abix::model::TypeId params[] = {i32, i32};
+
+    constexpr auto by_pointer = skl::abix::poly::method_signature("resize", v, params, 2);
+    constexpr auto by_array = skl::abix::poly::method_signature("resize", v, skl::abix::util::StaticArray{i32, i32});
+    constexpr auto by_variadic = skl::abix::poly::method_signature("resize", v, i32, i32);
+
+    STATIC_REQUIRE(by_pointer == by_array);
+    STATIC_REQUIRE(by_pointer == by_variadic);
+    STATIC_REQUIRE(
+        skl::abix::poly::method_signature("clear", v) == skl::abix::poly::method_signature("clear", v, nullptr, 0));
+}

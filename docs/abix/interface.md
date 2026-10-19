@@ -817,7 +817,7 @@ return_type, slot)`, and the proxy forwards the method arguments:
 
 ```cpp
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
-constexpr model::TypeId resize_params[] = {i32, i32};
+constexpr util::StaticArray resize_params{i32, i32};
 
 #define SHAPE_AUTO(X)                             \
     X(area,   i32, nullptr,      0, int32_t, 0)   \
@@ -830,8 +830,8 @@ ABIX_DECLARE_INTERFACE_AUTO(Shape, 1, SHAPE_AUTO)
 // shape.resize(out, 3, 4)  explicit-status overload
 ```
 
-The parameter array must be a name already in scope (the preprocessor cannot
-build `{i32, i32}`).
+The parameter list must be a name already in scope (the preprocessor cannot
+build `{i32, i32}`); it may be a raw `model::TypeId[]` or a `util::StaticArray`.
 
 A hand-written `Traits` can compute the signatures and the identity too (the
 helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`;
@@ -890,6 +890,19 @@ an arbitrary label. If that function takes the object handle first (the usual
 adapter convention), the handle is parameter 0 and belongs in `parameters`; a
 free function has no handle. AMC already emits the exact `signatures[]` in the
 generated header — copy it when in doubt.
+
+The parameter list can be passed in three equivalent, allocation-free forms:
+
+```cpp
+constexpr TypeId params[] = {i32, i32};
+method_signature("resize", v, params, 2);                 // pointer + count
+method_signature("resize", v, util::StaticArray{i32, i32});     // inline fixed array
+method_signature("resize", v, i32, i32);                  // variadic
+```
+
+`util::StaticArray` is the minimal fixed-size type in `ABIX/Util/Array.h`; its
+deduction guide makes `util::StaticArray{i32, i32}` name its own type. All three forms
+hash the same bytes and allocate nothing.
 
 A signature mentions **TypeIDs**, not C++ types. For name-based identities,
 `model::canonical_type_id(canonical_name)` reproduces AMC's value:
