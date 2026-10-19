@@ -791,6 +791,113 @@ TypeID——仍然是 AMC 派生的值。原始类型的 TypeID 是 ABI key（`i
 （`id`/`version`/`slots`/`signatures`/`*_slot`）与一个 `Shape` 代理，方法为「对象句柄在首位」的
 直通调用，并提供返回 `InterfaceStatus` 的重载。
 
+#### 注册 `signatures` —— 基础类型与自定义类型的 TypeID
+
+`signatures` 按槽位索引，条目必须按 slot 顺序写。每个条目会与 provider 的
+`InterfaceMethod.signature` 比较；`interface_id` 也会哈希同一组值。不符时返回
+`signature_mismatch`，绝不会被静默调用。
+
+`method_signature(name, return_type, parameters, count)` 复刻 `AMC::signature_hash`：
+
+```
+name + decimal(return_type.lo) + decimal(return_type.hi)
+     + 每个参数：decimal(type.lo) + decimal(type.hi)
+```
+
+域是 `0x5349474E41545552`（`"SIGNATUR"`），参数名不参与哈希。`name`/`parameters`
+是 AMC 记录的**契约函数**的名字与参数，不是随手写的标签。若该函数的首参是对象句柄
+（常见的适配器约定），句柄就是第 0 个参数；自由函数没有句柄。AMC 生成的头文件里已经
+有精确的 `signatures[]`，不确定时直接抄。
+
+签名里是 **TypeID**，不是 C++ 类型。对基于名字的身份，`model::canonical_type_id(规范名)`
+可以复刻 AMC 的值：
+
+| C++ 类型 | 规范名 | 说明 |
+|---|---|---|
+| `int` / `int32_t` | `prim:i32` | 整数 key 是 ABI 推导的**位宽**；ABI 相同的拼写会合并 |
+| `uint64_t` | `prim:u64` | |
+| `double` | `prim:fieee64` | 浮点 key 保留格式（`ieee`/`bfloat`/`x87`/`ppc`） |
+| `bool` | `prim:bool` | |
+| `void` | `prim:void` | 仅返回位置 |
+| `char` | `prim:char_s` / `prim:char_u` | 符号性由目标决定 |
+| `cv::Point` | `cv::Point` | 限定名 |
+| `std::errc` | `std::errc` | 枚举；`[[expose]]` 会拒绝裸 `std::*` 参数（见下） |
+| `std::string` | `abix_str_utf8` | `[[adapt]]` 的 target；`std::string` 本身会被拒绝 |
+| `std::vector<int32_t>` | `abix_span_i32` | 经 `[[adapt]]` / `[[instantiate]]` |
+| `T*` / `const T*` | Clang 的指针拼写 | 不适合手写，从 `amc query` / `amc-dump` 读 |
+
+**自定义值类型 —— `cv::Point`**：普通值记录可表示，TypeID 是限定名：
+
+```cpp
+constexpr model::TypeId void_id = model::canonical_type_id("prim:void");
+constexpr model::TypeId point   = model::canonical_type_id("cv::Point");
+constexpr model::TypeId move_params[] = {point};
+method_signature("move", void_id, move_params, 1);   // move(cv::Point)
+```
+
+如果契约传 `cv::Point*`，参数要用指针的 TypeID，而不是 `cv::Point` 的；从
+`amc query` / `amc-dump` 读，不要猜 Clang 的拼写。
+
+**字符串 —— `std::string`**：STL 类型不能裸过边界，必须声明映射：
+
+```toml
+[[adapt]]
+native = "std::string"
+target = "abix_str_utf8"
+```
+
+thunk 接收 `abix_str_utf8`（data + len + encoding），签名用这个边界 TypeID：
+
+```cpp
+constexpr model::TypeId i32  = model::canonical_type_id("prim:i32");
+constexpr model::TypeId text = model::canonical_type_id("abix_str_utf8");
+constexpr model::TypeId open_params[] = {text};
+method_signature("label", text, nullptr, 0);       // 返回借用视图
+method_signature("open", i32, open_params, 1);     // open(abix_str_utf8) -> status
+```
+
+适配器由 AMC 生成并链接，负责把边界值转成 `std::string`/`std::string_view`。只有参数会被
+适配；返回的视图遵循 borrow/own/copy 所有权契约，消费者要长期持有就必须复制或接管。
+
+**枚举 —— `std::errc`**：枚举有 TypeID（`canonical_type_id("std::errc")`），但 AMC 的
+`[[expose]]` 可表示性检查会拒绝裸 `std::*` 参数。错误状态请传底层整数（`prim:i32`），并用 `[[error]]`
+（`status`/`success`/`value`）描述，或返回 `abix_result_*`；错误边界用 `Result<T, E>`
+承载，不暴露枚举布局。手写 provider/consumer 双方约定一致时可以直接用枚举 TypeID，
+但它不会匹配 AMC `[[expose]]` 生成的 thunk。
+
+**完整示例**：`draw()`、`move(cv::Point)`、`label() -> abix_str_utf8`、
+`open(abix_str_utf8) -> int32_t`（`std::errc` 码）：
+
+```cpp
+constexpr model::TypeId i32   = model::canonical_type_id("prim:i32");
+constexpr model::TypeId v     = model::canonical_type_id("prim:void");
+constexpr model::TypeId point = model::canonical_type_id("cv::Point");
+constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
+constexpr model::TypeId move_params[] = {point};
+constexpr model::TypeId open_params[] = {text};
+
+static constexpr InterfaceMethodHash sigs[] = {
+    method_signature("draw",  v,    nullptr,     0),
+    method_signature("move",  v,    move_params, 1),
+    method_signature("label", text, nullptr,     0),
+    method_signature("open",  i32,  open_params, 1),
+};
+static constexpr InterfaceId id = interface_id("Canvas", 1, sigs, 4);
+```
+
+若 provider 是 AMC 生成的、契约函数首参是对象句柄，请把句柄 TypeID 加到每个参数表的最前面
+（或直接抄生成的 `signatures[]`）。
+
+**拿到精确值**：指针、typedef、模板别名、嵌套记录不要猜规范拼写，从 artifact 读：
+
+```sh
+amc query module.abix --type cv::Point     # id=0X... name=cv::Point
+amc-dump module.abix                       # 完整 section dump
+```
+
+`amc-core-test` 用固定向量把 `method_signature` 对到 `AMC::signature_hash`、
+`canonical_type_id` 对到 `AMC::hash_text`，helper 不会和生成器漂移。
+
 `amc generate -l cpp` 会为 `[[interface]]` 生成与上面等价的 `Traits`，并在**每个方法首参都是对象
 句柄**时一并生成 `InterfaceProxy` 派生类（否则只生成 `Traits`，并注明原因）。
 
@@ -888,4 +995,5 @@ int main() {
 
 - [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) —— 契约、扩展目录与 Interface 契约（身份/槽位稳定/签名校验）。
 - [`std.md`](std_zh.md) —— ABIX-STD 原语与 borrow/owned/copy 契约。
-- [`abic.md`](docs/abix/abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
+- [`abic.md`](abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
+- [`without_amc.md`](without_amc_zh.md) —— 只依赖 header-only ABIX、不使用 AMC 工具链。
