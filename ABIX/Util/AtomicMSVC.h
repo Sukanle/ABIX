@@ -36,20 +36,20 @@ namespace detail {
 template<typename T>
 inline T compare_exchange_value(T *p, T exchange, T comparand) noexcept {
     if constexpr (std::is_pointer<T>::value) {
-        void *previous = _InterlockedCompareExchangePointer(reinterpret_cast<void *volatile *>(p),
+        void *previous = _InterlockedCompareExchangePointer(reinterpret_cast<void * volatile *>(p),
             reinterpret_cast<void *>(exchange), reinterpret_cast<void *>(comparand));
         return reinterpret_cast<T>(previous);
     } else if constexpr (sizeof(T) == 1) {
         return static_cast<T>(_InterlockedCompareExchange8(
-            reinterpret_cast<char volatile *>(p), static_cast<char>(exchange), static_cast<char>(comparand)));
+            reinterpret_cast<volatile char *>(p), static_cast<char>(exchange), static_cast<char>(comparand)));
     } else if constexpr (sizeof(T) == 2) {
         return static_cast<T>(_InterlockedCompareExchange16(
-            reinterpret_cast<short volatile *>(p), static_cast<short>(exchange), static_cast<short>(comparand)));
+            reinterpret_cast<volatile short *>(p), static_cast<short>(exchange), static_cast<short>(comparand)));
     } else if constexpr (sizeof(T) == 4) {
         return static_cast<T>(_InterlockedCompareExchange(
-            reinterpret_cast<long volatile *>(p), static_cast<long>(exchange), static_cast<long>(comparand)));
+            reinterpret_cast<volatile long *>(p), static_cast<long>(exchange), static_cast<long>(comparand)));
     } else if constexpr (sizeof(T) == 8) {
-        return static_cast<T>(_InterlockedCompareExchange64(reinterpret_cast<long long volatile *>(p),
+        return static_cast<T>(_InterlockedCompareExchange64(reinterpret_cast<volatile long long *>(p),
             static_cast<long long>(exchange), static_cast<long long>(comparand)));
     } else {
         static_assert(sizeof(T) <= 8, "ABIX: atomic type wider than 8 bytes is not supported");
@@ -60,16 +60,16 @@ template<typename T>
 inline T exchange_value(T *p, T value) noexcept {
     if constexpr (std::is_pointer<T>::value) {
         return reinterpret_cast<T>(
-            _InterlockedExchangePointer(reinterpret_cast<void *volatile *>(p), reinterpret_cast<void *>(value)));
+            _InterlockedExchangePointer(reinterpret_cast<void * volatile *>(p), reinterpret_cast<void *>(value)));
     } else if constexpr (sizeof(T) == 1) {
-        return static_cast<T>(_InterlockedExchange8(reinterpret_cast<char volatile *>(p), static_cast<char>(value)));
+        return static_cast<T>(_InterlockedExchange8(reinterpret_cast<volatile char *>(p), static_cast<char>(value)));
     } else if constexpr (sizeof(T) == 2) {
-        return static_cast<T>(_InterlockedExchange16(reinterpret_cast<short volatile *>(p), static_cast<short>(value)));
+        return static_cast<T>(_InterlockedExchange16(reinterpret_cast<volatile short *>(p), static_cast<short>(value)));
     } else if constexpr (sizeof(T) == 4) {
-        return static_cast<T>(_InterlockedExchange(reinterpret_cast<long volatile *>(p), static_cast<long>(value)));
+        return static_cast<T>(_InterlockedExchange(reinterpret_cast<volatile long *>(p), static_cast<long>(value)));
     } else if constexpr (sizeof(T) == 8) {
         return static_cast<T>(
-            _InterlockedExchange64(reinterpret_cast<long long volatile *>(p), static_cast<long long>(value)));
+            _InterlockedExchange64(reinterpret_cast<volatile long long *>(p), static_cast<long long>(value)));
     } else {
         static_assert(sizeof(T) <= 8, "ABIX: atomic type wider than 8 bytes is not supported");
     }
@@ -80,16 +80,16 @@ template<typename T>
 inline T add_fetch(T *p, T delta) noexcept {
     if constexpr (sizeof(T) == 1) {
         return static_cast<T>(
-            _InterlockedExchangeAdd8(reinterpret_cast<char volatile *>(p), static_cast<char>(delta)) + delta);
+            _InterlockedExchangeAdd8(reinterpret_cast<volatile char *>(p), static_cast<char>(delta)) + delta);
     } else if constexpr (sizeof(T) == 2) {
         return static_cast<T>(
-            _InterlockedExchangeAdd16(reinterpret_cast<short volatile *>(p), static_cast<short>(delta)) + delta);
+            _InterlockedExchangeAdd16(reinterpret_cast<volatile short *>(p), static_cast<short>(delta)) + delta);
     } else if constexpr (sizeof(T) == 4) {
         return static_cast<T>(
-            _InterlockedExchangeAdd(reinterpret_cast<long volatile *>(p), static_cast<long>(delta)) + delta);
+            _InterlockedExchangeAdd(reinterpret_cast<volatile long *>(p), static_cast<long>(delta)) + delta);
     } else if constexpr (sizeof(T) == 8) {
         return static_cast<T>(
-            _InterlockedExchangeAdd64(reinterpret_cast<long long volatile *>(p), static_cast<long long>(delta))
+            _InterlockedExchangeAdd64(reinterpret_cast<volatile long long *>(p), static_cast<long long>(delta))
             + delta);
     } else {
         static_assert(sizeof(T) <= 8, "ABIX: atomic integer wider than 8 bytes is not supported");

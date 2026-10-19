@@ -67,7 +67,8 @@ TEST_CASE("13b.owner and interface across a cross-CRT MSVC DLL", "[interface][ow
     const std::string variant = "./variants/msvc_x64/owner_dll/owner_dll.dll";
     if (!file_exists(variant)) {
         WARN("missing MSVC owner_dll variant "
-             << variant << " (run tools/build_variants.py --with-msvc first), skip cross-CRT owner test");
+             << variant
+             << " (run tools/build_variants.py --with-msvc first), skip cross-CRT owner test");
         return;
     }
     skl::abix::dll::Object lib;
@@ -79,8 +80,7 @@ TEST_CASE("13b.owner and interface across a cross-CRT MSVC DLL", "[interface][ow
     control.name = "owner_dll(msvc)";
     REQUIRE(discover_module(lib, control, registry).ok());
 
-    const auto *binding =
-        registry.find_first(owner_plugin::counter_interface, owner_plugin::counter_interface_version);
+    const auto *binding = registry.find_first(owner_plugin::counter_interface, owner_plugin::counter_interface_version);
     REQUIRE(binding != nullptr);
 
     using CreateFn = skl::abix::owner::handle (*)(int);

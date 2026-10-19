@@ -82,11 +82,11 @@ inline bool parse_macho(const uint8_t *data, size_t size, ParseResult &result, s
     result.target.pointer_size = is64 ? 8 : 4;
     result.target.image_base = 0;
     switch (read_u32(data, 4)) {   // cputype
-        case kCpuTypeX86: result.target.architecture = Architecture::x86; break;
+        case kCpuTypeX86:    result.target.architecture = Architecture::x86; break;
         case kCpuTypeX86_64: result.target.architecture = Architecture::x86_64; break;
-        case kCpuTypeArm: result.target.architecture = Architecture::arm32; break;
-        case kCpuTypeArm64: result.target.architecture = Architecture::arm64; break;
-        default: result.target.architecture = Architecture::unknown; break;
+        case kCpuTypeArm:    result.target.architecture = Architecture::arm32; break;
+        case kCpuTypeArm64:  result.target.architecture = Architecture::arm64; break;
+        default:             result.target.architecture = Architecture::unknown; break;
     }
 
     // LC_SYMTAB location (file offsets), used for exports after the walk.
@@ -167,7 +167,8 @@ inline bool parse_macho(const uint8_t *data, size_t size, ParseResult &result, s
     constexpr uint8_t kNExt = 0x01;
     constexpr uint8_t kNType = 0x0e;
     constexpr uint8_t kNSect = 0x0e;
-    if (has_symtab && in_bounds(symtab_symoff, static_cast<uint64_t>(symtab_nsyms) * (is64 ? 16 : 12), size)
+    if (has_symtab
+        && in_bounds(symtab_symoff, static_cast<uint64_t>(symtab_nsyms) * (is64 ? 16 : 12), size)
         && in_bounds(symtab_stroff, symtab_strsize, size)) {
         const size_t entry_size = is64 ? 16 : 12;
         for (uint32_t i = 0; i < symtab_nsyms; ++i) {

@@ -106,7 +106,8 @@ public:
         // rather than to index `_module_count` (which can overwrite a live slot
         // whenever a lower-indexed slot was freed).
         size_t slot_index = 0;
-        while (slot_index < ModuleCapacity && _modules[slot_index].used) ++slot_index;
+        while (slot_index < ModuleCapacity && _modules[slot_index].used)
+            ++slot_index;
         if (slot_index == ModuleCapacity) return ModuleStatus::capacity_exceeded;
 
         if (!activate_module(control)) return ModuleStatus::invalid_state;

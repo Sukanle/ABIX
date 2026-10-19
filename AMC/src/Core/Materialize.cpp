@@ -36,8 +36,8 @@ bool MaterializedModule::build(const AbiModule &module, std::string &error) {
     for (const auto &type : module.types) {
         const skl::abix::metadata::FieldDescriptor *field_base =
             type.field_count == 0 ? nullptr : fields.data() + type.field_begin;
-        const skl::abix::metadata::TypeDescriptor metadata_type{field_base, to_model(type.id), to_model(type.layout_hash),
-            type.flags, type.size, type.align, type.field_count};
+        const skl::abix::metadata::TypeDescriptor metadata_type{field_base, to_model(type.id),
+            to_model(type.layout_hash), type.flags, type.size, type.align, type.field_count};
         types.push_back(metadata_type);
     }
 

@@ -6,18 +6,18 @@
 
 using skl::abix::util::cas_relaxed;
 using skl::abix::util::compare_exchange;
+using skl::abix::util::dec_relaxed;
 using skl::abix::util::exchange_acq_rel;
 using skl::abix::util::inc_acq_rel;
 using skl::abix::util::inc_relaxed;
-using skl::abix::util::dec_relaxed;
 using skl::abix::util::is_always_lock_free;
 using skl::abix::util::is_atomic_cas_v;
 using skl::abix::util::is_atomic_integer_v;
 using skl::abix::util::is_atomic_scalar_v;
 using skl::abix::util::load_acquire;
 using skl::abix::util::load_relaxed;
-using skl::abix::util::store_release;
 using skl::abix::util::store_relaxed;
+using skl::abix::util::store_release;
 
 // Type constraints: integral (excluding bool) and object pointers for
 // load/store/exchange; integers (excluding bool) for read-modify-write; the

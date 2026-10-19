@@ -222,8 +222,8 @@ void run_type(lldb::SBDebugger &debugger, const std::string &needle, bool layout
     }
     for (const auto index : indices) {
         const auto &type = module.types[index];
-        result.Printf("[%llu] %s kind=%s size=%u align=%u\n", static_cast<unsigned long long>(index),
-            type.name.c_str(), amc::type_kind_name(type.kind).c_str(), type.size, type.align);
+        result.Printf("[%llu] %s kind=%s size=%u align=%u\n", static_cast<unsigned long long>(index), type.name.c_str(),
+            amc::type_kind_name(type.kind).c_str(), type.size, type.align);
         result.Printf("      id=%s layout=%s flags=0x%x fields=%u\n", hash_hex(type.id).c_str(),
             hash_hex(type.layout_hash).c_str(), type.flags, type.field_count);
         if (const amc::SourceOrigin *source = amc::find_source_origin(module, type.id))
@@ -261,8 +261,8 @@ void run_function(lldb::SBDebugger &debugger, const std::string &needle, lldb::S
             function.calling_convention, function.flags, static_cast<unsigned long long>(function.parameters.size()));
         for (size_t p = 0; p < function.parameters.size(); ++p) {
             const auto &parameter = function.parameters[p];
-            result.Printf("      param %llu %-12s %s\n", static_cast<unsigned long long>(p),
-                parameter.name.c_str(), type_label(module, parameter.type_id).c_str());
+            result.Printf("      param %llu %-12s %s\n", static_cast<unsigned long long>(p), parameter.name.c_str(),
+                type_label(module, parameter.type_id).c_str());
         }
     }
 }

@@ -34,7 +34,12 @@ struct BinarySection {
 // keep compiling.
 using ElfSection = BinarySection;
 
-enum class BinaryFormat { unknown, elf, macho, pe };
+enum class BinaryFormat {
+    unknown,
+    elf,
+    macho,
+    pe
+};
 
 BinaryFormat detect_binary_format(const uint8_t *data, size_t size) noexcept;
 

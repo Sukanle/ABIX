@@ -63,8 +63,8 @@ int cmd_query(char **args, int arg_count) {
         }
         if (mode == "function") {
             const auto indices = amc::query_function_indices(module, needle);
-            fmt::print("{}", json ? amc::query_functions_json(module, indices, needle)
-                                  : amc::query_functions_text(module, indices));
+            fmt::print("{}",
+                json ? amc::query_functions_json(module, indices, needle) : amc::query_functions_text(module, indices));
             return indices.empty() ? 1 : 0;
         }
 

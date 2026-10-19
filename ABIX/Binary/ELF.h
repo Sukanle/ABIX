@@ -103,12 +103,12 @@ inline bool parse_elf(const uint8_t *data, size_t size, ParseResult &result, std
     result.target.image_base = 0;
     result.target.os = data[7] == 9 ? OperatingSystem::freebsd : OperatingSystem::linux;
     switch (read_u16(data, 0x12)) {   // e_machine
-        case 3: result.target.architecture = Architecture::x86; break;
-        case 62: result.target.architecture = Architecture::x86_64; break;
-        case 40: result.target.architecture = Architecture::arm32; break;
+        case 3:   result.target.architecture = Architecture::x86; break;
+        case 62:  result.target.architecture = Architecture::x86_64; break;
+        case 40:  result.target.architecture = Architecture::arm32; break;
         case 183: result.target.architecture = Architecture::arm64; break;
         case 243: result.target.architecture = Architecture::riscv64; break;
-        default: result.target.architecture = Architecture::unknown; break;
+        default:  result.target.architecture = Architecture::unknown; break;
     }
 
     constexpr uint32_t kSectionNoBits = 8;   // SHT_NOBITS (.bss): no file content
@@ -155,8 +155,8 @@ inline bool parse_elf(const uint8_t *data, size_t size, ParseResult &result, std
                     const uint16_t st_shndx = read_u16(data, entry + 6);
                     const uint64_t st_value = read_u64(data, entry + 8);
                     const uint8_t binding = static_cast<uint8_t>(st_info >> 4);
-                    if (st_shndx == 0 || st_name == 0) continue;          // undefined / anonymous
-                    if (binding != 1 && binding != 2) continue;           // GLOBAL / WEAK
+                    if (st_shndx == 0 || st_name == 0) continue;   // undefined / anonymous
+                    if (binding != 1 && binding != 2) continue;    // GLOBAL / WEAK
                     std::string name;
                     size_t cursor = static_cast<size_t>(str_offset) + st_name;
                     const size_t end = static_cast<size_t>(str_offset) + static_cast<size_t>(str_size);

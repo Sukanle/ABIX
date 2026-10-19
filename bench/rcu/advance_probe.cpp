@@ -666,8 +666,8 @@ int main(int argc, char **argv) {
 
     fmt::print("rcu_advance_probe\n");
     fmt::print("  mode={} readers={} hold_us={} deadline_ms={} duration_ms={} retire_per_call={} repeat={}\n",
-        opt.reload ? "reload" : "raw", opt.readers, opt.hold_us, opt.deadline_ms, opt.duration_ms,
-        opt.retire_per_call, opt.repeat);
+        opt.reload ? "reload" : "raw", opt.readers, opt.hold_us, opt.deadline_ms, opt.duration_ms, opt.retire_per_call,
+        opt.repeat);
     fmt::print("  hardware_concurrency={}\n", hw);
     if (opt.reload) fmt::print("  plugin={}\n", dll_path(opt.plugin.c_str()));
 
@@ -720,8 +720,8 @@ int main(int argc, char **argv) {
 
     const int rc = worst_rc(verdicts);
     fmt::print("\nrcu_advance_probe overall: {}\n", rc == 0   ? "no anomaly"
-                                                          : rc == 1 ? "starvation suspected in at least one process"
-                                                          : rc == 2 ? "a handshake failed to drain"
-                                                                    : "a reload failed");
+                                                    : rc == 1 ? "starvation suspected in at least one process"
+                                                    : rc == 2 ? "a handshake failed to drain"
+                                                              : "a reload failed");
     return rc;
 }

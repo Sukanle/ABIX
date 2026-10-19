@@ -57,17 +57,16 @@ namespace skl::abix::util {
 
 // Integral (excluding bool) or object pointer: accepted by load/store/exchange.
 template<typename T>
-struct is_atomic_scalar
-    : std::integral_constant<bool, std::is_pointer<T>::value
-                                       || (std::is_integral<T>::value
-                                           && !std::is_same<std::remove_cv_t<T>, bool>::value)> {};
+struct is_atomic_scalar : std::integral_constant<bool,
+                              std::is_pointer<T>::value
+                                  || (std::is_integral<T>::value && !std::is_same<std::remove_cv_t<T>, bool>::value)> {
+};
 
 // Integral (excluding bool): accepted by atomic increment/decrement. Pointers
 // are intentionally excluded - their step semantics differ across targets.
 template<typename T>
 struct is_atomic_integer
-    : std::integral_constant<bool, std::is_integral<T>::value
-                                       && !std::is_same<std::remove_cv_t<T>, bool>::value> {};
+    : std::integral_constant<bool, std::is_integral<T>::value && !std::is_same<std::remove_cv_t<T>, bool>::value> {};
 
 // Accepted by atomic compare-exchange (the scalar set).
 template<typename T>

@@ -5,4 +5,4 @@ struct MapRecord {
     int value;
     int added;
 };
-}
+}   // namespace amc_map

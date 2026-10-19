@@ -105,8 +105,7 @@ void run_hashindex_build_bench(benchmark::State &state, uint32_t table_size) {
     skl::abix::runtime::HashIndex probe;
     probe.build(fix.table);
     state.counters["capacity"] = static_cast<double>(probe.capacity);
-    state.counters["slot_KiB"] =
-        static_cast<double>(probe.capacity) * sizeof(skl::abix::runtime::HashSlot) / 1024.0;
+    state.counters["slot_KiB"] = static_cast<double>(probe.capacity) * sizeof(skl::abix::runtime::HashSlot) / 1024.0;
     probe.destroy();
 
     for (auto _ : state) {
@@ -148,11 +147,9 @@ public:
     ABIXHashIndexRegisterer() {
         for (int si = 0; si < 6; ++si) {
             std::string name = std::string("BM_HashIndex_Build/") + kSizeLabels[si];
-            benchmark::RegisterBenchmark(name.c_str(),
-                [size = kTableSizes[si]](benchmark::State &st) {
-                    run_hashindex_build_bench(st, uint32_t(size));
-                })
-                ->Unit(benchmark::kNanosecond);
+            benchmark::RegisterBenchmark(name.c_str(), [size = kTableSizes[si]](benchmark::State &st) {
+                run_hashindex_build_bench(st, uint32_t(size));
+            })->Unit(benchmark::kNanosecond);
         }
     }
 };

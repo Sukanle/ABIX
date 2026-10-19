@@ -77,8 +77,7 @@ struct Fixture {
         const InterfaceId ids[kInterfaces] = {iid0, iid1, iid2, iid3};
         for (size_t i = 0; i < kInterfaces; ++i)
             entries[i] = {ids[i], 1, 0, methods, static_cast<uint32_t>(kSlots), 0};
-        manifest = {
-            abix_manifest_version, 1, 0, static_cast<uint32_t>(kInterfaces), entries, 0, 0, nullptr};
+        manifest = {abix_manifest_version, 1, 0, static_cast<uint32_t>(kInterfaces), entries, 0, 0, nullptr};
         (void)bind_registry.add({iid0, adder_id, methods, static_cast<uint32_t>(kSlots), 1, 0});
     }
 };

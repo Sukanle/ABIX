@@ -294,7 +294,8 @@ TEST_CASE("multithreaded register, dispatch and unregister stress") {
             }
         });
     }
-    for (auto &thread : threads) thread.join();
+    for (auto &thread : threads)
+        thread.join();
 
     CHECK(failures.load() == 0);
     CHECK(dispatched.load() > 0);
@@ -349,7 +350,8 @@ TEST_CASE("concurrent leases contend with an unload") {
     }
 
     // Let the workers dispatch at least once so the unload races real leases.
-    for (int spin = 0; spin < 1'000'000 && dispatched.load() == 0; ++spin) std::this_thread::yield();
+    for (int spin = 0; spin < 1'000'000 && dispatched.load() == 0; ++spin)
+        std::this_thread::yield();
 
     ModuleStatus status = ModuleStatus::busy;
     for (int attempt = 0; attempt < 1'000'000 && status != ModuleStatus::ok; ++attempt) {
@@ -360,7 +362,8 @@ TEST_CASE("concurrent leases contend with an unload") {
         if (status != ModuleStatus::ok) std::this_thread::yield();
     }
     stop.store(true, std::memory_order_relaxed);
-    for (auto &thread : threads) thread.join();
+    for (auto &thread : threads)
+        thread.join();
 
     REQUIRE(status == ModuleStatus::ok);
     CHECK(dispatched.load() > 0);

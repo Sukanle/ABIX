@@ -47,9 +47,9 @@ size_t align4(size_t value) { return (value + kNoteAlign - 1) & ~(kNoteAlign - 1
 
 bool read_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error) {
     switch (detect_binary_format(data, size)) {
-        case BinaryFormat::elf: return read_gnu_build_id(data, size, build_id, error);
+        case BinaryFormat::elf:   return read_gnu_build_id(data, size, build_id, error);
         case BinaryFormat::macho: return read_macho_uuid(data, size, build_id, error);
-        case BinaryFormat::pe: return read_pe_debug_id(data, size, build_id, error);
+        case BinaryFormat::pe:    return read_pe_debug_id(data, size, build_id, error);
         case BinaryFormat::unknown:
             error = "not a supported binary (expected ELF, Mach-O or PE)";
             build_id.clear();
@@ -179,7 +179,7 @@ bool read_pe_debug_id(const uint8_t *data, size_t size, std::vector<uint8_t> &bu
         if (!in_bounds(raw, 24, size)) continue;
         // CodeView RSDS record: "RSDS" + GUID(16) + Age(4) + PdbFileName.
         if (!(data[raw] == 'R' && data[raw + 1] == 'S' && data[raw + 2] == 'D' && data[raw + 3] == 'S')) continue;
-        build_id.assign(data + raw + 4, data + raw + 20);   // GUID
+        build_id.assign(data + raw + 4, data + raw + 20);                    // GUID
         build_id.insert(build_id.end(), data + raw + 20, data + raw + 24);   // Age
         return true;
     }

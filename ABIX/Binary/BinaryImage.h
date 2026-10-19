@@ -38,27 +38,50 @@ namespace skl::abix::binary {
 
 // Container format. Format is not the platform: PE != Windows, ELF != Linux,
 // Mach-O != macOS (see `OperatingSystem`).
-enum class Format : uint8_t { unknown, elf, macho, pe };
+enum class Format : uint8_t {
+    unknown,
+    elf,
+    macho,
+    pe
+};
 
-enum class OperatingSystem : uint8_t { unknown, linux, windows, macos, freebsd, android };
+enum class OperatingSystem : uint8_t {
+    unknown,
+    linux,
+    windows,
+    macos,
+    freebsd,
+    android
+};
 
-enum class Architecture : uint16_t { unknown, x86, x86_64, arm32, arm64, riscv32, riscv64 };
+enum class Architecture : uint16_t {
+    unknown,
+    x86,
+    x86_64,
+    arm32,
+    arm64,
+    riscv32,
+    riscv64
+};
 
-enum class Endianness : uint8_t { little, big };
+enum class Endianness : uint8_t {
+    little,
+    big
+};
 
 // A linker section (ELF section / Mach-O section / PE section), normalised.
 // The native spelling is kept in `name` / `segment`; ABIX-level callers ask for
 // canonical names (e.g. ".abix.metadata") through `native_section_name`.
 struct Section {
-    std::string name;       // native name (".text", "__text", ".abix")
-    std::string segment;    // Mach-O segment name ("__DATA"); empty otherwise
+    std::string name;      // native name (".text", "__text", ".abix")
+    std::string segment;   // Mach-O segment name ("__DATA"); empty otherwise
     uint64_t file_offset = 0;
     uint64_t file_size = 0;
     uint64_t address = 0;   // virtual address
     uint64_t size = 0;      // virtual size
     uint64_t alignment = 0;
-    uint32_t type = 0;      // native section type
-    uint64_t flags = 0;     // native section flags (ELF sh_flags is 64-bit)
+    uint32_t type = 0;    // native section type
+    uint64_t flags = 0;   // native section flags (ELF sh_flags is 64-bit)
 };
 
 // An exported symbol: a named address a consumer may bind to.
@@ -94,7 +117,9 @@ class BinaryImage {
 public:
     BinaryImage() = default;
     BinaryImage(const uint8_t *data, size_t size, ParseResult result)
-        : data_(data), size_(size), result_(std::move(result)) {}
+        : data_(data)
+        , size_(size)
+        , result_(std::move(result)) {}
 
     const uint8_t *data() const noexcept { return data_; }
     size_t size() const noexcept { return size_; }
@@ -231,7 +256,9 @@ inline bool BinaryImage::read_region(
             const uint16_t header_size = detail::read_u16(base, 6);
             const uint32_t region_offset = detail::read_u32(base, 12);
             const uint32_t region_size = detail::read_u32(base, 16);
-            if (version == 1 && header_size >= 24 && region_offset >= header_size
+            if (version == 1
+                && header_size >= 24
+                && region_offset >= header_size
                 && static_cast<uint64_t>(region_offset) + region_size <= length) {
                 offset += region_offset;
                 length = region_size;
@@ -274,9 +301,7 @@ inline bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &im
         case Format::pe:
             if (!detail::parse_pe(data, size, result, error)) return false;
             break;
-        case Format::unknown:
-            error = "not a supported binary (expected ELF, Mach-O or PE)";
-            return false;
+        case Format::unknown: error = "not a supported binary (expected ELF, Mach-O or PE)"; return false;
     }
     image = BinaryImage(data, size, std::move(result));
     return true;

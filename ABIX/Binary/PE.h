@@ -112,9 +112,10 @@ inline bool parse_pe(const uint8_t *data, size_t size, ParseResult &result, std:
     switch (machine) {
         case 0x014c: result.target.architecture = Architecture::x86; break;
         case 0x8664: result.target.architecture = Architecture::x86_64; break;
-        case 0x01c0: case 0x01c4: result.target.architecture = Architecture::arm32; break;
+        case 0x01c0:
+        case 0x01c4: result.target.architecture = Architecture::arm32; break;
         case 0xaa64: result.target.architecture = Architecture::arm64; break;
-        default: result.target.architecture = Architecture::unknown; break;
+        default:     result.target.architecture = Architecture::unknown; break;
     }
 
     const size_t section_table = optional + optional_size;
@@ -168,7 +169,9 @@ inline bool parse_pe(const uint8_t *data, size_t size, ParseResult &result, std:
     const uint32_t export_rva = read_u32(data, data_directory + 0);
     const uint32_t export_size = read_u32(data, data_directory + 4);
     size_t export_offset = 0;
-    if (export_rva != 0 && export_size >= 40 && rva_to_offset(export_rva, export_offset)
+    if (export_rva != 0
+        && export_size >= 40
+        && rva_to_offset(export_rva, export_offset)
         && in_bounds(export_offset, 40, size)) {
         const uint32_t ordinal_base = read_u32(data, export_offset + 16);
         const uint32_t name_count = read_u32(data, export_offset + 24);
@@ -176,7 +179,9 @@ inline bool parse_pe(const uint8_t *data, size_t size, ParseResult &result, std:
         const uint32_t names_rva = read_u32(data, export_offset + 32);
         const uint32_t ordinals_rva = read_u32(data, export_offset + 36);
         size_t names_offset = 0, functions_offset = 0, ordinals_offset = 0;
-        if (name_count != 0 && rva_to_offset(names_rva, names_offset) && rva_to_offset(functions_rva, functions_offset)
+        if (name_count != 0
+            && rva_to_offset(names_rva, names_offset)
+            && rva_to_offset(functions_rva, functions_offset)
             && rva_to_offset(ordinals_rva, ordinals_offset)) {
             for (uint32_t i = 0; i < name_count; ++i) {
                 if (!in_bounds(names_offset + static_cast<size_t>(i) * 4, 4, size)) break;
@@ -188,7 +193,8 @@ inline bool parse_pe(const uint8_t *data, size_t size, ParseResult &result, std:
                 const uint32_t function_rva = read_u32(data, functions_offset + static_cast<size_t>(ordinal) * 4);
                 std::string name;
                 size_t cursor = name_offset;
-                while (cursor < size && data[cursor] != 0) name.push_back(static_cast<char>(data[cursor++]));
+                while (cursor < size && data[cursor] != 0)
+                    name.push_back(static_cast<char>(data[cursor++]));
                 if (name.empty()) continue;
                 result.exports.push_back({std::move(name), image_base + function_rva, ordinal_base + ordinal});
             }

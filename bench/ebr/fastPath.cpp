@@ -64,4 +64,4 @@ static void BM_Atomic_LoadPointer_Raw(benchmark::State &state) {
     }
 }
 BENCHMARK(BM_Atomic_LoadPointer_Raw);
-#endif // SKL_ABIX_DEVELOPMENT
+#endif   // SKL_ABIX_DEVELOPMENT

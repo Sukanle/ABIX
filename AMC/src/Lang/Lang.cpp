@@ -165,9 +165,9 @@ std::string json_value(const std::string &line, const char *key) {
         }
         if (++i >= size) break;
         switch (line[i]) {
-            case '"':  out += '"';  break;
+            case '"':  out += '"'; break;
             case '\\': out += '\\'; break;
-            case '/':  out += '/';  break;
+            case '/':  out += '/'; break;
             case 'b':  out += '\b'; break;
             case 'f':  out += '\f'; break;
             case 'n':  out += '\n'; break;
@@ -177,8 +177,8 @@ std::string json_value(const std::string &line, const char *key) {
                 // `json_escape` only emits \uXXXX for bytes below 0x20, which is
                 // always a single UTF-8 byte.
                 if (i + 4 < size) {
-                    const unsigned code = (hex(line[i + 1]) << 12) | (hex(line[i + 2]) << 8)
-                                        | (hex(line[i + 3]) << 4) | hex(line[i + 4]);
+                    const unsigned code =
+                        (hex(line[i + 1]) << 12) | (hex(line[i + 2]) << 8) | (hex(line[i + 3]) << 4) | hex(line[i + 4]);
                     out += static_cast<char>(code & 0xFF);
                     i += 4;
                 }

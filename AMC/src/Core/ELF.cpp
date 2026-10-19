@@ -9,9 +9,9 @@ namespace binary = skl::abix::binary;
 
 BinaryFormat map_format(binary::Format format) {
     switch (format) {
-        case binary::Format::elf: return BinaryFormat::elf;
-        case binary::Format::macho: return BinaryFormat::macho;
-        case binary::Format::pe: return BinaryFormat::pe;
+        case binary::Format::elf:     return BinaryFormat::elf;
+        case binary::Format::macho:   return BinaryFormat::macho;
+        case binary::Format::pe:      return BinaryFormat::pe;
         case binary::Format::unknown: break;
     }
     return BinaryFormat::unknown;
@@ -19,9 +19,9 @@ BinaryFormat map_format(binary::Format format) {
 
 binary::Format to_binary_format(BinaryFormat format) {
     switch (format) {
-        case BinaryFormat::elf: return binary::Format::elf;
-        case BinaryFormat::macho: return binary::Format::macho;
-        case BinaryFormat::pe: return binary::Format::pe;
+        case BinaryFormat::elf:     return binary::Format::elf;
+        case BinaryFormat::macho:   return binary::Format::macho;
+        case BinaryFormat::pe:      return binary::Format::pe;
         case BinaryFormat::unknown: break;
     }
     return binary::Format::unknown;

@@ -127,7 +127,7 @@ next:
             case JNUM_LINT:   val = (rtype)value.vlint; break; \
             case JNUM_LHEX:   val = (rtype)value.vlhex; break; \
             case JNUM_DOUBLE: val = (rtype)value.vdbl; break;  \
-            default:          val = 0; break;                           \
+            default:          val = 0; break;                  \
         }                                                      \
         return val;                                            \
     }
