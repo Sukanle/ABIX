@@ -50,6 +50,33 @@ registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 
 全程没有 AMC 生成的文件。若是动态库，用同样的信息手写 `ModuleManifest` 并配合`SKL_ABIX_DEFINE_MODULE_QUERY`；消费端照常使用 `discover_module` 与 `ModuleRegistry`。
 
+## STL 类型：单一 C++ 工具链内部可用，跨边界不可用
+
+Interface 层不检查参数类型：`interface_entry` 只是保存函数指针，`call<Fn>` 负责调用。因此，当整个契约都在同一个 C++ 工具链内部时，适配器可以直接使用 C++ STL 类型——这正是 Interface 作为 vtable 替代品的场景。
+
+只有同时满足以下条件才是安全的：
+
+- provider 与 consumer 都是 C++，且共享编译器与标准库 ABI（`_GLIBCXX_USE_CXX11_ABI`、MSVC runtime、debug/release CRT、iterator debug level、异常/RTTI 设置）；
+- 使用相同的 C++ 标准与 allocator；
+- 契约不跨越可能由不同工具链构建的插件边界，也不跨越语言边界；
+- 双方接受该 STL 类型的生命周期规则（按值或 `const&` 传入的 `std::string` 仅在本次调用内有效；返回的 `std::string` 由调用方持有）。
+
+```cpp
+struct Square {
+    std::string name;
+    // ...
+};
+using NameFn = const std::string &(*)(const void *);
+const std::string &square_name(const void *self) {
+    return static_cast<const Square *>(self)->name;
+}
+// 注册与 `proxy.call<NameFn>(slot)` 照常使用。
+```
+
+签名仍然只是契约标签，不是布局校验：两端必须为 `std::string` 使用同一个 TypeID（例如 `canonical_type_id("std::string")`，或你自己固定的值）。ABIX 不校验 STL 的实际布局，调用成立的前提是「同一工具链」这个约定。`ABIX_DECLARE_INTERFACE_AUTO` 只生成对象句柄在首位的无参直通方法；带 STL 参数的方法需要手写 `call<Fn>` 包装，或交给 AMC 生成。
+
+**不要跨越插件、外部语言或外部工具链边界使用 STL 类型。** 不同的 `std::string` / `std::vector` ABI、allocator、异常模型或 RTTI 设置会让调用变成未定义行为，而且在一个模块中创建的对象不能交给另一个使用不同 allocator 的模块销毁。请改用 ABIX-STD 边界类型（`StringView`、`SequenceView<T>`、`Opaque<T>`）或显式 marshalling——这与 `[[adapt]]` 的规则一致：原生 STL 参数需要声明的边界契约。
+
 ## 只用 ABIX 会失去什么
 
 这些是 AMC 的自动化部分：

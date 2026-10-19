@@ -53,6 +53,33 @@ information through a hand-written `ModuleManifest` and
 `SKL_ABIX_DEFINE_MODULE_QUERY`; consumers use `discover_module` and
 `ModuleRegistry` as usual.
 
+## STL types: allowed inside one C++ toolchain, forbidden at a foreign boundary
+
+The Interface layer never inspects a parameter's type: `interface_entry` stores a function pointer and `call<Fn>` invokes it. An adapter can therefore use C++ STL types directly when the entire contract stays inside one C++ toolchain — the case where Interface is simply a vtable replacement.
+
+This is safe only when **all** of the following hold:
+
+- provider and consumer are C++ and share the compiler and standard-library ABI (`_GLIBCXX_USE_CXX11_ABI`, the MSVC runtime, debug/release CRT, iterator debug level, exception/RTTI settings);
+- the same C++ standard and allocator are used;
+- the contract is not a plugin boundary that may be built by a different toolchain, and not a cross-language boundary;
+- both sides accept the STL type's lifetime rules (a `std::string` passed by value or `const&` is valid for the call; a returned one is owned by the caller).
+
+```cpp
+struct Square {
+    std::string name;
+    // ...
+};
+using NameFn = const std::string &(*)(const void *);
+const std::string &square_name(const void *self) {
+    return static_cast<const Square *>(self)->name;
+}
+// registration and `proxy.call<NameFn>(slot)` work as usual.
+```
+
+The signature is still a contract tag, not a layout check: use the same TypeID for `std::string` on both sides (for example `canonical_type_id("std::string")`, or your own fixed value). ABIX does not verify the STL layout, so the same-toolchain assumption is what makes the call well-defined. `ABIX_DECLARE_INTERFACE_AUTO` only emits object-only pass-throughs; for STL parameters, write the `call<Fn>` wrapper by hand or let AMC generate it.
+
+**Do not use STL types across a plugin, foreign-language or foreign-toolchain boundary.** A different `std::string` / `std::vector` ABI, allocator, exception model or RTTI setting makes the call undefined, and an object created in one module must not be destroyed in another with a different allocator. Use the ABIX-STD boundary types (`StringView`, `SequenceView<T>`, `Opaque<T>`) or explicit marshalling instead — the same rule as `[[adapt]]`: a native STL parameter needs a declared boundary contract.
+
 ## What AMC provides
 
 Without AMC you lose the automatic parts:
