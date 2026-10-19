@@ -38,10 +38,10 @@ These are **contracts, not layout facts**: they never change `TypeID` /
 
 ## Compared with C++ virtual functions
 
-The same task — two shapes each computing an area, then one polymorphic call over
-a set of shapes — written two ways. The left column is a native C++ virtual
-function; the right column is ABIX Interface. Both programs print `area=9` and
-`area=12`, and both compile and run as shown.
+The same task — three shapes each computing an area, then one polymorphic call
+over a set of shapes — written two ways. The left column is a native C++ virtual
+function; the right column is ABIX Interface. Both programs print `area=9`,
+`area=12` and `area=10`, and both compile and run as shown.
 
 <table>
 <tr>
@@ -51,6 +51,7 @@ function; the right column is ABIX Interface. Both programs print `area=9` and
 <tr>
 <td valign="top">
 <pre><code class="language-cpp">#include &lt;cstdio&gt;
+
 struct Shape {
     virtual ~Shape() = default;
     virtual int area() const = 0;
@@ -60,48 +61,109 @@ struct Square : Shape {
     int area() const override { return side * side; }
     int side;
 };
-struct Circle : Shape {
-    explicit Circle(int r) : radius(r) {}
-    int area() const override { return 3 * radius * radius; }
-    int radius;
+struct Rectangle : Shape {
+    Rectangle(int w, int h) : width(w), height(h) {}
+    int area() const override { return width * height; }
+    int width, height;
+};
+struct Triangle : Shape {
+    Triangle(int b, int h) : base(b), height(h) {}
+    int area() const override { return base * height / 2; }
+    int base, height;
 };
 int total(const Shape &amp;s) { return s.area(); }
 int main() {
-    Square sq{3};
-    Circle ci{2};
-    const Shape *shapes[] = {&amp;sq, &amp;ci};
-    for (const Shape *s : shapes) std::printf("area=%d\n", total(*s));
+    Square square{3};
+    Rectangle rectangle{2, 6};
+    Triangle triangle{4, 5};
+    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
+    for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
     return 0;
 }</code></pre>
 </td>
 <td valign="top">
 <pre><code class="language-cpp">#include &lt;cstdio&gt;
+
 #include "ABIX/Interface/Interface.h"
+
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
-constexpr InterfaceId i_area{0x91, 0x00};
+
+constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
+
+// Interface class: Traits describes the contract; Shape only adds methods.
+struct ShapeTraits {
+    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 1;
+    static constexpr uint32_t area_slot = 0;
+};
+class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
+    using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+
+public:
+    using Base::Base;
+    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
+};
+
+// Three implementations: plain structs, no inheritance, no virtual functions.
+struct Square {
+    int side;
+};
+struct Rectangle {
+    int width;
+    int height;
+};
+struct Triangle {
+    int base;
+    int height;
+};
+
+int square_area(const void *self) {
+    const auto *s = static_cast&lt;const Square *&gt;(self);
+    return s-&gt;side * s-&gt;side;
+}
+int rectangle_area(const void *self) {
+    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
+    return r-&gt;width * r-&gt;height;
+}
+int triangle_area(const void *self) {
+    const auto *t = static_cast&lt;const Triangle *&gt;(self);
+    return t-&gt;base * t-&gt;height / 2;
+}
+
 constexpr TypeId square_id{0x11, 0x00};
-constexpr TypeId circle_id{0x12, 0x00};
-using AreaFn = int (*)(const void *);
-struct Square { int side; };
-struct Circle { int radius; };
-int square_area(const void *self) { int a = static_cast&lt;const Square *&gt;(self)-&gt;side; return a * a; }
-int circle_area(const void *self) { int r = static_cast&lt;const Circle *&gt;(self)-&gt;radius; return 3 * r * r; }
+constexpr TypeId rectangle_id{0x12, 0x00};
+constexpr TypeId triangle_id{0x13, 0x00};
+
+InterfaceStatus register_shape(InterfaceRegistry&lt;4&gt; &amp;registry, TypeId type, const InterfaceMethod *methods) {
+    return registry.add({ShapeTraits::id, type, methods, 1, ShapeTraits::version, 0});
+}
+
 int main() {
-    const InterfaceMethod square_methods[] = {{{0x01, 0x00}, interface_entry(&amp;square_area), 0, 0}};
-    const InterfaceMethod circle_methods[] = {{{0x01, 0x00}, interface_entry(&amp;circle_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+
     InterfaceRegistry&lt;4&gt; registry;
-    registry.add({i_area, square_id, square_methods, 1, 1, 0});
-    registry.add({i_area, circle_id, circle_methods, 1, 1, 0});
-    Square sq{3};
-    Circle ci{2};
-    struct Case { void *object; TypeId type; };
-    const Case cases[] = {{&amp;sq, square_id}, {&amp;ci, circle_id}};
-    for (const Case &amp;k : cases) {
-        InterfaceRef&lt;2&gt; ref;
-        ref.resolve(registry, k.object, k.type, i_area, 1);
-        const auto area = ref.method&lt;AreaFn&gt;(0);
-        std::printf("area=%d\n", area(ref.object()));
+    if (register_shape(registry, square_id, square_methods) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, rectangle_id, rectangle_methods) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, triangle_id, triangle_methods) != InterfaceStatus::ok) return 1;
+
+    Square square{3};
+    Rectangle rectangle{2, 6};
+    Triangle triangle{4, 5};
+    struct Case {
+        void *object;
+        TypeId type;
+    };
+    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
+    for (const Case &amp;c : cases) {
+        Shape shape(registry, c.object, c.type);
+        if (!shape.valid()) return 1;
+        std::printf("area=%d\n", shape.area());
     }
     return 0;
 }</code></pre>
@@ -112,13 +174,13 @@ int main() {
 The difference is not whether polymorphism is possible, but **what carries it**:
 
 - The left encodes polymorphism in the **type system**: `Shape` is a base class,
-  `Square`/`Circle` must inherit and `override`, and `area()` dispatches through
-  the object's vptr into a compiler-private vtable.
-- The right encodes polymorphism in an **interface contract**: `i_area` is the
-  interface identity, methods are addressed by a stable `slot` (0 here), and
-  `entry` is the adapter; `Square`/`Circle` are plain `struct`s with no
-  inheritance and no virtual function. Dispatch is the native entry fetched by
-  `ref.method<AreaFn>(0)`.
+  `Square`/`Rectangle`/`Triangle` must inherit and `override`, and `area()`
+  dispatches through the object's vptr into a compiler-private vtable.
+- The right encodes polymorphism in an **interface contract**: `ShapeTraits`
+  describes the identity, version and slots, and the `Shape` proxy caches the
+  resolved adapter entries; `Square`/`Rectangle`/`Triangle` are plain `struct`s
+  with no inheritance and no virtual function. After binding, `shape.area()` is a
+  native indirect call.
 
 ### Side by side
 
@@ -1155,20 +1217,22 @@ class as well (otherwise only `Traits`, with a note explaining why).
 
 #### Three ways to do it
 
-The same task — measure a shape's area and call it polymorphically — written three
-ways, all printing `area=25`.
+The same task — measure three shapes' areas and call them polymorphically —
+written three ways, all printing `area=25`, `area=24` and `area=12`.
 
-Left: a C++ virtual function; middle: ABIX manual registration (a hand-written adapter + `InterfaceRegistry` + `InterfaceRef`); right: an ABIX proxy (`Traits` + `InterfaceProxy`).
+Left: C++ virtual functions; middle: ABIX manual registration (a hand-written adapter + `InterfaceRegistry` + `InterfaceRef`); right: an ABIX proxy (`Traits` + `InterfaceProxy`).
 
 <table>
 <tr>
-<th align="left">C++ virtual function</th>
+<th align="left">C++ virtual functions</th>
 <th align="left">ABIX: manual registration</th>
 <th align="left">ABIX: proxy (Proxy.h)</th>
 </tr>
 <tr>
 <td valign="top">
-<pre><code class="language-cpp">struct Shape {
+<pre><code class="language-cpp">#include &lt;cstdio&gt;
+
+struct Shape {
     virtual ~Shape() = default;
     virtual int area() const = 0;
 };
@@ -1177,53 +1241,124 @@ struct Square : Shape {
     int area() const override { return side * side; }
     int side;
 };
+struct Rectangle : Shape {
+    Rectangle(int w, int h) : width(w), height(h) {}
+    int area() const override { return width * height; }
+    int width, height;
+};
+struct Triangle : Shape {
+    Triangle(int b, int h) : base(b), height(h) {}
+    int area() const override { return base * height / 2; }
+    int base, height;
+};
 int main() {
-    Square sq{5};
-    const Shape &amp;s = sq;                    // polymorphic
-    std::printf("area=%d\n", s.area());     // 25
+    Square square{5};
+    Rectangle rectangle{4, 6};
+    Triangle triangle{6, 4};
+    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
+    for (const Shape *shape : shapes) std::printf("area=%d\n", shape-&gt;area());
+    return 0;
 }</code></pre>
 </td>
 <td valign="top">
-<pre><code class="language-cpp">struct Square { int side; };
-int square_area(const void *self) {
-    int s = static_cast&lt;const Square *&gt;(self)-&gt;side;
-    return s * s;
-}
+<pre><code class="language-cpp">#include &lt;cstdio&gt;
+
+#include "ABIX/Interface/Interface.h"
+
+using namespace skl::abix::poly;
+using skl::abix::model::TypeId;
+
+constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
+constexpr InterfaceId kShape = interface_id("Shape", 1, area_sig);
+constexpr TypeId square_id{0x11, 0x00};
+constexpr TypeId rectangle_id{0x12, 0x00};
+constexpr TypeId triangle_id{0x13, 0x00};
 using AreaFn = int (*)(const void *);
+
+struct Square {
+    int side;
+};
+struct Rectangle {
+    int width;
+    int height;
+};
+struct Triangle {
+    int base;
+    int height;
+};
+
+int square_area(const void *self) {
+    const auto *s = static_cast&lt;const Square *&gt;(self);
+    return s-&gt;side * s-&gt;side;
+}
+int rectangle_area(const void *self) {
+    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
+    return r-&gt;width * r-&gt;height;
+}
+int triangle_area(const void *self) {
+    const auto *t = static_cast&lt;const Triangle *&gt;(self);
+    return t-&gt;base * t-&gt;height / 2;
+}
+
 int main() {
-    const InterfaceMethod m[] = {
-        {{0x1111, 0x2222}, interface_entry(&amp;square_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+
     InterfaceRegistry&lt;4&gt; registry;
-    registry.add({kShapeInterface, square_id, m, 1, 1, 0});
-    Square sq{5};
-    InterfaceRef&lt;4&gt; ref;
-    ref.resolve(registry, &amp;sq, square_id, kShapeInterface, 1);
-    std::printf("area=%d\n", ref.method&lt;AreaFn&gt;(0)(ref.object()));
+    if (registry.add({kShape, square_id, square_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
+    if (registry.add({kShape, rectangle_id, rectangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
+    if (registry.add({kShape, triangle_id, triangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
+
+    Square square{5};
+    Rectangle rectangle{4, 6};
+    Triangle triangle{6, 4};
+    struct Case {
+        void *object;
+        TypeId type;
+    };
+    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
+    for (const Case &amp;c : cases) {
+        InterfaceRef&lt;2&gt; ref;
+        if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
+        const auto area = ref.method&lt;AreaFn&gt;(0);
+        std::printf("area=%d\n", area(ref.object()));
+    }
+    return 0;
 }</code></pre>
 </td>
 <td valign="top">
-<pre><code class="language-cpp">// Traits: written by hand, or generated by amc generate -l cpp
+<pre><code class="language-cpp">// contract, adapters, method tables and registration as in the middle column
 struct ShapeTraits {
-    static constexpr InterfaceId id = kShapeInterface;
+    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     static constexpr size_t slots = 1;
     static constexpr uint32_t area_slot = 0;
 };
 class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
     using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+
 public:
     using Base::Base;
-    int area() const noexcept {
-        return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot);
-    }
+    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
     InterfaceStatus area(int &amp;out) const noexcept {
         return this-&gt;template call_checked&lt;int (*)(const void *)&gt;(out, ShapeTraits::area_slot);
     }
 };
 int main() {
-    /* registration as in the middle column */
-    Shape shape(registry, &amp;sq, square_id);
-    std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+    // registry / square / rectangle / triangle as in the middle column
+    struct Case {
+        void *object;
+        TypeId type;
+    };
+    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
+    for (const Case &amp;c : cases) {
+        Shape shape(registry, c.object, c.type);
+        std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+    }
+    return 0;
 }</code></pre>
 </td>
 </tr>

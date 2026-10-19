@@ -27,8 +27,8 @@ Metadata Region（扩展 kind 7–11），供消费端在运行时发现。
 
 ## 与 C++ 虚函数对比
 
-同一件事——两个形状各自算面积，再对一组形状做多态调用——两种写法。左栏是 C++ 原生虚函数，右栏是
-ABIX Interface；两段程序都输出 `area=9`、`area=12`，都能直接编译运行。
+同一件事——三个形状各自算面积，再对一组形状做多态调用——两种写法。左栏是 C++ 原生虚函数，右栏是
+ABIX Interface；两段程序都输出 `area=9`、`area=12`、`area=10`，都能直接编译运行。
 
 <table>
 <tr>
@@ -38,6 +38,7 @@ ABIX Interface；两段程序都输出 `area=9`、`area=12`，都能直接编译
 <tr>
 <td valign="top">
 <pre><code class="language-cpp">#include &lt;cstdio&gt;
+
 struct Shape {
     virtual ~Shape() = default;
     virtual int area() const = 0;
@@ -47,60 +48,109 @@ struct Square : Shape {
     int area() const override { return side * side; }
     int side;
 };
-struct Circle : Shape {
-    explicit Circle(int r) : radius(r) {}
-    int area() const override { return 3 * radius * radius; }
-    int radius;
+struct Rectangle : Shape {
+    Rectangle(int w, int h) : width(w), height(h) {}
+    int area() const override { return width * height; }
+    int width, height;
+};
+struct Triangle : Shape {
+    Triangle(int b, int h) : base(b), height(h) {}
+    int area() const override { return base * height / 2; }
+    int base, height;
 };
 int total(const Shape &amp;s) { return s.area(); }
 int main() {
-    Square sq{3};
-    Circle ci{2};
-    const Shape *shapes[] = {&amp;sq, &amp;ci};
-    for (const Shape *s : shapes) std::printf("area=%d\n", total(*s));
+    Square square{3};
+    Rectangle rectangle{2, 6};
+    Triangle triangle{4, 5};
+    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
+    for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
     return 0;
 }</code></pre>
 </td>
 <td valign="top">
 <pre><code class="language-cpp">#include &lt;cstdio&gt;
+
 #include "ABIX/Interface/Interface.h"
+
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
-constexpr InterfaceId i_area{0x91, 0x00};
-constexpr TypeId square_id{0x11, 0x00};
-constexpr TypeId circle_id{0x12, 0x00};
-using AreaFn = int (*)(const void *);
+
+constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
+
+// 接口类：Traits 描述契约，Shape 只补方法。
+struct ShapeTraits {
+    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 1;
+    static constexpr uint32_t area_slot = 0;
+};
+class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
+    using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+
+public:
+    using Base::Base;
+    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
+};
+
+// 三个实现类：普通 struct，不继承 Shape，不含虚函数。
 struct Square {
     int side;
 };
-struct Circle {
-    int radius;
+struct Rectangle {
+    int width;
+    int height;
 };
-int square_area(const void *self) { 
-    int a = static_cast&lt;
-    const Square *&gt;(self)-&gt;side; 
-    return a * a; 
+struct Triangle {
+    int base;
+    int height;
+};
+
+int square_area(const void *self) {
+    const auto *s = static_cast&lt;const Square *&gt;(self);
+    return s-&gt;side * s-&gt;side;
 }
-int circle_area(const void *self) { 
-    int r = static_cast&lt;
-    const Circle *&gt;(self)-&gt;radius;
-    return 3 * r * r;
+int rectangle_area(const void *self) {
+    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
+    return r-&gt;width * r-&gt;height;
 }
+int triangle_area(const void *self) {
+    const auto *t = static_cast&lt;const Triangle *&gt;(self);
+    return t-&gt;base * t-&gt;height / 2;
+}
+
+constexpr TypeId square_id{0x11, 0x00};
+constexpr TypeId rectangle_id{0x12, 0x00};
+constexpr TypeId triangle_id{0x13, 0x00};
+
+InterfaceStatus register_shape(InterfaceRegistry&lt;4&gt; &amp;registry, TypeId type, const InterfaceMethod *methods) {
+    return registry.add({ShapeTraits::id, type, methods, 1, ShapeTraits::version, 0});
+}
+
 int main() {
-    const InterfaceMethod square_methods[] = {{{0x01, 0x00}, interface_entry(&amp;square_area), 0, 0}};
-    const InterfaceMethod circle_methods[] = {{{0x01, 0x00}, interface_entry(&amp;circle_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+
     InterfaceRegistry&lt;4&gt; registry;
-    registry.add({i_area, square_id, square_methods, 1, 1, 0});
-    registry.add({i_area, circle_id, circle_methods, 1, 1, 0});
-    Square sq{3};
-    Circle ci{2};
-    struct Case { void *object; TypeId type; };
-    const Case cases[] = {{&amp;sq, square_id}, {&amp;ci, circle_id}};
-    for (const Case &amp;k : cases) {
-        InterfaceRef&lt;2&gt; ref;
-        ref.resolve(registry, k.object, k.type, i_area, 1);
-        const auto area = ref.method&lt;AreaFn&gt;(0);
-        std::printf("area=%d\n", area(ref.object()));
+    if (register_shape(registry, square_id, square_methods) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, rectangle_id, rectangle_methods) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, triangle_id, triangle_methods) != InterfaceStatus::ok) return 1;
+
+    Square square{3};
+    Rectangle rectangle{2, 6};
+    Triangle triangle{4, 5};
+    struct Case {
+        void *object;
+        TypeId type;
+    };
+    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
+    for (const Case &amp;c : cases) {
+        Shape shape(registry, c.object, c.type);
+        if (!shape.valid()) return 1;
+        std::printf("area=%d\n", shape.area());
     }
     return 0;
 }</code></pre>
@@ -110,11 +160,11 @@ int main() {
 
 差别不在「能不能多态」，而在**多态的载体是什么**：
 
-- 左栏把多态编码进**类型系统**：`Shape` 是基类，`Square`/`Circle` 必须继承并 `override`，`area()`
-  的分派靠对象里的 vptr 指向编译器私有的 vtable。
-- 右栏把多态编码进**接口契约**：`i_area` 是接口身份，方法按稳定 `slot`（此处 0）寻址，`entry` 是
-  适配器；`Square`/`Circle` 是普通 `struct`，不继承、不含虚函数。分派靠 `ref.method<AreaFn>(0)`
-  取出的原生入口。
+- 左栏把多态编码进**类型系统**：`Shape` 是基类，`Square`/`Rectangle`/`Triangle` 必须继承并
+  `override`，`area()` 的分派靠对象里的 vptr 指向编译器私有的 vtable。
+- 右栏把多态编码进**接口契约**：`ShapeTraits` 描述接口身份、版本与 slot，`Shape` 代理缓存已解析的
+  适配器入口；`Square`/`Rectangle`/`Triangle` 是普通 `struct`，不继承、不含虚函数。绑定后
+  `shape.area()` 就是原生间接调用。
 
 ### 逐项对照
 
@@ -1053,7 +1103,7 @@ amc-dump module.abix                       # 完整 section dump
 
 #### 三种写法对比
 
-同一件事——一个形状算面积、按多态方式调用——三种写法，输出一致（`area=25`）。
+同一件事——三个形状算面积、按多态方式调用——三种写法，输出一致（`area=25`、`area=24`、`area=12`）。
 
 左：C++ 虚函数；中：ABIX 手动注册（手写适配器 + `InterfaceRegistry` + `InterfaceRef`）；右：ABIX 代理（`Traits` + `InterfaceProxy`）。
 
@@ -1065,7 +1115,9 @@ amc-dump module.abix                       # 完整 section dump
 </tr>
 <tr>
 <td valign="top">
-<pre><code class="language-cpp">struct Shape {
+<pre><code class="language-cpp">#include &lt;cstdio&gt;
+
+struct Shape {
     virtual ~Shape() = default;
     virtual int area() const = 0;
 };
@@ -1074,53 +1126,124 @@ struct Square : Shape {
     int area() const override { return side * side; }
     int side;
 };
+struct Rectangle : Shape {
+    Rectangle(int w, int h) : width(w), height(h) {}
+    int area() const override { return width * height; }
+    int width, height;
+};
+struct Triangle : Shape {
+    Triangle(int b, int h) : base(b), height(h) {}
+    int area() const override { return base * height / 2; }
+    int base, height;
+};
 int main() {
-    Square sq{5};
-    const Shape &amp;s = sq;                    // 多态
-    std::printf("area=%d\n", s.area());     // 25
+    Square square{5};
+    Rectangle rectangle{4, 6};
+    Triangle triangle{6, 4};
+    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
+    for (const Shape *shape : shapes) std::printf("area=%d\n", shape-&gt;area());
+    return 0;
 }</code></pre>
 </td>
 <td valign="top">
-<pre><code class="language-cpp">struct Square { int side; };
-int square_area(const void *self) {
-    int s = static_cast&lt;const Square *&gt;(self)-&gt;side;
-    return s * s;
-}
+<pre><code class="language-cpp">#include &lt;cstdio&gt;
+
+#include "ABIX/Interface/Interface.h"
+
+using namespace skl::abix::poly;
+using skl::abix::model::TypeId;
+
+constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
+constexpr InterfaceId kShape = interface_id("Shape", 1, area_sig);
+constexpr TypeId square_id{0x11, 0x00};
+constexpr TypeId rectangle_id{0x12, 0x00};
+constexpr TypeId triangle_id{0x13, 0x00};
 using AreaFn = int (*)(const void *);
+
+struct Square {
+    int side;
+};
+struct Rectangle {
+    int width;
+    int height;
+};
+struct Triangle {
+    int base;
+    int height;
+};
+
+int square_area(const void *self) {
+    const auto *s = static_cast&lt;const Square *&gt;(self);
+    return s-&gt;side * s-&gt;side;
+}
+int rectangle_area(const void *self) {
+    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
+    return r-&gt;width * r-&gt;height;
+}
+int triangle_area(const void *self) {
+    const auto *t = static_cast&lt;const Triangle *&gt;(self);
+    return t-&gt;base * t-&gt;height / 2;
+}
+
 int main() {
-    const InterfaceMethod m[] = {
-        {{0x1111, 0x2222}, interface_entry(&amp;square_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+
     InterfaceRegistry&lt;4&gt; registry;
-    registry.add({kShapeInterface, square_id, m, 1, 1, 0});
-    Square sq{5};
-    InterfaceRef&lt;4&gt; ref;
-    ref.resolve(registry, &amp;sq, square_id, kShapeInterface, 1);
-    std::printf("area=%d\n", ref.method&lt;AreaFn&gt;(0)(ref.object()));
+    if (registry.add({kShape, square_id, square_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
+    if (registry.add({kShape, rectangle_id, rectangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
+    if (registry.add({kShape, triangle_id, triangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
+
+    Square square{5};
+    Rectangle rectangle{4, 6};
+    Triangle triangle{6, 4};
+    struct Case {
+        void *object;
+        TypeId type;
+    };
+    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
+    for (const Case &amp;c : cases) {
+        InterfaceRef&lt;2&gt; ref;
+        if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
+        const auto area = ref.method&lt;AreaFn&gt;(0);
+        std::printf("area=%d\n", area(ref.object()));
+    }
+    return 0;
 }</code></pre>
 </td>
 <td valign="top">
-<pre><code class="language-cpp">// Traits 可手写，或由 amc generate -l cpp 生成
+<pre><code class="language-cpp">// 契约、适配器、方法表与注册同中栏
 struct ShapeTraits {
-    static constexpr InterfaceId id = kShapeInterface;
+    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     static constexpr size_t slots = 1;
     static constexpr uint32_t area_slot = 0;
 };
 class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
     using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+
 public:
     using Base::Base;
-    int area() const noexcept {
-        return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot);
-    }
+    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
     InterfaceStatus area(int &amp;out) const noexcept {
         return this-&gt;template call_checked&lt;int (*)(const void *)&gt;(out, ShapeTraits::area_slot);
     }
 };
 int main() {
-    /* 注册同中栏 */
-    Shape shape(registry, &amp;sq, square_id);
-    std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+    // registry / square / rectangle / triangle 同中栏
+    struct Case {
+        void *object;
+        TypeId type;
+    };
+    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
+    for (const Case &amp;c : cases) {
+        Shape shape(registry, c.object, c.type);
+        std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+    }
+    return 0;
 }</code></pre>
 </td>
 </tr>
