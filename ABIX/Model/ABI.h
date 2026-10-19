@@ -25,7 +25,7 @@ using LayoutHash = Hash128;
 // AMC's canonical TypeID: `hash_text(canonical_name, "TYPE")`. Unlike
 // `type_hash` in Compat.h (ABIX's internal FNV scheme), this reproduces the
 // identity AMC records in artifacts. Primitives use AMC's ABI key
-// (`prim:i4`, `prim:u8`, `prim:f32`, ...), not the C++ spelling; user-defined
+// (`prim:i32`, `prim:u64`, `prim:fieee32`, ...), not the C++ spelling; user-defined
 // types use the canonical spelling AMC records. Keep the name exact.
 constexpr TypeId canonical_type_id(const char *canonical_name) noexcept {
     size_t size = 0;

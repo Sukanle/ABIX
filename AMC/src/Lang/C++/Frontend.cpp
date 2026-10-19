@@ -123,10 +123,11 @@ std::string primitive_abi_key(clang::ASTContext &ctx, clang::QualType qt, uint32
     if (bt->isInteger()) {
         // Integer width *is* ABI: `int` and `long` differ, so the key carries
         // width and signedness. `long`/`long long` still collapse because they
-        // share both.
+        // share both. The width is in bits (`prim:i32`), matching the `i8`/`u64`
+        // spelling the rest of the toolchain uses.
         abi = amc::primitive_abi(bytes, is_signed ? amc::PrimitiveAbiKind::sint : amc::PrimitiveAbiKind::uint,
             amc::FloatFormat::none, is_signed);
-        return std::string(is_signed ? "prim:i" : "prim:u") + std::to_string(bytes);
+        return std::string(is_signed ? "prim:i" : "prim:u") + std::to_string(bytes * 8);
     }
     if (bt->isFloatingPoint()) {
         // Floats are identified by format, not spelling: a target where

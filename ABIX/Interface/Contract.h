@@ -160,7 +160,7 @@ constexpr InterfaceId interface_id(
 // `model::canonical_type_id` or an AMC artifact. This removes the 64-bit
 // constants from a hand-written contract, but it still needs the same inputs
 // AMC used: it cannot infer a C++ spelling such as `int32_t` (AMC keys that as
-// `prim:i4`) from the preprocessor.
+// `prim:i32`) from the preprocessor.
 constexpr InterfaceMethodHash method_signature(
     const char *name, model::TypeId return_type, const model::TypeId *parameters, size_t count) noexcept {
     util::CanonicalState state = util::canonical_hash_begin(0X5349474E41545552ULL);

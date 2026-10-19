@@ -104,7 +104,7 @@ PrimitiveSpec primitive_spec(const std::string &name, uint32_t sz) {
         const char *fmt_tag = sz == 4 ? "ieee32" : "ieee64";
         return {std::string("f") + fmt_tag, amc::primitive_abi(sz, PrimitiveAbiKind::floating, format)};
     }
-    return {std::string(is_unsigned ? "u" : "i") + std::to_string(sz),
+    return {std::string(is_unsigned ? "u" : "i") + std::to_string(sz * 8),
         amc::primitive_abi(
             sz, is_unsigned ? PrimitiveAbiKind::uint : PrimitiveAbiKind::sint, FloatFormat::none, !is_unsigned)};
 }
