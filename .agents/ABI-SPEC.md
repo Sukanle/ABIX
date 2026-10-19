@@ -104,7 +104,7 @@ A primitive and a nominal type may still be ABI-compatible; that is decided by
   particular, a primitive's layout is a function of its ABI descriptor (§4), not
   of its name, so a C `double` and a Rust `f64` of the same target share a
   `LayoutHash`.
-- `model::structural_layout_hash` is an in-memory digest over the same layout facts and is **not** the artifact `LayoutHash`; it must not be compared with the value stored in the artifact.
+- `LayoutHash` is the Canonical Layout Encoding v1 value (§11.2); there is no separate runtime-local layout digest.
 - A concrete type with size or alignment zero is invalid.
 
 ## 6. Function ABI
@@ -351,13 +351,12 @@ Identity APIs share the engine but not their meaning. Each has its own canonical
 | `TypeID` (nominal) | canonical qualified name, e.g. `cv::Point`, `std::errc` | `0x54595045` (`"TYPE"`) |
 | `SignatureHash` (method identity) | `name + decimal(return.lo) + decimal(return.hi) + Σ(decimal(param.lo) + decimal(param.hi))`; parameter names are excluded | `0x5349474E41545552` (`"SIGNATUR"`) |
 | `InterfaceId` | `"ABIX-INTERFACE:" + name + ":" + version`, then `":" + decimal(sig.lo) + ":" + decimal(sig.hi)` per method in slot order | `0x494E544552464143` (`"INTERFAC"`) |
-| Artifact `LayoutHash` | canonical layout description defined by §5 and the metadata generator | `0x4C41594F5554` (`"LAYOUT"`) |
-| ABIX `structural_layout_hash` | fixed-width big-endian layout description: TypeID, size, align, field count, then each field's TypeID, offset, flags, bit offset and bit width | `0x4C41594F55545F31` (`"LAYOUT_1"`) |
-| ABIX `abi_signature_hash` | fixed-width big-endian return/parameter TypeIDs, parameter count, calling convention and qualifiers | `0x4142495349475F31` (`"ABISIG_1"`) |
+| `LayoutHash` | Canonical Layout Encoding v1 bytes (§11.2): TypeID, size, align, field count, then each field's TypeID, offset and ABI-relevant flags | `0x4C41594F55545631` (`"LAYOUTV1"`) |
+| `abi_signature_hash` | fixed-width big-endian return/parameter TypeIDs, parameter count, calling convention and qualifiers | `0x4142495349475F31` (`"ABISIG_1"`) |
 
 Type identity, layout identity, method identity, call-ABI signature and interface identity are different facts. The same `TypeID` does not imply the same `LayoutHash`; the same `SignatureHash` does not imply that two calling conventions are interchangeable, and the call-ABI digest together with §8 and §12 decides that.
 
-`model::type_hash` and `model::signature_hash` were removed during the devel-beta identity migration. `model::canonical_type_id` is the type entry, `poly::method_signature` the method entry, `poly::interface_id` the interface entry, and `model::structural_layout_hash` / `model::abi_signature_hash` the distinct layout and call-ABI digests. The legacy `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` family was removed; it was a second engine and was not used for identity.
+`model::type_hash`, `model::signature_hash` and `model::structural_layout_hash` were removed during the devel-beta identity migration. `model::canonical_type_id` is the type entry, `poly::method_signature` the method entry, `poly::interface_id` the interface entry, `model::canonical_layout_hash` the layout entry and `model::abi_signature_hash` the call-ABI digest. The legacy `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` family was removed; it was a second engine and was not used for identity.
 
 This migration changes every derived hash (primitive TypeIDs, signatures, layouts, interface ids and artifact hashes). Artifacts, caches and generated projections produced before it must be regenerated.
 
@@ -385,11 +384,11 @@ The encoding is a byte string. Integers are unsigned big-endian; a `Hash128` con
 
 Each field entry is `type_id` (16 bytes: `lo`, `hi`), `offset` (4 bytes) and `flags` (4 bytes). Fields appear in declaration order. The flags value is masked with `0xFFFF0003`: bit 0 (`field_bitfield`) and bit 1 (`field_base`) mark the field kind, and bits 16–31 carry the packed bit offset and bit width. Visibility (bits 8–9) and reserved bits are not part of layout and are dropped before encoding.
 
-`LayoutHash` is `hash_text(CLE bytes, domain = 0x4C41594F55545631` (`"LAYOUTV1"`))`. `structural_layout_hash` is an ABIX-local digest over an in-memory projection and is **not** this value; a consumer must compare `canonical_layout_hash` against the artifact field, not the local digest.
+`LayoutHash` is `hash_text(CLE bytes, domain = 0x4C41594F55545631` (`"LAYOUTV1"`))`. It is the only layout identity: there is no runtime-local layout digest to confuse it with.
 
 The normative requirement is: for the same target ABI and the same canonical layout facts, every conforming ABIX or AMC implementation must produce identical CLE bytes and an identical `LayoutHash`. A matching `LayoutHash` proves layout compatibility within the scope of this encoding and nothing more; type identity and full call-ABI compatibility remain `TypeID` and the call-ABI signature.
 
-CLE v1 is a new identity rule. It is selected by the optional `layout_encoding` section (`.abix` section id 28), whose payload is a single big-endian `u32` version. A value of `1` means every `LayoutHash` in the artifact is a CLE v1 value and a conforming reader must recompute it from the layout records; the absence of the section means the legacy text-based rule. Artifacts are therefore interpreted by their own rule and must be regenerated before a consumer may compare them with a CLE v1 value.
+Every artifact written under this rule carries the `layout_encoding` section (`.abix` section id 28) with a single big-endian `u32` version equal to `1`. A reader must reject an artifact without the section or with a different version, and must recompute each `LayoutHash` from the layout records before accepting the artifact. There is no legacy layout rule to fall back to.
 
 ## 12. Compat Rules
 

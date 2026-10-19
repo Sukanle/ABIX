@@ -851,7 +851,7 @@ private:
         record.size = size == 0 ? 1 : size;
         record.align = align == 0 ? 1 : align;
         std::vector<amc::Field> layout(module_.fields.begin() + record.field_begin, module_.fields.end());
-        record.layout_hash = amc::layout_hash(record, layout);
+        record.layout_hash = amc::canonical_layout_hash(module_, record, layout);
         resolved_[item.name] = index;
         return index;
     }

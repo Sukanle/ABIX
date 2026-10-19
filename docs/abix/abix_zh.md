@@ -130,7 +130,7 @@ Hash 算法明确记录在 Header 中，而非隐含在实现里，从而使 `.a
 Section Directory，当前 required sections 的 ID 为：`1 Strings`、`2 Identity`、`13 Target`、`3 Types`、
 `4 Fields`、`5 Functions`、`6 Parameters`、`7 Symbols`、`8 HashDescriptor`、`9 HashTable`。
 
-`layout_encoding`（section id 28）是可选 section：一个 big-endian `u32`，用于选择布局身份规则。`1` 表示 artifact 中所有 `LayoutHash` 都是 Canonical Layout Encoding v1 值；缺失表示旧的文本规则。不认识该 section 的读者会跳过它，CLE 读者会在接受 artifact 前从布局记录独立复算每个 `LayoutHash`。
+`layout_encoding`（section id 28）携带一个 big-endian `u32`，当前为 `1`（Canonical Layout Encoding v1）。本工具链写出的每个 artifact 都包含它；reader 必须拒绝缺少它的 artifact，并在接受 artifact 前从布局记录独立复算每个 `LayoutHash`。
 
 已实现的 string 引用一律为 `(offset, length)`；Identity record 还携带 package name 和
 package version 的该引用。读者会拒绝错误目录范围、错误 required entry size、越界字符串

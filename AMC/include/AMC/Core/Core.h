@@ -413,9 +413,9 @@ struct InterfaceImplementation {
 struct AbiModule {
     std::string package_name, package_version;
     uint32_t arch = 0, os = 0, target_abi = 0, compiler = 1, calling_convention = 0;
-    // Layout identity rule used by the artifact: 0 = legacy text-based
-    // LayoutHash, 1 = Canonical Layout Encoding v1. The optional
-    // `layout_encoding` section carries this value; its absence means 0.
+    // Layout identity rule recorded by the artifact. Currently always
+    // `canonical_layout_version` (Canonical Layout Encoding v1); the required
+    // `layout_encoding` section carries it.
     uint32_t layout_encoding_version = 0;
     // Target platform facts used for verification. 0 means "unknown", which is
     // reported as unverifiable rather than assumed compatible.
@@ -450,7 +450,6 @@ struct AbiModule {
 };
 
 Hash128 hash_text(std::string_view text, uint64_t domain);
-Hash128 layout_hash(const Type &, const std::vector<Field> &);
 Hash128 signature_hash(const Function &);
 // Canonical Layout Encoding v1 (ABI-SPEC §11.2): the versioned, name-independent
 // byte encoding shared with ABIX. `canonical_layout_encoding` produces the

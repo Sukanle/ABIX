@@ -197,22 +197,34 @@ void test_abi_hash_and_hash_table(TestResult &r) {
 
 void test_layout_hash_stability(TestResult &r) {
     std::cerr << "[layout_hash_stability]\n";
+    amc::AbiModule module;
+    module.arch = 1;
+    module.os = 1;
+    module.target_abi = 1;
+    module.compiler = 1;
     amc::Type t = make_record("Foo", 16, 8, 0, 2);
     std::vector<amc::Field> fs = {
         make_field("x", make_type_id("int"), 0),
         make_field("y", make_type_id("double"), 8),
     };
-    auto lh1 = amc::layout_hash(t, fs);
-    auto lh2 = amc::layout_hash(t, fs);
+    auto lh1 = amc::canonical_layout_hash(module, t, fs);
+    auto lh2 = amc::canonical_layout_hash(module, t, fs);
     AMC_CHECK(r, lh1.lo, lh2.lo, "layout_hash lo stable");
     AMC_CHECK(r, lh1.hi, lh2.hi, "layout_hash hi stable");
 
-    std::vector<amc::Field> fs2 = {
-        make_field("x", make_type_id("int"), 0),
-        make_field("z", make_type_id("double"), 8),
+    std::vector<amc::Field> renamed = {
+        make_field("a", make_type_id("int"), 0),
+        make_field("b", make_type_id("double"), 8),
     };
-    auto lh3 = amc::layout_hash(t, fs2);
-    AMC_TEST(r, lh1.lo != lh3.lo || lh1.hi != lh3.hi, "different field names produce different layout hashes");
+    auto lh3 = amc::canonical_layout_hash(module, t, renamed);
+    AMC_TEST(r, lh1.lo == lh3.lo && lh1.hi == lh3.hi, "field names do not affect the canonical layout hash");
+
+    std::vector<amc::Field> moved = {
+        make_field("x", make_type_id("int"), 0),
+        make_field("y", make_type_id("double"), 4),
+    };
+    auto lh4 = amc::canonical_layout_hash(module, t, moved);
+    AMC_TEST(r, lh1.lo != lh4.lo || lh1.hi != lh4.hi, "a different field offset changes the layout hash");
 }
 
 void test_signature_hash_stability(TestResult &r) {
@@ -631,14 +643,14 @@ void test_abix_v4_section_directory(TestResult &r) {
     AMC_TEST(r, amc::write_abix(module, path, error), "write v4 artifact");
 
     const auto bytes = read_bytes(path);
-    AMC_TEST(r, bytes.size() >= 20 + 13 * 24, "v4 artifact has header and directory");
-    if (bytes.size() >= 20 + 13 * 24) {
+    AMC_TEST(r, bytes.size() >= 20 + 14 * 24, "v4 artifact has header and directory");
+    if (bytes.size() >= 20 + 14 * 24) {
         AMC_CHECK(r, uint32_t(bytes[4]) | (uint32_t(bytes[5]) << 8), uint32_t(4), "format version is v4");
-        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(13), "section count");
+        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(14), "section count");
         AMC_CHECK(r, read_le_u32(bytes, 16), uint32_t(20), "directory follows header");
-        const uint32_t expected_ids[] = {1, 2, 13, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-        const uint32_t expected_sizes[] = {0, 52, 12, 72, 48, 72, 28, 16, 16, 32, 44, 60, 40};
-        for (size_t i = 0; i < 13; ++i) {
+        const uint32_t expected_ids[] = {1, 2, 13, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 28};
+        const uint32_t expected_sizes[] = {0, 52, 12, 72, 48, 72, 28, 16, 16, 32, 44, 60, 40, 4};
+        for (size_t i = 0; i < 14; ++i) {
             const size_t entry = 20 + i * 24;
             AMC_CHECK(r, read_le_u32(bytes, entry), expected_ids[i], "section id");
             if (expected_sizes[i] != 0)
@@ -714,8 +726,8 @@ void test_abix_interface_sections(TestResult &r) {
     std::string error;
     AMC_TEST(r, amc::write_abix(module, path, error), "write interface artifact");
     const auto bytes = read_bytes(path);
-    if (bytes.size() >= 20 + 17 * 24) {
-        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(17), "interface artifact section count");
+    if (bytes.size() >= 20 + 18 * 24) {
+        AMC_CHECK(r, read_le_u32(bytes, 12), uint32_t(18), "interface artifact section count");
         const uint32_t expected_ids[] = {24, 25, 26, 27};
         const uint32_t expected_sizes[] = {40, 72, 44, 56};
         for (size_t i = 0; i < 4; ++i) {
@@ -724,6 +736,10 @@ void test_abix_interface_sections(TestResult &r) {
             AMC_CHECK(r, read_le_u32(bytes, entry + 16), expected_sizes[i], "interface section entry size");
             AMC_CHECK(r, read_le_u32(bytes, entry + 20), uint32_t(0), "interface section is optional");
         }
+        const size_t layout_entry = 20 + 17 * 24;
+        AMC_CHECK(r, read_le_u32(bytes, layout_entry), uint32_t(28), "layout encoding section id");
+        AMC_CHECK(r, read_le_u32(bytes, layout_entry + 12), uint32_t(1), "layout encoding entry count");
+        AMC_CHECK(r, read_le_u32(bytes, layout_entry + 16), uint32_t(4), "layout encoding entry size");
     }
     amc::AbiModule loaded;
     AMC_TEST(r, amc::read_abix(path, loaded, error), "read interface artifact");

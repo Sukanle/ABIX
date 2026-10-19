@@ -29,41 +29,20 @@ enum class CompatResult : uint32_t {
 // `canonical_type_id` (ABI.h); these functions cover the two meanings that must
 // stay separate from it:
 //
-//   * `structural_layout_hash` — physical layout compatibility. The same TypeID can
-//                              have different layouts on different targets.
-//   * `abi_signature_hash`   — call ABI (return/parameter types plus calling
-//                              convention/qualifiers). This is not method
-//                              identity: `poly::method_signature` is the logical
-//                              method identity and does not carry the calling
-//                              convention.
-constexpr uint64_t layout_identity_domain = 0x4C41594F55545F31ULL;   // "LAYOUT_1"
-constexpr uint64_t abi_signature_domain = 0x4142495349475F31ULL;     // "ABISIG_1"
-
-constexpr Hash128 structural_layout_hash(
-    model::TypeId type_id, const model::TypeLayout &layout, const model::Field *fields = nullptr) noexcept {
-    util::CanonicalState state = util::canonical_hash_begin(layout_identity_domain);
-    state = util::canonical_hash_u64_be(state, type_id.lo);
-    state = util::canonical_hash_u64_be(state, type_id.hi);
-    state = util::canonical_hash_u32_be(state, layout.size);
-    state = util::canonical_hash_u32_be(state, layout.align);
-    state = util::canonical_hash_u32_be(state, layout.field_count);
-    for (uint32_t i = 0; fields && i < layout.field_count; ++i) {
-        state = util::canonical_hash_u32_be(state, fields[i].name_offset);
-        state = util::canonical_hash_u64_be(state, fields[i].type_id.lo);
-        state = util::canonical_hash_u64_be(state, fields[i].type_id.hi);
-        state = util::canonical_hash_u32_be(state, fields[i].offset);
-        state = util::canonical_hash_u32_be(state, fields[i].flags);
-        state = util::canonical_hash_u32_be(state, fields[i].bit_offset);
-        state = util::canonical_hash_u32_be(state, fields[i].bit_width);
-    }
-    return Hash128{state.lo, state.hi};
-}
+//   * `canonical_layout_hash` — physical layout compatibility (Canonical Layout
+//                               Encoding v1). The same TypeID can have different
+//                               layouts on different targets.
+//   * `abi_signature_hash`    — call ABI (return/parameter types plus calling
+//                               convention/qualifiers). This is not method
+//                               identity: `poly::method_signature` is the logical
+//                               method identity and does not carry the calling
+//                               convention.
+constexpr uint64_t abi_signature_domain = 0x4142495349475F31ULL;   // "ABISIG_1"
 
 // Canonical Layout Encoding v1 (CLE v1) — the versioned, name-independent byte
-// encoding shared by ABIX and AMC (ABI-SPEC §11.2). `structural_layout_hash`
-// remains a local ABIX digest; `canonical_layout_hash` is the cross-tool value:
-// for the same target ABI and layout facts, both implementations must produce
-// the same bytes and the same hash.
+// encoding shared by ABIX and AMC (ABI-SPEC §11.2). For the same target ABI and
+// layout facts, both implementations must produce the same bytes and the same
+// hash.
 struct LayoutContext {
     uint32_t arch;
     uint32_t os;

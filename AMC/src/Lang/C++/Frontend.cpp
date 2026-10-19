@@ -579,7 +579,8 @@ private:
         std::vector<amc::Field> layout_fields;
         for (uint32_t i = 0; i < module.types[record_index].field_count; ++i)
             layout_fields.push_back(module.fields[module.types[record_index].field_begin + i]);
-        module.types[record_index].layout_hash = amc::layout_hash(module.types[record_index], layout_fields);
+        module.types[record_index].layout_hash =
+            amc::canonical_layout_hash(module, module.types[record_index], layout_fields);
     }
     void add_enum(clang::EnumDecl *d) {
         add_namespaces(d);
@@ -971,7 +972,7 @@ bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std:
         type.size = (end + pointer_size - 1) / pointer_size * pointer_size;
         std::vector<amc::Field> layout_fields(
             module.fields.begin() + type.field_begin, module.fields.begin() + type.field_begin + type.field_count);
-        type.layout_hash = amc::layout_hash(type, layout_fields);
+        type.layout_hash = amc::canonical_layout_hash(module, type, layout_fields);
         module.types.push_back(std::move(type));
         return module.types.back().id;
     };

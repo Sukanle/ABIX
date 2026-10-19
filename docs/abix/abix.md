@@ -127,7 +127,7 @@ A Section Directory replaces fixed `*_offset` fields, avoiding Header layout cha
 
 The current development version of `amc-core` implements and only reads `format_version = 4`. Earlier v1/v2/v3 artifacts are actively deprecated during devel and no compatibility reads are provided. v4 uses the Header and Section Directory described in this section. The current required section IDs are: `1 Strings`, `2 Identity`, `13 Target`, `3 Types`, `4 Fields`, `5 Functions`, `6 Parameters`, `7 Symbols`, `8 HashDescriptor`, `9 HashTable`.
 
-`layout_encoding` (section id 28) is an optional section: a single big-endian `u32` that selects the layout identity rule. `1` means every `LayoutHash` is a Canonical Layout Encoding v1 value; absence means the legacy text-based rule. Readers that do not know the section skip it, and CLE-aware readers recompute each `LayoutHash` from the layout records before accepting the artifact.
+`layout_encoding` (section id 28) carries a single big-endian `u32`, currently `1` (Canonical Layout Encoding v1). Every artifact written by this toolchain includes it, and a reader must reject an artifact without it and recompute each `LayoutHash` from the layout records before accepting the artifact.
 
 All implemented string references use `(offset, length)`; Identity records also carry package name and package version as such references. Readers will reject incorrect directory ranges, incorrect required entry sizes, out-of-bounds string references, invalid TypeKind/SymbolKind, and artifacts that violate Core layout/type reference invariants. The Hash Table is implemented as part of the current required profile. Compat, Map IR, Dependency, and optional sections remain for future expansion.
 

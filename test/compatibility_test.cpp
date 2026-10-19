@@ -4,11 +4,12 @@
 
 TEST_CASE("type, layout and ABI signature hashes are domain separated") {
     constexpr auto type = skl::abix::model::canonical_type_id("Foo");
+    constexpr skl::abix::model::LayoutContext context{0, 0, 0, 0};
     constexpr skl::abix::model::TypeLayout layout{
         16, 8, 0, 0, {0, 0}
     };
-    constexpr auto first_layout = skl::abix::model::structural_layout_hash(type, layout);
-    constexpr auto second_layout = skl::abix::model::structural_layout_hash({0x10, 0}, layout);
+    constexpr auto first_layout = skl::abix::model::canonical_layout_hash(context, type, layout);
+    constexpr auto second_layout = skl::abix::model::canonical_layout_hash(context, {0x10, 0}, layout);
     constexpr auto signature = skl::abix::model::abi_signature_hash(type, nullptr, 0, 0);
 
     REQUIRE(!skl::abix::model::same_hash(type, first_layout));
@@ -19,14 +20,15 @@ TEST_CASE("type, layout and ABI signature hashes are domain separated") {
 
 TEST_CASE("layout and ABI signature digests react to their own inputs") {
     constexpr auto type = skl::abix::model::canonical_type_id("Foo");
+    constexpr skl::abix::model::LayoutContext context{0, 0, 0, 0};
     constexpr skl::abix::model::TypeLayout layout{
         16, 8, 0, 0, {0, 0}
     };
     constexpr skl::abix::model::TypeLayout wider{
         32, 8, 0, 0, {0, 0}
     };
-    REQUIRE(!skl::abix::model::same_hash(
-        skl::abix::model::structural_layout_hash(type, layout), skl::abix::model::structural_layout_hash(type, wider)));
+    REQUIRE(!skl::abix::model::same_hash(skl::abix::model::canonical_layout_hash(context, type, layout),
+        skl::abix::model::canonical_layout_hash(context, type, wider)));
 
     constexpr skl::abix::model::TypeId parameter{0x11, 0x22};
     constexpr auto cdecl_sig = skl::abix::model::abi_signature_hash(type, &parameter, 1, 1);

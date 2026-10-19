@@ -1431,11 +1431,22 @@ int main() {
                       && loaded_layout.types[1].layout_hash == layout_module.types[1].layout_hash,
                 "CLE v1 selector and hash round-trip");
 
-            amc::AbiModule tampered = layout_module;
-            tampered.types[1].layout_hash = {0xDEAD, 0xBEEF};
-            check(amc::write_abix(tampered, "amc_layout_bad.abix", error), "write tampered CLE artifact");
+            // Tamper the on-disk type table's layout hash; the reader must
+            // recompute CLE and reject the mismatch.
+            {
+                std::fstream file("amc_layout_v1.abix", std::ios::binary | std::ios::in | std::ios::out);
+                const std::streamoff directory = 20 + 3 * 24;   // section index 3 is `types`
+                file.seekg(directory + 4);
+                uint8_t raw[4] = {};
+                file.read(reinterpret_cast<char *>(raw), 4);
+                const uint32_t type_offset =
+                    uint32_t(raw[0]) | (uint32_t(raw[1]) << 8) | (uint32_t(raw[2]) << 16) | (uint32_t(raw[3]) << 24);
+                file.seekp(static_cast<std::streamoff>(type_offset) + 16);   // skip the TypeID
+                const char flipped = 1;
+                file.write(&flipped, 1);
+            }
             amc::AbiModule rejected;
-            check(!amc::read_abix("amc_layout_bad.abix", rejected, error), "tampered CLE hash is rejected");
+            check(!amc::read_abix("amc_layout_v1.abix", rejected, error), "tampered CLE hash is rejected");
         }
 
         // A region with no interface reads empty.

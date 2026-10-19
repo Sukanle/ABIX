@@ -6,27 +6,24 @@
 
 ABIX 和 AMC 的职责不同：
 
-- **ABIX**（`ABIX/`）是 header-only 运行时层。它没有任何 `.cpp`，也从不 include
-  `AMC/...`。`libabix-runtime` 只是一个 CMake `INTERFACE` 目标，负责加 include 路径。
-- **AMC** 是构建期工具链（Clang/LLVM + `toml++`）：提取 C++ 语义、计算规范 ABI 身份、
-  生成 `.abix` 产物，并生成 thunk、adapter 与 C++ 投影。
+- **ABIX**（`ABIX/`）是 header-only 运行时层。它没有任何 `.cpp`，也从不 include `AMC/...`。`libabix-runtime` 只是一个 CMake `INTERFACE` 目标，负责加 include 路径。
+- **AMC** 是构建期工具链（Clang/LLVM + `toml++`）：提取 C++ 语义、计算规范 ABI 身份、生成 `.abix` 产物，并生成 thunk、adapter 与 C++ 投影。
 
-因此，纯 C++ 项目可以只依赖 ABIX。AMC 从来不是运行时依赖——即使使用它，最终二进制也不链接
-AMC；而手写的 C++ 契约在构建期同样不需要它。
+因此，纯 C++ 项目可以只依赖 ABIX。AMC 从来不是运行时依赖——即使使用它，最终二进制也不链接AMC；而手写的 C++ 契约在构建期同样不需要它。
 
 代价是契约要手写：适配器表和 `Traits` 由你提供，TypeID 也由你给出，而不是让 Clang 自动提取。
 
 ## 只用 ABIX 能做什么
 
-| 能力 | 头文件 | 需要 AMC？ |
-|---|---|---|
-| Interface 身份与方法签名 | `ABIX/Interface/Contract.h` | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
-| 手写 `Traits` 与代理 | `ABIX/Interface/Declaration.h` | 否——`ABIX_DECLARE_INTERFACE` / `ABIX_DECLARE_INTERFACE_AUTO` |
-| 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h` | 否 |
-| 动态库发现与租约 | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h` | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY` |
-| Owner ABI | `Owner.h` | 否 |
-| 运行时表 / descriptor | `ABIX/Runtime/Registry.h`、`ABIX/Metadata/Descriptor.h`、`SKL_ABIX_DEFINE_TABLE` | 否——结构是公开的，可以手写 |
-| ABIX 自己的类型/布局摘要 | `ABIX/Model/ABI.h`、`ABIX/Model/Compat.h` | 否——`canonical_type_id`、`structural_layout_hash`、`abi_signature_hash` |
+| 能力                     | 头文件                                                                           | 需要 AMC？                                                                   |
+| ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Interface 身份与方法签名 | `ABIX/Interface/Contract.h`                                                      | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
+| 手写 `Traits` 与代理     | `ABIX/Interface/Declaration.h`                                                   | 否——`ABIX_DECLARE_INTERFACE` / `ABIX_DECLARE_INTERFACE_AUTO`                 |
+| 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h`                                                 | 否                                                                           |
+| 动态库发现与租约         | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h`                         | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY`                   |
+| Owner ABI                | `Owner.h`                                                                        | 否                                                                           |
+| 运行时表 / descriptor    | `ABIX/Runtime/Registry.h`、`ABIX/Metadata/Descriptor.h`、`SKL_ABIX_DEFINE_TABLE` | 否——结构是公开的，可以手写                                                   |
+| ABIX 自己的类型/布局摘要 | `ABIX/Model/ABI.h`、`ABIX/Model/Compat.h`                                        | 否——`canonical_type_id`、`canonical_layout_hash`、`abi_signature_hash`       |
 
 一个最小的 C++-only 声明：
 
@@ -51,8 +48,7 @@ InterfaceRegistry<4> registry;
 registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 ```
 
-全程没有 AMC 生成的文件。若是动态库，用同样的信息手写 `ModuleManifest` 并配合
-`SKL_ABIX_DEFINE_MODULE_QUERY`；消费端照常使用 `discover_module` 与 `ModuleRegistry`。
+全程没有 AMC 生成的文件。若是动态库，用同样的信息手写 `ModuleManifest` 并配合`SKL_ABIX_DEFINE_MODULE_QUERY`；消费端照常使用 `discover_module` 与 `ModuleRegistry`。
 
 ## 只用 ABIX 会失去什么
 
@@ -62,37 +58,30 @@ registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 - Clang AST 对类型、字段、布局、函数签名的提取；
 - `.abix` 产物、Metadata Region、`TypeTraits`、布局校验、兼容性报告与 generated adapter；
 - Rust / Zig / Lua 投影；
-- C++ 拼写 → 规范名（`prim:i32`、指针拼写、模板别名）的映射，需要你自己用
-  `if constexpr`、traits 或手写常量实现。
+- C++ 拼写 → 规范名（`prim:i32`、指针拼写、模板别名）的映射，需要你自己用`if constexpr`、traits 或手写常量实现。
 
 ## 一套引擎，多种身份语义
 
-所有身份与摘要函数共用 `util::canonical_hash`（AMC 里叫 `hash_text` 的同一套引擎）。它们的
-区别在规范化输入与 domain，而不是算法：
+所有身份与摘要函数共用 `util::canonical_hash`（AMC 里叫 `hash_text` 的同一套引擎）。它们的区别在规范化输入与 domain，而不是算法：
 
-| API | 语义 | 与 AMC 产物一致？ |
-|---|---|---|
-| `model::canonical_type_id` | 类型身份 | 是——`TypeID` |
-| `poly::method_signature` | 方法身份 | 是——`Function.signature` |
-| `poly::interface_id` | 接口身份 | 是——`InterfaceRecord.id` |
-| `model::canonical_layout_hash` | Canonical Layout Encoding v1（跨工具布局契约） | 是——`LayoutHash` |
-| `model::structural_layout_hash` | ABIX 本地结构摘要 | 否——artifact 契约请用 `canonical_layout_hash` |
-| `model::abi_signature_hash` | 调用 ABI（返回/参数 + 调用约定/限定符） | 不是 `method_signature`；方法身份 ≠ 调用 ABI |
+| API                            | 语义                                           | 与 AMC 产物一致？                            |
+| ------------------------------ | ---------------------------------------------- | -------------------------------------------- |
+| `model::canonical_type_id`     | 类型身份                                       | 是——`TypeID`                                 |
+| `poly::method_signature`       | 方法身份                                       | 是——`Function.signature`                     |
+| `poly::interface_id`           | 接口身份                                       | 是——`InterfaceRecord.id`                     |
+| `model::canonical_layout_hash` | Canonical Layout Encoding v1（跨工具布局契约） | 是——`LayoutHash`                             |
+| `model::abi_signature_hash`    | 调用 ABI（返回/参数 + 调用约定/限定符）        | 不是 `method_signature`；方法身份 ≠ 调用 ABI |
 
 不要把这几者压成同一个值。同一个类型可以保持 `TypeID` 不变，而布局随目标平台变化；方法的逻辑身份相同，也不能证明两种调用约定可以安全互调。
 
-`canonical_layout_hash` 实现了 `ABI-SPEC.md` §11.2 的 Canonical Layout Encoding v1：编码与名字无关、带目标 ABI 约束，且 AMC 与 ABIX 逐字节一致。新产物通过可选的 `layout_encoding` section 选择它；没有该 section 的产物仍按旧规则解释。`structural_layout_hash` 仍是 ABIX 本地摘要，不是 artifact 的 `LayoutHash`。
+`canonical_layout_hash` 实现了 `ABI-SPEC.md` §11.2 的 Canonical Layout Encoding v1：编码与名字无关、带目标 ABI 约束，且 AMC 与 ABIX 逐字节一致。每个 artifact 都携带 `layout_encoding` section，reader 会复算每个 `LayoutHash`；不存在旧的布局规则。
 
-`model::type_hash` 与 `model::signature_hash` 已移除：类型身份用 `canonical_type_id`，调用 ABI
-用 `abi_signature_hash`。旧的 `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` 系列也一并移除；
-它是第二套引擎，且并不用于身份生成。
+`model::type_hash` 与 `model::signature_hash` 已移除：类型身份用 `canonical_type_id`，调用 ABI 用 `abi_signature_hash`。旧的 `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` 系列也一并移除；它是第二套引擎，且并不用于身份生成。
 
 ## 三种落地方式
 
 1. **完全手写**：只依赖 ABIX 头文件，`Traits` 与适配器表都手写。依赖最轻，样板最多。
-2. **生成一次、提交产物**：在 CI（或本地）跑一次 AMC，把生成的 `Traits`、thunk 与 `.abix`
-   提交到仓库，日常构建只依赖 ABIX。开发者不需要 Clang/LLVM，但 ABI 快照可能漂移，
-   源契约变化时必须重新生成。
+2. **生成一次、提交产物**：在 CI（或本地）跑一次 AMC，把生成的 `Traits`、thunk 与 `.abix` 提交到仓库，日常构建只依赖 ABIX。开发者不需要 Clang/LLVM，但 ABI 快照可能漂移，源契约变化时必须重新生成。
 3. **AMC 作为构建期依赖**（默认路径）：自动化最完整；AMC 在构建机或 CI 上运行，不进入运行时。
 
 如果目标是“C++ 项目不安装 AMC”，选 (1) 或 (2)；如果还需要跨语言互操作、布局校验与自动生成
