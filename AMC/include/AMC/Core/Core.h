@@ -448,6 +448,14 @@ struct AbiModule {
 Hash128 hash_text(std::string_view text, uint64_t domain);
 Hash128 layout_hash(const Type &, const std::vector<Field> &);
 Hash128 signature_hash(const Function &);
+// Canonical Layout Encoding v1 (ABI-SPEC §11.2): the versioned, name-independent
+// byte encoding shared with ABIX. `canonical_layout_encoding` produces the
+// canonical bytes; `canonical_layout_hash` hashes them with the same engine and
+// domain as ABIX's `model::canonical_layout_hash`.
+constexpr uint16_t canonical_layout_version = 1;
+constexpr uint64_t canonical_layout_domain = 0x4C41594F55545631ULL;   // "LAYOUTV1"
+std::vector<uint8_t> canonical_layout_encoding(const AbiModule &, const Type &, const std::vector<Field> &);
+Hash128 canonical_layout_hash(const AbiModule &, const Type &, const std::vector<Field> &);
 // The single definition of an interface identity: the canonical name, the
 // version and the ordered method signatures, hashed with `hash_text` over the
 // canonical form "ABIX-INTERFACE:" + name + ":" + version + per-slot

@@ -75,11 +75,13 @@ registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 | `model::canonical_type_id` | 类型身份 | 是——`TypeID` |
 | `poly::method_signature` | 方法身份 | 是——`Function.signature` |
 | `poly::interface_id` | 接口身份 | 是——`InterfaceRecord.id` |
-| `model::structural_layout_hash` | 结构布局兼容性 | 不直接对应；独立的布局摘要 |
+| `model::canonical_layout_hash` | Canonical Layout Encoding v1（跨工具布局契约） | 是——`LayoutHash` |
+| `model::structural_layout_hash` | ABIX 本地结构摘要 | 否——artifact 契约请用 `canonical_layout_hash` |
 | `model::abi_signature_hash` | 调用 ABI（返回/参数 + 调用约定/限定符） | 不是 `method_signature`；方法身份 ≠ 调用 ABI |
 
-不要把这几者压成同一个值。同一个类型可以保持 `TypeID` 不变，而布局随目标平台变化；方法的逻辑
-身份相同，也不能证明两种调用约定可以安全互调。
+不要把这几者压成同一个值。同一个类型可以保持 `TypeID` 不变，而布局随目标平台变化；方法的逻辑身份相同，也不能证明两种调用约定可以安全互调。
+
+`canonical_layout_hash` 实现了 `ABI-SPEC.md` §11.2 的 Canonical Layout Encoding v1：编码与名字无关、带目标 ABI 约束，且 AMC 与 ABIX 逐字节一致。`structural_layout_hash` 仍是 ABIX 本地摘要，不是 artifact 的 `LayoutHash`；把 artifact 字段切换到 CLE v1 属于版本化的格式变更，不由本文档自动完成。
 
 `model::type_hash` 与 `model::signature_hash` 已移除：类型身份用 `canonical_type_id`，调用 ABI
 用 `abi_signature_hash`。旧的 `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` 系列也一并移除；

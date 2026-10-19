@@ -13,6 +13,7 @@
 #include "AMC/Core/Verify.h"
 
 #include "ABIX/Interface/Contract.h"
+#include "ABIX/Model/Compat.h"
 #include "ABIX/Runtime/Registry.h"
 
 #include <algorithm>
@@ -1343,6 +1344,50 @@ int main() {
                 "ABIX method_signature matches AMC signature_hash");
             check(resize_sig.lo == 0x505E76C01A417017ULL && resize_sig.hi == 0x45A2B8E20BE7E96EULL,
                 "method signature fixed vector");
+        }
+
+        // Canonical Layout Encoding v1: AMC and ABIX must produce identical
+        // bytes and hashes for the same target ABI and layout facts.
+        {
+            amc::AbiModule layout_module;
+            layout_module.arch = 1;
+            layout_module.os = 1;
+            layout_module.target_abi = 1;
+            layout_module.compiler = 1;
+            amc::Type point;
+            point.name = "Point";
+            point.kind = amc::TypeKind::record;
+            point.id = amc::hash_text("Point", 0x54595045);
+            point.size = 8;
+            point.align = 4;
+            point.field_count = 2;
+            std::vector<amc::Field> amc_fields = {
+                {point.id, "x", amc::hash_text("prim:i32", 0x54595045), 0, 0},
+                {point.id, "y", amc::hash_text("prim:i32", 0x54595045), 4, 0},
+            };
+            const std::vector<uint8_t> amc_bytes = amc::canonical_layout_encoding(layout_module, point, amc_fields);
+            const amc::Hash128 amc_layout = amc::canonical_layout_hash(layout_module, point, amc_fields);
+
+            const skl::abix::model::LayoutContext context{
+                layout_module.arch, layout_module.os, layout_module.target_abi, layout_module.compiler};
+            const skl::abix::model::TypeId point_id{point.id.lo, point.id.hi};
+            const skl::abix::model::TypeLayout layout{
+                point.size, point.align, 0, point.field_count, {0, 0}
+            };
+            const skl::abix::model::Field abix_fields[] = {
+                {0, {amc_fields[0].type_id.lo, amc_fields[0].type_id.hi}, amc_fields[0].offset, amc_fields[0].flags, 0,
+                 0},
+                {0, {amc_fields[1].type_id.lo, amc_fields[1].type_id.hi}, amc_fields[1].offset, amc_fields[1].flags, 0,
+                 0},
+            };
+            uint8_t buffer[256] = {};
+            const size_t encoded = skl::abix::model::encode_canonical_layout(
+                context, point_id, layout, abix_fields, buffer, sizeof(buffer));
+            check(encoded == amc_bytes.size() && std::equal(amc_bytes.begin(), amc_bytes.end(), buffer),
+                "CLE bytes match between AMC and ABIX");
+            const auto abix_layout = skl::abix::model::canonical_layout_hash(context, point_id, layout, abix_fields);
+            check(abix_layout.lo == amc_layout.lo && abix_layout.hi == amc_layout.hi,
+                "CLE hash matches between AMC and ABIX");
         }
 
         // A region with no interface reads empty.

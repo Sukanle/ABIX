@@ -361,6 +361,36 @@ Type identity, layout identity, method identity, call-ABI signature and interfac
 
 This migration changes every derived hash (primitive TypeIDs, signatures, layouts, interface ids and artifact hashes). Artifacts, caches and generated projections produced before it must be regenerated.
 
+### 11.2 Canonical Layout Encoding (CLE) v1
+
+`LayoutHash` is an ABIX format contract, not an AMC implementation detail. This section defines the versioned Canonical Layout Encoding (CLE) that any conforming ABIX or AMC implementation must produce independently of its language, data structures or whether it links the other implementation.
+
+CLE v1 is name-independent and target-aware. Field names, source locations, comments, typedef spellings and other non-ABI spelling are excluded; the target ABI and compiler identity are included because layout is a function of them. Visibility is excluded as well: only the base/bitfield markers and the packed bit offset/width survive from the field flags word.
+
+The encoding is a byte string. Integers are unsigned big-endian; a `Hash128` contributes its `lo` lane then its `hi` lane, each 8 bytes.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 8 | ASCII `ABIX-CLE` |
+| 8 | 2 | CLE version (`1`) |
+| 10 | 4 | `arch` |
+| 14 | 4 | `os` |
+| 18 | 4 | `target_abi` |
+| 22 | 4 | `compiler` |
+| 26 | 16 | type `TypeID` (`lo`, `hi`) |
+| 42 | 4 | `size` |
+| 46 | 4 | `align` |
+| 50 | 4 | `field_count` |
+| 54 | 24 × `field_count` | field entries |
+
+Each field entry is `type_id` (16 bytes: `lo`, `hi`), `offset` (4 bytes) and `flags` (4 bytes). Fields appear in declaration order. The flags value is masked with `0xFFFF0003`: bit 0 (`field_bitfield`) and bit 1 (`field_base`) mark the field kind, and bits 16–31 carry the packed bit offset and bit width. Visibility (bits 8–9) and reserved bits are not part of layout and are dropped before encoding.
+
+`LayoutHash` is `hash_text(CLE bytes, domain = 0x4C41594F55545631` (`"LAYOUTV1"`))`. `structural_layout_hash` is an ABIX-local digest over an in-memory projection and is **not** this value; a consumer must compare `canonical_layout_hash` against the artifact field, not the local digest.
+
+The normative requirement is: for the same target ABI and the same canonical layout facts, every conforming ABIX or AMC implementation must produce identical CLE bytes and an identical `LayoutHash`. A matching `LayoutHash` proves layout compatibility within the scope of this encoding and nothing more; type identity and full call-ABI compatibility remain `TypeID` and the call-ABI signature.
+
+CLE v1 is a new identity rule. Artifacts that carry the previous `LayoutHash` cannot be reinterpreted under CLE v1: the artifact format or hash-descriptor version must select the rule, and old artifacts must be regenerated before a consumer may compare them with a CLE v1 value.
+
 ## 12. Compat Rules
 
 Comparing a source ABI to a target ABI classifies each type. A source type is

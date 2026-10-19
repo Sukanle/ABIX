@@ -34,6 +34,46 @@ TEST_CASE("layout and ABI signature digests react to their own inputs") {
     REQUIRE(!skl::abix::model::same_hash(cdecl_sig, stdcall_sig));
 }
 
+TEST_CASE("canonical layout encoding is deterministic, name independent and target aware") {
+    using namespace skl::abix;
+    constexpr model::LayoutContext context{1, 1, 1, 1};
+    constexpr model::TypeId type{0x11, 0x22};
+    constexpr model::TypeLayout layout{
+        8, 4, 0, 2, {0, 0}
+    };
+    constexpr model::Field fields[] = {
+        {0, {0x33, 0x44}, 0, 0, 0, 0},
+        {0, {0x55, 0x66}, 4, 0, 0, 0},
+    };
+    constexpr model::Field renamed[] = {
+        {0x100, {0x33, 0x44}, 0, 0, 0, 0},
+        {0x200, {0x55, 0x66}, 4, 0, 0, 0},
+    };
+    constexpr auto baseline = model::canonical_layout_hash(context, type, layout, fields);
+    REQUIRE(model::same_hash(baseline, model::canonical_layout_hash(context, type, layout, renamed)));
+
+    constexpr model::Field other_visibility[] = {
+        {0, {0x33, 0x44}, 0,       0, 0, 0},
+        {0, {0x55, 0x66}, 4, 2u << 8, 0, 0},
+    };
+    REQUIRE(model::same_hash(baseline, model::canonical_layout_hash(context, type, layout, other_visibility)));
+
+    uint8_t buffer[128] = {};
+    const size_t encoded = model::encode_canonical_layout(context, type, layout, fields, buffer, sizeof(buffer));
+    REQUIRE(encoded == 54 + 2 * 24);
+    REQUIRE(model::same_hash(baseline,
+        util::canonical_hash(reinterpret_cast<const char *>(buffer), encoded, model::canonical_layout_domain)));
+
+    constexpr model::LayoutContext other_target{2, 1, 1, 1};
+    REQUIRE(!model::same_hash(baseline, model::canonical_layout_hash(other_target, type, layout, fields)));
+
+    constexpr model::Field moved[] = {
+        {0, {0x33, 0x44}, 0, 0, 0, 0},
+        {0, {0x55, 0x66}, 8, 0, 0, 0},
+    };
+    REQUIRE(!model::same_hash(baseline, model::canonical_layout_hash(context, type, layout, moved)));
+}
+
 TEST_CASE("compatibility distinguishes identity, layout and mapped changes") {
     using namespace skl::abix;
     constexpr model::TypeId first{1, 2};

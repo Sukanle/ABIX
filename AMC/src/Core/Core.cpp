@@ -198,6 +198,54 @@ Hash128 layout_hash(const Type &type, const std::vector<Field> &fields) {
     return hash_text(input, 0x4c41594f5554ULL);
 }
 
+std::vector<uint8_t> canonical_layout_encoding(
+    const AbiModule &module, const Type &type, const std::vector<Field> &fields) {
+    std::vector<uint8_t> bytes;
+    bytes.reserve(54 + fields.size() * 24);
+    const auto put_u16 = [&](uint16_t value) {
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    };
+    const auto put_u32 = [&](uint32_t value) {
+        bytes.push_back(static_cast<uint8_t>(value >> 24));
+        bytes.push_back(static_cast<uint8_t>(value >> 16));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    };
+    const auto put_u64 = [&](uint64_t value) {
+        put_u32(static_cast<uint32_t>(value >> 32));
+        put_u32(static_cast<uint32_t>(value));
+    };
+    const auto put_hash = [&](Hash128 value) {
+        put_u64(value.lo);
+        put_u64(value.hi);
+    };
+    constexpr char magic[] = "ABIX-CLE";
+    bytes.insert(bytes.end(), magic, magic + sizeof(magic) - 1);
+    put_u16(canonical_layout_version);
+    put_u32(module.arch);
+    put_u32(module.os);
+    put_u32(module.target_abi);
+    put_u32(module.compiler);
+    put_hash(type.id);
+    put_u32(type.size);
+    put_u32(type.align);
+    put_u32(type.field_count);
+    for (uint32_t i = 0; i < type.field_count; ++i) {
+        const Field &field = fields[i];
+        put_hash(field.type_id);
+        put_u32(field.offset);
+        put_u32(field.flags & 0xFFFF0003u);   // ABI-relevant flags only
+    }
+    return bytes;
+}
+
+Hash128 canonical_layout_hash(const AbiModule &module, const Type &type, const std::vector<Field> &fields) {
+    const std::vector<uint8_t> bytes = canonical_layout_encoding(module, type, fields);
+    return hash_text(
+        std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()), canonical_layout_domain);
+}
+
 Hash128 signature_hash(const Function &function) {
     std::string input =
         function.name + std::to_string(function.return_type.lo) + std::to_string(function.return_type.hi);

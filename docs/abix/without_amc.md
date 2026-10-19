@@ -85,12 +85,13 @@ algorithm:
 | `model::canonical_type_id` | type identity | yes — `TypeID` |
 | `poly::method_signature` | method identity | yes — `Function.signature` |
 | `poly::interface_id` | interface identity | yes — `InterfaceRecord.id` |
-| `model::structural_layout_hash` | structural layout compatibility | no direct match; a distinct digest |
+| `model::canonical_layout_hash` | Canonical Layout Encoding v1 (cross-tool layout contract) | yes — `LayoutHash` |
+| `model::structural_layout_hash` | ABIX-local structural digest | no — use `canonical_layout_hash` for the artifact contract |
 | `model::abi_signature_hash` | call ABI (return/params + calling convention/qualifiers) | not `method_signature`; method identity ≠ call ABI |
 
-Do not collapse these into one value. The same type can keep its `TypeID` while
-its layout changes across targets; a method's logical identity does not prove
-that two calling conventions are interchangeable.
+Do not collapse these into one value. The same type can keep its `TypeID` while its layout changes across targets; a method's logical identity does not prove that two calling conventions are interchangeable.
+
+`canonical_layout_hash` implements the versioned Canonical Layout Encoding v1 from `ABI-SPEC.md` §11.2: the encoding is name-independent, target-ABI-aware and byte-identical between AMC and ABIX. `structural_layout_hash` remains an ABIX-local digest and is not the artifact `LayoutHash`. Switching the artifact field to CLE v1 is a versioned format change and is not implied by this document.
 
 `model::type_hash` and `model::signature_hash` were removed: use
 `canonical_type_id` for type identity and `abi_signature_hash` for the call ABI.
