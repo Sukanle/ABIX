@@ -171,12 +171,22 @@ bool is_void_type(const Type &type) {
 
 bool operator==(Hash128 lhs, Hash128 rhs) { return lhs.lo == rhs.lo && lhs.hi == rhs.hi; }
 
+namespace {
+// The `lo` seed is the standard FNV-1a 64 offset basis, shared with
+// ABIX/Util/Hash.h (`fnv1a_offset_basis`). The `hi` seed is the FNV prime and
+// the `hi` multiplier is XXH64's PRIME64_2. These values are a cross-tool
+// contract: changing any of them changes every AMC-derived identity.
+constexpr uint64_t kFnv1aOffsetBasis = 14'695'981'039'346'656'037ULL;
+constexpr uint64_t kFnv1aPrime = 1'099'511'628'211ULL;
+constexpr uint64_t kCanonicalHiPrime = 14'029'467'366'897'019'727ULL;
+}   // namespace
+
 Hash128 hash_text(std::string_view text, uint64_t domain) {
-    uint64_t lo = 1'469'598'103'934'665'603ULL ^ domain;
-    uint64_t hi = 1'099'511'628'211ULL + domain;
+    uint64_t lo = kFnv1aOffsetBasis ^ domain;
+    uint64_t hi = kFnv1aPrime + domain;
     for (unsigned char c : text) {
-        lo = (lo ^ c) * 1'099'511'628'211ULL;
-        hi = (hi ^ (c + 31)) * 14'029'467'366'897'019'727ULL;
+        lo = (lo ^ c) * kFnv1aPrime;
+        hi = (hi ^ (c + 31)) * kCanonicalHiPrime;
     }
     return {lo, hi};
 }
@@ -204,6 +214,14 @@ Hash128 method_signature_hash(const InterfaceMethod &method) {
     return signature_hash(function);
 }
 
+Hash128 interface_identity(
+    const std::string &name, uint32_t version, const std::vector<Hash128> &ordered_method_signatures) {
+    std::string input = "ABIX-INTERFACE:" + name + ":" + std::to_string(version);
+    for (const Hash128 &signature : ordered_method_signatures)
+        input += ":" + std::to_string(signature.lo) + ":" + std::to_string(signature.hi);
+    return hash_text(input, 0x494e544552464143ULL);
+}
+
 Hash128 interface_hash(const InterfaceRecord &interface, const std::vector<InterfaceMethod> &methods) {
     std::vector<const InterfaceMethod *> ordered;
     for (uint32_t i = 0; i < interface.method_count; ++i) {
@@ -212,10 +230,11 @@ Hash128 interface_hash(const InterfaceRecord &interface, const std::vector<Inter
     }
     std::sort(ordered.begin(), ordered.end(),
         [](const InterfaceMethod *a, const InterfaceMethod *b) { return a->slot < b->slot; });
-    std::string input = "ABIX-INTERFACE:" + interface.name + ":" + std::to_string(interface.version);
+    std::vector<Hash128> signatures;
+    signatures.reserve(ordered.size());
     for (const auto *method : ordered)
-        input += ":" + std::to_string(method->signature.lo) + ":" + std::to_string(method->signature.hi);
-    return hash_text(input, 0x494e544552464143ULL);
+        signatures.push_back(method->signature);
+    return interface_identity(interface.name, interface.version, signatures);
 }
 
 namespace {

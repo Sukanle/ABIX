@@ -29,7 +29,7 @@
  *       X(area, 0x1234, 0x5678, int32_t, 0)   \
  *       X(size, 0x9abc, 0xdef0, int32_t, 1)
  *
- *   ABIX_DECLARE_INTERFACE(Shape, 0x91, 0x00, 1, SHAPE_METHODS)
+ *   ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
  *
  * produces `ShapeTraits` and a `Shape` proxy whose `area()` / `size()` are
  * pass-through calls, plus an `area(int32_t&)` / `size(int32_t&)` form that
@@ -47,6 +47,11 @@
 #define ABIX_INTERFACE_SLOT_ENTRY(name, lo, hi, ret, slot) static constexpr uint32_t name##_slot = slot;
 #define ABIX_INTERFACE_SIG_ENTRY(name, lo, hi, ret, slot) ::skl::abix::poly::InterfaceMethodHash{lo, hi},
 #define ABIX_INTERFACE_COUNT_ENTRY(name, lo, hi, ret, slot) +1
+#define ABIX_INTERFACE_KEY_ENTRY(name, lo, hi, ret, slot) \
+    ::skl::abix::poly::InterfaceMethodKey{                \
+        ::skl::abix::poly::InterfaceMethodHash{lo, hi}, \
+        slot \
+    },
 
 // Object-only pass-through: the adapter receives the object handle first and no
 // further arguments. A method that takes extra arguments is written by hand (or
@@ -57,22 +62,23 @@
         return this->template call_checked<ret (*)(const void *)>(out, Traits::name##_slot);              \
     }
 
-#define ABIX_DECLARE_INTERFACE(Name, id_lo, id_hi, ver, list)                                                    \
-    struct Name##Traits {                                                                                        \
-        static constexpr ::skl::abix::poly::InterfaceId id{id_lo, id_hi};                                        \
-        static constexpr uint32_t version = ver;                                                                 \
-        list(ABIX_INTERFACE_SLOT_ENTRY) static constexpr ::skl::abix::poly::InterfaceMethodHash signatures[] = { \
-            list(ABIX_INTERFACE_SIG_ENTRY)                                                                       \
-        };                                                                                                       \
-        static constexpr size_t slots = 0 list(ABIX_INTERFACE_COUNT_ENTRY);                                      \
-    };                                                                                                           \
-    class Name : public ::skl::abix::poly::InterfaceProxy<Name##Traits> {                                        \
-        using Traits = Name##Traits;                                                                             \
-        using Base = ::skl::abix::poly::InterfaceProxy<Name##Traits>;                                            \
-                                                                                                                 \
-    public:                                                                                                      \
-        using Base::Base;                                                                                        \
-        list(ABIX_INTERFACE_METHOD_ENTRY)                                                                        \
+#define ABIX_DECLARE_INTERFACE(Name, ver, list)                                                                       \
+    struct Name##Traits {                                                                                             \
+        static constexpr ::skl::abix::poly::InterfaceMethodKey id_methods[] = {list(ABIX_INTERFACE_KEY_ENTRY)};       \
+        static constexpr ::skl::abix::poly::InterfaceId id = ::skl::abix::poly::interface_id(#Name, ver, id_methods); \
+        static constexpr uint32_t version = ver;                                                                      \
+        list(ABIX_INTERFACE_SLOT_ENTRY) static constexpr ::skl::abix::poly::InterfaceMethodHash signatures[] = {      \
+            list(ABIX_INTERFACE_SIG_ENTRY)                                                                            \
+        };                                                                                                            \
+        static constexpr size_t slots = 0 list(ABIX_INTERFACE_COUNT_ENTRY);                                           \
+    };                                                                                                                \
+    class Name : public ::skl::abix::poly::InterfaceProxy<Name##Traits> {                                             \
+        using Traits = Name##Traits;                                                                                  \
+        using Base = ::skl::abix::poly::InterfaceProxy<Name##Traits>;                                                 \
+                                                                                                                      \
+    public:                                                                                                           \
+        using Base::Base;                                                                                             \
+        list(ABIX_INTERFACE_METHOD_ENTRY)                                                                             \
     };
 
 #endif   // SKL_ABIX_INTERFACE_DECLARATION_H

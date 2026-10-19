@@ -510,10 +510,33 @@ layer on its own, `#include "ABIX/Interface/Interface.h"`.
 
 | Symbol | Type | Description |
 |------|------|------|
-| `InterfaceId` | `Hash128` | Interface identity: the content hash AMC computes over the interface name, version and ordered method signatures. Not a class name, not a vtable address |
+| `InterfaceId` | `Hash128` | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)` |
 | `InterfaceMethodHash` | `model::SignatureHash` | One method's ABI signature hash |
+| `interface_id(name, version, signatures, count)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant |
+| `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` array overload to sort before hashing |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way |
 | `to_string(status)` | `const char*` | Readable name for an `InterfaceStatus` |
+
+**Cross-tool identity contract.** `InterfaceId` is defined identically by
+`AMC::interface_identity` and `ABIX::poly::interface_id`:
+
+```
+hash_text("ABIX-INTERFACE:" + canonical_name + ":" + version + slot-ordered signatures,
+          domain = 0x494E544552464143)
+```
+
+The domain tag is the 8-byte ASCII `"INTERFAC"` — a big-endian truncation of
+`"INTERFACE"` (the 9th byte, `E`, does not fit a `uint64_t`) — i.e. bytes
+`49 4E 54 45 52 46 41 43`. It is **mixed into the hash's initial state as an
+integer** (`lo ^= domain`, `hi += domain`), **not** used as a byte prefix. There
+is therefore no endianness choice to make; another language must use the same
+integer and the same mixing, not `reinterpret_cast` the integer's memory.
+
+The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard
+**FNV-1a 64 offset basis** `0xCBF29CE484222325`, `hi` from FNV prime
+`0x100000001B3` + domain, and the `hi` lane multiplier is XXH64's `PRIME64_2`.
+`amc-core-test` pins these constants with fixed vectors and checks that both
+sides agree.
 
 `InterfaceMethod` — one method's adapter entry:
 
@@ -773,14 +796,16 @@ only its methods, and `Traits` supplies the interface difference:
 
 `ABIX_DECLARE_INTERFACE` (`Declaration.h`, optional sugar) removes the boilerplate
 with an X-macro and **never infers a signature** — the signature hash and slot are
-stated explicitly, which is exactly what the preprocessor does reliably:
+stated explicitly, which is exactly what the preprocessor does reliably. The
+identity is not written by hand: the macro computes it with
+`interface_id("Shape", version, methods)`, matching AMC exactly:
 
 ```cpp
 #define SHAPE_METHODS(X)                 \
     X(area, 0x1234, 0x5678, int32_t, 0)  \
     X(size, 0x9abc, 0xdef0, int32_t, 1)
 
-ABIX_DECLARE_INTERFACE(Shape, 0x91, 0x00, 1, SHAPE_METHODS)
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
 ```
 
 It emits `ShapeTraits` (`id`/`version`/`slots`/`signatures`/`*_slot`) and a `Shape`

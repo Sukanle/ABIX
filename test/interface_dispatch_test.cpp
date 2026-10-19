@@ -221,7 +221,7 @@ int counter_area(const void *self) { return static_cast<const Counter *>(self)->
 }   // namespace
 
 #define ABIX_TEST_SHAPE_METHODS(X) X(area, 0x1111, 0x2222, int, 0)
-ABIX_DECLARE_INTERFACE(TestShape, 0x71, 0x00, 1, ABIX_TEST_SHAPE_METHODS)
+ABIX_DECLARE_INTERFACE(TestShape, 1, ABIX_TEST_SHAPE_METHODS)
 
 TEST_CASE("an interface proxy binds, verifies and calls through cached entries") {
     constexpr TypeId counter_id{0x21, 0x22};

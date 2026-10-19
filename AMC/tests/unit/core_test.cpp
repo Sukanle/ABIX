@@ -12,6 +12,7 @@
 #include "AMC/Core/Symbol.h"
 #include "AMC/Core/Verify.h"
 
+#include "ABIX/Interface/Contract.h"
 #include "ABIX/Runtime/Registry.h"
 
 #include <algorithm>
@@ -307,8 +308,8 @@ int main() {
         put16(pe_optional + 0, 0x20B);
         put64(pe_optional + 24, 0x140000000ull);
         const size_t pe_ddir = pe_optional + 112;
-        put32(pe_ddir + 6 * 8, 0x1000);       // debug directory RVA
-        put32(pe_ddir + 6 * 8 + 4, 28);       // debug directory size
+        put32(pe_ddir + 6 * 8, 0x1000);   // debug directory RVA
+        put32(pe_ddir + 6 * 8 + 4, 28);   // debug directory size
         const size_t pe_sect = pe_optional + 240;
         const char pe_name[] = ".rdata";
         for (int i = 0; i < 6; ++i)
@@ -317,14 +318,14 @@ int main() {
         put32(pe_sect + 12, 0x1000);
         put32(pe_sect + 16, 0x200);
         put32(pe_sect + 20, 0x200);
-        put32(0x200 + 12, 2);      // IMAGE_DEBUG_TYPE_CODEVIEW
-        put32(0x200 + 24, 0x220);  // PointerToRawData -> RSDS record
+        put32(0x200 + 12, 2);       // IMAGE_DEBUG_TYPE_CODEVIEW
+        put32(0x200 + 24, 0x220);   // PointerToRawData -> RSDS record
         const char rsds[] = "RSDS";
         for (int i = 0; i < 4; ++i)
             pe[0x220 + i] = static_cast<uint8_t>(rsds[i]);
         for (int i = 0; i < 16; ++i)
             pe[0x224 + i] = static_cast<uint8_t>(0x10 + i);   // GUID
-        put32(0x234, 7);   // Age
+        put32(0x234, 7);                                      // Age
 
         std::string pe_error;
         check(amc::is_pe(pe.data(), pe.size()), "PE image detected");
@@ -1263,6 +1264,58 @@ int main() {
                   && bindings.size() == 2
                   && bindings[0].native_function == m.functions[2].signature,
             "method bindings round-trip through the region");
+
+        // The ABIX runtime helper derives exactly the same interface identity,
+        // so a hand-written consumer and AMC agree without sharing code. This is
+        // the cross-tool contract for the canonical hash: both must reproduce
+        // AMC::hash_text over the same canonical byte string. The list below is
+        // deliberately out of slot order to exercise the runtime sort.
+        {
+            const skl::abix::poly::InterfaceMethodHash sig0{
+                m.interface_methods[0].signature.lo, m.interface_methods[0].signature.hi};
+            const skl::abix::poly::InterfaceMethodHash sig1{
+                m.interface_methods[1].signature.lo, m.interface_methods[1].signature.hi};
+            const skl::abix::poly::InterfaceMethodKey keys[] = {
+                {sig1, 1},
+                {sig0, 0}
+            };
+            const skl::abix::poly::InterfaceId by_slot = skl::abix::poly::interface_id("IRenderer", 1, keys);
+            const skl::abix::poly::InterfaceMethodHash ordered[] = {sig0, sig1};
+            const skl::abix::poly::InterfaceId by_pointer = skl::abix::poly::interface_id("IRenderer", 1, ordered, 2);
+            check(by_slot.lo == iface.id.lo
+                      && by_slot.hi == iface.id.hi
+                      && by_pointer.lo == iface.id.lo
+                      && by_pointer.hi == iface.id.hi,
+                "ABIX interface_id matches AMC interface_hash");
+        }
+
+        // Fixed vectors pin the canonical hash constants (seed, primes, lane
+        // mixing) and the identity input format. They were computed
+        // independently of this implementation; if either AMC or ABIX changes a
+        // constant, these fail instead of the two sides drifting silently.
+        {
+            const amc::Hash128 empty = amc::hash_text("", 0);
+            check(empty.lo == 0xCBF29CE484222325ULL && empty.hi == 0x00000100000001B3ULL, "canonical hash seed vector");
+            const amc::Hash128 hello = amc::hash_text("hello", 0x494E544552464143ULL);
+            check(
+                hello.lo == 0xC9CDDAA0A1F90676ULL && hello.hi == 0x277729AABE607CC7ULL, "canonical hash hello vector");
+
+            const std::vector<amc::Hash128> fixed_signatures = {
+                {0x1111111111111111ULL, 0x2222222222222222ULL},
+                {0x3333333333333333ULL, 0x4444444444444444ULL},
+            };
+            const amc::Hash128 amc_fixed = amc::interface_identity("IRenderer", 1, fixed_signatures);
+            check(amc_fixed.lo == 0xB25E9B1A9FDB63AFULL && amc_fixed.hi == 0xB903D3C743AFC513ULL,
+                "interface identity fixed vector (AMC)");
+            const skl::abix::poly::InterfaceMethodHash abix_fixed[] = {
+                {0x1111111111111111ULL, 0x2222222222222222ULL},
+                {0x3333333333333333ULL, 0x4444444444444444ULL},
+            };
+            const skl::abix::poly::InterfaceId abix_fixed_id =
+                skl::abix::poly::interface_id("IRenderer", 1, abix_fixed, 2);
+            check(abix_fixed_id.lo == 0xB25E9B1A9FDB63AFULL && abix_fixed_id.hi == 0xB903D3C743AFC513ULL,
+                "interface identity fixed vector (ABIX)");
+        }
 
         // A region with no interface reads empty.
         amc::AbiModule bare;

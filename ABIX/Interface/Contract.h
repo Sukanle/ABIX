@@ -68,6 +68,89 @@ struct InterfaceImplementation {
     uint32_t flags;
 };
 
+// Canonical interface-identity domain, matching `AMC::interface_identity`. The
+// identity is the content hash of the canonical name, version and ordered
+// method signatures, so two interfaces that share a name but differ in version
+// or shape stay distinct.
+//
+// The domain value is the 8-byte ASCII tag "INTERFAC" packed big-endian:
+//   0x494E544552464143 = 'I' 'N' 'T' 'E' 'R' 'F' 'A' 'C'
+// It is a deliberate truncation of "INTERFACE", which does not fit a uint64_t.
+//
+// It is never serialized as bytes: `hash_text` mixes it into the initial state
+// as an integer (`lo ^= domain`, `hi += domain`), so there is no endianness
+// choice to make. A cross-language implementation must use the same integer and
+// the same mixing, not a byte-array prefix.
+constexpr uint64_t interface_identity_domain = 0X494E544552464143ULL;
+
+// A method's signature paired with its dispatch slot. Used to compute an
+// interface identity from a method list that is not yet in slot order.
+struct InterfaceMethodKey {
+    InterfaceMethodHash signature;
+    uint32_t slot;
+};
+
+// Hash one unsigned value as the decimal text AMC's `std::to_string` would
+// produce, continuing a canonical hash state. `interface_identity` builds its
+// input by concatenating decimal fields, so this must emit the same digits.
+constexpr util::CanonicalState interface_hash_u64(util::CanonicalState state, uint64_t value) noexcept {
+    char digits[20] = {};
+    uint32_t count = 0;
+    if (value == 0) digits[count++] = '0';
+    while (value != 0) {
+        digits[count++] = static_cast<char>('0' + value % 10);
+        value /= 10;
+    }
+    for (uint32_t i = count; i-- > 0;)
+        state = util::canonical_hash_byte(state, static_cast<uint8_t>(digits[i]));
+    return state;
+}
+
+// The interface identity for a canonical name, a version and method signatures
+// already ordered by slot. This is exactly the byte string and algorithm
+// `AMC::interface_identity` hashes, so a hand-written provider and AMC derive
+// the same id. `name` must be the same canonical spelling AMC uses.
+constexpr InterfaceId interface_id(
+    const char *name, uint32_t version, const InterfaceMethodHash *signatures, size_t count) noexcept {
+    util::CanonicalState state = util::canonical_hash_begin(interface_identity_domain);
+    state = util::canonical_hash_bytes(state, "ABIX-INTERFACE:", sizeof("ABIX-INTERFACE:") - 1);
+    for (size_t i = 0; name && name[i] != '\0'; ++i)
+        state = util::canonical_hash_byte(state, static_cast<uint8_t>(name[i]));
+    state = util::canonical_hash_byte(state, static_cast<uint8_t>(':'));
+    state = interface_hash_u64(state, version);
+    for (size_t i = 0; i < count; ++i) {
+        state = util::canonical_hash_byte(state, static_cast<uint8_t>(':'));
+        state = interface_hash_u64(state, signatures[i].lo);
+        state = util::canonical_hash_byte(state, static_cast<uint8_t>(':'));
+        state = interface_hash_u64(state, signatures[i].hi);
+    }
+    return InterfaceId{state.lo, state.hi};
+}
+
+// Overload for a method list that is not yet ordered: the entries are sorted by
+// slot before hashing, matching `AMC::interface_hash`. `ABIX_DECLARE_INTERFACE`
+// uses this so the method list can be written in any order.
+template<size_t Count>
+constexpr InterfaceId interface_id(
+    const char *name, uint32_t version, const InterfaceMethodKey (&methods)[Count]) noexcept {
+    InterfaceMethodKey sorted[Count == 0 ? 1 : Count] = {};
+    InterfaceMethodHash signatures[Count == 0 ? 1 : Count] = {};
+    for (size_t i = 0; i < Count; ++i)
+        sorted[i] = methods[i];
+    for (size_t i = 1; i < Count; ++i) {
+        InterfaceMethodKey key = sorted[i];
+        size_t j = i;
+        while (j > 0 && sorted[j - 1].slot > key.slot) {
+            sorted[j] = sorted[j - 1];
+            --j;
+        }
+        sorted[j] = key;
+    }
+    for (size_t i = 0; i < Count; ++i)
+        signatures[i] = sorted[i].signature;
+    return interface_id(name, version, signatures, Count);
+}
+
 enum class InterfaceStatus : uint32_t {
     ok = 0,
     invalid_table,

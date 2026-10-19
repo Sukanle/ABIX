@@ -475,8 +475,10 @@ registry.unregister_module(control.id);   // 现在可以卸载
 
 | 符号 | 类型 | 说明 |
 |------|------|------|
-| `InterfaceId` | `Hash128` | 接口身份：AMC 对接口名、版本与有序方法签名计算的内容哈希。不是类名，也不是 vtable 地址 |
+| `InterfaceId` | `Hash128` | 接口身份：对接口名、版本与有序方法签名计算的内容哈希。不是类名，也不是 vtable 地址；可用 `interface_id(...)` 自动生成 |
 | `InterfaceMethodHash` | `model::SignatureHash` | 单个方法的 ABI 签名哈希 |
+| `interface_id(name, version, signatures, count)` | `InterfaceId` | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量 |
+| `InterfaceMethodKey` | `{signature, slot}` | 与槽位配对的签名，供 `interface_id` 的数组重载排序后计算身份 |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | 把函数指针拷入不透明的 `entry` 槽位；生成代码与调用方共用同一拼写 |
 | `to_string(status)` | `const char*` | `InterfaceStatus` 的可读名 |
 
@@ -502,6 +504,22 @@ registry.unregister_module(control.id);   // 现在可以卸载
 
 `InterfaceStatus`：`ok`、`invalid_table`、`duplicate_implementation`、`capacity_exceeded`、
 `interface_not_found`、`version_mismatch`、`method_not_found`、`method_capacity_exceeded`。
+
+**跨工具身份契约**：`InterfaceId` 由 `AMC::interface_identity` 与
+`ABIX::poly::interface_id` 共同定义，算法完全一致：
+
+```
+hash_text("ABIX-INTERFACE:" + 规范名 + ":" + 版本 + 按槽位排序的签名, 域 = 0x494E544552464143)
+```
+
+域标签是 8 字节 ASCII `"INTERFAC"`（`"INTERFACE"` 的大端截断，装不进 `uint64_t` 的是第 9 个字符 `E`），
+即字节 `49 4E 54 45 52 46 41 43`。它**作为整数混入哈希初始状态**（`lo ^= 域`、`hi += 域`），
+**不是**字节前缀；因此不存在字节序歧义，其他语言实现必须用同一个整数与同一混合方式，而不是
+`reinterpret_cast` 整数的内存表示。
+
+哈希种子也与 ABIX 自身的 `fnv1a` 统一：`lo` 使用标准 **FNV-1a 64 offset basis**
+`0xCBF29CE484222325`，`hi` 使用 FNV prime `0x100000001B3` + 域，`hi` lane 的乘子是
+XXH64 的 `PRIME64_2`。`amc-core-test` 用固定向量钉住这些常量，并校验两端一致。
 
 ### `Registry.h` —— 绑定期注册表
 
@@ -711,14 +729,29 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | `call_checked<Fn>(out, slot, args...)`（protected） | `InterfaceStatus` | 状态与结果分离：未绑定返回 `method_not_found`，合法结果绝不会被当成失败 |
 
 `ABIX_DECLARE_INTERFACE`（`Declaration.h`，可选语法糖）用 X-macro 去掉样板，**不推断签名**——
-签名哈希与槽位显式给出，正是预处理器能可靠完成的部分：
+签名哈希与槽位显式给出，正是预处理器能可靠完成的部分。接口身份不再手写：宏用
+`interface_id("Shape", version, 方法表)` 从**规范名 + 版本 + 按槽位排序的签名**算出，与 AMC 完全一致：
 
 ```cpp
 #define SHAPE_METHODS(X)                 \
     X(area, 0x1234, 0x5678, int32_t, 0)  \
     X(size, 0x9abc, 0xdef0, int32_t, 1)
 
-ABIX_DECLARE_INTERFACE(Shape, 0x91, 0x00, 1, SHAPE_METHODS)
+ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
+```
+
+手写 `Traits` 时同样不需要填 `id`，直接用编译期 helper（它复刻 `AMC::interface_identity`
+的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
+
+```cpp
+struct ShapeTraits {
+    static constexpr InterfaceMethodHash sigs[] = {{0x1234, 0x5678}, {0x9abc, 0xdef0}};
+    static constexpr InterfaceId id = interface_id("Shape", 1, sigs, 2);   // 自动生成
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 2;
+    static constexpr uint32_t area_slot = 0;
+    static constexpr uint32_t size_slot = 1;
+};
 ```
 
 它生成 `ShapeTraits`（`id`/`version`/`slots`/`signatures`/`*_slot`）与一个 `Shape` 代理，方法为

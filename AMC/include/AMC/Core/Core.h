@@ -448,6 +448,13 @@ struct AbiModule {
 Hash128 hash_text(std::string_view text, uint64_t domain);
 Hash128 layout_hash(const Type &, const std::vector<Field> &);
 Hash128 signature_hash(const Function &);
+// The single definition of an interface identity: the canonical name, the
+// version and the ordered method signatures, hashed with `hash_text` over the
+// canonical form "ABIX-INTERFACE:" + name + ":" + version + per-slot
+// signature. Both producers (the [[interface]] builder and the C++ backend) use
+// this, so a runtime helper and AMC derive the same id.
+Hash128 interface_identity(
+    const std::string &name, uint32_t version, const std::vector<Hash128> &ordered_method_signatures);
 // Stable interface identity: canonical name + version + ordered method
 // signatures. Name and shape both contribute, so two interfaces with the same
 // methods but different names (or versions) are distinct identities.

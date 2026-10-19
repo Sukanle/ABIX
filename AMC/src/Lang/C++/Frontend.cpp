@@ -863,8 +863,8 @@ private:
 // directory, then relative to any `-I` directory declared in the import flags,
 // and only fall back to the declared string. This keeps generated thunks free
 // of machine-specific absolute prefixes while still resolving at compile time.
-std::string include_spelling(const std::string &file, const std::filesystem::path &base,
-    const std::vector<std::string> &flags) {
+std::string include_spelling(
+    const std::string &file, const std::filesystem::path &base, const std::vector<std::string> &flags) {
     const std::filesystem::path declared(file);
     if (declared.is_relative()) return file;   // already relative to the config dir
     const auto under = [&](const std::filesystem::path &root) -> std::string {
@@ -1292,7 +1292,13 @@ bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std:
         // One interface per exposed type: each method binds its thunk by a
         // stable slot, so the runtime bus can dispatch without a vtable.
         if (!exposed_methods.empty()) {
-            const amc::Hash128 interface_id = amc::hash_text("abix-interface:" + cpp_type, 0x494e5446ULL);
+            // Same identity formula as the [[interface]] builder and the ABIX
+            // runtime helper: canonical name + version + ordered signatures.
+            std::vector<amc::Hash128> ordered_signatures;
+            ordered_signatures.reserve(exposed_methods.size());
+            for (const auto &method : exposed_methods)
+                ordered_signatures.push_back(method.signature);
+            const amc::Hash128 interface_id = amc::interface_identity(cpp_type, 1, ordered_signatures);
             const auto hex = [](uint64_t v) { return std::to_string(v) + "ULL"; };
             const std::string methods_array = "abix_" + symbol_type + "_methods";
             manifest += "const skl::abix::poly::InterfaceMethod " + methods_array + "[] = {\n";
