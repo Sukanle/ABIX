@@ -600,31 +600,31 @@ private:
         static const std::unordered_map<std::string, Spec> specs = {
             {       "bool",         {amc::PrimitiveAbiKind::bool_, 1, amc::FloatFormat::none, false, "prim:bool"}},
             {       "char",      {amc::PrimitiveAbiKind::char32, 4, amc::FloatFormat::none, false, "prim:char32"}},
-            {         "i8",             {amc::PrimitiveAbiKind::sint, 1, amc::FloatFormat::none, true, "prim:i1"}},
-            {        "i16",             {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i2"}},
-            {        "i32",             {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i4"}},
-            {        "i64",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {       "i128",           {amc::PrimitiveAbiKind::sint, 16, amc::FloatFormat::none, true, "prim:i16"}},
-            {      "isize",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {         "u8",            {amc::PrimitiveAbiKind::uint, 1, amc::FloatFormat::none, false, "prim:u1"}},
-            {        "u16",            {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u2"}},
-            {        "u32",            {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u4"}},
-            {        "u64",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
-            {       "u128",          {amc::PrimitiveAbiKind::uint, 16, amc::FloatFormat::none, false, "prim:u16"}},
-            {      "usize",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
+            {         "i8",             {amc::PrimitiveAbiKind::sint, 1, amc::FloatFormat::none, true, "prim:i8"}},
+            {        "i16",            {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i16"}},
+            {        "i32",            {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i32"}},
+            {        "i64",            {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i64"}},
+            {       "i128",          {amc::PrimitiveAbiKind::sint, 16, amc::FloatFormat::none, true, "prim:i128"}},
+            {      "isize",            {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i64"}},
+            {         "u8",            {amc::PrimitiveAbiKind::uint, 1, amc::FloatFormat::none, false, "prim:u8"}},
+            {        "u16",           {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u16"}},
+            {        "u32",           {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u32"}},
+            {        "u64",           {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u64"}},
+            {       "u128",         {amc::PrimitiveAbiKind::uint, 16, amc::FloatFormat::none, false, "prim:u128"}},
+            {      "usize",           {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u64"}},
             {        "f32", {amc::PrimitiveAbiKind::floating, 4, amc::FloatFormat::ieee32, false, "prim:fieee32"}},
             {        "f64", {amc::PrimitiveAbiKind::floating, 8, amc::FloatFormat::ieee64, false, "prim:fieee64"}},
             {     "c_char",  {amc::PrimitiveAbiKind::char_signed, 1, amc::FloatFormat::none, true, "prim:char_s"}},
             {    "c_schar",         {amc::PrimitiveAbiKind::schar, 1, amc::FloatFormat::none, true, "prim:schar"}},
             {    "c_uchar",        {amc::PrimitiveAbiKind::uchar, 1, amc::FloatFormat::none, false, "prim:uchar"}},
-            {    "c_short",             {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i2"}},
-            {   "c_ushort",            {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u2"}},
-            {      "c_int",             {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i4"}},
-            {     "c_uint",            {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u4"}},
-            {     "c_long",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {    "c_ulong",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
-            { "c_longlong",             {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i8"}},
-            {"c_ulonglong",            {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u8"}},
+            {    "c_short",            {amc::PrimitiveAbiKind::sint, 2, amc::FloatFormat::none, true, "prim:i16"}},
+            {   "c_ushort",           {amc::PrimitiveAbiKind::uint, 2, amc::FloatFormat::none, false, "prim:u16"}},
+            {      "c_int",            {amc::PrimitiveAbiKind::sint, 4, amc::FloatFormat::none, true, "prim:i32"}},
+            {     "c_uint",           {amc::PrimitiveAbiKind::uint, 4, amc::FloatFormat::none, false, "prim:u32"}},
+            {     "c_long",            {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i64"}},
+            {    "c_ulong",           {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u64"}},
+            { "c_longlong",            {amc::PrimitiveAbiKind::sint, 8, amc::FloatFormat::none, true, "prim:i64"}},
+            {"c_ulonglong",           {amc::PrimitiveAbiKind::uint, 8, amc::FloatFormat::none, false, "prim:u64"}},
             {    "c_float", {amc::PrimitiveAbiKind::floating, 4, amc::FloatFormat::ieee32, false, "prim:fieee32"}},
             {   "c_double", {amc::PrimitiveAbiKind::floating, 8, amc::FloatFormat::ieee64, false, "prim:fieee64"}},
         };
@@ -663,12 +663,30 @@ private:
         // Reference / raw pointer.
         if (tokens[0] == "*" || tokens[0] == "&") {
             size_t i = 1;
-            while (i < tokens.size() && (tokens[i] == "const" || tokens[i] == "mut"))
+            bool is_const = tokens[0] == "&";
+            while (i < tokens.size() && (tokens[i] == "const" || tokens[i] == "mut")) {
+                if (tokens[i] == "const") is_const = true;
+                if (tokens[i] == "mut") is_const = false;
                 ++i;
+            }
             std::string name;
             for (const auto &token : tokens)
                 name += token;
-            return add_aggregate_ref(name, 8, 8, amc::TypeKind::pointer);
+            const Resolved pointer = add_aggregate_ref(name, 8, 8, amc::TypeKind::pointer);
+            // Record the pointee so element/contract matching uses ABI identity
+            // (TypeID) instead of a spelling. An unresolvable pointee falls back
+            // to the spelling without failing the parse.
+            std::vector<std::string> pointee_tokens(tokens.begin() + static_cast<std::ptrdiff_t>(i), tokens.end());
+            if (!pointee_tokens.empty()) {
+                const std::string saved_error = error_;
+                error_.clear();
+                const Resolved pointee = resolve_type(pointee_tokens);
+                if (error_.empty())
+                    module_.pointees.push_back({pointer.id, pointee.id, is_const ? amc::pointee_const : 0u});
+                else
+                    error_ = saved_error;
+            }
+            return pointer;
         }
         // Fixed-size array `[T; N]`.
         if (tokens[0] == "[" && tokens.back() == "]") {
@@ -833,7 +851,7 @@ private:
         record.size = size == 0 ? 1 : size;
         record.align = align == 0 ? 1 : align;
         std::vector<amc::Field> layout(module_.fields.begin() + record.field_begin, module_.fields.end());
-        record.layout_hash = amc::layout_hash(record, layout);
+        record.layout_hash = amc::canonical_layout_hash(module_, record, layout);
         resolved_[item.name] = index;
         return index;
     }

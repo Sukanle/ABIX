@@ -20,12 +20,13 @@
 
 </details>
 
-本文用一个小的 C++ ABI 走完 ABIX 的核心流程：构建、inspect、query、diff、verify、
-generate。
+本文用一个小的 C++ ABI 走完 ABIX 的核心流程：构建、inspect、query、diff、verify、 generate。
 
 > ABIX 仍在积极开发中；以下命令与当前 CLI 一致。
 
 ## 1. 依赖
+
+> **平台支持：** 支持 Linux、macOS 与 Windows；Windows 上使用 MSYS2 UCRT64 工具链（GCC 或 Clang）。见 [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64)。
 
 * C++17 或更高
 * CMake 3.20+

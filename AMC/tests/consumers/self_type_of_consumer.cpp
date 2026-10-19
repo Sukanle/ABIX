@@ -1,6 +1,8 @@
-#include "src/self_types.cpp"
-
 #define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
+// The generated metadata specialises TypeTraits for these native types, so the
+// consumer must provide their declarations before including it.
+#include "ABIX/Model/Map.h"
+#include "ABIX/RCU/Domain.h"
 #include "abix_self_metadata.hpp"
 
 namespace {

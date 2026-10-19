@@ -23,13 +23,17 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
+
+// Named namespace: the file is also #included by bench_all.cpp, where all
+// included sources share one translation unit.
+namespace bench_abix_lookup_cross {
 
 // ============================================================
 // Access pattern generators
@@ -79,10 +83,10 @@ struct LookupFixture {
         names.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
             char buf[16];
-            std::snprintf(buf, sizeof(buf), "sym_%04u", i);
+            format_into(buf, "sym_{:04}", i);
             names.emplace_back(buf);
             entries.push_back({names.back().c_str(), skl::abix::dll::FnSigV<int(int)>, 0, 0xDEADBEEF,
-                mics::utils::cstr32(names.back().c_str()), 0});
+                skl::abix::runtime::name_hash(names.back().c_str()), 0});
         }
 
         table = {count, SKL_ABIX_TABLE_MAGIC, SKL_ABIX_TABLE_FORMAT_VERSION, 0, entries.data()};
@@ -95,8 +99,6 @@ struct LookupFixture {
 // ============================================================
 // Benchmark functions
 // ============================================================
-
-namespace {
 
 enum class Strategy : uint8_t {
     Linear,
@@ -127,7 +129,7 @@ static void run_uniform_bench(benchmark::State &state, Strategy strategy, uint32
 
     for (auto _ : state) {
         const char *name = fix.names[queries[qi]].c_str();
-        auto nh = mics::utils::cstr32(name);
+        auto nh = skl::abix::runtime::name_hash(name);
         qi = (qi + 1) % static_cast<uint32_t>(queries.size());
 
         const skl::abix::runtime::Entry *found = nullptr;
@@ -159,7 +161,7 @@ static void run_zipf_bench(benchmark::State &state, Strategy strategy, uint32_t 
 
     for (auto _ : state) {
         const char *name = fix.names[queries[qi]].c_str();
-        auto nh = mics::utils::cstr32(name);
+        auto nh = skl::abix::runtime::name_hash(name);
         qi = (qi + 1) % static_cast<uint32_t>(queries.size());
 
         const skl::abix::runtime::Entry *found = nullptr;
@@ -174,8 +176,6 @@ static void run_zipf_bench(benchmark::State &state, Strategy strategy, uint32_t 
 
     state.SetItemsProcessed(state.iterations());
 }
-
-}   // anonymous namespace
 
 // ============================================================
 // Register all combinations
@@ -215,3 +215,5 @@ public:
 };
 
 static ABIXLookupCrossRegisterer g_registerer;
+
+}   // namespace bench_abix_lookup_cross

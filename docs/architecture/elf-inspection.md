@@ -20,16 +20,11 @@
 
 </details>
 
-AMC embeds ABI metadata into compiled binaries via custom sections. This
-document explains how to locate, inspect and verify those sections using
-standard tools (`readelf`/`objdump` on ELF, `otool` on Mach-O) and the AMC CLI.
+AMC embeds ABI metadata into compiled binaries via custom sections. This document explains how to locate, inspect and verify those sections using standard tools (`readelf`/`objdump` on ELF, `otool` on Mach-O) and the AMC CLI.
 
 ## How Metadata Gets Into the Binary
 
-The AMC C++ backend (`amc generate -l cpp`) produces a header that uses
-`__attribute__((section(...)))` to place data into two sections. The attribute
-is selected per target: ELF uses the dot-separated names, while Mach-O requires
-a `segment,section` pair and a name of at most 16 bytes.
+The AMC C++ backend (`amc generate -l cpp`) produces a header that uses `__attribute__((section(...)))` to place data into two sections. The attribute is selected per target: ELF uses the dot-separated names, while Mach-O requires a `segment,section` pair and a name of at most 16 bytes.
 
 ```cpp
 // ELF
@@ -44,8 +39,7 @@ __attribute__((used, section("__DATA,__abix_names")))
 __attribute__((used, section("__DATA,__abix_metadata"), aligned(8)))
 ```
 
-When a user compiles code that includes this header with a standard compiler
-(clang++, g++) on Linux or macOS, the resulting binary contains both sections.
+When a user compiles code that includes this header with a standard compiler (clang++, g++) on Linux or macOS, the resulting binary contains both sections.
 
 ```
 amc build    →  .abix + .abix.meta
@@ -60,8 +54,7 @@ clang++/g++  →  ELF or Mach-O binary  (metadata + names sections)
 | `.abix.metadata` | `__DATA,__abix_metadata` | Self-describing Metadata Region: manifest + desc + hash + names (offset-based, pointer-free) | Yes, but `amc metadata --from-elf` will fail |
 | `.abix.names` | `__DATA,__abix_names` | Array of `const char*` pointers to type/field/function name strings (strings live in `.rodata`/`__TEXT,__cstring`) | Yes, safe — runtime does not reference it |
 
-AMC accepts the canonical ELF spelling everywhere and translates it to the
-native spelling of the container it detects.
+AMC accepts the canonical ELF spelling everywhere and translates it to the native spelling of the container it detects.
 
 ## Using readelf / objdump (ELF)
 
@@ -111,8 +104,7 @@ amc metadata <file.abix> -o region.abixmeta
 amc metadata --verify region.abixmeta
 ```
 
-> `--from-elf` is retained for compatibility; the input container is detected
-> automatically (ELF or Mach-O).
+> `--from-elf` is retained for compatibility; the input container is detected automatically (ELF or Mach-O).
 
 ## Stripping
 
@@ -126,20 +118,18 @@ strip -R __abix_names <binary>
 otool -l <binary> | grep __abix_names    # no output
 ```
 
-After stripping, `amc metadata --from-elf` still works because it reads the
-metadata region, not the names section.
+After stripping, `amc metadata --from-elf` still works because it reads the metadata region, not the names section.
 
 ## Automated Testing
 
-The project includes a test script that exercises the full pipeline on the host
-platform (readelf/objdump on ELF, otool on Mach-O):
+The project includes a test suite that exercises the full pipeline on the host platform (readelf/objdump on ELF, otool on Mach-O):
 
 ```bash
-python3 tools/test_amc_elf-pe.py           # run and auto-cleanup
-python3 tools/test_amc_elf-pe.py --keep    # keep temp files for inspection
+python3 tools/run_test.py --elf-pe           # run and auto-cleanup
+python3 tools/run_test.py --elf-pe --keep    # keep temp files for inspection
 ```
 
-The script runs 9 phases:
+The suite runs 9 phases:
 
 1. `amc build` — produce `.abix` + `.abix.meta`
 2. `amc generate` — produce C++ header with section attributes
@@ -155,19 +145,12 @@ The script runs 9 phases:
 
 - **Linux / ELF**: ELF64 little-endian (x86_64 / aarch64), thin images.
 - **macOS / Mach-O**: 64-bit little-endian Mach-O (arm64), thin images.
-- **Windows / PE**: planned, not yet implemented.
+- **Windows / PE**: `.abix` / `.abix.n` sections; reading and emission are implemented — see [pe-inspection.md](pe-inspection.md).
 
 ## Limitations
 
-- **Byte order**: little-endian is currently the **only** supported byte order
-  for both ELF and Mach-O. Big-endian support is intentionally deferred until a
-  concrete networking / RPC requirement needs it.
-- **macOS hardware**: Apple Silicon (arm64) is supported. **Intel Mac
-  (x86_64 macOS) is not supported for now** — there is no test device available
-  to validate it, so it is out of scope until one is.
-- **Mach-O images** must be thin (single architecture); universal / fat
-  binaries are not parsed yet.
-- **Cross-platform goal**: Windows (PE), macOS (Mach-O) and Linux (ELF). PE/COFF
-  parsing is planned but not yet implemented.
-- `.abix.names` contains `const char*` pointers; the actual strings reside in
-  `.rodata` / `__TEXT,__cstring`. Use `strings <binary> | grep -i amc` to find them.
+- **Byte order**: little-endian is currently the **only** supported byte order for both ELF and Mach-O. Big-endian support is intentionally deferred until a concrete networking / RPC requirement needs it.
+- **macOS hardware**: Apple Silicon (arm64) is supported. **Intel Mac (x86_64 macOS) is not supported for now** — there is no test device available to validate it, so it is out of scope until one is.
+- **Mach-O images** must be thin (single architecture); universal / fat binaries are not parsed yet.
+- **Cross-platform goal**: Windows (PE), macOS (Mach-O) and Linux (ELF). PE/COFF parsing and emission are implemented; see [pe-inspection.md](pe-inspection.md).
+- `.abix.names` contains `const char*` pointers; the actual strings reside in `.rodata` / `__TEXT,__cstring`. Use `strings <binary> | grep -i amc` to find them.

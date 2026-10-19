@@ -29,7 +29,27 @@ constexpr uint32_t kHashRecordEntrySize = 32;
 constexpr uint32_t kCompatibilityEntrySize = 44;
 constexpr uint32_t kMapEntrySize = 60;
 constexpr uint32_t kMapOperationEntrySize = 40;
-constexpr uint32_t kSourceEntrySize = 32;   // type_id(16) + file_offset(4) + line(4) + column(4) + reserved(4)
+constexpr uint32_t kSourceEntrySize = 32;     // type_id(16) + file_offset(4) + line(4) + column(4) + reserved(4)
+constexpr uint32_t kOwnedEntrySize = 52;      // type_id(16) + create(16) + destroy(16) + flags(4)
+constexpr uint32_t kContractEntrySize = 32;   // target(4) + target_index(4) + mode(4) + flags(4) + release(16)
+constexpr uint32_t kErrorEntrySize =
+    28;   // function(4) + status_source(4) + status_param(4) + success(8) + value(4) + flags(4)
+constexpr uint32_t kPlatformEntrySize = 8;   // pointer_bits(4) + endianness(4)
+constexpr uint32_t kLoweringEntrySize =
+    52;   // type_id(16) + contract_type(16) + kind(4) + status(4) + reason(4) + ptr(4) + len(4)
+constexpr uint32_t kPointeeEntrySize = 36;         // pointer(16) + pointee(16) + flags(4)
+constexpr uint32_t kViewAdapterEntrySize = 64;     // source(16) + target(16) + data(16) + size(16)
+constexpr uint32_t kRangeAdapterEntrySize = 48;    // source(16) + size(16) + at(16)
+constexpr uint32_t kInstantiationEntrySize = 32;   // request(16) + type(16)
+constexpr uint32_t kInterfaceEntrySize =
+    40;   // id(16) + name_off(4) + name_len(4) + version(4) + method_begin(4) + method_count(4) + flags(4)
+constexpr uint32_t kInterfaceMethodEntrySize =
+    72;   // interface_id(16) + name_off(4) + name_len(4) + signature(16) + return(16) + param_begin(4) +
+          // param_count(4) + slot(4) + flags(4)
+constexpr uint32_t kImplementationEntrySize = 44;   // interface_id(16) + concrete_type(16) + binding_begin(4) +
+                                                    // binding_count(4) + flags(4)
+constexpr uint32_t kMethodBindingEntrySize =
+    56;   // interface_id(16) + method_signature(16) + native(16) + slot(4) + flags(4)
 
 enum Section : uint32_t {
     strings = 1,
@@ -45,7 +65,21 @@ enum Section : uint32_t {
     maps,
     map_operations,
     target,
-    sources
+    sources,
+    owned,
+    contracts,
+    errors,
+    platform,
+    lowering,
+    pointees,
+    view_adapters,
+    range_adapters,
+    instantiations,
+    interfaces,
+    interface_methods,
+    implementations,
+    method_bindings,
+    layout_encoding
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -127,26 +161,94 @@ bool valid_hash_kind(uint32_t value) { return value <= static_cast<uint32_t>(Has
 bool valid_hash_target(uint32_t value) { return value <= static_cast<uint32_t>(HashTargetKind::function); }
 bool valid_compatibility(uint32_t value) { return value <= static_cast<uint32_t>(CompatibilityKind::incompatible); }
 bool valid_map_opcode(uint8_t value) { return value <= static_cast<uint8_t>(MapOpcode::skip_field); }
+// `void` is a first-class primitive with no size. It is valid as a function
+// return type, so the size/align checks below deliberately skip it.
+bool is_void_type(const Type &type) {
+    return type.kind == TypeKind::primitive
+        && (type.primitive_abi & 0xffu) == static_cast<uint32_t>(PrimitiveAbiKind::void_);
+}
 
 }   // namespace
 
 bool operator==(Hash128 lhs, Hash128 rhs) { return lhs.lo == rhs.lo && lhs.hi == rhs.hi; }
 
+namespace {
+// The `lo` seed is the standard FNV-1a 64 offset basis, shared with
+// ABIX/Util/Hash.h (`fnv1a_offset_basis`). The `hi` seed is the FNV prime and
+// the `hi` multiplier is XXH64's PRIME64_2. These values are a cross-tool
+// contract: changing any of them changes every AMC-derived identity.
+constexpr uint64_t kFnv1aOffsetBasis = 14'695'981'039'346'656'037ULL;
+constexpr uint64_t kFnv1aPrime = 1'099'511'628'211ULL;
+constexpr uint64_t kCanonicalHiPrime = 14'029'467'366'897'019'727ULL;
+}   // namespace
+
 Hash128 hash_text(std::string_view text, uint64_t domain) {
-    uint64_t lo = 1'469'598'103'934'665'603ULL ^ domain;
-    uint64_t hi = 1'099'511'628'211ULL + domain;
+    uint64_t lo = kFnv1aOffsetBasis ^ domain;
+    uint64_t hi = kFnv1aPrime + domain;
     for (unsigned char c : text) {
-        lo = (lo ^ c) * 1'099'511'628'211ULL;
-        hi = (hi ^ (c + 31)) * 14'029'467'366'897'019'727ULL;
+        lo = (lo ^ c) * kFnv1aPrime;
+        hi = (hi ^ (c + 31)) * kCanonicalHiPrime;
     }
     return {lo, hi};
 }
 
-Hash128 layout_hash(const Type &type, const std::vector<Field> &fields) {
-    std::string input = type.name + ":" + std::to_string(type.size) + ":" + std::to_string(type.align);
-    for (const auto &field : fields)
-        input += field.name + std::to_string(field.offset) + std::to_string(field.type_id.lo);
-    return hash_text(input, 0x4c41594f5554ULL);
+std::vector<uint8_t> canonical_layout_encoding(
+    const AbiModule &module, const Type &type, const std::vector<Field> &fields) {
+    std::vector<uint8_t> bytes;
+    bytes.reserve(54 + fields.size() * 24);
+    const auto put_u16 = [&](uint16_t value) {
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    };
+    const auto put_u32 = [&](uint32_t value) {
+        bytes.push_back(static_cast<uint8_t>(value >> 24));
+        bytes.push_back(static_cast<uint8_t>(value >> 16));
+        bytes.push_back(static_cast<uint8_t>(value >> 8));
+        bytes.push_back(static_cast<uint8_t>(value));
+    };
+    const auto put_u64 = [&](uint64_t value) {
+        put_u32(static_cast<uint32_t>(value >> 32));
+        put_u32(static_cast<uint32_t>(value));
+    };
+    const auto put_hash = [&](Hash128 value) {
+        put_u64(value.lo);
+        put_u64(value.hi);
+    };
+    constexpr char magic[] = "ABIX-CLE";
+    bytes.insert(bytes.end(), magic, magic + sizeof(magic) - 1);
+    put_u16(canonical_layout_version);
+    put_u32(module.arch);
+    put_u32(module.os);
+    put_u32(module.target_abi);
+    put_u32(module.compiler);
+    put_hash(type.id);
+    put_u32(type.size);
+    put_u32(type.align);
+    put_u32(type.field_count);
+    for (uint32_t i = 0; i < type.field_count; ++i) {
+        const Field &field = fields[i];
+        put_hash(field.type_id);
+        put_u32(field.offset);
+        put_u32(field.flags & 0xFFFF0003u);   // ABI-relevant flags only
+    }
+    return bytes;
+}
+
+Hash128 canonical_layout_hash(const AbiModule &module, const Type &type, const std::vector<Field> &fields) {
+    const std::vector<uint8_t> bytes = canonical_layout_encoding(module, type, fields);
+    return hash_text(
+        std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()), canonical_layout_domain);
+}
+
+void recompute_layout_hashes(AbiModule &module) {
+    module.layout_encoding_version = canonical_layout_version;
+    for (auto &type : module.types) {
+        std::vector<Field> fields;
+        fields.reserve(type.field_count);
+        for (uint32_t i = 0; i < type.field_count; ++i)
+            fields.push_back(module.fields[type.field_begin + i]);
+        type.layout_hash = canonical_layout_hash(module, type, fields);
+    }
 }
 
 Hash128 signature_hash(const Function &function) {
@@ -157,6 +259,37 @@ Hash128 signature_hash(const Function &function) {
     return hash_text(input, 0x5349474e41545552ULL);
 }
 
+Hash128 method_signature_hash(const InterfaceMethod &method) {
+    Function function;
+    function.name = method.name;
+    function.return_type = method.return_type;
+    function.parameters = method.parameters;
+    return signature_hash(function);
+}
+
+Hash128 interface_identity(
+    const std::string &name, uint32_t version, const std::vector<Hash128> &ordered_method_signatures) {
+    std::string input = "ABIX-INTERFACE:" + name + ":" + std::to_string(version);
+    for (const Hash128 &signature : ordered_method_signatures)
+        input += ":" + std::to_string(signature.lo) + ":" + std::to_string(signature.hi);
+    return hash_text(input, 0x494e544552464143ULL);
+}
+
+Hash128 interface_hash(const InterfaceRecord &interface, const std::vector<InterfaceMethod> &methods) {
+    std::vector<const InterfaceMethod *> ordered;
+    for (uint32_t i = 0; i < interface.method_count; ++i) {
+        const InterfaceMethod &method = methods[interface.method_begin + i];
+        ordered.push_back(&method);
+    }
+    std::sort(ordered.begin(), ordered.end(),
+        [](const InterfaceMethod *a, const InterfaceMethod *b) { return a->slot < b->slot; });
+    std::vector<Hash128> signatures;
+    signatures.reserve(ordered.size());
+    for (const auto *method : ordered)
+        signatures.push_back(method->signature);
+    return interface_identity(interface.name, interface.version, signatures);
+}
+
 namespace {
 void canonical_u32(std::vector<uint8_t> &bytes, uint32_t value) { put_u32(bytes, value); }
 void canonical_hash(std::vector<uint8_t> &bytes, Hash128 value) { put_hash(bytes, value); }
@@ -165,11 +298,11 @@ void canonical_string(std::vector<uint8_t> &bytes, const std::string &value) {
     bytes.insert(bytes.end(), value.begin(), value.end());
 }
 Hash128 effective_layout_hash(const AbiModule &module, const Type &type) {
-    if (!(type.layout_hash == Hash128{})) return type.layout_hash;
     std::vector<Field> fields;
+    fields.reserve(type.field_count);
     for (uint32_t i = 0; i < type.field_count; ++i)
         fields.push_back(module.fields[type.field_begin + i]);
-    return layout_hash(type, fields);
+    return canonical_layout_hash(module, type, fields);
 }
 std::vector<Symbol> effective_symbols(const AbiModule &module) {
     if (!module.symbols.empty()) return module.symbols;
@@ -421,11 +554,10 @@ bool validate(const AbiModule &module, std::string &error) {
     error.clear();
     std::unordered_map<std::string, const Type *> type_by_id;
     for (const auto &type : module.types) {
+        const bool void_type = is_void_type(type);
         if (type.name.empty()
-            || type.size == 0
-            || type.align == 0
-            || (type.align & (type.align - 1)) != 0
-            || !valid_type_kind(static_cast<uint32_t>(type.kind))) {
+            || !valid_type_kind(static_cast<uint32_t>(type.kind))
+            || (!void_type && (type.size == 0 || type.align == 0 || (type.align & (type.align - 1)) != 0))) {
             error = "invalid type: " + type.name;
             return false;
         }
@@ -536,7 +668,605 @@ bool validate(const AbiModule &module, std::string &error) {
             return false;
         }
     }
+    // Ownership contract: a mode must be declared (never inferred), must point
+    // at a real interaction, and an `owned` return must reference an available
+    // release entry point. A contract without a usable release capability is
+    // rejected rather than assumed safe.
+    uint32_t total_parameters = 0;
+    for (const auto &function : module.functions)
+        total_parameters += static_cast<uint32_t>(function.parameters.size());
+    for (const auto &contract : module.contracts) {
+        if (contract.mode == OwnershipMode::unspecified) {
+            error = "ownership contract has unspecified mode";
+            return false;
+        }
+        if (contract.target == OwnershipTarget::return_value) {
+            if (contract.target_index >= module.functions.size()) {
+                error = "ownership contract references an unknown return value";
+                return false;
+            }
+        } else if (contract.target_index >= total_parameters) {
+            error = "ownership contract references an unknown parameter";
+            return false;
+        }
+        const bool has_release = !(contract.release == Hash128{});
+        if (has_release) {
+            bool found = false;
+            for (const auto &function : module.functions)
+                if (function.signature == contract.release) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                error = "ownership contract release entry point not found";
+                return false;
+            }
+        } else if (contract.mode == OwnershipMode::owned && contract.target == OwnershipTarget::return_value) {
+            error = "owned return value has no release entry point";
+            return false;
+        }
+    }
+    for (const auto &contract : module.errors) {
+        if (contract.function_index >= module.functions.size()) {
+            error = "error contract references an unknown function";
+            return false;
+        }
+        const auto &function = module.functions[contract.function_index];
+        if (contract.status_source == StatusSource::return_field) {
+            // The returned record carries the status/value as fields.
+            const Type *result = find_type_by_id(module, function.return_type);
+            const uint32_t fields = (result != nullptr && result->kind == TypeKind::record) ? result->field_count : 0u;
+            if (contract.status_parameter >= fields
+                || (contract.value_parameter != UINT32_MAX && contract.value_parameter >= fields)) {
+                error = "error contract result field is out of range";
+                return false;
+            }
+        } else if (contract.status_source == StatusSource::parameter
+                   && contract.status_parameter >= function.parameters.size()) {
+            error = "error contract status parameter is out of range";
+            return false;
+        } else if (contract.status_source == StatusSource::return_value
+                   && contract.value_parameter != UINT32_MAX
+                   && contract.value_parameter >= function.parameters.size()) {
+            error = "error contract value parameter is out of range";
+            return false;
+        }
+    }
+    for (const auto &record : module.lowerings) {
+        if (!find_type_by_id(module, record.type_id) || !find_type_by_id(module, record.contract_type)) {
+            error = "lowering references an unknown type";
+            return false;
+        }
+        if (record.kind > static_cast<uint32_t>(LoweringKind::opaque)
+            || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)) {
+            error = "invalid lowering record";
+            return false;
+        }
+    }
+    for (const auto &record : module.pointees) {
+        if (!find_type_by_id(module, record.pointer) || !find_type_by_id(module, record.pointee)) {
+            error = "pointee reference names an unknown type";
+            return false;
+        }
+    }
+    for (const auto &record : module.view_adapters) {
+        if (!find_type_by_id(module, record.source_type) || !find_type_by_id(module, record.target_type)) {
+            error = "view adapter names an unknown type";
+            return false;
+        }
+        const Hash128 accessors[] = {record.data_accessor, record.size_accessor};
+        for (const Hash128 &signature : accessors) {
+            bool found = false;
+            for (const auto &function : module.functions)
+                if (function.signature == signature) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                error = "view adapter names an unknown accessor";
+                return false;
+            }
+        }
+    }
+    for (const auto &record : module.range_adapters) {
+        if (!find_type_by_id(module, record.source_type)) {
+            error = "range adapter names an unknown type";
+            return false;
+        }
+        const Hash128 accessors[] = {record.size_accessor, record.at_accessor};
+        for (const Hash128 &signature : accessors) {
+            bool found = false;
+            for (const auto &function : module.functions)
+                if (function.signature == signature) {
+                    found = true;
+                    break;
+                }
+            if (!found) {
+                error = "range adapter names an unknown accessor";
+                return false;
+            }
+        }
+    }
+    for (const auto &record : module.instantiations) {
+        if (!find_type_by_id(module, record.type)) {
+            error = "instantiation record names an unknown type";
+            return false;
+        }
+    }
+    // Non-intrusive interface contracts. Identity is a content hash, methods are
+    // identified by (interface id, slot), and a signature mismatch is rejected
+    // rather than tolerated: name or shape alone never implies compatibility.
+    std::unordered_map<std::string, const InterfaceRecord *> interface_by_id;
+    for (const auto &record : module.interfaces) {
+        if (record.name.empty() || record.id == Hash128{}) {
+            error = "invalid interface: " + record.name;
+            return false;
+        }
+        if (!interface_by_id.emplace(hash_key(record.id), &record).second) {
+            error = "duplicate interface id: " + record.name;
+            return false;
+        }
+        if (record.method_count == 0
+            || record.method_begin > module.interface_methods.size()
+            || record.method_count > module.interface_methods.size() - record.method_begin) {
+            error = "interface method range is out of bounds: " + record.name;
+            return false;
+        }
+        std::unordered_set<uint32_t> slots;
+        for (uint32_t i = 0; i < record.method_count; ++i) {
+            const auto &method = module.interface_methods[record.method_begin + i];
+            if (method.interface_id == Hash128{} || !(method.interface_id == record.id)) {
+                error = "interface method has a mismatched interface id";
+                return false;
+            }
+            if (method.name.empty() || method.signature == Hash128{}) {
+                error = "interface method has no name or signature";
+                return false;
+            }
+            if (type_by_id.count(hash_key(method.return_type)) == 0) {
+                error = "interface method references an unknown return type: " + method.name;
+                return false;
+            }
+            for (const auto &parameter : method.parameters)
+                if (type_by_id.count(hash_key(parameter.type_id)) == 0) {
+                    error = "interface method parameter references an unknown type";
+                    return false;
+                }
+            if (!slots.insert(method.slot).second) {
+                error = "duplicate interface method slot: " + record.name;
+                return false;
+            }
+        }
+    }
+    uint32_t claimed_methods = 0;
+    for (const auto &record : module.interfaces)
+        claimed_methods += record.method_count;
+    if (claimed_methods != module.interface_methods.size()) {
+        error = "interface method records are not claimed by any interface";
+        return false;
+    }
+    for (const auto &implementation : module.implementations) {
+        const auto interface = interface_by_id.find(hash_key(implementation.interface_id));
+        if (interface == interface_by_id.end()) {
+            error = "implementation references an unknown interface";
+            return false;
+        }
+        if (!find_type_by_id(module, implementation.concrete_type)) {
+            error = "implementation references an unknown concrete type";
+            return false;
+        }
+        if (implementation.binding_begin > module.method_bindings.size()
+            || implementation.binding_count > module.method_bindings.size() - implementation.binding_begin) {
+            error = "implementation binding range is out of bounds";
+            return false;
+        }
+        const InterfaceRecord *contract = interface->second;
+        std::unordered_set<uint32_t> bound_slots;
+        for (uint32_t i = 0; i < implementation.binding_count; ++i) {
+            const auto &binding = module.method_bindings[implementation.binding_begin + i];
+            if (!(binding.interface_id == implementation.interface_id)) {
+                error = "method binding interface id does not match its implementation";
+                return false;
+            }
+            bool slot_ok = false;
+            for (uint32_t m = 0; m < contract->method_count; ++m) {
+                const auto &method = module.interface_methods[contract->method_begin + m];
+                if (method.slot == binding.slot) {
+                    if (!(method.signature == binding.method_signature)) {
+                        error = "method binding signature does not match the interface method";
+                        return false;
+                    }
+                    slot_ok = true;
+                    break;
+                }
+            }
+            if (!slot_ok) {
+                error = "method binding references an unknown interface slot";
+                return false;
+            }
+            if (!(binding.native_function == Hash128{})) {
+                bool found = false;
+                for (const auto &function : module.functions)
+                    if (function.signature == binding.native_function) {
+                        found = true;
+                        break;
+                    }
+                if (!found) {
+                    error = "method binding references an unknown native function";
+                    return false;
+                }
+            }
+            bound_slots.insert(binding.slot);
+        }
+        if (bound_slots.size() != contract->method_count) {
+            error = "implementation does not bind every interface method";
+            return false;
+        }
+    }
     return true;
+}
+
+namespace {
+
+std::string normalise_spelling(const std::string &spelling) {
+    static const char * const qualifiers[] = {"const", "volatile", "struct", "class", "enum", "union"};
+    std::string out;
+    std::string token;
+    const auto flush = [&]() {
+        if (token.empty()) return;
+        bool qualifier = false;
+        for (const char *q : qualifiers)
+            if (token == q) {
+                qualifier = true;
+                break;
+            }
+        if (!qualifier) out += token;
+        token.clear();
+    };
+    for (const char c : spelling) {
+        if (std::isspace(static_cast<unsigned char>(c)) || c == '*' || c == '&') {
+            flush();
+            continue;
+        }
+        token += c;
+    }
+    flush();
+    return out;
+}
+
+bool spelling_is_const(const std::string &spelling) {
+    std::string token;
+    for (size_t i = 0; i <= spelling.size(); ++i) {
+        const char c = i < spelling.size() ? spelling[i] : ' ';
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (token == "const") return true;
+            token.clear();
+        } else {
+            token += c;
+        }
+    }
+    return false;
+}
+
+std::string pointer_pointee_spelling(const std::string &name) {
+    if (!name.empty() && name.back() == '*') return name.substr(0, name.size() - 1);
+    if (name.rfind("*const", 0) == 0) return name.substr(6);
+    if (name.rfind("*mut", 0) == 0) return name.substr(4);
+    if (!name.empty() && name[0] == '&') return name.rfind("&mut", 0) == 0 ? name.substr(4) : name.substr(1);
+    return name;
+}
+
+}   // namespace
+
+Hash128 find_type_id_by_spelling(const AbiModule &module, const std::string &spelling) {
+    const std::string wanted = normalise_spelling(spelling);
+    for (const auto &type : module.types) {
+        // Skip pointers: their normalized spelling strips `*`, so `int*` would
+        // otherwise shadow the `int` value type the caller asked for.
+        if (type.kind == TypeKind::pointer) continue;
+        if (normalise_spelling(type.name) == wanted) return type.id;
+    }
+    return Hash128{};
+}
+
+LoweringResult evaluate_view(const AbiModule &module, Hash128 type_id, LoweringKind kind, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(kind);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+
+    // sequence-view = { data, length }; string-view = { data, length, encoding }.
+    const uint32_t required_fields = kind == LoweringKind::string_view ? 3u : 2u;
+    uint32_t pointer_size = module.pointer_bits != 0 ? module.pointer_bits / 8 : 0;
+    int pointer_index = -1;
+    uint32_t visible = 0;
+    std::vector<uint32_t> others;
+    for (uint32_t i = 0; i < type->field_count; ++i) {
+        const auto &field = module.fields[type->field_begin + i];
+        if ((field.flags & field_base) != 0 || (field.flags & field_bitfield) != 0) continue;
+        ++visible;
+        const Type *field_type = find_type_by_id(module, field.type_id);
+        if (field_type && field_type->kind == TypeKind::pointer && pointer_index < 0) {
+            pointer_index = static_cast<int>(i);
+            if (pointer_size == 0) pointer_size = field_type->size;
+        } else {
+            others.push_back(i);
+        }
+    }
+    if (visible != required_fields) {
+        result.reason = static_cast<uint32_t>(LoweringReason::field_count);
+        return result;
+    }
+    if (pointer_index < 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::missing_data);
+        return result;
+    }
+    // The remaining fields, ordered by offset, are length [, encoding].
+    std::sort(others.begin(), others.end(), [&](uint32_t a, uint32_t b) {
+        return module.fields[type->field_begin + a].offset < module.fields[type->field_begin + b].offset;
+    });
+    if (others.size() != required_fields - 1) {
+        result.reason = static_cast<uint32_t>(LoweringReason::field_count);
+        return result;
+    }
+    result.pointer_field = static_cast<uint32_t>(pointer_index);
+    result.length_field = others[0];
+    const auto &pointer_field = module.fields[type->field_begin + result.pointer_field];
+    const auto &length_field = module.fields[type->field_begin + result.length_field];
+    const Type *pointer_type = find_type_by_id(module, pointer_field.type_id);
+    if (!pointer_type || pointer_size == 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::missing_data);
+        return result;
+    }
+
+    // The pointer's recorded pointee (identity + mutability qualifier), if any.
+    Hash128 pointee_id{};
+    uint32_t pointee_flags = 0;
+    bool have_ref = false;
+    for (const auto &ref : module.pointees)
+        if (ref.pointer == pointer_field.type_id) {
+            pointee_id = ref.pointee;
+            pointee_flags = ref.flags;
+            have_ref = true;
+            break;
+        }
+
+    // Element type: shape alone is not enough. Match the pointee by TypeID when
+    // the pointer records one (the principled path); otherwise fall back to the
+    // ABI spelling. `const float *` must not match `SequenceView<i32>`.
+    if (!(element_id == Hash128{}) || !element_spelling.empty()) {
+        bool match = true;
+        if (have_ref && !(element_id == Hash128{})) {
+            match = (pointee_id == element_id);
+        } else if (!element_spelling.empty()) {
+            match = normalise_spelling(pointer_pointee_spelling(pointer_type->name))
+                 == normalise_spelling(element_spelling);
+        }
+        if (!match) {
+            result.reason = static_cast<uint32_t>(LoweringReason::element_mismatch);
+            return result;
+        }
+    }
+    // Mutability is a separate qualifier, not part of element identity. Use the
+    // recorded qualifier when present; fall back to the spelling otherwise.
+    const bool is_const = have_ref ? (pointee_flags & pointee_const) != 0 : spelling_is_const(pointer_type->name);
+    if (contract_mutable && is_const) {
+        result.reason = static_cast<uint32_t>(LoweringReason::mutability_mismatch);
+        return result;
+    }
+    // Length (and, for a string view, the encoding) must be unsigned integers.
+    const Type *length_type = find_type_by_id(module, length_field.type_id);
+    if (!length_type
+        || (length_type->primitive_abi & 0xffu) != static_cast<uint32_t>(PrimitiveAbiKind::uint)
+        || length_type->size == 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::length_type);
+        return result;
+    }
+    uint32_t trailing = length_type->size;
+    if (kind == LoweringKind::string_view) {
+        const auto &encoding_field = module.fields[type->field_begin + others[1]];
+        const Type *encoding_type = find_type_by_id(module, encoding_field.type_id);
+        if (!encoding_type
+            || (encoding_type->primitive_abi & 0xffu) != static_cast<uint32_t>(PrimitiveAbiKind::uint)
+            || encoding_type->size == 0) {
+            result.reason = static_cast<uint32_t>(LoweringReason::length_type);
+            return result;
+        }
+        trailing += encoding_type->size;
+    }
+    (void)trailing;
+
+    // Canonical layout: data at 0, then length, then (string view) encoding.
+    // Trailing padding is allowed -- only the field order/offsets matter.
+    bool canonical = pointer_field.offset == 0 && length_field.offset == pointer_size;
+    if (canonical && kind == LoweringKind::string_view) {
+        const auto &encoding_field = module.fields[type->field_begin + others[1]];
+        canonical = encoding_field.offset == pointer_size + length_type->size;
+    }
+    if (canonical) {
+        result.status = static_cast<uint32_t>(LoweringStatus::direct);
+        result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    } else {
+        // The exact required fields are present with known layout; a thin
+        // representation adapter can reorder them.
+        result.status = static_cast<uint32_t>(LoweringStatus::needs_adapter);
+        result.reason = static_cast<uint32_t>(LoweringReason::layout);
+    }
+    return result;
+}
+
+LoweringResult evaluate_sequence_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable) {
+    return evaluate_view(module, type_id, LoweringKind::sequence_view, element_id, element_spelling, contract_mutable);
+}
+
+LoweringResult evaluate_string_view(const AbiModule &module, Hash128 type_id, Hash128 element_id,
+    const std::string &element_spelling, bool contract_mutable) {
+    return evaluate_view(module, type_id, LoweringKind::string_view, element_id, element_spelling, contract_mutable);
+}
+
+namespace {
+
+bool byte_discriminant(const Type *type) {
+    if (!type || type->kind != TypeKind::primitive) return false;
+    const uint32_t kind = type->primitive_abi & 0xffu;
+    return kind == static_cast<uint32_t>(PrimitiveAbiKind::bool_)
+        || kind == static_cast<uint32_t>(PrimitiveAbiKind::uchar)
+        || kind == static_cast<uint32_t>(PrimitiveAbiKind::char8)
+        || (kind == static_cast<uint32_t>(PrimitiveAbiKind::uint) && type->size == 1);
+}
+
+bool integer_status(const Type *type) {
+    if (!type || type->kind != TypeKind::primitive) return false;
+    const uint32_t kind = type->primitive_abi & 0xffu;
+    return (kind == static_cast<uint32_t>(PrimitiveAbiKind::sint)
+               || kind == static_cast<uint32_t>(PrimitiveAbiKind::uint))
+        && type->size >= 4;
+}
+
+// Shared matcher for the `optional` and `result` value layouts:
+//   optional = { discriminant: bool/u8; payload: T }
+//   result   = { status: int;        payload: T }
+LoweringResult evaluate_pair(const AbiModule &module, Hash128 type_id, LoweringKind kind, Hash128 element_id,
+    const std::string &element_spelling, bool discriminant_is_bool) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(kind);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+
+    int discriminant_index = -1, payload_index = -1;
+    uint32_t visible = 0;
+    for (uint32_t i = 0; i < type->field_count; ++i) {
+        const auto &field = module.fields[type->field_begin + i];
+        if ((field.flags & field_base) != 0 || (field.flags & field_bitfield) != 0) continue;
+        ++visible;
+        const Type *field_type = find_type_by_id(module, field.type_id);
+        if (discriminant_index < 0
+            && (discriminant_is_bool ? byte_discriminant(field_type) : integer_status(field_type)))
+            discriminant_index = static_cast<int>(i);
+        else
+            payload_index = static_cast<int>(i);
+    }
+    if (visible != 2) {
+        result.reason = static_cast<uint32_t>(LoweringReason::field_count);
+        return result;
+    }
+    if (discriminant_index < 0 || payload_index < 0) {
+        result.reason = static_cast<uint32_t>(LoweringReason::missing_data);
+        return result;
+    }
+    result.pointer_field = static_cast<uint32_t>(discriminant_index);
+    result.length_field = static_cast<uint32_t>(payload_index);
+    const auto &discriminant_field = module.fields[type->field_begin + static_cast<uint32_t>(discriminant_index)];
+    const auto &payload_field = module.fields[type->field_begin + static_cast<uint32_t>(payload_index)];
+    const Type *discriminant_type = find_type_by_id(module, discriminant_field.type_id);
+    const Type *payload_type = find_type_by_id(module, payload_field.type_id);
+
+    // Payload matches the declared element by TypeID (or, failing that, spelling).
+    if (!(element_id == Hash128{})) {
+        if (!(payload_field.type_id == element_id)) {
+            result.reason = static_cast<uint32_t>(LoweringReason::element_mismatch);
+            return result;
+        }
+    } else if (!element_spelling.empty()) {
+        if (!payload_type || normalise_spelling(payload_type->name) != normalise_spelling(element_spelling)) {
+            result.reason = static_cast<uint32_t>(LoweringReason::element_mismatch);
+            return result;
+        }
+    }
+    const uint32_t payload_align = payload_type ? (payload_type->align == 0 ? 1 : payload_type->align) : 1;
+    const uint32_t expected_offset = (discriminant_type->size + payload_align - 1) / payload_align * payload_align;
+    if (discriminant_field.offset == 0 && payload_field.offset == expected_offset) {
+        result.status = static_cast<uint32_t>(LoweringStatus::direct);
+        result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    } else {
+        result.status = static_cast<uint32_t>(LoweringStatus::needs_adapter);
+        result.reason = static_cast<uint32_t>(LoweringReason::layout);
+    }
+    return result;
+}
+
+}   // namespace
+
+LoweringResult evaluate_optional(
+    const AbiModule &module, Hash128 type_id, Hash128 element_id, const std::string &element_spelling) {
+    return evaluate_pair(module, type_id, LoweringKind::optional, element_id, element_spelling, true);
+}
+
+LoweringResult evaluate_result(
+    const AbiModule &module, Hash128 type_id, Hash128 element_id, const std::string &element_spelling) {
+    return evaluate_pair(module, type_id, LoweringKind::result, element_id, element_spelling, false);
+}
+
+LoweringResult evaluate_callback(const AbiModule &module, Hash128 type_id) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(LoweringKind::callback);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+
+    // { function entry, opaque context }: exactly two pointer fields.
+    int first = -1, second = -1;
+    uint32_t visible = 0;
+    for (uint32_t i = 0; i < type->field_count; ++i) {
+        const auto &field = module.fields[type->field_begin + i];
+        if ((field.flags & field_base) != 0 || (field.flags & field_bitfield) != 0) continue;
+        ++visible;
+        const Type *field_type = find_type_by_id(module, field.type_id);
+        if (!field_type || field_type->kind != TypeKind::pointer) continue;
+        if (first < 0)
+            first = static_cast<int>(i);
+        else if (second < 0)
+            second = static_cast<int>(i);
+    }
+    if (visible != 2 || first < 0 || second < 0) {
+        result.reason =
+            static_cast<uint32_t>(visible != 2 ? LoweringReason::field_count : LoweringReason::missing_data);
+        return result;
+    }
+    result.pointer_field = static_cast<uint32_t>(first);
+    result.length_field = static_cast<uint32_t>(second);
+    const auto &first_field = module.fields[type->field_begin + static_cast<uint32_t>(first)];
+    const auto &second_field = module.fields[type->field_begin + static_cast<uint32_t>(second)];
+    if (first_field.offset == 0 && second_field.offset == 8) {
+        result.status = static_cast<uint32_t>(LoweringStatus::direct);
+        result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    } else {
+        result.status = static_cast<uint32_t>(LoweringStatus::needs_adapter);
+        result.reason = static_cast<uint32_t>(LoweringReason::layout);
+    }
+    return result;
+}
+
+LoweringResult evaluate_opaque(const AbiModule &module, Hash128 type_id) {
+    LoweringResult result;
+    result.type_id = type_id;
+    result.contract_type = type_id;
+    result.kind = static_cast<uint32_t>(LoweringKind::opaque);
+    result.status = static_cast<uint32_t>(LoweringStatus::unsupported);
+    result.reason = static_cast<uint32_t>(LoweringReason::not_a_record);
+
+    const Type *type = find_type_by_id(module, type_id);
+    if (!type || type->kind != TypeKind::record) return result;
+    // An opaque handle is used through accessors; its layout is not consumed.
+    result.status = static_cast<uint32_t>(LoweringStatus::direct);
+    result.reason = static_cast<uint32_t>(LoweringReason::ok);
+    return result;
 }
 
 bool project_symbols(
@@ -566,6 +1296,18 @@ bool project_symbols(
     result.symbols.clear();
     result.compatibility.clear();
     result.maps.clear();
+    result.owned.clear();
+    result.contracts.clear();
+    result.errors.clear();
+    result.lowerings.clear();
+    result.pointees.clear();
+    result.view_adapters.clear();
+    result.range_adapters.clear();
+    result.instantiations.clear();
+    result.interfaces.clear();
+    result.interface_methods.clear();
+    result.implementations.clear();
+    result.method_bindings.clear();
     std::unordered_set<std::string> complete_type_ids;
     auto complete = [&](Hash128 id) { complete_type_ids.insert(hash_key(id)); };
     auto is_complete = [&](Hash128 id) { return complete_type_ids.count(hash_key(id)) != 0; };
@@ -622,6 +1364,112 @@ bool project_symbols(
         }
         result.types.push_back(std::move(projected));
     }
+    // Carry the ownership contract for the types that survived projection.
+    for (const auto &record : source.owned)
+        if (has_type(record.type_id)) result.owned.push_back(record);
+    // Remap ownership contracts to the projected function/parameter indices.
+    std::vector<uint32_t> source_param_base(source.functions.size(), 0);
+    for (size_t i = 0, running = 0; i < source.functions.size(); ++i) {
+        source_param_base[i] = running;
+        running += source.functions[i].parameters.size();
+    }
+    std::unordered_map<std::string, uint32_t> projected_by_signature;
+    std::vector<uint32_t> projected_param_base(result.functions.size(), 0);
+    for (size_t i = 0, running = 0; i < result.functions.size(); ++i) {
+        projected_by_signature[hash_key(result.functions[i].signature)] = static_cast<uint32_t>(i);
+        projected_param_base[i] = running;
+        running += result.functions[i].parameters.size();
+    }
+    for (const auto &contract : source.contracts) {
+        if (contract.target == OwnershipTarget::return_value) {
+            if (contract.target_index >= source.functions.size()) continue;
+            const auto found = projected_by_signature.find(hash_key(source.functions[contract.target_index].signature));
+            if (found == projected_by_signature.end()) continue;
+            OwnershipContract projected = contract;
+            projected.target_index = found->second;
+            result.contracts.push_back(projected);
+        } else {
+            size_t owner = 0;
+            while (owner < source.functions.size()
+                   && contract.target_index >= source_param_base[owner] + source.functions[owner].parameters.size())
+                ++owner;
+            if (owner >= source.functions.size()) continue;
+            const uint32_t position = contract.target_index - source_param_base[owner];
+            const auto found = projected_by_signature.find(hash_key(source.functions[owner].signature));
+            if (found == projected_by_signature.end()) continue;
+            OwnershipContract projected = contract;
+            projected.target_index = projected_param_base[found->second] + position;
+            result.contracts.push_back(projected);
+        }
+    }
+    for (const auto &record : source.errors) {
+        if (record.function_index >= source.functions.size()) continue;
+        const auto found = projected_by_signature.find(hash_key(source.functions[record.function_index].signature));
+        if (found == projected_by_signature.end()) continue;
+        ErrorContract projected = record;
+        projected.function_index = found->second;
+        result.errors.push_back(projected);
+    }
+    for (const auto &record : source.lowerings)
+        if (has_type(record.type_id)) result.lowerings.push_back(record);
+    for (const auto &record : source.pointees)
+        if (has_type(record.pointer) && has_type(record.pointee)) result.pointees.push_back(record);
+    for (const auto &record : source.view_adapters)
+        if (has_type(record.source_type) && has_type(record.target_type)) result.view_adapters.push_back(record);
+    for (const auto &record : source.range_adapters)
+        if (has_type(record.source_type)) result.range_adapters.push_back(record);
+    for (const auto &record : source.instantiations)
+        if (has_type(record.type)) result.instantiations.push_back(record);
+    // Interfaces survive projection when every type they mention survives; their
+    // methods are re-based. An implementation survives only when its interface,
+    // its concrete type and every bound native function survive, so a projected
+    // module never carries a dangling binding.
+    std::unordered_set<std::string> kept_interfaces;
+    for (const auto &record : source.interfaces) {
+        bool keep = true;
+        for (uint32_t i = 0; i < record.method_count && keep; ++i) {
+            const auto &method = source.interface_methods[record.method_begin + i];
+            if (!has_type(method.return_type)) keep = false;
+            for (const auto &parameter : method.parameters)
+                if (!has_type(parameter.type_id)) keep = false;
+        }
+        if (!keep) continue;
+        InterfaceRecord projected = record;
+        projected.method_begin = static_cast<uint32_t>(result.interface_methods.size());
+        for (uint32_t i = 0; i < record.method_count; ++i)
+            result.interface_methods.push_back(source.interface_methods[record.method_begin + i]);
+        kept_interfaces.insert(hash_key(projected.id));
+        result.interfaces.push_back(projected);
+    }
+    for (const auto &implementation : source.implementations) {
+        if (kept_interfaces.count(hash_key(implementation.interface_id)) == 0) continue;
+        if (!has_type(implementation.concrete_type)) continue;
+        std::vector<MethodBinding> bindings;
+        bool keep = true;
+        for (uint32_t i = 0; i < implementation.binding_count; ++i) {
+            const auto &binding = source.method_bindings[implementation.binding_begin + i];
+            if (!(binding.native_function == Hash128{})) {
+                bool found = false;
+                for (const auto &function : result.functions)
+                    if (function.signature == binding.native_function) {
+                        found = true;
+                        break;
+                    }
+                if (!found) {
+                    keep = false;
+                    break;
+                }
+            }
+            bindings.push_back(binding);
+        }
+        if (!keep) continue;
+        InterfaceImplementation projected = implementation;
+        projected.binding_begin = static_cast<uint32_t>(result.method_bindings.size());
+        projected.binding_count = static_cast<uint32_t>(bindings.size());
+        for (auto &binding : bindings)
+            result.method_bindings.push_back(binding);
+        result.implementations.push_back(projected);
+    }
     if (!symbols.empty() && result.types.empty() && result.functions.empty()) {
         error = "export symbols did not match any ABI declaration";
         return false;
@@ -674,12 +1522,27 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
     }
     for (const auto &source : module.sources)
         intern(source.file);
+    for (const auto &record : module.interfaces)
+        intern(record.name);
     std::vector<Parameter> all_parameters;
     std::vector<uint32_t> parameter_begins;
     for (const auto &function : module.functions) {
         intern(function.name);
         parameter_begins.push_back(static_cast<uint32_t>(all_parameters.size()));
         for (const auto &parameter : function.parameters) {
+            intern(parameter.name);
+            all_parameters.push_back(parameter);
+        }
+    }
+    // Interface method parameters share the global parameter table. They are
+    // appended after the function parameters, so function parameter indices are
+    // unaffected.
+    std::vector<uint32_t> method_parameter_begins;
+    method_parameter_begins.reserve(module.interface_methods.size());
+    for (const auto &method : module.interface_methods) {
+        intern(method.name);
+        method_parameter_begins.push_back(static_cast<uint32_t>(all_parameters.size()));
+        for (const auto &parameter : method.parameters) {
             intern(parameter.name);
             all_parameters.push_back(parameter);
         }
@@ -720,7 +1583,7 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
     SectionData type_table{types, static_cast<uint32_t>(module.types.size()), kTypeEntrySize, section_required, {}};
     for (const auto &type : module.types) {
         put_hash(type_table.bytes, type.id);
-        put_hash(type_table.bytes, type.layout_hash);
+        put_hash(type_table.bytes, effective_layout_hash(module, type));
         put_u32(type_table.bytes, string_offsets.at(type.name));
         put_u32(type_table.bytes, static_cast<uint32_t>(type.name.size()));
         put_u32(type_table.bytes, static_cast<uint32_t>(type.kind));
@@ -846,6 +1709,182 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         sections.push_back(std::move(source_table));
     }
 
+    // Optional ownership contract. Excluded from ABI identity (it is a
+    // contract, not a layout fact); old readers ignore the unknown section.
+    if (!module.owned.empty()) {
+        SectionData owned_table{owned, static_cast<uint32_t>(module.owned.size()), kOwnedEntrySize, 0, {}};
+        for (const auto &record : module.owned) {
+            put_hash(owned_table.bytes, record.type_id);
+            put_hash(owned_table.bytes, record.create);
+            put_hash(owned_table.bytes, record.destroy);
+            put_u32(owned_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(owned_table));
+    }
+
+    // Optional per-interaction ownership contract. Like `owned`, it is excluded
+    // from ABI identity and unknown to old readers.
+    if (!module.contracts.empty()) {
+        SectionData contract_table{
+            contracts, static_cast<uint32_t>(module.contracts.size()), kContractEntrySize, 0, {}};
+        for (const auto &record : module.contracts) {
+            put_u32(contract_table.bytes, static_cast<uint32_t>(record.target));
+            put_u32(contract_table.bytes, record.target_index);
+            put_u32(contract_table.bytes, static_cast<uint32_t>(record.mode));
+            put_u32(contract_table.bytes, record.flags);
+            put_hash(contract_table.bytes, record.release);
+        }
+        sections.push_back(std::move(contract_table));
+    }
+
+    // Optional error-boundary contract. Like `owned`/`contracts`, excluded from
+    // ABI identity and unknown to old readers.
+    if (!module.errors.empty()) {
+        SectionData error_table{errors, static_cast<uint32_t>(module.errors.size()), kErrorEntrySize, 0, {}};
+        for (const auto &record : module.errors) {
+            put_u32(error_table.bytes, record.function_index);
+            put_u32(error_table.bytes, static_cast<uint32_t>(record.status_source));
+            put_u32(error_table.bytes, record.status_parameter);
+            put_u64(error_table.bytes, static_cast<uint64_t>(record.success_value));
+            put_u32(error_table.bytes, record.value_parameter);
+            put_u32(error_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(error_table));
+    }
+
+    // Optional target platform facts (pointer width / endianness). Excluded
+    // from ABI identity; unknown to old readers.
+    if (module.pointer_bits != 0 || module.endianness != 0) {
+        SectionData platform_table{platform, 1, kPlatformEntrySize, 0, {}};
+        put_u32(platform_table.bytes, module.pointer_bits);
+        put_u32(platform_table.bytes, module.endianness);
+        sections.push_back(std::move(platform_table));
+    }
+
+    // Optional ABIX-STD lowering results. Excluded from ABI identity.
+    if (!module.lowerings.empty()) {
+        SectionData lowering_table{lowering, static_cast<uint32_t>(module.lowerings.size()), kLoweringEntrySize, 0, {}};
+        for (const auto &record : module.lowerings) {
+            put_hash(lowering_table.bytes, record.type_id);
+            put_hash(lowering_table.bytes, record.contract_type);
+            put_u32(lowering_table.bytes, record.kind);
+            put_u32(lowering_table.bytes, record.status);
+            put_u32(lowering_table.bytes, record.reason);
+            put_u32(lowering_table.bytes, record.pointer_field);
+            put_u32(lowering_table.bytes, record.length_field);
+        }
+        sections.push_back(std::move(lowering_table));
+    }
+
+    // Optional pointer -> pointee references. Excluded from ABI identity.
+    if (!module.pointees.empty()) {
+        SectionData pointee_table{pointees, static_cast<uint32_t>(module.pointees.size()), kPointeeEntrySize, 0, {}};
+        for (const auto &record : module.pointees) {
+            put_hash(pointee_table.bytes, record.pointer);
+            put_hash(pointee_table.bytes, record.pointee);
+            put_u32(pointee_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(pointee_table));
+    }
+
+    // Optional container -> sequence-view adapters (accessor based).
+    if (!module.view_adapters.empty()) {
+        SectionData adapter_table{
+            view_adapters, static_cast<uint32_t>(module.view_adapters.size()), kViewAdapterEntrySize, 0, {}};
+        for (const auto &record : module.view_adapters) {
+            put_hash(adapter_table.bytes, record.source_type);
+            put_hash(adapter_table.bytes, record.target_type);
+            put_hash(adapter_table.bytes, record.data_accessor);
+            put_hash(adapter_table.bytes, record.size_accessor);
+        }
+        sections.push_back(std::move(adapter_table));
+    }
+
+    // Optional container -> iterable range adapters (accessor based).
+    if (!module.range_adapters.empty()) {
+        SectionData range_table{
+            range_adapters, static_cast<uint32_t>(module.range_adapters.size()), kRangeAdapterEntrySize, 0, {}};
+        for (const auto &record : module.range_adapters) {
+            put_hash(range_table.bytes, record.source_type);
+            put_hash(range_table.bytes, record.size_accessor);
+            put_hash(range_table.bytes, record.at_accessor);
+        }
+        sections.push_back(std::move(range_table));
+    }
+
+    // Optional instantiation request identities.
+    if (!module.instantiations.empty()) {
+        SectionData instantiation_table{
+            instantiations, static_cast<uint32_t>(module.instantiations.size()), kInstantiationEntrySize, 0, {}};
+        for (const auto &record : module.instantiations) {
+            put_hash(instantiation_table.bytes, record.request);
+            put_hash(instantiation_table.bytes, record.type);
+        }
+        sections.push_back(std::move(instantiation_table));
+    }
+
+    // Optional non-intrusive interface contract: identity, methods and
+    // implementation bindings. Excluded from ABI identity; unknown to old
+    // readers, which skip the optional sections.
+    if (!module.interfaces.empty()) {
+        SectionData interface_table{
+            interfaces, static_cast<uint32_t>(module.interfaces.size()), kInterfaceEntrySize, 0, {}};
+        for (const auto &record : module.interfaces) {
+            put_hash(interface_table.bytes, record.id);
+            put_u32(interface_table.bytes, string_offsets.at(record.name));
+            put_u32(interface_table.bytes, static_cast<uint32_t>(record.name.size()));
+            put_u32(interface_table.bytes, record.version);
+            put_u32(interface_table.bytes, record.method_begin);
+            put_u32(interface_table.bytes, record.method_count);
+            put_u32(interface_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(interface_table));
+    }
+    if (!module.interface_methods.empty()) {
+        SectionData method_table{interface_methods, static_cast<uint32_t>(module.interface_methods.size()),
+            kInterfaceMethodEntrySize, 0, {}};
+        for (uint32_t i = 0; i < module.interface_methods.size(); ++i) {
+            const auto &method = module.interface_methods[i];
+            put_hash(method_table.bytes, method.interface_id);
+            put_u32(method_table.bytes, string_offsets.at(method.name));
+            put_u32(method_table.bytes, static_cast<uint32_t>(method.name.size()));
+            put_hash(method_table.bytes, method.signature);
+            put_hash(method_table.bytes, method.return_type);
+            put_u32(method_table.bytes, method_parameter_begins[i]);
+            put_u32(method_table.bytes, static_cast<uint32_t>(method.parameters.size()));
+            put_u32(method_table.bytes, method.slot);
+            put_u32(method_table.bytes, method.flags);
+        }
+        sections.push_back(std::move(method_table));
+    }
+    if (!module.implementations.empty()) {
+        SectionData implementation_table{
+            implementations, static_cast<uint32_t>(module.implementations.size()), kImplementationEntrySize, 0, {}};
+        for (const auto &record : module.implementations) {
+            put_hash(implementation_table.bytes, record.interface_id);
+            put_hash(implementation_table.bytes, record.concrete_type);
+            put_u32(implementation_table.bytes, record.binding_begin);
+            put_u32(implementation_table.bytes, record.binding_count);
+            put_u32(implementation_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(implementation_table));
+    }
+    if (!module.method_bindings.empty()) {
+        SectionData binding_table{
+            method_bindings, static_cast<uint32_t>(module.method_bindings.size()), kMethodBindingEntrySize, 0, {}};
+        for (const auto &record : module.method_bindings) {
+            put_hash(binding_table.bytes, record.interface_id);
+            put_hash(binding_table.bytes, record.method_signature);
+            put_hash(binding_table.bytes, record.native_function);
+            put_u32(binding_table.bytes, record.slot);
+            put_u32(binding_table.bytes, record.flags);
+        }
+        sections.push_back(std::move(binding_table));
+    }
+    SectionData layout_encoding_section{layout_encoding, 1, 4, 0, {}};
+    put_u32(layout_encoding_section.bytes, canonical_layout_version);
+    sections.push_back(std::move(layout_encoding_section));
+
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
     put_u16(bytes, kHashAlgorithm);
@@ -865,9 +1904,19 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
                 bytes[entry_offset + field * 4 + byte] = static_cast<uint8_t>(values[field] >> (byte * 8));
         bytes.insert(bytes.end(), section.bytes.begin(), section.bytes.end());
     }
+    // The artifact is a binary image: open in binary mode so the Windows CRT
+    // does not translate 0x0A into 0x0D 0x0A and corrupt the section directory.
     try {
-        auto output = fmt::output_file(path);
-        output.print("{}", fmt::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()));
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        if (!output) {
+            error = "cannot write output: " + path;
+            return false;
+        }
+        output.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        if (!output.good()) {
+            error = "cannot write output: " + path;
+            return false;
+        }
     } catch (const std::exception &e) {
         error = "cannot write output: " + path + ": " + e.what();
         return false;
@@ -964,6 +2013,20 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *map_table = optional(maps, kMapEntrySize);
     const auto *operation_table = optional(map_operations, kMapOperationEntrySize);
     const auto *source_table = optional(sources, kSourceEntrySize);
+    const auto *owned_table = optional(owned, kOwnedEntrySize);
+    const auto *contract_table = optional(contracts, kContractEntrySize);
+    const auto *error_table = optional(errors, kErrorEntrySize);
+    const auto *platform_table = optional(platform, kPlatformEntrySize);
+    const auto *lowering_table = optional(lowering, kLoweringEntrySize);
+    const auto *pointee_table = optional(pointees, kPointeeEntrySize);
+    const auto *view_adapter_table = optional(view_adapters, kViewAdapterEntrySize);
+    const auto *range_adapter_table = optional(range_adapters, kRangeAdapterEntrySize);
+    const auto *instantiation_table = optional(instantiations, kInstantiationEntrySize);
+    const auto *interface_table = optional(interfaces, kInterfaceEntrySize);
+    const auto *interface_method_table = optional(interface_methods, kInterfaceMethodEntrySize);
+    const auto *implementation_table = optional(implementations, kImplementationEntrySize);
+    const auto *method_binding_table = optional(method_bindings, kMethodBindingEntrySize);
+    const auto *layout_encoding_table = optional(layout_encoding, 4);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -1200,6 +2263,189 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
         }
         module.sources.push_back(std::move(origin));
     }
+    size_t owned_offset = owned_table ? owned_table->offset : 0;
+    for (uint32_t i = 0; owned_table && i < owned_table->count; ++i) {
+        OwnedType record;
+        if (!read_hash(bytes, owned_offset, record.type_id, error)
+            || !read_hash(bytes, owned_offset, record.create, error)
+            || !read_hash(bytes, owned_offset, record.destroy, error)
+            || !read_u32(bytes, owned_offset, record.flags, error)) {
+            error = "invalid ownership record";
+            return false;
+        }
+        module.owned.push_back(record);
+    }
+    size_t contract_offset = contract_table ? contract_table->offset : 0;
+    for (uint32_t i = 0; contract_table && i < contract_table->count; ++i) {
+        OwnershipContract record;
+        uint32_t target = 0, mode = 0;
+        if (!read_u32(bytes, contract_offset, target, error)
+            || !read_u32(bytes, contract_offset, record.target_index, error)
+            || !read_u32(bytes, contract_offset, mode, error)
+            || !read_u32(bytes, contract_offset, record.flags, error)
+            || !read_hash(bytes, contract_offset, record.release, error)
+            || target > static_cast<uint32_t>(OwnershipTarget::return_value)
+            || mode > static_cast<uint32_t>(OwnershipMode::copy)) {
+            error = "invalid ownership contract record";
+            return false;
+        }
+        record.target = static_cast<OwnershipTarget>(target);
+        record.mode = static_cast<OwnershipMode>(mode);
+        module.contracts.push_back(record);
+    }
+    size_t error_offset = error_table ? error_table->offset : 0;
+    for (uint32_t i = 0; error_table && i < error_table->count; ++i) {
+        ErrorContract record;
+        uint32_t status = 0;
+        uint64_t success = 0;
+        if (!read_u32(bytes, error_offset, record.function_index, error)
+            || !read_u32(bytes, error_offset, status, error)
+            || !read_u32(bytes, error_offset, record.status_parameter, error)
+            || !read_u64(bytes, error_offset, success, error)
+            || !read_u32(bytes, error_offset, record.value_parameter, error)
+            || !read_u32(bytes, error_offset, record.flags, error)
+            || status > static_cast<uint32_t>(StatusSource::return_field)) {
+            error = "invalid error contract record";
+            return false;
+        }
+        record.status_source = static_cast<StatusSource>(status);
+        record.success_value = static_cast<int64_t>(success);
+        module.errors.push_back(record);
+    }
+    if (platform_table) {
+        size_t platform_offset = platform_table->offset;
+        if (!read_u32(bytes, platform_offset, module.pointer_bits, error)
+            || !read_u32(bytes, platform_offset, module.endianness, error))
+            return false;
+    }
+    size_t lowering_offset = lowering_table ? lowering_table->offset : 0;
+    for (uint32_t i = 0; lowering_table && i < lowering_table->count; ++i) {
+        LoweringResult record;
+        if (!read_hash(bytes, lowering_offset, record.type_id, error)
+            || !read_hash(bytes, lowering_offset, record.contract_type, error)
+            || !read_u32(bytes, lowering_offset, record.kind, error)
+            || !read_u32(bytes, lowering_offset, record.status, error)
+            || !read_u32(bytes, lowering_offset, record.reason, error)
+            || !read_u32(bytes, lowering_offset, record.pointer_field, error)
+            || !read_u32(bytes, lowering_offset, record.length_field, error)
+            || record.kind > static_cast<uint32_t>(LoweringKind::opaque)
+            || record.status > static_cast<uint32_t>(LoweringStatus::unsupported)
+            || record.reason > static_cast<uint32_t>(LoweringReason::layout)) {
+            error = "invalid lowering record";
+            return false;
+        }
+        module.lowerings.push_back(record);
+    }
+    size_t pointee_offset = pointee_table ? pointee_table->offset : 0;
+    for (uint32_t i = 0; pointee_table && i < pointee_table->count; ++i) {
+        PointeeRef record;
+        if (!read_hash(bytes, pointee_offset, record.pointer, error)
+            || !read_hash(bytes, pointee_offset, record.pointee, error)
+            || !read_u32(bytes, pointee_offset, record.flags, error)) {
+            error = "invalid pointee record";
+            return false;
+        }
+        module.pointees.push_back(record);
+    }
+    size_t adapter_offset = view_adapter_table ? view_adapter_table->offset : 0;
+    for (uint32_t i = 0; view_adapter_table && i < view_adapter_table->count; ++i) {
+        ViewAdapter record;
+        if (!read_hash(bytes, adapter_offset, record.source_type, error)
+            || !read_hash(bytes, adapter_offset, record.target_type, error)
+            || !read_hash(bytes, adapter_offset, record.data_accessor, error)
+            || !read_hash(bytes, adapter_offset, record.size_accessor, error)) {
+            error = "invalid view adapter record";
+            return false;
+        }
+        module.view_adapters.push_back(record);
+    }
+    size_t range_offset = range_adapter_table ? range_adapter_table->offset : 0;
+    for (uint32_t i = 0; range_adapter_table && i < range_adapter_table->count; ++i) {
+        RangeAdapter record;
+        if (!read_hash(bytes, range_offset, record.source_type, error)
+            || !read_hash(bytes, range_offset, record.size_accessor, error)
+            || !read_hash(bytes, range_offset, record.at_accessor, error)) {
+            error = "invalid range adapter record";
+            return false;
+        }
+        module.range_adapters.push_back(record);
+    }
+    size_t instantiation_offset = instantiation_table ? instantiation_table->offset : 0;
+    for (uint32_t i = 0; instantiation_table && i < instantiation_table->count; ++i) {
+        InstantiationRecord record;
+        if (!read_hash(bytes, instantiation_offset, record.request, error)
+            || !read_hash(bytes, instantiation_offset, record.type, error)) {
+            error = "invalid instantiation record";
+            return false;
+        }
+        module.instantiations.push_back(record);
+    }
+    size_t interface_offset = interface_table ? interface_table->offset : 0;
+    for (uint32_t i = 0; interface_table && i < interface_table->count; ++i) {
+        InterfaceRecord record;
+        uint32_t name_offset = 0, name_length = 0;
+        if (!read_hash(bytes, interface_offset, record.id, error)
+            || !read_u32(bytes, interface_offset, name_offset, error)
+            || !read_u32(bytes, interface_offset, name_length, error)
+            || !read_u32(bytes, interface_offset, record.version, error)
+            || !read_u32(bytes, interface_offset, record.method_begin, error)
+            || !read_u32(bytes, interface_offset, record.method_count, error)
+            || !read_u32(bytes, interface_offset, record.flags, error)
+            || !read_string(name_offset, name_length, record.name)) {
+            error = "invalid interface record";
+            return false;
+        }
+        module.interfaces.push_back(std::move(record));
+    }
+    size_t interface_method_offset = interface_method_table ? interface_method_table->offset : 0;
+    for (uint32_t i = 0; interface_method_table && i < interface_method_table->count; ++i) {
+        InterfaceMethod method;
+        uint32_t name_offset = 0, name_length = 0, parameter_begin = 0, parameter_count = 0;
+        if (!read_hash(bytes, interface_method_offset, method.interface_id, error)
+            || !read_u32(bytes, interface_method_offset, name_offset, error)
+            || !read_u32(bytes, interface_method_offset, name_length, error)
+            || !read_hash(bytes, interface_method_offset, method.signature, error)
+            || !read_hash(bytes, interface_method_offset, method.return_type, error)
+            || !read_u32(bytes, interface_method_offset, parameter_begin, error)
+            || !read_u32(bytes, interface_method_offset, parameter_count, error)
+            || !read_u32(bytes, interface_method_offset, method.slot, error)
+            || !read_u32(bytes, interface_method_offset, method.flags, error)
+            || parameter_begin > all_parameters.size()
+            || parameter_count > all_parameters.size() - parameter_begin
+            || !read_string(name_offset, name_length, method.name)) {
+            error = "invalid interface method record";
+            return false;
+        }
+        method.parameters.insert(method.parameters.end(), all_parameters.begin() + parameter_begin,
+            all_parameters.begin() + parameter_begin + parameter_count);
+        module.interface_methods.push_back(std::move(method));
+    }
+    size_t implementation_offset = implementation_table ? implementation_table->offset : 0;
+    for (uint32_t i = 0; implementation_table && i < implementation_table->count; ++i) {
+        InterfaceImplementation record;
+        if (!read_hash(bytes, implementation_offset, record.interface_id, error)
+            || !read_hash(bytes, implementation_offset, record.concrete_type, error)
+            || !read_u32(bytes, implementation_offset, record.binding_begin, error)
+            || !read_u32(bytes, implementation_offset, record.binding_count, error)
+            || !read_u32(bytes, implementation_offset, record.flags, error)) {
+            error = "invalid interface implementation record";
+            return false;
+        }
+        module.implementations.push_back(record);
+    }
+    size_t binding_offset = method_binding_table ? method_binding_table->offset : 0;
+    for (uint32_t i = 0; method_binding_table && i < method_binding_table->count; ++i) {
+        MethodBinding record;
+        if (!read_hash(bytes, binding_offset, record.interface_id, error)
+            || !read_hash(bytes, binding_offset, record.method_signature, error)
+            || !read_hash(bytes, binding_offset, record.native_function, error)
+            || !read_u32(bytes, binding_offset, record.slot, error)
+            || !read_u32(bytes, binding_offset, record.flags, error)) {
+            error = "invalid method binding record";
+            return false;
+        }
+        module.method_bindings.push_back(record);
+    }
     size_t descriptor_offset = descriptor_table->offset;
     uint16_t descriptor_algorithm = 0, descriptor_version = 0;
     uint32_t canonical_version = 0, descriptor_flags = 0, descriptor_reserved = 0;
@@ -1233,7 +2479,29 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
         record.target_kind = static_cast<HashTargetKind>(target);
         loaded_records.push_back(record);
     }
+    if (layout_encoding_table == nullptr) {
+        error = "missing layout encoding section";
+        return false;
+    }
+    size_t layout_encoding_offset = layout_encoding_table->offset;
+    uint32_t layout_encoding_value = 0;
+    if (!read_u32(bytes, layout_encoding_offset, layout_encoding_value, error)) return false;
+    if (layout_encoding_value != canonical_layout_version) {
+        error = "unsupported layout encoding version";
+        return false;
+    }
+    module.layout_encoding_version = layout_encoding_value;
     if (!validate(module, error)) return false;
+    for (const auto &type : module.types) {
+        std::vector<Field> fields;
+        fields.reserve(type.field_count);
+        for (uint32_t i = 0; i < type.field_count; ++i)
+            fields.push_back(module.fields[type.field_begin + i]);
+        if (!(type.layout_hash == canonical_layout_hash(module, type, fields))) {
+            error = "layout hash does not match the canonical layout encoding";
+            return false;
+        }
+    }
     const auto expected_records = hash_table(module);
     if (loaded_records.size() != expected_records.size()) {
         error = "hash table count does not match artifact";

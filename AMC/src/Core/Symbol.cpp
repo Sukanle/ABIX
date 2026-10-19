@@ -22,6 +22,10 @@ uint32_t read_u32(const uint8_t *data, size_t offset) {
     return value;
 }
 
+uint16_t read_u16(const uint8_t *data, size_t offset) {
+    return static_cast<uint16_t>(data[offset]) | static_cast<uint16_t>(data[offset + 1]) << 8;
+}
+
 bool in_bounds(uint64_t offset, uint64_t length, size_t size) { return offset <= size && length <= size - offset; }
 
 constexpr uint32_t kNoteTypeGnuBuildId = 3;
@@ -43,14 +47,15 @@ size_t align4(size_t value) { return (value + kNoteAlign - 1) & ~(kNoteAlign - 1
 
 bool read_build_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error) {
     switch (detect_binary_format(data, size)) {
-        case BinaryFormat::elf: return read_gnu_build_id(data, size, build_id, error);
+        case BinaryFormat::elf:   return read_gnu_build_id(data, size, build_id, error);
         case BinaryFormat::macho: return read_macho_uuid(data, size, build_id, error);
+        case BinaryFormat::pe:    return read_pe_debug_id(data, size, build_id, error);
         case BinaryFormat::unknown:
-            error = "not a supported binary (expected ELF or Mach-O)";
+            error = "not a supported binary (expected ELF, Mach-O or PE)";
             build_id.clear();
             return false;
     }
-    error = "not a supported binary (expected ELF or Mach-O)";
+    error = "not a supported binary (expected ELF, Mach-O or PE)";
     build_id.clear();
     return false;
 }
@@ -98,6 +103,87 @@ bool read_macho_uuid(const uint8_t *data, size_t size, std::vector<uint8_t> &uui
         cursor += cmdsize;
     }
     error = "no Mach-O LC_UUID load command found";
+    return false;
+}
+
+bool read_pe_debug_id(const uint8_t *data, size_t size, std::vector<uint8_t> &build_id, std::string &error) {
+    error.clear();
+    build_id.clear();
+    if (!is_pe(data, size)) {
+        error = "not a PE image";
+        return false;
+    }
+
+    constexpr size_t kFileHeaderSize = 20;
+    constexpr size_t kSectionHeaderSize = 40;
+    constexpr uint32_t kDebugTypeCodeView = 2;   // IMAGE_DEBUG_TYPE_CODEVIEW
+
+    const uint32_t nt = read_u32(data, 0x3C);
+    const size_t coff = static_cast<size_t>(nt) + 4;
+    if (!in_bounds(coff, kFileHeaderSize, size)) {
+        error = "truncated PE header";
+        return false;
+    }
+    const uint16_t section_count = read_u16(data, coff + 2);
+    const uint16_t optional_size = read_u16(data, coff + 16);
+    const size_t optional = coff + kFileHeaderSize;
+    if (!in_bounds(optional, optional_size, size) || optional_size < 2) {
+        error = "PE optional header is out of bounds";
+        return false;
+    }
+    const bool pe32plus = read_u16(data, optional) == 0x20B;
+    const size_t data_directory = optional + (pe32plus ? 112 : 96);
+    if (!in_bounds(data_directory, 7 * 8, size) || data_directory + 7 * 8 > optional + optional_size) {
+        error = "PE has no debug data directory";
+        return false;
+    }
+    const uint32_t debug_rva = read_u32(data, data_directory + 6 * 8);
+    const uint32_t debug_size = read_u32(data, data_directory + 6 * 8 + 4);
+    if (debug_rva == 0 || debug_size < 28) {
+        error = "PE has no debug directory";
+        return false;
+    }
+
+    const size_t section_table = optional + optional_size;
+    if (!in_bounds(section_table, static_cast<uint64_t>(section_count) * kSectionHeaderSize, size)) {
+        error = "PE section table is out of bounds";
+        return false;
+    }
+    const auto rva_to_offset = [&](uint32_t rva, size_t &offset) -> bool {
+        for (uint16_t i = 0; i < section_count; ++i) {
+            const size_t header = section_table + static_cast<size_t>(i) * kSectionHeaderSize;
+            const uint32_t virtual_size = read_u32(data, header + 8);
+            const uint32_t virtual_address = read_u32(data, header + 12);
+            const uint32_t raw_size = read_u32(data, header + 16);
+            const uint32_t raw_offset = read_u32(data, header + 20);
+            const uint32_t span = virtual_size > raw_size ? virtual_size : raw_size;
+            if (rva < virtual_address || rva >= virtual_address + span) continue;
+            const uint32_t delta = rva - virtual_address;
+            if (delta >= raw_size) return false;
+            offset = static_cast<size_t>(raw_offset) + delta;
+            return in_bounds(offset, 1, size);
+        }
+        return false;
+    };
+
+    size_t debug_offset = 0;
+    if (!rva_to_offset(debug_rva, debug_offset) || !in_bounds(debug_offset, debug_size, size)) {
+        error = "PE debug directory is out of bounds";
+        return false;
+    }
+
+    for (uint32_t entry = 0; entry + 28 <= debug_size; entry += 28) {
+        const size_t base = debug_offset + entry;
+        if (read_u32(data, base + 12) != kDebugTypeCodeView) continue;
+        const uint32_t raw = read_u32(data, base + 24);   // PointerToRawData
+        if (!in_bounds(raw, 24, size)) continue;
+        // CodeView RSDS record: "RSDS" + GUID(16) + Age(4) + PdbFileName.
+        if (!(data[raw] == 'R' && data[raw + 1] == 'S' && data[raw + 2] == 'D' && data[raw + 3] == 'S')) continue;
+        build_id.assign(data + raw + 4, data + raw + 20);                    // GUID
+        build_id.insert(build_id.end(), data + raw + 20, data + raw + 24);   // Age
+        return true;
+    }
+    error = "no CodeView (RSDS) debug id found in the PE";
     return false;
 }
 
@@ -186,9 +272,19 @@ bool publish_symbol(const std::string &root, std::string_view key, const std::ve
         error = "cannot create symbol store directory: " + ec.message();
         return false;
     }
+    // Binary mode: the symbol artifact is a binary image and the Windows CRT
+    // text mode would translate 0x0A into 0x0D 0x0A.
     try {
-        auto output = fmt::output_file(stored_path);
-        output.print("{}", fmt::string_view(reinterpret_cast<const char *>(artifact.data()), artifact.size()));
+        std::ofstream output(stored_path, std::ios::binary | std::ios::trunc);
+        if (!output) {
+            error = "cannot write symbol artifact: " + stored_path;
+            return false;
+        }
+        output.write(reinterpret_cast<const char *>(artifact.data()), static_cast<std::streamsize>(artifact.size()));
+        if (!output.good()) {
+            error = "cannot write symbol artifact: " + stored_path;
+            return false;
+        }
     } catch (const std::exception &e) {
         error = "cannot write symbol artifact: " + stored_path + ": " + e.what();
         return false;

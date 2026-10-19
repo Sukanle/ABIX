@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 
 inline void busy_wait_ns(uint64_t ns) {
     auto start = std::chrono::high_resolution_clock::now();
@@ -58,17 +59,17 @@ struct alignas(64) LatencyStats {
 
 static void report_latency(benchmark::State &state, const LatencyStats &s, const char *prefix) {
     char buf[128];
-    snprintf(buf, sizeof(buf), "%s_avg", prefix);
+    format_into(buf, "{}_avg", prefix);
     state.counters[buf] = (double)s.avg_ns();
-    snprintf(buf, sizeof(buf), "%s_p50", prefix);
+    format_into(buf, "{}_p50", prefix);
     state.counters[buf] = (double)s.percentile(0.50);
-    snprintf(buf, sizeof(buf), "%s_p95", prefix);
+    format_into(buf, "{}_p95", prefix);
     state.counters[buf] = (double)s.percentile(0.95);
-    snprintf(buf, sizeof(buf), "%s_p99", prefix);
+    format_into(buf, "{}_p99", prefix);
     state.counters[buf] = (double)s.percentile(0.99);
-    snprintf(buf, sizeof(buf), "%s_max", prefix);
+    format_into(buf, "{}_max", prefix);
     state.counters[buf] = (double)s.max_ns;
-    snprintf(buf, sizeof(buf), "%s_ops", prefix);
+    format_into(buf, "{}_ops", prefix);
     state.counters[buf] = (double)s.count;
 }
 

@@ -63,11 +63,7 @@ sequenceDiagram
     AMC-->>Tool: decoded ABI information
 ```
 
-At compile time, AMC extracts ABI facts from the language AST and emits them
-into binary sections (`.abix.metadata`, `.abix.names`). An offline tool can
-scan or mmap the binary to read the Metadata Region directly, or call back into
-AMC for decoded views. At runtime, the same Region is materialized into
-pointer-rich descriptors for hot-path lookups.
+At compile time, AMC extracts ABI facts from the language AST and emits them into binary sections (`.abix.metadata`, `.abix.names`). An offline tool can scan or mmap the binary to read the Metadata Region directly, or call back into AMC for decoded views. At runtime, the same Region is materialized into pointer-rich descriptors for hot-path lookups.
 
 ## Three Modes Overview
 

@@ -9,9 +9,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_TESTING "Build tests" ON)
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
 option(SKL_ABIX_DEVELOPMENT "Enable development-only benchmarks (internal diagnostics)" OFF)
+option(SKL_ABIX_RCU_ENABLE_STATS "Collect RCU advancement diagnostics (advance contention/timeout counters)" OFF)
 option(SKL_ABIX_BUILD_DLL_VARIANTS
        "Build different DLL variants for different toolchains to simulate cross-compiler behavior" ON)
 option(AMC_BUILD "Build the AMC C++ frontend/backend tools" ON)
+option(SKL_ABIX_KEEP_TEST_ARTIFACTS
+       "Keep the test suites' temporary artifacts on disk for inspection (sets KEEP_ARTIFACTS=1)" OFF)
 
 if(DEFINED SKL_ABIX_RCU_EPOCH_BATCH)
     add_definitions(-DSKL_ABIX_RCU_EPOCH_BATCH=${SKL_ABIX_RCU_EPOCH_BATCH})
@@ -35,6 +38,14 @@ if(DEFINED SKL_ABIX_RCU_CACHE_LINE_SIZE)
 else()
     remove_definitions(-DSKL_ABIX_RCU_CACHE_LINE_SIZE)
     message(STATUS "Use default RCU cache line size")
+endif()
+
+if(SKL_ABIX_RCU_ENABLE_STATS)
+    add_definitions(-DSKL_ABIX_RCU_ENABLE_STATS=1)
+    message(STATUS "RCU advancement diagnostics enabled")
+else()
+    remove_definitions(-DSKL_ABIX_RCU_ENABLE_STATS)
+    message(STATUS "RCU advancement diagnostics disabled (default)")
 endif()
 
 if(SKL_ABIX_DEVELOPMENT)
@@ -75,7 +86,9 @@ if(MSVC)
     add_compile_options(/W4)
 else()
     add_compile_options(-Wall -Wextra)
-    if(WIN32)
+    # MinGW GCC needs this so inline functions exported with dllexport are still emitted. It is a GCC-only flag
+    # (Clang rejects it), so restrict it to GNU on Windows.
+    if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_compile_options(-fno-keep-inline-dllexport)
     endif()
 endif()
@@ -144,6 +157,8 @@ abi_add_dll(edge_stdcall_dll)
 abi_add_dll(hotcache_dll)
 abi_add_dll(closed_dll)
 abi_add_dll(closed_dll_v2)
+abi_add_dll(interface_dll)
+abi_add_dll(owner_dll)
 
 include_directories(${SKL_ABIX_INC_DIR})
 include_directories(${SKL_ABIX_INC_DIR}/mics)
@@ -156,7 +171,21 @@ if(ABIX_benchmark_FOUND)
     add_subdirectory(bench)
 endif()
 
-file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json SYMBOLIC)
+# Expose compile_commands.json at the build root (the parent of the per-config build directory) for tooling such as
+# clangd. A symlink is used where supported; on Windows (no SeCreateSymbolicLinkPrivilege by default) the file is
+# refreshed as a copy at build time, because the compiler database is only produced during generation.
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    if(WIN32)
+        add_custom_target(
+            abix-compile-commands ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_BINARY_DIR}/compile_commands.json
+                    ${CMAKE_BINARY_DIR}/../compile_commands.json
+            COMMENT "Refreshing compile_commands.json at the build root")
+    else()
+        file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json
+             SYMBOLIC)
+    endif()
+endif()
 
 if(AMC_BUILD)
     if(ABIX_LLVM_FOUND)
@@ -204,6 +233,9 @@ if(AMC_BUILD)
             AMC/src/ljson/dragonbox.c)
         target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include
                                                          ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include/ljson)
+        # Core.cpp / Error.cpp use fmt; every libabix-* library links this one, so
+        # a PUBLIC link here also supplies the include directory to its dependents.
+        target_link_libraries(libabix-format PUBLIC fmt::fmt)
         # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep the rest of the project on C++17 and
         # compile only these files as C23.
         set_target_properties(libabix-format PROPERTIES C_STANDARD 23 C_STANDARD_REQUIRED ON)
@@ -228,7 +260,8 @@ if(AMC_BUILD)
                                     AMC/src/Core/Materialize.cpp AMC/src/Core/Context.cpp AMC/src/Core/Query.cpp)
         target_link_libraries(libabix-metadata PUBLIC libabix-abi)
 
-        add_library(libabix-tools STATIC AMC/src/Core/Adapter.cpp AMC/src/Core/Lua.cpp AMC/src/Core/Symbol.cpp)
+        add_library(libabix-tools STATIC AMC/src/Core/Adapter.cpp AMC/src/Core/Lua.cpp AMC/src/Core/Symbol.cpp
+                                        AMC/src/Core/Cache.cpp)
         target_link_libraries(libabix-tools PUBLIC libabix-metadata)
 
         # The libabix-* objects are linked into the LLDB plugin, which is a shared object, so they must be position
@@ -257,8 +290,12 @@ if(AMC_BUILD)
                                                  fmt::fmt)
 
         add_executable(amc-cpp AMC/src/Lang/C++/C++.cpp AMC/src/Lang/C++/Frontend.cpp AMC/src/Lang/C++/Backend.cpp)
-        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include ${LLVM_INCLUDE_DIRS}
-                                                   ${CLANG_INCLUDE_DIRS})
+        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        # LLVM/Clang headers are reached as ordinary `-I` directories, so under
+        # -Wall -Wextra their own diagnostics (chiefly -Wunused-parameter in the
+        # clang/* headers) flood the build log.  Marking them SYSTEM keeps the
+        # warnings scoped to ABIX code.
+        target_include_directories(amc-cpp SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
         target_compile_definitions(amc-cpp PRIVATE ABIX_CLANG_RESOURCE_DIR="${ABIX_CLANG_RESOURCE_DIR}")
         target_link_libraries(amc-cpp PRIVATE amc-core amc-lang clang-cpp LLVM fmt::fmt tomlplusplus::tomlplusplus)
 
@@ -267,6 +304,13 @@ if(AMC_BUILD)
         add_executable(amc-rust AMC/src/Lang/Rust/Rust.cpp AMC/src/Lang/Rust/Frontend.cpp AMC/src/Lang/Rust/Backend.cpp)
         target_include_directories(amc-rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-rust PRIVATE amc-core amc-lang fmt::fmt)
+
+        # Zig provider: backend-only, a minimal consumer of the same ABIX IR. It
+        # exists to validate that `.abix` is reusable across languages; there is
+        # no Zig frontend and no Zig-specific model.
+        add_executable(amc-zig AMC/src/Lang/Zig/Zig.cpp AMC/src/Lang/Zig/Backend.cpp)
+        target_include_directories(amc-zig PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_link_libraries(amc-zig PRIVATE amc-core amc-lang fmt::fmt)
 
         add_executable(
             amc
@@ -280,7 +324,8 @@ if(AMC_BUILD)
             AMC/src/CLI/Verify.cpp
             AMC/src/CLI/Diff.cpp
             AMC/src/CLI/Generate.cpp
-            AMC/src/CLI/Build.cpp)
+            AMC/src/CLI/Build.cpp
+            AMC/src/CLI/Cache.cpp)
         target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc PRIVATE amc-core tomlplusplus::tomlplusplus)
         add_executable(amc-dump AMC/src/Tool/Dump/Dump.cpp AMC/src/Tool/Dump/Json.cpp AMC/src/Tool/Dump/Text.cpp)
@@ -297,8 +342,10 @@ if(AMC_BUILD)
         find_library(ABIX_LLDB_LIBRARY NAMES lldb)
         if(ABIX_LLDB_INCLUDE_DIR AND ABIX_LLDB_LIBRARY)
             add_library(abix-lldb MODULE tools/lldb_abix.cpp)
-            target_include_directories(abix-lldb PRIVATE ${ABIX_LLDB_INCLUDE_DIR}
-                                                         ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+            target_include_directories(abix-lldb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+            # LLDB headers ship with LLVM; treat them as system headers for the
+            # same reason as the clang/* includes above.
+            target_include_directories(abix-lldb SYSTEM PRIVATE ${ABIX_LLDB_INCLUDE_DIR})
             target_link_libraries(abix-lldb PRIVATE amc-core ${ABIX_LLDB_LIBRARY})
             set_target_properties(abix-lldb PROPERTIES OUTPUT_NAME abix_lldb LIBRARY_OUTPUT_DIRECTORY
                                                                              ${CMAKE_BINARY_DIR}/bin)
@@ -319,12 +366,28 @@ if(AMC_BUILD)
             add_test(NAME amc-integration-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/integration_test.py
                              ${CMAKE_BINARY_DIR}/bin)
+            add_test(NAME amc-feature-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/feature_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME amc-cmake-integration-test
                 COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/cmake_integration_test.py
                         ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(NAME amc-rust-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/rust/conformance_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME amc-interop-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/interop_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            # Real-library demo over cmdly (C++). Skips when cmdly/fmt/rustc are
+            # unavailable.
+            add_test(NAME amc-cmdly-interop-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/cmdly_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            # P0 automation: expose a C++ class as capabilities with no
+            # hand-written adapter (auto thunks + metadata + Rust bindings).
+            add_test(NAME amc-expose-interop-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/expose_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")
@@ -333,11 +396,24 @@ if(AMC_BUILD)
             amc
             amc-cpp
             amc-rust
+            amc-zig
             amc-dump
             amc-mcp
             amc-core-test
             amc-e2e-test
             PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        # SKL_ABIX_KEEP_TEST_ARTIFACTS: run every suite with KEEP_ARTIFACTS=1 so
+        # its temporary directory is retained and printed for inspection.
+        if(SKL_ABIX_KEEP_TEST_ARTIFACTS AND BUILD_TESTING)
+            set(_abix_keep_tests amc-core-test amc-e2e-test)
+            if(AMC_PYTHON_EXECUTABLE)
+                list(APPEND _abix_keep_tests
+                     amc-integration-test amc-feature-test amc-cmake-integration-test amc-rust-test
+                     amc-interop-test amc-cmdly-interop-test amc-expose-interop-test)
+            endif()
+            set_tests_properties(${_abix_keep_tests} PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
+            message(STATUS "Test artifacts are retained: each suite prints its working directory (KEEP_ARTIFACTS=1)")
+        endif()
     else()
         message(WARNING "LLVM/Clang not found: AMC tools will not be built")
     endif()

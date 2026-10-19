@@ -26,9 +26,6 @@ static void BM_EBR_GracePhase(benchmark::State &state) {
 
     domain.synchronize();
 }
-BENCHMARK(BM_EBR_GracePhase)
-    ->Arg(1000)
-    ->Arg(10000)
-    ->Arg(100000);
+BENCHMARK(BM_EBR_GracePhase)->Arg(1'000)->Arg(10'000)->Arg(100'000);
 
-#endif // SKL_ABIX_DEVELOPMENT
+#endif   // SKL_ABIX_DEVELOPMENT

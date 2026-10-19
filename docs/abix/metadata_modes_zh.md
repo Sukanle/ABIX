@@ -72,8 +72,7 @@ Binary
         └── ...
 ```
 
-不能简单 `TypeID → .abix`。TypeID 只回答"这是什么类型"，BuildID 回答"这是哪个具体程序/库"，
-MetadataID 回答"这份 Metadata 本身是哪一份内容"。三个维度独立。
+不能简单 `TypeID → .abix`。TypeID 只回答"这是什么类型"，BuildID 回答"这是哪个具体程序/库"， MetadataID 回答"这份 Metadata 本身是哪一份内容"。三个维度独立。
 
 ## "Name 不是 ABI 数据"
 
@@ -89,8 +88,7 @@ namespace foo { struct Bar {}; }
 
 而 `"foo::Bar"` 主要用于：调试、crash report、`amc dump`、ABI 分析、人类阅读、symbol server。
 
-所以 Release Runtime 没有必要为了 `registry.find_by_name(...)` 保存字符串。
-Release 可以直接 `registry.find_by_id(type_id)`。
+所以 Release Runtime 没有必要为了 `registry.find_by_name(...)` 保存字符串。 Release 可以直接 `registry.find_by_id(type_id)`。
 
 ## Metadata 生命周期
 
@@ -110,9 +108,7 @@ sequenceDiagram
     AMC-->>Tool: decoded ABI information
 ```
 
-编译期，AMC 从语言 AST 提取 ABI 事实并写入二进制 section（`.abix.metadata`、`.abix.names`）。
-离线工具可以直接 mmap 二进制读取 Metadata Region，也可以回调 AMC 获取解码后的视图。
-运行时，同一 Region 被 materialize 为 pointer-rich 的 descriptor，供热路径查找使用。
+编译期，AMC 从语言 AST 提取 ABI 事实并写入二进制 section（`.abix.metadata`、`.abix.names`）。离线工具可以直接 mmap 二进制读取 Metadata Region，也可以回调 AMC 获取解码后的视图。运行时，同一 Region 被 materialize 为 pointer-rich 的 descriptor，供热路径查找使用。
 
 ## 三档 Metadata 模式
 
@@ -189,9 +185,7 @@ struct TypeDescriptor {           // 56 B
 
 ## 独立 Metadata Region
 
-即使 Descriptor 已经压缩到 56 B，它们仍然属于普通 ELF/Mach-O/PE 数据区，
-混入 `.data.rel.ro` / `.rdata`。因此提出 **ABIX Metadata Region**——把 ABIX 静态
-Metadata 从普通程序数据中隔离出来。
+即使 Descriptor 已经压缩到 56 B，它们仍然属于普通 ELF/Mach-O/PE 数据区，混入 `.data.rel.ro` / `.rdata`。因此提出 **ABIX Metadata Region**——把 ABIX 静态 Metadata 从普通程序数据中隔离出来。
 
 ### 逻辑结构
 
@@ -213,10 +207,9 @@ Executable / Shared Library
 具体平台实现：
 - **ELF**：`.abix.manifest` / `.abix.desc` / `.abix.hash` / `.abix.names`
 - **Mach-O**：`__DATA,__abix_manifest` / `__DATA,__abix_desc` 等
-- **PE**：`.abix$m` / `.abix$d` / `.abix$h` / `.abix$n`
+- **PE**：`.abix`（私有头 + Metadata Region）/ `.abix.n`（names，可剥离）。详见 [pe-inspection_zh.md](../architecture/pe-inspection_zh.md)。
 
-> ABIX 规范不绑定 ELF section 名称。`.abix.desc` 是 ELF 实现，不是 ABIX 协议本身。
-> 抽象层应称为 **ABIX Metadata Region**。
+> ABIX 规范不绑定 ELF section 名称。`.abix.desc` 是 ELF 实现，不是 ABIX 协议本身。抽象层应称为 **ABIX Metadata Region**。
 
 ## Metadata Header / Manifest
 
@@ -327,8 +320,7 @@ struct TypeRecord {
 };
 ```
 
-好处：不需要 relocation、不受 ASLR 影响、PIE 友好、shared library 友好、mmap 友好、
-offline parser 友好、cross-process 友好、Metadata 可直接复制、`.abix` 可成为稳定格式。
+好处：不需要 relocation、不受 ASLR 影响、PIE 友好、shared library 友好、mmap 友好、 offline parser 友好、cross-process 友好、Metadata 可直接复制、`.abix` 可成为稳定格式。
 
 ### hash — 可选
 
@@ -424,8 +416,7 @@ Linker 只负责放置和保留
 
 **ABIX 的 Metadata ownership 在 AMC，而不是 linker。**
 
-Linker 不知道 TypeDescriptor 是否属于 ABI public surface——AMC 知道。
-因此裁剪权不应交给 `KEEP()` / `--gc-sections`，而是前移到 AMC 的生成阶段。
+Linker 不知道 TypeDescriptor 是否属于 ABI public surface——AMC 知道。因此裁剪权不应交给 `KEEP()` / `--gc-sections`，而是前移到 AMC 的生成阶段。
 
 ## `.abix` 与 `.abix.meta` 的职责划分
 
@@ -469,8 +460,7 @@ package_version = "1.2.3"
     └── 崩溃栈中的 TypeID → type information
 ```
 
-与微软 symbol server、Mozilla Tecken 同一模式。hash 是内容寻址的，
-同一份 `.abix` artifact 可在多个项目间共享。
+与微软 symbol server、Mozilla Tecken 同一模式。hash 是内容寻址的，同一份 `.abix` artifact 可在多个项目间共享。
 
 ## 最终架构
 
@@ -513,8 +503,7 @@ package_version = "1.2.3"
 
 ABIX Metadata 的设计原则如下：
 
-**① Metadata ≠ Runtime ABI**
-Metadata 是描述，Runtime 是使用。两者在结构上分离，在初始化阶段通过 materialization 桥接。
+**① Metadata ≠ Runtime ABI** Metadata 是描述，Runtime 是使用。两者在结构上分离，在初始化阶段通过 materialization 桥接。
 
 **② Name ∉ ABI Identity**
 | 维度 | 代表什么 |
@@ -523,21 +512,15 @@ Metadata 是描述，Runtime 是使用。两者在结构上分离，在初始化
 | LayoutHash | ABI layout |
 | Name | **diagnostic identity** |
 
-**③ Release 不携带诊断字符串**
-Release 只保留：TypeID、LayoutHash、Layout、Function。Names → external `.abix`。
+**③ Release 不携带诊断字符串** Release 只保留：TypeID、LayoutHash、Layout、Function。Names → external `.abix`。
 
-**④ Metadata Region 独立于普通 `.data`**
-形成独立的 ABIX Metadata Region，不混入 `.data.rel.ro` / `.rdata` / `.rodata`。
+**④ Metadata Region 独立于普通 `.data`** 形成独立的 ABIX Metadata Region，不混入 `.data.rel.ro` / `.rdata` / `.rodata`。
 
-**⑤ Serialized Metadata 必须 pointer-free**
-`offset + size` 优于绝对指针。无 relocation、ASLR 友好、PIE 友好、mmap 友好。
+**⑤ Serialized Metadata 必须 pointer-free** `offset + size` 优于绝对指针。无 relocation、ASLR 友好、PIE 友好、mmap 友好。
 
-**⑥ Runtime 可以为速度重新 materialize**
-```serialized (offset) → one-time init → pointer-rich → hot path```
-兼顾文件稳定性、加载效率、Runtime 性能三者。
+**⑥ Runtime 可以为速度重新 materialize** ```serialized (offset) → one-time init → pointer-rich → hot path``` 兼顾文件稳定性、加载效率、Runtime 性能三者。
 
-**⑦ AMC 负责 Metadata 裁剪**
-ABI export policy 在 AMC，不在 linker。linker 只负责放置和保留。
+**⑦ AMC 负责 Metadata 裁剪** ABI export policy 在 AMC，不在 linker。linker 只负责放置和保留。
 
 ## 操作指南
 
@@ -592,24 +575,19 @@ readelf -S bin/test_all | grep -c .abix.names  # 输出 0
 
 ### 边界一：`.abix` 文件必须和二进制版本精确对应
 
-Hash 校验能防错配，但前提是**校验真的执行了**。加载期必须做一次 TypeID 集合比对，
-不能只信文件存在。BuildID 是配对键。
+Hash 校验能防错配，但前提是**校验真的执行了**。加载期必须做一次 TypeID 集合比对，不能只信文件存在。BuildID 是配对键。
 
 ### 边界二：Release 下不能有"依赖名字"的运行时逻辑
 
-一旦某个热路径依赖 name 字符串，Release 就会出现空指针或占位符。
-规则：**名字只在诊断路径使用，诊断路径必须能容忍名字缺失。**
+一旦某个热路径依赖 name 字符串，Release 就会出现空指针或占位符。规则：**名字只在诊断路径使用，诊断路径必须能容忍名字缺失。**
 
 ### 边界三：Serialized Metadata 不进 ABI 契约
 
-`TypeRecord`（serialized）和 `TypeDescriptor`（runtime projection）是两种不同的结构。
-如果未来需要跨 DLL/so 传递 descriptor，用 `TypeRecord`（固定、offset-based），
-不用 `TypeDescriptor`（布局随平台和构建模式变化）。
+`TypeRecord`（serialized）和 `TypeDescriptor`（runtime projection）是两种不同的结构。如果未来需要跨 DLL/so 传递 descriptor，用 `TypeRecord`（固定、offset-based），不用 `TypeDescriptor`（布局随平台和构建模式变化）。
 
 ### 边界四：`.abix` 的归档策略要明确
 
-`.abix` 是正式 Metadata Artifact（机器解析用），`.abix.meta` 是辅助元信息（CI/人类用）。
-**解析 `.abix` 绝不能依赖 `.abix.meta`。**
+`.abix` 是正式 Metadata Artifact（机器解析用），`.abix.meta` 是辅助元信息（CI/人类用）。**解析 `.abix` 绝不能依赖 `.abix.meta`。**
 
 ## 附录：与 DWARF 的对比
 
@@ -626,8 +604,7 @@ Hash 校验能防错配，但前提是**校验真的执行了**。加载期必�
 
 ## ABIX 工具链集成：LLDB 与 clangd
 
-LLDB 插件和 clangd 插件不直接重新解析 ABIX Runtime，而是统一建立在
-`.abix` Metadata Image / AMC 查询层之上：
+LLDB 插件和 clangd 插件不直接重新解析 ABIX Runtime，而是统一建立在 `.abix` Metadata Image / AMC 查询层之上：
 
 ```
                          ┌──────────────┐
@@ -646,8 +623,7 @@ LLDB 插件和 clangd 插件不直接重新解析 ABIX Runtime，而是统一建
           调试/运行时 ABI                 静态 ABI 分析
 ```
 
-LLDB 偏 Runtime/Debug，clangd 偏 Source/Static Analysis，
-但两者共享同一套 ABIX ABI 语义。
+LLDB 偏 Runtime/Debug，clangd 偏 Source/Static Analysis，但两者共享同一套 ABIX ABI 语义。
 
 ### 共享库分层
 
@@ -698,15 +674,13 @@ ABIX 再提供：
 address / symbol → FunctionID / TypeID → ABIX Metadata → Type / Layout / Field
 ```
 
-ABIX LLDB 插件最重要的不是替代 DWARF，而是**把 ABIX 的 ABI 信息接入 LLDB
-的类型、符号和内存检查体系**。
+ABIX LLDB 插件最重要的不是替代 DWARF，而是**把 ABIX 的 ABI 信息接入 LLDB 的类型、符号和内存检查体系**。
 
 #### 四个能力
 
 ##### ① ABIX Metadata Loader
 
-程序加载时，LLDB 插件检查 ELF 中的 `.abix` + BuildID，或通过 BuildID 从
-symbol server 拉取 `.abix`：
+程序加载时，LLDB 插件检查 ELF 中的 `.abix` + BuildID，或通过 BuildID 从 symbol server 拉取 `.abix`：
 
 ```
 libfoo.so
@@ -759,8 +733,7 @@ Parameters:
   1: double
 ```
 
-> LLDB 不应主要依靠名字寻找类型，而应使用 TypeID。
-> 即使不同 namespace 存在同名 `Foo`，TypeID 仍然能准确区分。
+> LLDB 不应主要依靠名字寻找类型，而应使用 TypeID。即使不同 namespace 存在同名 `Foo`，TypeID 仍然能准确区分。
 
 ##### ③ `abix check` — ABI 兼容性调试
 
@@ -843,8 +816,7 @@ ABIX Runtime 的 Layout Metadata 与 LLDB 的内存可视化共享同一份数�
 
 #### 核心定位：把 ABIX ABI 语义映射回源码 AST
 
-clangd 的核心世界是 `source code → Clang AST → Semantic Model`。
-ABIX 的核心世界是 `source/binary → AMC → .abix`。
+clangd 的核心世界是 `source code → Clang AST → Semantic Model`。 ABIX 的核心世界是 `source/binary → AMC → .abix`。
 
 clangd 与 AMC 的关系：
 
@@ -961,8 +933,7 @@ Foo ABI changed
 [Find affected imports]   → 搜索导入此类型的模块
 ```
 
-`Generate ABI adapter` 可调用 AMC 生成 `abix::adapter<Foo_v1, Foo_v2>`，
-形成完整闭环：`clangd → AMC → ABIX adapter`。
+`Generate ABI adapter` 可调用 AMC 生成 `abix::adapter<Foo_v1, Foo_v2>`，形成完整闭环：`clangd → AMC → ABIX adapter`。
 
 ### 完整开发体验
 
@@ -991,6 +962,4 @@ lldb:
     Incompatible: Baz LayoutHash mismatch
 ```
 
-独立、自描述、pointer-free 的 `.abix` Metadata Image 把 Runtime、Compiler、Debugger 和
-Static Analyzer 统一起来。BuildID → `.abix` → TypeID → LayoutHash 这条链同时服务 LLDB、
-AMC、clangd 以及未来的 MCP/AI Agent。
+独立、自描述、pointer-free 的 `.abix` Metadata Image 把 Runtime、Compiler、Debugger 和 Static Analyzer 统一起来。BuildID → `.abix` → TypeID → LayoutHash 这条链同时服务 LLDB、 AMC、clangd 以及未来的 MCP/AI Agent。

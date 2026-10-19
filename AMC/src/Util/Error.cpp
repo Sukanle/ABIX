@@ -6,8 +6,8 @@ namespace amc::util {
 
 amc::ErrorFormat g_error_format = amc::ErrorFormat::text;
 
-int fail(amc::ErrorCategory category, const std::string &stage, const std::string &message,
-    const std::string &file, const std::string &detail) {
+int fail(amc::ErrorCategory category, const std::string &stage, const std::string &message, const std::string &file,
+    const std::string &detail) {
     const auto error = amc::make_error(category, stage, message, file, detail);
     fmt::print(stderr, "{}\n",
         g_error_format == amc::ErrorFormat::json ? amc::error_to_json(error) : amc::error_to_text(error));

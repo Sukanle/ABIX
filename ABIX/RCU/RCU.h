@@ -16,7 +16,8 @@
 #ifndef SKL_ABIX_RCU_H
 #define SKL_ABIX_RCU_H
 
-#include "ABIX/RCU/Config.h"  // IWYU pragma: keep
-#include "ABIX/RCU/Domain.h"  // IWYU pragma: keep
+#include "ABIX/RCU/Config.h"     // IWYU pragma: keep
+#include "ABIX/RCU/Deadline.h"   // IWYU pragma: keep
+#include "ABIX/RCU/Domain.h"     // IWYU pragma: keep
 
 #endif

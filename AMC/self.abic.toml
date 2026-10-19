@@ -7,8 +7,6 @@ language = "cpp"
 flags = [
   "-std=c++17",
   "-I", "include",
-  "-isystem", "/usr/lib/clang/22/include",
-  "-isystem", "/usr/lib/gcc/x86_64-pc-linux-gnu/16/include"
 ]
 files = ["self_types.cpp"]
 symbols = [

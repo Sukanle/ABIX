@@ -180,7 +180,7 @@ TEST_CASE("13.cross_crt_msvc_resource", "[cross][prompt13][msvc][resource]") {
     if (!file_exists(variant)) {
         WARN("missing MSVC variant "
              << variant
-             << " (please run tools/build_msvc_variants.py first), skip cross-CRT resource test");
+             << " (please run tools/build_variants.py --with-msvc first), skip cross-CRT resource test");
         return;
     }
     skl::abix::dll::Object lib;

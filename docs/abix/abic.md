@@ -33,21 +33,18 @@
 
 ## Core Responsibilities
 
-| Responsibility | Description |
-|------|------|
-| Declare source file paths | Specify which source files to scan, avoiding full-project scanning |
-| Declare export scope | Which types and functions need to be exported |
-| Declare target platform | arch / OS |
-| Declare ABI conventions | Compiler / calling convention |
-| Declare normalization strategy | How type names are normalized |
-| Declare compatibility strategy | Whether to generate compatibility relationships and rules |
-| Declare mapping strategy | Whether to generate Map, mapping direction |
-| Declare generation targets | Target language, output format |
-| Declare runtime mode | Static / Dynamic / Hybrid |
+| Responsibility | Section | Description |
+|------|------|------|
+| Declare source | `[[import]]` | Language and the files to scan, plus optional flags / compilation database |
+| Declare export scope | `[[import]].symbols` | Which types and functions form the exported ABI surface |
+| Declare output | `[[export]]` | Where the `.abix` artifact is written |
+| Declare ownership | `[[owned]]`, `[[contract]]` | Release policies and per-interaction ownership modes |
+| Declare error boundary | `[[error]]` | Where a function reports status and carries its result |
+| Declare target | `[target]` | Target platform facts used for verification |
 
 ## Format: TOML
 
-`.abic` is intended for **humans**, therefore it uses a readable format like TOML (or YAML).
+`.abic` is intended for **humans**, therefore it uses a readable format like TOML.
 
 ## Complete Example
 
@@ -55,58 +52,53 @@
 [package]
 name = "mylib"
 version = "2.0"
-abi_version = 1
 
-[source]
-files = [
-    "src/foo.hpp",
-    "src/bar.hpp",
-    "src/baz.cpp"
-]
-include_dirs = ["include", "src"]
-exclude = ["src/internal/*"]
+[[import]]
+language = "cpp"                       # cpp | rust (frontends); lua/zig are generate-only
+flags = ["-std=c++17"]
+# compile_commands = "compile_commands.json"   # optional, replaces flags
+files = ["src/foo.hpp", "src/bar.hpp"]
+symbols = ["Foo", "Bar", "FooKind", "foo_create", "foo_destroy", "bar_process"]
 
+# Release policy: how an owned value is created and released.
+[[owned]]
+type = "Foo"
+create = "foo_create"
+destroy = "foo_destroy"
+
+# Per-interaction ownership mode (borrowed / owned / copy).
+[[contract]]
+function = "foo_create"
+returns = "owned"
+release = "foo_destroy"
+
+[[contract]]
+function = "bar_process"
+params = ["borrowed"]
+
+# Error boundary: status in the return value, result through parameter 2.
+[[error]]
+function = "bar_process"
+success = 0
+value = 2
+
+# Generic instantiation: the frontend instantiates the template and AMC records
+# the concrete entity `abix_span_i32`.
+[[instantiate]]
+template = "abix_std::abix_span"
+args = ["int32_t"]
+as = "abix_span_i32"
+
+# Target platform facts (integers; `endianness` is a keyword).
 [target]
-arch = "x86_64"
-os = "linux"
+arch = 1
+os = 1
+abi = 1
+pointer_bits = 64
+endianness = "little"                  # little | big
 
-[abi]
-compiler = "gcc"
-calling_convention = "sysv_abi"
-
-[export]
-types = ["Foo", "Bar", "Baz", "FooKind", "BarFlags"]
-functions = ["foo_create", "foo_destroy", "bar_process"]
-
-[normalization]
-integer = "fixed-width"       # int → i32, long → i64, ...
-pointer = "opaque"             # T* → Ptr<T>
-string = "slice"               # std::string → StringSlice
-container = "abi_stable"       # std::vector → AbiVector
-
-[compatibility]
-enable = true
-mode = "layout_hash"           # layout_hash | type_id | strict
-max_minor_version = 4
-
-[map]
-Foo_v1 = "Foo_v2"              # Version mapping
-Bar_old = "Bar_new"            # Rename mapping
-
-[generator]
-language = ["cpp", "rust"]
-hash_algorithm = "fnv1a64"     # fnv1a64 | xxh3 | blake3
-emit_map_ir = true             # Generate Map IR in .abix
-emit_static_map = true         # Generate MapPrivate static conversion
-
-[runtime]
-mode = "hybrid"                # static | dynamic | hybrid
-lazy_load = true               # Runtime lazy loading
-
-[output]
-format = "abix"                # abix | json | none
-compact = true                 # Binary compact layout
-debug_info = false             # Embed debug strings (mutually exclusive with compact; debug_info takes priority)
+[[export]]
+output = "build/mylib.abix"
 ```
 
 ## Configuration Section Details
@@ -115,130 +107,162 @@ debug_info = false             # Embed debug strings (mutually exclusive with co
 
 | Field | Type | Description |
 |------|------|------|
-| `name` | string | Package name |
-| `version` | string | Semantic version string |
-| `abi_version` | uint | ABI format version (decoupled from package version) |
+| `name` | string | Package name (recorded in the artifact and the metadata region) |
+| `version` | string | Version string (independent of the `.abix` format version) |
 
-### `[source]`
+### `[[import]]`
+
+Exactly one import per file. It selects the language frontend and the source.
 
 | Field | Type | Description |
 |------|------|------|
-| `files` | string[] | Source file paths to scan (relative to .abic directory) |
-| `include_dirs` | string[] | Header file search paths |
-| `exclude` | string[] | File patterns to exclude (glob) |
+| `language` | string | `cpp` or `rust`. (`lua` / `zig` have no frontend and are used only with `amc generate -l`.) |
+| `files` | string[] | Source/header files to scan (relative to the `.abic.toml` directory) |
+| `symbols` | string[] | Types and functions that form the exported ABI surface |
+| `flags` | string[] | Compiler flags for the frontend (optional) |
+| `compile_commands` | string | `compile_commands.json` path; when present it replaces `flags` (optional) |
 
-**Design intent**: AMC only scans the files specified in `[source]`, not the entire project, avoiding unnecessary AST parsing in large projects.
+`files` and `symbols` are required. AMC scans only the listed files, not the whole project.
 
-If `[source]` is missing, AMC will scan all `.hpp` / `.h` / `.cpp` files in the same directory as .abic (backward compatible, but emits a warning).
+### `[[export]]`
+
+| Field | Type | Description |
+|------|------|------|
+| `output` | string | Output path of the `.abix` artifact, relative to the build directory |
+
+### `[[owned]]` — release policy
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Value type whose lifetime is managed by the library |
+| `create` | string | Factory function name (optional) |
+| `destroy` | string | Release function name (required) |
+
+### `[[contract]]` — per-interaction ownership
+
+| Field | Type | Description |
+|------|------|------|
+| `function` | string | Function whose return/parameters the contract describes |
+| `returns` | string | Mode of the return value: `borrowed` / `owned` / `copy` |
+| `release` | string | Release function name for an `owned` return |
+| `params` | string[] | Positional modes for the parameters |
+
+Ownership is a **contract, not a layout fact**: it never participates in `TypeID` / `LayoutHash` / `ABIHash`. An absent contract means `unspecified`; a reader must not infer `borrowed` or `owned`. See [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §9.
+
+### `[[error]]` — error boundary
+
+| Field | Type | Description |
+|------|------|------|
+| `function` | string | Function whose status/result the contract describes |
+| `status` | string | `return` (default) or `parameter`; also `return_field` when the return value is an aggregate (emitted automatically for an `abix_result_*` return) |
+| `success` | int | Status value that means success (default `0`) |
+| `value` | int | Parameter index carrying the result value (omit when the return value is the result) |
+
+It lets a backend turn a bare C status code into a typed result; a language-native exception/panic must not cross the ABI boundary. See [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §6.1. With `status = return_field` the status and value are fields of the returned record: when `[[expose]]` emits a thunk that returns `abix_result_*` it records `return_field` with the status and value field indices, so a consumer gets a typed `Result` for the exposed method.
+
+### `[[instantiate]]` — generic instantiation
+
+| Field | Type | Description |
+|------|------|------|
+| `template` | string | Generic entity name (may be qualified, e.g. `abix_std::abix_span`) |
+| `args` | string[] | Canonical type arguments, e.g. `["int32_t"]` |
+| `as` | string | Exported name of the concrete entity (also emitted as a source alias) |
+| `contract` | string | ABIX-STD contract to lower to: `sequence-view`, `string-view`, `optional` or `result` (optional; `purpose` is an accepted alias) |
+| `element` | string | Element spelling the contract requires, e.g. `int` (optional; matched against the pointer's pointee `TypeID`) |
+| `mutable` | bool | Require a non-const data pointer (optional, default `false`) |
+
+The **language frontend** performs the instantiation and the constraint check (Clang/Sema for C++); AMC coordinates the request and records the concrete ABI facts. ABIX records concrete entities, not generic parameters. When a `contract` is given, AMC also **lowers** the concrete type against that contract and records the result: `direct` (the type is already the boundary entity), `needs_adapter` (compatible shape, a thin adapter is generated), or a rejection. A successful instantiation does **not** by itself claim ABIX-STD contract compatibility. See [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18.
+
+### `[[view]]` — container accessor adapter
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Container type (its layout stays opaque) |
+| `data_accessor` | string | Function returning the data pointer |
+| `size_accessor` | string | Function returning the element count |
+
+Lowers a container to the sequence view through accessors (for example a `std::vector<T>`'s `data()`/`size()`), without exposing its internal layout. AMC generates a thin adapter; the borrow lifetime and invalidation conditions remain part of the caller's contract.
+
+### `[[contract-type]]` — a non-template contract type
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Concrete type (e.g. `abix_callback`, `DemoMap`) |
+| `contract` | string | ABIX-STD contract: `callback` or `opaque` |
+
+For contract types that are not templates (a callback struct, or an opaque Map / Set handle), so no `[[instantiate]]` is needed. An `opaque` type is used through accessor operations; its layout is not consumed.
+
+### `[[range]]` — iterable range adapter
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Container type (its layout stays opaque) |
+| `size_accessor` | string | Function returning the element count |
+| `at_accessor` | string | Function returning element `index` |
+
+Exposes a non-contiguous container as an iterable range (length + indexed access) without assuming contiguous memory.
+
+### `[[expose]]` — automatic capability generation
+
+| Field | Type | Description |
+|------|------|------|
+| `type` | string | Concrete type to expose (e.g. `cmdly::MemoryHistory`) |
+| `methods` | string[] | Member function names to expose (inherited methods included) |
+| `constructor` | string[] | Constructor parameter spellings (omit/empty = default constructor) |
+| `destructor` | bool | Emit a destroy entry (default `true`) |
+| `opaque` | bool | Consumers see an opaque handle (default `true`) |
+
+The C++ frontend emits `abix_<Type>_create/_destroy/_<method>` **thunks** and records them as ABI entities, so neither the producer nor the consumer writes an adapter by hand. Only public members are supported, and only representations the bridge can express: a parameter or return type that is not a known, layout-safe type is rejected (`... needs a contract`) rather than guessed at. A signature that mentions an ABIX-STD boundary type (`abix_span_*`, `abix_str_*`, `abix_result_*`) records the matching contract automatically; a native STL parameter type needs an explicit `[[adapt]]` mapping. An `abix_result_*` return binds to the error boundary automatically (see `[[error]]`).
+
+### `[thunks]` — generated thunk source
+
+| Field | Type | Description |
+|------|------|------|
+| `output` | string | Path of the generated C thunk source (compiled into the producer) |
+
+Required when `[[expose]]` is present.
+
+### `[[adapt]]` — native↔ABIX-STD parameter adaptation
+
+| Field | Type | Description |
+|------|------|------|
+| `native` | string | Native kind: `std::string`, `std::string_view`, `std::vector` or `std::span` |
+| `target` | string | ABIX-STD boundary type the parameter is marshalled onto (e.g. `abix_str_utf8`, `abix_span_i32`) |
+| `element` | string | Element spelling for `std::vector`/`std::span` (e.g. `int32_t`); ignored otherwise |
+
+An STL type must not cross the boundary raw (see [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §18): a declared mapping is required before `[[expose]]` will adapt a method that takes it. On a match the generated thunk takes the boundary type and marshals it onto the native type (`std::string(data, len)`, `std::vector<T>(data, data + len)`, ...); the adapter is generated and linked, never inferred. Only **parameters** are adapted — a return value mapped to a borrowed view would dangle, so returns still need their own contract. A non-const lvalue reference and a mutable `std::span<T>` are not adapted (writing back through a borrowed view is not modelled).
+
+### `[[interface]]` — a named interface contract
+
+| Field | Type | Description |
+|------|------|------|
+| `name` | string | Interface name (part of its identity) |
+| `version` | int | Interface version (default `1`) |
+| `methods` | string[] | Interface methods, **in slot order**; each names an already-recorded function whose signature becomes that method's contract |
+
+The interface identity is a content hash over the name, version and ordered method signatures — not a class name and not a vtable address. It is a **contract, not a layout fact**: it never feeds `TypeID` / `LayoutHash` / `ABIHash`. See [`interface.md`](interface.md).
+
+### `[[implements]]` — bind a concrete type to an interface
+
+| Field | Type | Description |
+|------|------|------|
+| `interface` | string | The `[[interface]]` this implementation satisfies |
+| `type` | string | The concrete type implementing it |
+| `methods` | string[] | In slot order, the recorded adapter function bound to each interface method; its count must equal the interface's method count |
+
+The binding maps `(interface_id, slot)` to an adapter function signature; the adapter's first parameter is the object handle. ABIX standardises no private vtable: a provider keeps its own layout and virtual functions, and the adapter is the only bridge. `amc generate -l cpp` projects each interface as `k<Name>Interface`, `k<Name>Version`, `enum class <Name>Slot`, a `<Name>_<method>_fn` typedef, a `Traits` struct (id / version / slots / expected signatures) and — when every method takes the object handle first — an `InterfaceProxy<Traits>`-derived proxy class, so a consumer can declare, bind and call the interface without touching the provider's layout. See [`interface.md`](interface.md) and ABI-SPEC §19.
 
 ### `[target]`
 
 | Field | Type | Description |
 |------|------|------|
-| `arch` | string | Target architecture: `x86_64` / `aarch64` / `riscv64` / ... |
-| `os` | string | Target OS: `linux` / `windows` / `macos` / ... |
+| `arch` | uint | Target architecture code |
+| `os` | uint | Target OS code |
+| `abi` | uint | Target ABI code |
+| `pointer_bits` | uint | Pointer width in bits (`0` = unknown) |
+| `endianness` | string | `little` / `big` |
 
-`[target]` only describes the **target platform**, not the compiler/calling convention (the latter belongs to `[abi]`).
-
-### `[abi]`
-
-| Field | Type | Description |
-|------|------|------|
-| `compiler` | string | Compiler: `gcc` / `clang` / `msvc` / ... |
-| `calling_convention` | string | Calling convention: `sysv_abi` / `ms_abi` / `aapcs` / ... |
-
-`[abi]` describes the **compiler and ABI convention**, with a clear separation of concerns from `[target]` (platform).
-
-### `[export]`
-
-| Field | Type | Description |
-|------|------|------|
-| `types` | string[] | Type names to export ABI for (including enums) |
-| `functions` | string[] | Function names to export ABI for |
-
-Enums are essentially Types and are uniformly listed under `types`. No separate `enums` field to avoid semantic overlap.
-
-### `[normalization]`
-
-| Field | Type | Description |
-|------|------|------|
-| `integer` | enum | Integer normalization strategy: `fixed-width` / `native` / `none` |
-| `pointer` | enum | Pointer normalization strategy: `opaque` / `typed` / `none` |
-| `string` | enum | String normalization strategy: `slice` / `ptr` / `none` |
-| `container` | enum | Container normalization strategy: `abi_stable` / `none` |
-
-The purpose of normalization is to map type names produced by different compilers/languages to the same canonical representation:
-
-```
-C++ int        → i32
-C++ long       → i64 (on LP64)
-Rust i32       → i32
-Zig i32        → i32
-```
-
-Normalization applies to primitive identity: a primitive's `TypeID` is derived
-from an ABI descriptor (kind, size, align, signedness, floating-point format),
-not from its spelling. `long`/`long long` (LP64) therefore share one `TypeID`,
-and `long double` is distinguished by *format*, not width — x86 x87 80-bit and
-IEEE binary128 are different types even though both occupy 16 bytes.
-
-Character types stay distinct: `char`, `signed char`, `unsigned char`,
-`char8_t`, `char16_t`, `char32_t` and `wchar_t` are separate ABI kinds. Plain
-`char` and `wchar_t` carry their target-defined signedness, so the same spelling
-can be a different type across targets (e.g. `char` is unsigned on aarch64/riscv
-but signed on x86/macOS).
-
-When projecting a C-ABI scalar to a target language, use that language's C-ABI
-alias (for Rust, `core::ffi::c_*` such as `c_double`/`c_int`) rather than a
-fixed-width type, since the alias encodes the target's C ABI.
-
-### `[compatibility]`
-
-| Field | Type | Description |
-|------|------|------|
-| `enable` | bool | Whether to generate compatibility information |
-| `mode` | enum | Compat check mode: `layout_hash` / `type_id` / `strict` |
-| `max_minor_version` | uint | Maximum compatible minor version number |
-
-### `[map]`
-
-Key-value pairs declaring type mappings:
-
-- Version mapping: `Foo_v1 = "Foo_v2"` — maps from old version to new version
-- Rename mapping: `Bar_old = "Bar_new"` — maps from old name to new name
-
-### `[generator]`
-
-| Field | Type | Description |
-|------|------|------|
-| `language` | string[] | Target language: `cpp` / `rust` / `zig` / ... |
-| `hash_algorithm` | enum | Hash algorithm: `fnv1a64` / `xxh3` / `blake3` |
-| `emit_map_ir` | bool | Whether to generate Map IR in .abix |
-| `emit_static_map` | bool | Whether to generate MapPrivate static conversion |
-
-`emit_map_ir` and `emit_static_map` are independent generation switches, decoupled from `[runtime].mode`:
-- `emit_map_ir = true, emit_static_map = false`: Only save Map IR in .abix, execute dynamically at runtime
-- `emit_map_ir = true, emit_static_map = true`: Generate both runtime IR and compile-time MapPrivate
-- `emit_map_ir = false, emit_static_map = true`: Only generate MapPrivate (no Map IR in .abix)
-
-`hash_algorithm` is **generation strategy** (input); the `hash_algorithm` in .abix Header is the **actually used algorithm** (output) — a configuration-to-artifact relationship.
-
-### `[runtime]`
-
-| Field | Type | Description |
-|------|------|------|
-| `mode` | enum | Runtime mode: `static` / `dynamic` / `hybrid` |
-| `lazy_load` | bool | Whether Runtime uses lazy loading |
-
-### `[output]`
-
-| Field | Type | Description |
-|------|------|------|
-| `format` | enum | Output format: `abix` / `json` / `none` |
-| `compact` | bool | Whether binary uses compact layout |
-| `debug_info` | bool | Whether to embed debug strings |
-
-`debug_info` is mutually exclusive with `compact`: when `debug_info = true`, `compact` is ignored (debug information takes priority).
+`[target]` describes the **target platform**; unknown facts are reported as `unverifiable` by runtime verification rather than assumed compatible. See [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §10.
 
 ## Runtime Modes
 
@@ -298,27 +322,29 @@ flowchart TD
 
 ## Minimal Example
 
-Export types only, using default configuration:
+Export a single type; everything else takes a default:
 
 ```toml
 [package]
 name = "minimal"
 version = "1.0"
 
-[source]
+[[import]]
+language = "cpp"
 files = ["src/foo.hpp"]
+symbols = ["Foo"]
 
-[export]
-types = ["Foo"]
+[[export]]
+output = "build/minimal.abix"
 ```
 
-AMC will fill in defaults for all omitted fields.
+AMC fills in defaults for the optional fields (no contracts, no target facts).
 
 ## Design Principles
 
 1. **Declarative**: describes "what you want", not "how to do it"
 2. **Human-readable**: TOML format, easy to hand-write and version-control
-3. **Completable**: all fields have sensible defaults
-4. **Decoupled from version**: `abi_version` is independent of `version`
+3. **Completable**: all optional fields have sensible defaults
+4. **Decoupled from version**: the package `version` is independent of the `.abix` format version
 5. **Build-time only**: no dependency on `.abic` at runtime
-6. **No semantic overlap**: each configuration item has a unique responsibility; no conflicting combinations across different sections
+6. **Contracts are additive**: ownership / error / target sections are optional and never change `TypeID` / `LayoutHash` / `ABIHash`

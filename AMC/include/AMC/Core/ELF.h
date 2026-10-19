@@ -10,14 +10,15 @@
 namespace amc {
 
 // Minimal, dependency-free reader for the custom sections that carry an ABIX
-// Metadata Region inside a compiled binary. It supports the two container
-// formats AMC emits today:
+// Metadata Region inside a compiled binary. It supports the three container
+// formats ABIX targets:
 //
 //   * ELF64  (little-endian, x86_64 / aarch64 Linux)
 //   * Mach-O (64-bit, x86_64 / arm64 macOS)
+//   * PE32 / PE32+ (Windows)
 //
-// It reads nothing beyond the section metadata and the section it is asked
-// for, so `amc dump`/`amc metadata` can scan a binary offline without LLVM.
+// The parsing itself lives in the capability layer under ABIX/Binary/; this
+// header keeps the historical AMC entry points as a thin compatibility shim.
 
 struct BinarySection {
     std::string name;      // native section name (e.g. ".abix.metadata")
@@ -33,14 +34,20 @@ struct BinarySection {
 // keep compiling.
 using ElfSection = BinarySection;
 
-enum class BinaryFormat { unknown, elf, macho };
+enum class BinaryFormat {
+    unknown,
+    elf,
+    macho,
+    pe
+};
 
 BinaryFormat detect_binary_format(const uint8_t *data, size_t size) noexcept;
 
 bool is_elf(const uint8_t *data, size_t size) noexcept;
 bool is_macho(const uint8_t *data, size_t size) noexcept;
+bool is_pe(const uint8_t *data, size_t size) noexcept;
 
-// True for any container format this reader understands (ELF or Mach-O).
+// True for any container format this reader understands (ELF, Mach-O or PE).
 bool is_binary(const uint8_t *data, size_t size) noexcept;
 
 // Native section listing for the detected format. Dispatches to
@@ -49,11 +56,12 @@ bool read_binary_sections(const uint8_t *data, size_t size, std::vector<BinarySe
 
 bool read_elf_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error);
 bool read_macho_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error);
+bool read_pe_sections(const uint8_t *data, size_t size, std::vector<BinarySection> &sections, std::string &error);
 
 // Translates a canonical ABIX section name in the ELF spelling (".abix.metadata")
 // to the native spelling of `format`. Mach-O section names are limited to 16
-// bytes and use "__abix_metadata" in the "__DATA" segment. Unknown names are
-// returned unchanged.
+// bytes and use "__abix_metadata" in the "__DATA" segment; PE section names are
+// 8 bytes and use ".abix" / ".abix.n". Unknown names are returned unchanged.
 std::string native_section_name(BinaryFormat format, std::string_view canonical);
 
 // Copies the bytes of the named section into `content`. `name` is given in the
@@ -69,6 +77,8 @@ bool find_binary_section(
 bool find_elf_section(
     const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error);
 bool find_macho_section(
+    const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error);
+bool find_pe_section(
     const uint8_t *data, size_t size, std::string_view name, std::vector<uint8_t> &content, std::string &error);
 
 }   // namespace amc

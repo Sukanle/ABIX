@@ -1,6 +1,6 @@
 #include "topology.hpp"
 
-#include <stdio.h>
+#include "bench_fmt.hpp"
 #include <string.h>
 
 #include <algorithm>
@@ -64,7 +64,7 @@ CpuTopology detect_cpu_topology() {
     if (sysctl_read("hw.nperflevels", nperflevels) && nperflevels > 0) {
         for (uint32_t i = 0; i < nperflevels; ++i) {
             char key[64];
-            std::snprintf(key, sizeof(key), "hw.perflevel%u.logicalcpu", i);
+            format_into(key, "hw.perflevel{}.logicalcpu", i);
             uint32_t count = 0;
             if (sysctl_read(key, count)) {
                 if (i == 0)
@@ -98,7 +98,7 @@ static uint32_t count_physical_packages() {
     uint32_t max_cpus = count_online_cpus();
     for (uint32_t i = 0; i < max_cpus; ++i) {
         char path[128];
-        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%u/topology/physical_package_id", i);
+        format_into(path, "/sys/devices/system/cpu/cpu{}/topology/physical_package_id", i);
         std::ifstream f(path);
         uint32_t id = 0;
         if (f >> id) packages.insert(id);
@@ -111,13 +111,13 @@ static uint32_t count_physical_cores() {
     uint32_t max_cpus = count_online_cpus();
     for (uint32_t i = 0; i < max_cpus; ++i) {
         char path[128];
-        std::snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%u/topology/core_id", i);
+        format_into(path, "/sys/devices/system/cpu/cpu{}/topology/core_id", i);
         std::ifstream f(path);
         uint32_t core_id = 0;
         if (f >> core_id) {
             // Also get package ID
             char pkg_path[128];
-            std::snprintf(pkg_path, sizeof(pkg_path), "/sys/devices/system/cpu/cpu%u/topology/physical_package_id", i);
+            format_into(pkg_path, "/sys/devices/system/cpu/cpu{}/topology/physical_package_id", i);
             std::ifstream pf(pkg_path);
             uint32_t pkg_id = 0;
             if (pf >> pkg_id) {

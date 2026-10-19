@@ -18,7 +18,7 @@ void write_text(const amc::AbiModule &module, std::string &output) {
     output +=
         "artifact: format_version=4 hash_algorithm=0 sections="
         "strings,identity,target,types,fields,functions,parameters,symbols,hash_descriptor,hash_table,"
-        "compatibility,maps,map_operations\n";
+        "compatibility,maps,map_operations,layout_encoding\n";
     output += "package: ";
     output += module.package_name;
     if (!module.package_version.empty()) {
@@ -41,6 +41,9 @@ void write_text(const amc::AbiModule &module, std::string &output) {
     output += hash_hex(amc::abi_hash(module));
     output += " records=";
     output += fmt::to_string(amc::hash_table(module).size());
+    output += "\n";
+    output += "layout: encoding_version=";
+    output += fmt::to_string(module.layout_encoding_version);
     output += "\n";
     output += "runtime_descriptor: type_id_bits=128 registry=runtime::Registry types=";
     output += fmt::to_string(module.types.size());

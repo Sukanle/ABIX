@@ -1,6 +1,5 @@
-#include "AMC/Core/Core.h"
-
 #define AMC_GENERATED_DECLARE_NATIVE_TYPE_TRAITS
+#include <AMC/Core/Core.h>
 #include "amc_core.hpp"
 
 int main() {

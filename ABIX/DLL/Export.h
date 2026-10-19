@@ -35,9 +35,9 @@ using tag = mics::utils::cc::tag;
 #define SKL_ABIX_CCPICK2(C) SKL_ABIX_CCPICK_##C
 #define SKL_ABIX_CCPICK(C) SKL_ABIX_CCPICK2(C)
 
-#define SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)                             \
+#define SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)                                 \
     {name, ::skl::abix::dll::FnSig<decltype(&func), SKL_ABIX_CCPICK(cctype)>::value, ver, \
-        reinterpret_cast<uintptr_t>(&func), mics::utils::cstr32(name), flg}
+        reinterpret_cast<uintptr_t>(&func), ::skl::abix::runtime::name_hash(name), flg}
 #define SKL_ABIX_ENTRY_CC(name, func, cctype) SKL_ABIX_ENTRY_FULL(name, func, cctype, 0, 0)
 #define SKL_ABIX_ENTRY(name, func) SKL_ABIX_ENTRY_CC(name, func, Cdecl)
 #define SKL_ABIX_VERSION(v) mics::utils::version(v)

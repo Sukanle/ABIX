@@ -1,8 +1,10 @@
 #include "AMC/Lang/C++.h"
 
+#include <fmt/format.h>
+
 int main(int argc, char **argv) {
 #ifdef __APPLE__
-    if (!amc::cpp::kClangResourceDir[0]) {
+    if (!amc::lang::cpp::kClangResourceDir[0]) {
         fmt::print(stderr,
             "warning: ABIX_CLANG_RESOURCE_DIR not set at build time; "
             "built-in headers (stdarg.h, etc.) may not be found.\n");

@@ -21,27 +21,19 @@
 
 </details>
 
-ABIX 希望用自身提供的跨 ABI 模型描述自己的内部类型——`Registry`、`TypeInfo`、
-RCU/EBR 状态等。递归地描述这套机制会陷入鸡生蛋问题。自举路线通过把工作拆成四个
-阶段，并在最底层放置一个极小的、手工维护的内核来解决它。
+ABIX 希望用自身提供的跨 ABI 模型描述自己的内部类型——`Registry`、`TypeInfo`、 RCU/EBR 状态等。递归地描述这套机制会陷入鸡生蛋问题。自举路线通过把工作拆成四个阶段，并在最底层放置一个极小的、手工维护的内核来解决它。
 
-本文档记录这条路线：元模型、Bootstrap 内核、运行时依赖与状态模型，以及由此实现的
-自举闭环。artifact 格式本身见 [`abix_zh.md`](../ABIX/abix_zh.md)；运行时 API 见
-[`runtime_zh.md`](../architecture/runtime_zh.md)。
+本文档记录这条路线：元模型、Bootstrap 内核、运行时依赖与状态模型，以及由此实现的自举闭环。artifact 格式本身见 [`abix_zh.md`](../ABIX/abix_zh.md)；运行时 API 见 [`runtime_zh.md`](../architecture/runtime_zh.md)。
 
 ## 核心问题
 
-"ABIX 描述自己"意味着 ABIX 自身的内部类型也应当能通过 ABIX 的跨 ABI 机制消费。
-直接实现是循环的：描述类型的机制本身也是一种类型，它必须先被描述才能运行。没有固定
-的基座就没有起点。
+"ABIX 描述自己"意味着 ABIX 自身的内部类型也应当能通过 ABIX 的跨 ABI 机制消费。直接实现是循环的：描述类型的机制本身也是一种类型，它必须先被描述才能运行。没有固定的基座就没有起点。
 
-解决方案是先冻结数据模型，在其上实现尽可能小的 loader，再从该 loader 生长出运行时，
-最后让运行时描述自己的组成部件。
+解决方案是先冻结数据模型，在其上实现尽可能小的 loader，再从该 loader 生长出运行时，最后让运行时描述自己的组成部件。
 
 ## 四阶段路线
 
-原方案为三阶段——`Bootstrap → Runtime → Self-hosting`。工程上调整为四阶段，将
-ABI 元模型前置为独立的 Phase 0。
+原方案为三阶段——`Bootstrap → Runtime → Self-hosting`。工程上调整为四阶段，将 ABI 元模型前置为独立的 Phase 0。
 
 ```mermaid
 graph TD
@@ -52,9 +44,7 @@ graph TD
     P0 --> P1 --> P2 --> P3
 ```
 
-Phase 0 至关重要。Bootstrap 内核需要消费什么，取决于 `.abix`、`TypeInfo`、
-`Registry` 和 `Map` 最终是什么形式；先冻结元模型可避免后期发现这些数据模型互相依赖
-而返工。
+Phase 0 至关重要。Bootstrap 内核需要消费什么，取决于 `.abix`、`TypeInfo`、`Registry` 和 `Map` 最终是什么形式；先冻结元模型可避免后期发现这些数据模型互相依赖而返工。
 
 ### Phase 0 —— ABI 元模型
 
@@ -75,19 +65,15 @@ graph TD
 
 ### Phase 1 —— Bootstrap 内核
 
-Bootstrap 内核是静态 metadata loader，不是简化版 Registry。它把生成的 metadata
-从只读存储送入运行时，随后不再被使用。其约束详见后文 Bootstrap 内核一节。
+Bootstrap 内核是静态 metadata loader，不是简化版 Registry。它把生成的 metadata 从只读存储送入运行时，随后不再被使用。其约束详见后文 Bootstrap 内核一节。
 
 ### Phase 2 —— ABIX 运行时
 
-在已加载的 metadata 之上依次构建 `Registry`、类型系统、`Map`，最后是 RCU/EBR。
-开发先单线程进行，从而在引入并发之前先证明
-`Bootstrap → Registry → Type lookup → self metadata` 闭环成立。
+在已加载的 metadata 之上依次构建 `Registry`、类型系统、`Map`，最后是 RCU/EBR。开发先单线程进行，从而在引入并发之前先证明 `Bootstrap → Registry → Type lookup → self metadata` 闭环成立。
 
 ### Phase 3 —— 自举
 
-ABIX 自身的 type、registry、map、RCU、compatibility 与 bootstrap metadata 均由
-ABIX 工具链产出并在运行时注册，Bootstrap 内核作为唯一手工维护的可信基座保留。
+ABIX 自身的 type、registry、map、RCU、compatibility 与 bootstrap metadata 均由 ABIX 工具链产出并在运行时注册，Bootstrap 内核作为唯一手工维护的可信基座保留。
 
 ## 类型与哈希模型
 
@@ -147,9 +133,7 @@ LayoutHash = hash(
 )
 ```
 
-`TypeHash ≠ LayoutHash` 是兼容性系统的基础。同一类型标识在不同构建配置下可能具有
-不同布局，兼容性检查正是基于这一区分进行的。见
-[`compatibility_zh.md`](../architecture/compatibility_zh.md)。
+`TypeHash ≠ LayoutHash` 是兼容性系统的基础。同一类型标识在不同构建配置下可能具有不同布局，兼容性检查正是基于这一区分进行的。见 [`compatibility_zh.md`](../architecture/compatibility_zh.md)。
 
 ### Hash128
 
@@ -165,9 +149,7 @@ constexpr TypeId type_id(...);
 constexpr LayoutHash layout_hash(...);
 ```
 
-第一版可以使用 FNV-1a；后续实现可替换为 XXH3、BLAKE3 或截断的 SHA-256，而不改变
-`.abix` 模型。哈希算法作为显式的 schema/version 信息记录在 artifact 中，而不是隐含
-在实现里。
+第一版可以使用 FNV-1a；后续实现可替换为 XXH3、BLAKE3 或截断的 SHA-256，而不改变 `.abix` 模型。哈希算法作为显式的 schema/version 信息记录在 artifact 中，而不是隐含在实现里。
 
 ### 其他核心概念
 
@@ -214,16 +196,13 @@ graph TD
     SymbolTable["Symbol Table"] --> SyT["count, entries (name, kind, type_id / function_id)"]
 ```
 
-当前实现采用 Section Directory 布局，配合去重的 String Table 与 offset/index 引用
-（包含 length、flags 与 optional section），并增加 ABI Identity、Target、Hash Table
-和 Symbol Table section。权威描述见 [`abix_zh.md`](../ABIX/abix_zh.md)。
+当前实现采用 Section Directory 布局，配合去重的 String Table 与 offset/index 引用（包含 length、flags 与 optional section），并增加 ABI Identity、Target、Hash Table 和 Symbol Table section。权威描述见 [`abix_zh.md`](../ABIX/abix_zh.md)。
 
 ## Bootstrap 内核
 
 ### 接口
 
-内核是只有一个入口的静态 metadata loader，而不是 Registry；不为它定义
-`lookup()` / `insert()` / `erase()` API。
+内核是只有一个入口的静态 metadata loader，而不是 Registry；不为它定义 `lookup()` / `insert()` / `erase()` API。
 
 ```cpp
 namespace skl::abix::model {
@@ -258,8 +237,7 @@ BootStatus abix_bootstrap(const BootImage& image);
 
 ### Wire format
 
-不假设 `sizeof(BootstrapType)` 跨编译器自然一致，而是明确定义 Bootstrap ABI 的
-wire format：
+不假设 `sizeof(BootstrapType)` 跨编译器自然一致，而是明确定义 Bootstrap ABI 的 wire format：
 
 ```cpp
 struct BootstrapType {
@@ -296,8 +274,7 @@ void abix_initialize() {
 
 ### 实现顺序
 
-不一开始就实现 RCU/EBR。初始目标是证明
-`Bootstrap → Registry → Type lookup → self metadata` 闭环：
+不一开始就实现 RCU/EBR。初始目标是证明 `Bootstrap → Registry → Type lookup → self metadata` 闭环：
 
 ```mermaid
 graph TD
@@ -345,8 +322,7 @@ flowchart TD
     PROMOTE --> READY
 ```
 
-`BOOTSTRAP`、`SELF_METADATA`、`RUNTIME` 与 `PROMOTE` 只存在于初始化线程。普通用户
-线程只观察到 `NOT_READY` 和 `READY`，因此热路径没有状态检查开销。
+`BOOTSTRAP`、`SELF_METADATA`、`RUNTIME` 与 `PROMOTE` 只存在于初始化线程。普通用户线程只观察到 `NOT_READY` 和 `READY`，因此热路径没有状态检查开销。
 
 ### 线程安全切入点
 
@@ -382,8 +358,7 @@ graph TD
     B1["RCU"] --> B2["Registry"] --> B3["Type metadata"]
 ```
 
-在 RCU 初始化之前，`ThreadState`、`RetiredNode`、`Epoch` 只是普通 C++ 类型。RCU
-初始化之后，它们被注册到 ABIX Registry 中，此后 RCU 自身可以使用 ABIX metadata。
+在 RCU 初始化之前，`ThreadState`、`RetiredNode`、`Epoch` 只是普通 C++ 类型。RCU 初始化之后，它们被注册到 ABIX Registry 中，此后 RCU 自身可以使用 ABIX metadata。
 
 ## Map 模型
 
@@ -404,8 +379,7 @@ graph TD
 | Debug | `MapInfo` → runtime validation |
 | Release | `MapPrivate` → direct access (zero-cost) |
 
-`MapPrivate` 晚于 Runtime Map 实现：先验证 Runtime Map 语义正确，再生成等价的静态
-版本。二者在 copy 与 default 操作上经验证语义一致；其他转换需要 native converter。
+`MapPrivate` 晚于 Runtime Map 实现：先验证 Runtime Map 语义正确，再生成等价的静态版本。二者在 copy 与 default 操作上经验证语义一致；其他转换需要 native converter。
 
 ## 自举闭环
 
@@ -420,8 +394,7 @@ graph TD
     Kernel --> Runtime --> SelfDesc --> UserABI
 ```
 
-Bootstrap 内核是 TCB（可信计算基）。类似 BIOS/firmware 或 compiler bootstrap
-stage 0，它永远不需要被 ABIX 描述。见 [`self-hosting_zh.md`](self-hosting_zh.md)。
+Bootstrap 内核是 TCB（可信计算基）。类似 BIOS/firmware 或 compiler bootstrap stage 0，它永远不需要被 ABIX 描述。见 [`self-hosting_zh.md`](self-hosting_zh.md)。
 
 ### 已验证能力
 
@@ -431,35 +404,21 @@ stage 0，它永远不需要被 ABIX 描述。见 [`self-hosting_zh.md`](self-ho
 * `runtime::Registry` 注册、`TypeId` 查询与 canonical registry bridge；
 * Compat / Map IR 与 `MapPrivate` constexpr 操作计划；
 * 独立 provider 进程与 JSON-lines IPC；
-* `AMC/self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor
-  注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()`
-  与 `type_of<amc::CompatibilityRecord>()` 均可查询。
+* `AMC/self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor 注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()` 与 `type_of<amc::CompatibilityRecord>()` 均可查询。
 
 ### 自举边界
 
-AMC 的验证表明，已编译的 AMC stage 能解析自身 core IR，并生成可消费的 ABIX
-metadata 与 C++ 投影。它不是严格编译器理论意义上的源码自托管：`amc-cpp` 的构建与
-语义提取仍依赖 Clang/LLVM，生成的 descriptor 尚未反过来构建 `amc-cpp` 本身。
+AMC 的验证表明，已编译的 AMC stage 能解析自身 core IR，并生成可消费的 ABIX metadata 与 C++ 投影。它不是严格编译器理论意义上的源码自托管：`amc-cpp` 的构建与语义提取仍依赖 Clang/LLVM，生成的 descriptor 尚未反过来构建 `amc-cpp` 本身。
 
 ### Self-hosting Bootstrap
 
-1. `ABIX/self.abic.toml` 覆盖 Type、Registry、Map、Bootstrap 与 RCU/EBR
-   核心类型。
-2. AMC 从干净构建目录生成 `build/abix_self.abix`，并生成消费者使用的
-   `abix_self_metadata.hpp`。
-3. 生成的 `ModuleDescriptor` 通过 `runtime::Registry::register_module()` 接入；
-   `metadata::Registry::bootstrap_self()` 中仅保留两条 Bootstrap Kernel wire record
-   作为 TCB。
-4. 闭环消费者验证 `type_of<TypeInfo>()`、`type_of<RegistryEntry>()`、按 TypeId/名称
-   lookup、canonical registry bridge，以及生成 descriptor 的 size/align 与本机类型
-   一致。
-5. `ThreadState`、`RetiredNode`、`RetiredBatch`、`Epoch` 与 `rcu_domain` 已纳入
-   artifact；运行时类型 metadata 来自生成的 module，而非手写 metadata；Bootstrap
-   Kernel 的两条自描述 wire record 是唯一刻意保留的 TCB。
+1. `ABIX/self.abic.toml` 覆盖 Type、Registry、Map、Bootstrap 与 RCU/EBR 核心类型。
+2. AMC 从干净构建目录生成 `build/abix_self.abix`，并生成消费者使用的 `abix_self_metadata.hpp`。
+3. 生成的 `ModuleDescriptor` 通过 `runtime::Registry::register_module()` 接入；`metadata::Registry::bootstrap_self()` 中仅保留两条 Bootstrap Kernel wire record 作为 TCB。
+4. 闭环消费者验证 `type_of<TypeInfo>()`、`type_of<RegistryEntry>()`、按 TypeId/名称 lookup、canonical registry bridge，以及生成 descriptor 的 size/align 与本机类型一致。
+5. `ThreadState`、`RetiredNode`、`RetiredBatch`、`Epoch` 与 `rcu::Domain` 已纳入 artifact；运行时类型 metadata 来自生成的 module，而非手写 metadata；Bootstrap Kernel 的两条自描述 wire record 是唯一刻意保留的 TCB。
 
-验收标准：从干净构建目录执行一次构建即可生成 self-description artifact 与 C++ 投影；
-运行时仅依赖 Bootstrap Kernel 与该生成投影注册 descriptor，并查询 ABIX 自身核心类型
-与 RCU/EBR 类型。`.abix` 的运行时二进制 loader 不属于这一阶段。
+验收标准：从干净构建目录执行一次构建即可生成 self-description artifact 与 C++ 投影；运行时仅依赖 Bootstrap Kernel 与该生成投影注册 descriptor，并查询 ABIX 自身核心类型与 RCU/EBR 类型。`.abix` 的运行时二进制 loader 不属于这一阶段。
 
 ## 里程碑
 

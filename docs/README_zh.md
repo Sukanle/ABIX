@@ -6,11 +6,14 @@
 
 > [项目 README](README_zh.md) 是入口。本文件导航 `docs/` 目录。
 
+> **平台支持：** 支持 Linux、macOS 与 Windows；Windows（MSYS2 UCRT64）环境见 [`../CONTRIBUTING.md`](../CONTRIBUTING.md#windows-msys2-ucrt64)。
+
 ```mermaid
 graph TD
     R[文档] --> GS[快速开始]
     R --> AX[ABIX 核心]
     R --> AM[AMC 工具链]
+    R --> L[语言]
     R --> AR[架构]
     R --> AI[AI 与 Agent]
     R --> DV[开发]
@@ -23,8 +26,9 @@ graph TD
 | 我想要 … | 去这里 |
 |----------|--------|
 | **安装并试用 ABIX** | [快速开始](getting-started/) |
-| **理解 ABI 模型** | [ABIX](ABIX/) |
-| **使用 AMC 工具链** | [AMC](AMC/) |
+| **理解 ABI 模型** | [ABIX](abix/) |
+| **使用 AMC 工具链** | [AMC](amc/) |
+| **跨语言工作** | [语言](lang/) |
 | **了解内部架构** | [架构](architecture/) |
 | **集成 AI / Agent 工作流** | [AI](ai/) |
 | **查看基准测试和指标** | [基准测试](benchmark/) |
@@ -64,10 +68,23 @@ graph TD
 
 | 文档 | English | 描述 |
 |------|---------|------|
-| [abix_zh.md](ABIX/abix_zh.md) | [abix.md](ABIX/abix.md) | 规范的 `.abix` 产物格式 |
-| [abic_zh.md](ABIX/abic_zh.md) | [abic.md](ABIX/abic.md) | `.abic.toml` 配置参考 |
-| [api_zh.md](ABIX/api_zh.md) | [api.md](ABIX/api.md) | 完整的 C++ API 参考 |
-| [metadata_modes_zh.md](ABIX/metadata_modes_zh.md) | [metadata_modes.md](ABIX/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
+| [abix_zh.md](abix/abix_zh.md) | [abix.md](abix/abix.md) | 规范的 `.abix` 产物格式 |
+| [abic_zh.md](abix/abic_zh.md) | [abic.md](abix/abic.md) | `.abic.toml` 配置参考 |
+| [api_zh.md](abix/api_zh.md) | [api.md](abix/api.md) | 完整的 C++ API 参考 |
+| [interface_zh.md](abix/interface_zh.md) | [interface.md](abix/interface.md) | Interface 层：契约、代理、发现与 Owner ABI |
+| [std_zh.md](abix/std_zh.md) | [std.md](abix/std.md) | ABIX-STD 跨语言 ABI 原语 |
+| [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
+
+## 语言
+
+跨语言投影与各语言指南。
+
+| 文档 | English | 描述 |
+|------|---------|------|
+| [README_zh.md](lang/README_zh.md) | [README.md](lang/README.md) | ABIX 与 bind 式 FFI 的区别；投影模型 |
+| [cpp_zh.md](lang/cpp_zh.md) | [cpp.md](lang/cpp.md) | C++ 前端/后端、生成的布局检查、接口层 |
+| [rust_zh.md](lang/rust_zh.md) | [rust.md](lang/rust.md) | Rust provider、`repr(C)` 投影、所有权/`Result` 包装 |
+| [zig_zh.md](lang/zig_zh.md) | [zig.md](lang/zig.md) | Zig backend-only 投影、`extern` / `comptime` 检查 |
 
 ## AMC
 
@@ -75,7 +92,7 @@ graph TD
 
 | 文档 | English | 描述 |
 |------|---------|------|
-| [amc_zh.md](AMC/amc_zh.md) | [amc.md](AMC/amc.md) | AMC 工具链和 CLI |
+| [amc_zh.md](amc/amc_zh.md) | [amc.md](amc/amc.md) | AMC 工具链和 CLI |
 
 ## 架构
 
@@ -87,6 +104,8 @@ ABIX 和 AMC 内部工作原理。
 | [runtime_zh.md](architecture/runtime_zh.md) | [runtime.md](architecture/runtime.md) | 运行时职责、注册表、执行模型 |
 | [compatibility_zh.md](architecture/compatibility_zh.md) | [compatibility.md](architecture/compatibility.md) | TypeID / LayoutHash / BuildID / MetadataID |
 | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | [elf-inspection.md](architecture/elf-inspection.md) | 在 ELF / Mach-O 二进制中检查 ABIX 元数据节区 |
+| [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | [pe-inspection.md](architecture/pe-inspection.md) | Windows PE 镜像的 ABIX 私有头设计 |
+| [binary-image_zh.md](architecture/binary-image_zh.md) | [binary-image.md](architecture/binary-image.md) | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
 
 ## AI
 
@@ -117,6 +136,7 @@ AI 和 Agent 集成。
 | [type-model_zh.md](development/type-model_zh.md) | [type-model.md](development/type-model.md) | ABI 事实与源语言类型的边界，以及逐 target 生成模型 |
 | [competitors_zh.md](development/competitors_zh.md) | [competitors.md](development/competitors.md) | 竞品分析 |
 | [roadmap_zh.md](development/roadmap_zh.md) | [roadmap.md](development/roadmap.md) | 范围与排期 |
+| [testing_zh.md](development/testing_zh.md) | [testing.md](development/testing.md) | 完整测试流程、各层目的与预期结果 |
 
 ## 生态
 

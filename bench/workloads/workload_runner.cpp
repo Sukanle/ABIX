@@ -2,6 +2,7 @@
 #include "workload.hpp"
 
 #include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 #include <benchmark/benchmark.h>
 #include <string>
 #include <vector>
@@ -343,15 +344,15 @@ void verify_workload_profiles(const CpuTopology &topo) {
         WriteHeavy,
     };
 
-    std::fprintf(stderr,
+    fmt::print(stderr,
         "\n==========================================================\n"
         " Synthetic Mixed — All Threads Execute Full Schedule\n"
         " Total ops should be IDENTICAL across all thread counts.\n"
         "==========================================================\n");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "Workload", "T", "TotalOps", "Reads", "Retires", "Syncs");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "--------", "--", "--------", "-----", "-------", "-----");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "Workload", "T", "TotalOps", "Reads",
+        "Retires", "Syncs");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "--------", "--", "--------", "-----",
+        "-------", "-----");
 
     bool synthetic_ok = true;
     for (const auto &profile : profiles) {
@@ -385,25 +386,26 @@ void verify_workload_profiles(const CpuTopology &topo) {
             bool match = (total == ref_total) && (reads == ref_reads) && (ret == ref_retires) && (syn == ref_syncs);
             if (!match) synthetic_ok = false;
 
-            std::fprintf(stderr, " %-15s %-4u  %-12llu  %-12llu  %-12llu  %-12llu", profile.name, tc,
-                (unsigned long long)total, (unsigned long long)reads, (unsigned long long)ret, (unsigned long long)syn);
-            if (!match) std::fprintf(stderr, "  ← MISMATCH");
-            std::fprintf(stderr, "\n");
+            fmt::print(
+                stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}", profile.name, tc, total, reads, ret, syn);
+            if (!match) fmt::print(stderr, "  ← MISMATCH");
+            fmt::print(stderr, "\n");
         }
     }
-    std::fprintf(stderr, synthetic_ok ? "\n ✓ All counts match — synthetic mixed is truly fixed-work.\n"
-                                      : "\n ⚠  MISMATCH detected — synthetic mixed is NOT fixed-work.\n");
+    fmt::print(stderr, "{}",
+        synthetic_ok ? "\n ✓ All counts match — synthetic mixed is truly fixed-work.\n"
+                     : "\n ⚠  MISMATCH detected — synthetic mixed is NOT fixed-work.\n");
 
-    std::fprintf(stderr,
+    fmt::print(stderr,
         "\n==========================================================\n"
         " Role-Based — Only Thread 0 (Writer) Does Retire/Sync\n"
         " Total ops will differ: readers skip Retire/Sync.\n"
         " This models real-world RCU/EBR usage.\n"
         "==========================================================\n");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "Workload", "T", "TotalOps", "Reads", "Retires", "Syncs");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "--------", "--", "--------", "-----", "-------", "-----");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "Workload", "T", "TotalOps", "Reads",
+        "Retires", "Syncs");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "--------", "--", "--------", "-----",
+        "-------", "-----");
 
     for (const auto &profile : profiles) {
         auto schedule = profile.generate_schedule();
@@ -444,13 +446,13 @@ void verify_workload_profiles(const CpuTopology &topo) {
 
             bool match = (total == ref_total) && (reads == ref_reads) && (ret == ref_retires) && (syn == ref_syncs);
 
-            std::fprintf(stderr, " %-15s %-4u  %-12llu  %-12llu  %-12llu  %-12llu", profile.name, tc,
-                (unsigned long long)total, (unsigned long long)reads, (unsigned long long)ret, (unsigned long long)syn);
-            if (!match) std::fprintf(stderr, "  ← MISMATCH with 1T");
-            std::fprintf(stderr, "\n");
+            fmt::print(
+                stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}", profile.name, tc, total, reads, ret, syn);
+            if (!match) fmt::print(stderr, "  ← MISMATCH with 1T");
+            fmt::print(stderr, "\n");
         }
     }
-    fprintf(stderr,
+    fmt::print(stderr,
         "\n ⚠  Role-based: Retire/Sync counts decrease as T increases.\n"
         "    This is EXPECTED behavior — it's a different workload.\n"
         "    Synthetic mixed is the correct choice for fixed-work scaling.\n\n");

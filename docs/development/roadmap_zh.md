@@ -48,9 +48,10 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 
 * language plugin API 与 producer/consumer 协议。
 * 在 C++ 之外的第二语言原型 — 先 Rust，再 Zig。
-* 基于 ABI 归一化 primitive 身份的跨语言类型投影
-  （例如 C `double` → Rust `core::ffi::c_double`）。
+* 基于 ABI 归一化 primitive 身份的跨语言类型投影（例如 C `double` → Rust `core::ffi::c_double`）。
 * 跨语言绑定与 C++ ↔ Rust 互操作 demo。
+
+已交付：`amc-rust` provider（`frontend` + `backend`）与 C++ → ABIX → Rust 闭环——真实 C++ 库 → `.abix` → 生成 Rust 并链接运行，所有权/错误边界/目标契约承载在版本化的 metadata-region 扩展目录中；以及最小化的 `amc-zig` **仅后端** provider，使同一份 `.abix` 同时驱动 Rust 与 Zig 投影，两个消费者链接同一个原生库（`AMC/tests/interop/`）。
 
 ### ABIX 0.3.0 — Ecosystem（未来）
 
@@ -87,8 +88,7 @@ graph LR
 
 ## AI-native ABI 工具链
 
-ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI coding agent
-提供持久、机器可读的接口。
+ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI coding agent 提供持久、机器可读的接口。
 
 当前与计划中的工作：
 
@@ -104,6 +104,7 @@ ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI 
 * metadata image 的运行时 materialization。
 * ABI 适配 / shimming。
 * 带差分语义验证的动态语言边界层。
+* **有界的读者注册表** —— 把"只增不减"的读者链表换成固定容量 + 槽复用的每线程槽位数组（liburcu `rcu_register_thread`/`unregister` 的形态）。现状:曾经调用过 `enter()` 的线程会留下一个 `epoch == 0` 的节点,而 `readers_passed()` 在**每一次**宽限期轮询中都遍历全部节点:实测约 **3.4 ns/节点**(10 线程 ≈ 12 ns、1,000 ≈ 2 µs、10,000 ≈ **34 µs/次轮询**),另有每线程一次**永不归还** 的分配。线程反复创建/销毁的宿主会无界地同时付这两笔。槽位永不释放,因此"摘链 vs 并发无锁遍历" 的 UAF 风险从构造上消失;代价是需要一个文档化的**最大线程数**与注册路径上的槽分配器。*不*采用那个显而易见的替代方案:**两个**遍历者都是无锁的(`readers_passed()` 与 `try_collect()`), 所以"摘链 + 延迟释放"并不更简单——要么把写锁贯穿一次遍历(会堵住推进权自旋),要么为扫描引入第二个发布 epoch。触发条件:出现反复重建线程的宿主(每请求一线程的服务器、重建 worker 池)。在那之前,`stats().registered_threads` 让这一增长可观测;本项不在任何版本线上。
 
 ## 发布历史
 
@@ -113,5 +114,4 @@ ABIX 使用标准 SemVer tag，从非稳定的 `v0.1.0` 线开始。项目阶段
 
 ## 明确不在范围内
 
-ABIX 不是 VM、RPC 框架、通用对象模型、调试信息格式或 C ABI wrapper。见 README 的
-"What ABIX Is Not"。
+ABIX 不是 VM、RPC 框架、通用对象模型、调试信息格式或 C ABI wrapper。见 README 的 "What ABIX Is Not"。

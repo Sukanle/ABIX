@@ -6,11 +6,14 @@
 
 > The [project README](README.md) is the entry point. This file navigates the `docs/` tree.
 
+> **Platform support:** Linux, macOS and Windows are supported; see [`../CONTRIBUTING.md`](../CONTRIBUTING.md#windows-msys2-ucrt64) for the Windows (MSYS2 UCRT64) setup.
+
 ```mermaid
 graph TD
     R[Documentation] --> GS[Getting Started]
     R --> AX[ABIX Core]
     R --> AM[AMC Toolchain]
+    R --> L[Languages]
     R --> AR[Architecture]
     R --> AI[AI &amp; Agent]
     R --> DV[Development]
@@ -23,8 +26,9 @@ graph TD
 | I want to … | Go to |
 |-------------|-------|
 | **install and try ABIX** | [Getting Started](getting-started/) |
-| **understand the ABI model** | [ABIX](ABIX/) |
-| **use the AMC toolchain** | [AMC](AMC/) |
+| **understand the ABI model** | [ABIX](abix/) |
+| **use the AMC toolchain** | [AMC](amc/) |
+| **work across languages** | [Languages](lang/) |
 | **learn internal architecture** | [Architecture](architecture/) |
 | **integrate AI / Agent workflows** | [AI](ai/) |
 | **see benchmarks and metrics** | [Benchmark](benchmark/) |
@@ -64,10 +68,23 @@ Core ABI model, format, and API documentation.
 
 | Document | 中文 | Description |
 |----------|------|-------------|
-| [abix.md](ABIX/abix.md) | [abix_zh.md](ABIX/abix_zh.md) | the canonical `.abix` artifact format |
-| [abic.md](ABIX/abic.md) | [abic_zh.md](ABIX/abic_zh.md) | `.abic.toml` configuration reference |
-| [api.md](ABIX/api.md) | [api_zh.md](ABIX/api_zh.md) | full C++ API reference |
-| [metadata_modes.md](ABIX/metadata_modes.md) | [metadata_modes_zh.md](ABIX/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo |
+| [abix.md](abix/abix.md) | [abix_zh.md](abix/abix_zh.md) | the canonical `.abix` artifact format |
+| [abic.md](abix/abic.md) | [abic_zh.md](abix/abic_zh.md) | `.abic.toml` configuration reference |
+| [api.md](abix/api.md) | [api_zh.md](abix/api_zh.md) | full C++ API reference |
+| [interface.md](abix/interface.md) | [interface_zh.md](abix/interface_zh.md) | the Interface layer: contracts, proxies, discovery, Owner ABI |
+| [std.md](abix/std.md) | [std_zh.md](abix/std_zh.md) | ABIX-STD cross-language ABI primitives |
+| [metadata_modes.md](abix/metadata_modes.md) | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo |
+
+## Languages
+
+Cross-language projections and per-language guides.
+
+| Document | 中文 | Description |
+|----------|------|-------------|
+| [README.md](lang/README.md) | [README_zh.md](lang/README_zh.md) | why ABIX differs from bind-style FFI; the projection model |
+| [cpp.md](lang/cpp.md) | [cpp_zh.md](lang/cpp_zh.md) | C++ frontend/backend, generated layout checks, Interface layer |
+| [rust.md](lang/rust.md) | [rust_zh.md](lang/rust_zh.md) | Rust provider, `repr(C)` projection, ownership/`Result` wrappers |
+| [zig.md](lang/zig.md) | [zig_zh.md](lang/zig_zh.md) | Zig backend-only projection, `extern` / `comptime` checks |
 
 ## AMC
 
@@ -75,7 +92,7 @@ Toolchain documentation.
 
 | Document | 中文 | Description |
 |----------|------|-------------|
-| [amc.md](AMC/amc.md) | [amc_zh.md](AMC/amc_zh.md) | the AMC toolchain and CLI |
+| [amc.md](amc/amc.md) | [amc_zh.md](amc/amc_zh.md) | the AMC toolchain and CLI |
 
 ## Architecture
 
@@ -87,6 +104,8 @@ How ABIX and AMC work internally.
 | [runtime.md](architecture/runtime.md) | [runtime_zh.md](architecture/runtime_zh.md) | runtime responsibilities, registry, execution model |
 | [compatibility.md](architecture/compatibility.md) | [compatibility_zh.md](architecture/compatibility_zh.md) | TypeID / LayoutHash / BuildID / MetadataID |
 | [elf-inspection.md](architecture/elf-inspection.md) | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | inspecting ABIX metadata sections in ELF / Mach-O binaries |
+| [pe-inspection.md](architecture/pe-inspection.md) | [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | designing the ABIX private header for Windows PE images |
+| [binary-image.md](architecture/binary-image.md) | [binary-image_zh.md](architecture/binary-image_zh.md) | the BinaryImage capability layer over ELF / Mach-O / PE |
 
 ## AI
 
@@ -117,6 +136,7 @@ Project design, comparison, and roadmap.
 | [type-model.md](development/type-model.md) | [type-model_zh.md](development/type-model_zh.md) | ABI facts vs source-language types, and the per-target generation model |
 | [competitors.md](development/competitors.md) | [competitors_zh.md](development/competitors_zh.md) | competitive landscape analysis |
 | [roadmap.md](development/roadmap.md) | [roadmap_zh.md](development/roadmap_zh.md) | scope and sequencing |
+| [testing.md](development/testing.md) | [testing_zh.md](development/testing_zh.md) | the complete test flow, per-tier purpose and expected results |
 
 ## Ecosystem
 

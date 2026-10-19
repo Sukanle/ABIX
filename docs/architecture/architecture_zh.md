@@ -85,8 +85,7 @@ ABIX 区分四种经常被混用的身份：
 | **BuildID** | 二进制构建身份 | 定位对应 artifact |
 | **MetadataID** | Metadata 内容身份 | 去重 / 完整性 |
 
-查找链条：`Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`。
-见 [`compatibility_zh.md`](compatibility_zh.md)。
+查找链条：`Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`。见 [`compatibility_zh.md`](compatibility_zh.md)。
 
 ## Metadata 三种模式
 
@@ -96,14 +95,11 @@ graph TD
     B -->|materialize| C["Runtime Descriptor（pointer-rich，热路径）"]
 ```
 
-Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser
-mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接近纯静态 ABI。
-见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
+Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接近纯静态 ABI。见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
 
 ## 执行模型
 
-ABIX **不是** VM、RPC 框架或通用对象运行时。对兼容的原生函数，ABIX 建立关系后走
-原生 ABI 执行：
+ABIX **不是** VM、RPC 框架或通用对象运行时。对兼容的原生函数，ABIX 建立关系后走原生 ABI 执行：
 
 ```mermaid
 graph LR

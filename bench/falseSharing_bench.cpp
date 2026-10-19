@@ -27,6 +27,14 @@
 #  include <pthread.h>
 #elif defined(__linux__)
 #  include <pthread.h>
+#elif defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
 #endif
 
 #ifndef SET_THREAD_AFFINITY
@@ -43,6 +51,12 @@ inline bool set_thread_affinity(int cpu_id) {
     CPU_ZERO(&cpuset);
     CPU_SET(cpu_id, &cpuset);
     return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0;
+#  elif defined(_WIN32)
+    // Pin the thread to one logical CPU. Without this the writer-only experiment
+    // runs unpinned and the false-sharing signal does not appear on Windows.
+    const unsigned bits = sizeof(DWORD_PTR) * 8;
+    DWORD_PTR mask = DWORD_PTR{1} << (static_cast<unsigned>(cpu_id) % bits);
+    return SetThreadAffinityMask(GetCurrentThread(), mask) != 0;
 #  else
     (void)cpu_id;
     return false;

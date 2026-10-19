@@ -57,31 +57,4 @@
 // #define ABIX_DISABLE_LOG_LEVEL_WARNING    // Disable Warning-level logs
 // #define ABIX_DISABLE_LOG_LEVEL_ERROR      // Disable Error-level logs
 
-#ifndef ABIX_RCU_TIMEOUT_ENABLE
-#  define ABIX_RCU_TIMEOUT_ENABLE 1   // Timeout master switch (default: on)
-#endif
-
-#ifndef ABIX_RCU_TIMEOUT_MS
-#  define ABIX_RCU_TIMEOUT_MS 5'000   // Compile-time fallback default (ms)
-#endif
-
-#ifndef ABIX_RCU_TIMEOUT_FRAMES_DEFAULT
-#  define ABIX_RCU_TIMEOUT_FRAMES_DEFAULT 0   // Compile-time fallback default (frames); 0 = disabled
-#endif
-
-// Strategy C safety lock (must be explicitly defined to enable)
-// #define ABIX_ENABLE_FORCE_LEAK_POLICY
-
-// Prevents the lazy timeout check from going stale when no new readers arrive.
-// Level 0: pure lazy, zero overhead, accept starvation risk
-// Level 1: lazy + abix::tick() passive injection (recommended default)
-// Level 2: lazy + idle background thread (requires ABIX_ENABLE_IDLE_BACKGROUND_THREAD)
-#define ABIX_LAZY_STARVATION_GUARD_OFF 0
-#define ABIX_LAZY_STARVATION_GUARD_TICK 1
-#define ABIX_LAZY_STARVATION_GUARD_IDLE 2
-
-#ifndef ABIX_LAZY_STARVATION_GUARD
-#  define ABIX_LAZY_STARVATION_GUARD ABIX_LAZY_STARVATION_GUARD_TICK
-#endif
-
 #endif

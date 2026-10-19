@@ -62,8 +62,19 @@ int cmd_generate(char **args, int arg_count, const fs::path &provider) {
             }
             return generate(rust_provider, args[2], args[6], ".rs");
         }
-        return usage_error(command + " expects -l cpp|lua|rust -o <directory|file>");
+        if (language == "zig") {
+            const fs::path zig_provider = provider_executable(provider, "zig");
+            if (command == "backend") {
+                std::string error;
+                if (!dispatch_provider(zig_provider, "backend", args[2], args[6], error))
+                    return fail(amc::ErrorCategory::provider, "backend", error, args[2]);
+                return 0;
+            }
+            return generate(zig_provider, args[2], args[6], ".zig");
+        }
+        return usage_error(command + " expects -l cpp|lua|rust|zig -o <directory|file>");
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 int cmd_frontend(char **args, int arg_count, const fs::path &provider) {
@@ -89,8 +100,20 @@ int cmd_frontend(char **args, int arg_count, const fs::path &provider) {
         const fs::path selected = provider_executable(provider, language);
         if (!dispatch_provider(selected, "frontend", config_path, output_path, error))
             return fail(amc::ErrorCategory::provider, "frontend", error, config_path.string());
+        try {
+            const toml::table config = toml::parse_file(config_path.string());
+            amc::AbiModule module;
+            if (!amc::read_abix(output_path.string(), module, error))
+                return fail(read_error_category(error), "read_abix", error, output_path.string());
+            apply_target_and_layout(config, module);
+            if (!amc::write_abix(module, output_path.string(), error))
+                return fail(amc::ErrorCategory::io, "write_abix", error, output_path.string());
+        } catch (const toml::parse_error &e) {
+            return fail(amc::ErrorCategory::config, "frontend", std::string(e.description()), config_path.string());
+        }
         return 0;
     }
+    return usage_error(command + ": unsupported subcommand");
 }
 
 }   // namespace amc::cli

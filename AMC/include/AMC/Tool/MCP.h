@@ -63,8 +63,8 @@ amc::Json type_summary(const amc::Type &type);
 
 amc::Json property(const char *type, const char *description);
 amc::Json name_or_id_any_of();
-amc::Json make_tool(const char *name, const char *description, amc::Json properties,
-    std::vector<std::string> required, amc::Json any_of);
+amc::Json make_tool(const char *name, const char *description, amc::Json properties, std::vector<std::string> required,
+    amc::Json any_of);
 amc::Json tools_catalogue();
 
 // --- JSON-RPC plumbing ---------------------------------------------------

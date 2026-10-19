@@ -20,12 +20,13 @@
 
 </details>
 
-This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI,
-and shows the core operations: inspect, query, diff, verify and generate.
+This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI, and shows the core operations: inspect, query, diff, verify and generate.
 
 > ABIX is under active development; commands shown here match the current CLI.
 
 ## 1. Requirements
+
+> **Platform support:** Linux, macOS and Windows are supported; Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang). See [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64).
 
 * C++17 or later
 * CMake 3.20+
@@ -116,9 +117,7 @@ See [`abic.md`](../ABIX/abic.md) for the full configuration reference.
 ./build/Release/bin/amc context build/build/math_api.abix --format llm
 ```
 
-Every consumer also accepts a compiled binary: the generated C++ header embeds
-the ABI as an `.abix.metadata` section, so `amc inspect libfoo.so` works without
-the sidecar `.abix`:
+Every consumer also accepts a compiled binary: the generated C++ header embeds the ABI as an `.abix.metadata` section, so `amc inspect libfoo.so` works without the sidecar `.abix`:
 
 ```bash
 ./build/Release/bin/amc query libfoo.so --type math::Point --layout
@@ -140,8 +139,7 @@ the sidecar `.abix`:
 ./build/Release/bin/amc verify v1.abix v2.abix --format diagnostics
 ```
 
-`amc verify` treats any difference — including added types or functions — as
-drift, because widening the ABI surface must be an explicit decision.
+`amc verify` treats any difference — including added types or functions — as drift, because widening the ABI surface must be an explicit decision.
 
 ## 6. Generate
 

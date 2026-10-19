@@ -54,11 +54,12 @@ void write_json_operations(const std::vector<amc::MapOperation> &operations, std
 void write_json(const amc::AbiModule &module, std::string &output) {
     output += "{\n";
     indent(output, 1);
+    output += "\"artifact\": {\"format_version\": 4, \"hash_algorithm\": 0, \"layout_encoding_version\": ";
+    output += fmt::to_string(module.layout_encoding_version);
     output +=
-        "\"artifact\": {\"format_version\": 4, \"hash_algorithm\": 0, "
-        "\"sections\": [\"strings\", \"identity\", \"target\", \"types\", \"fields\", "
+        ", \"sections\": [\"strings\", \"identity\", \"target\", \"types\", \"fields\", "
         "\"functions\", \"parameters\", \"symbols\", \"hash_descriptor\", "
-        "\"hash_table\", \"compatibility\", \"maps\", \"map_operations\"]},\n";
+        "\"hash_table\", \"compatibility\", \"maps\", \"map_operations\", \"layout_encoding\"]},\n";
     indent(output, 1);
     output += "\"package\": {\"name\": ";
     json_string(output, module.package_name);

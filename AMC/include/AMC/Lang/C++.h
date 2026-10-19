@@ -18,4 +18,9 @@ int backend(const char *input, const char *output);
 
 void append_macos_sysroot(std::vector<std::string> &flags);
 
+// Non-Apple targets: point the clang we are linked against at the resource
+// directory detected at build time, so the built-in headers (stddef.h,
+// stdarg.h, ...) are found without a .abic.toml naming a toolchain version.
+void append_clang_resource_dir(std::vector<std::string> &flags);
+
 }   // namespace amc::lang::cpp

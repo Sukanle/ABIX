@@ -91,7 +91,8 @@ ABIX/    header-only ABI model + runtime, organised by layer:
          Runtime/ (Registry.h, Type.h, TypeSig.h, Search.h, Function.h),
          DLL/ (Object.h, Function.h, FnSig.h, Export.h, *Ptr.h),
          RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
-         Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h)
+         Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h),
+         Binary/ (BinaryImage.h + ELF/MachO/PE adapters — capability layer)
 AMC/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
@@ -110,7 +111,7 @@ docs/    specification and design
 | ABI runtime | `ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
 | DLL binding | `ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
 | Adapter dispatch | `ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
-| ELF/Mach-O reader | `AMC/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
+| Binary reader | `ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by `AMC/core/` | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
 | Metadata Region | `AMC/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
 | ABI adapter | `AMC/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
 | Symbol store | `AMC/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
@@ -130,20 +131,20 @@ and calling conventions all differ. Once such a difference lands in `devel`, it
 blocks promoting `devel` to `main` and cutting a release, so keep the divergence
 in the platform branches and gate promotion through staged test branches.
 
-Platform support today: **Linux and macOS**; **Windows is not available yet**
-(its branch exists but is not building). `devel` and release refs must be
-reproducible on every *available* platform.
+Platform support today: **Linux, macOS and Windows**. On Windows the project
+builds with the MSYS2 UCRT64 toolchain (GCC or Clang). `devel` and release refs
+must be reproducible on every supported platform.
 
 | Branch | Role |
 |--------|------|
 | `main` | latest stable; only moves forward from a fully verified `devel` |
-| `release/x.y.z` | a frozen stable line; tags `vX.Y.Z` must be platform-consistent |
+| `vX.Y.x` | a frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
 | `devel` | unified integration branch; only changes that pass on **all** available platforms land here |
 | `devel-beta` | promotion stage: a `devel-alpha` that passed its platform tests merges here for the next/broader test round |
 | `devel-alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
 | `devel-linux` | Linux development line |
 | `devel-macos` | macOS development line |
-| `devel-windows` | Windows development line (not building yet) |
+| `devel-windows` | Windows development line |
 
 Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**
 
@@ -157,7 +158,7 @@ Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**
 4. Only when **every available platform passes** on `devel-beta` is it merged
    into `devel`. A platform-specific fix that cannot build elsewhere stays in its
    platform branch, never in `devel`.
-5. `main` and `release/x.y.z` receive only `devel`/release merges that pass every
+5. `main` and `vX.Y.x` receive only `devel`/release merges that pass every
    available platform. Never tag or branch a release before it is verified
    consistent across platforms.
 
@@ -270,6 +271,27 @@ speculative infrastructure; new dependencies without justification.
 Do not introduce a new abstraction merely because an existing one is
 inconvenient.
 
+### 6.1 Dependencies and output formatting
+
+`ABIX/` is the library, not a facility: it stays free of third-party formatting
+dependencies. Do not include or link **fmt** in `ABIX/` — the ABI model and runtime
+keep their existing, dependency-free output and diagnostics (`ABIX/Util/Log.h` is the
+reference implementation: a variadic logger built on the C library).
+
+Everything else in the repository is a facility and **may** use **fmt** for output
+formatting: `AMC/`, `test/`, `bench/`, `Aue/` and `tools/`. Within a facility, fmt is
+the formatter to use — `fmt::print` / `fmt::format` / `fmt::format_to_n` instead of the
+`printf` family — and new output should stay on it rather than mixing two styles.
+`bench/` already does, through `bench/bench_fmt.hpp`.
+
+"ABIX itself" means the `ABIX/` headers and the runtime target, not every target whose
+name starts with `abix`: the `libabix-*` static libraries are facilities (their sources
+live under `AMC/src/Core/`), so they keep using fmt.
+
+`fmt` is an established project dependency (see `cmake/AbixDependencies.cmake`), so
+linking it into a facility target is not a new dependency — `bench/` requires it
+(`find_package(fmt REQUIRED)`).
+
 ---
 
 ## 7. Error Handling
@@ -360,6 +382,17 @@ Update documentation when a change modifies public ABI semantics, public APIs,
 the `.abix` format, compatibility rules, AMC behaviour, plugin interfaces or
 architectural boundaries. Update the appropriate document; do not duplicate
 detailed implementation documentation in `AGENTS.md`.
+
+### 10.1 Documentation style
+
+**One line per paragraph.** Write each prose paragraph as a single line; do not hard-wrap at a column limit. A soft line break inside a paragraph renders inconsistently across Markdown engines (a wrapped line that happens to start with `>`, `-`, `#`, a digit plus `.`, or `---` silently becomes a quote, list item, heading, ordered item or thematic break instead of continuing the sentence), and every reflow makes a later diff touch lines that did not change. The rule is about paragraph prose only: tables, code blocks, list items and headings keep their own line breaks.
+
+**Chinese punctuation.** Chinese text uses full-width punctuation (`，` `。` `：` `；` `！` `？` `、`), with exactly two exceptions:
+
+* parentheses stay half-width: `(...)`, not `（...）`;
+* quotation uses corner brackets: `「...」`, not `“...”` and not `"..."`.
+
+Mixed Chinese/English text follows this for its Chinese parts; technical tokens (identifiers, paths, flags, numbers with units) keep their ASCII form. The same rule applies to `docs/**`, `.agents/**` and the Chinese chapters of any paired document.
 
 ---
 

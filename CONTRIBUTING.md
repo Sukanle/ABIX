@@ -119,6 +119,48 @@ CMake re-run `clang -print-resource-dir`:
 cmake -B build/Release -S . -U ABIX_CLANG_EXECUTABLE -U ABIX_CLANG_RESOURCE_DIR
 ```
 
+### Windows (MSYS2 UCRT64)
+
+The supported Windows toolchain is [MSYS2](https://www.msys2.org/) **UCRT64**
+(GCC or Clang). From a UCRT64 shell install the build and dependency packages:
+
+```bash
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-{gcc,clang,llvm,fmt,catch2,benchmark,cmake,ninja,python}
+```
+
+`toml++` is not always packaged; if `pacman` does not provide it, install it with
+[vcpkg](https://vcpkg.io/) (`vcpkg install tomlplusplus`) or from the single
+header, then point CMake at the prefix (CMake reads the `CMAKE_PREFIX_PATH`
+environment variable):
+
+```bash
+export CMAKE_PREFIX_PATH="/c/msys2/ucrt64;$VCPKG_ROOT/installed/x64-windows"
+cmake -B build/Release -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release --parallel
+ctest --test-dir build/Release --output-on-failure
+```
+
+`tools/run.py` orchestrates the same steps (build, test, bench) and auto-detects
+Ninja; `tools/run_build.py` is the build stage on its own:
+
+```bash
+python tools/run.py               # build + tests + benchmarks
+python tools/run.py --build-only  # build only (same as tools/run_build.py)
+python tools/run.py --with-msvc   # also build the MSVC cross-toolchain variants
+```
+
+Notes:
+
+- **Do not mix toolchains.** A UCRT64 build must see only UCRT64 headers and
+  libraries; a MinGW/MSYS2 `INCLUDE`/`LIB` leaking into an MSVC build corrupts it
+  (the variant script strips those entries explicitly).
+- `amc` embeds ABI metadata in a custom section: ELF `.abix.metadata` /
+  `.abix.names`, Mach-O `__DATA,__abix_*` and PE `.abix` / `.abix.n` — see
+  [`docs/architecture/pe-inspection.md`](docs/architecture/pe-inspection.md).
+- Optional integration tests use `llvm-readobj` / `llvm-objcopy` / `llvm-strip`
+  (from the LLVM package) and a debugger; they are skipped when absent.
+
 ## Branching
 
 ABIX is developed per platform and integrated only when consistent across
@@ -130,7 +172,7 @@ platform branch and are promoted through staged test branches.
 | Branch | Role |
 |--------|------|
 | `main` | latest stable; moves forward from a fully verified `devel` |
-| `release/x.y.z` | frozen stable line; tags `vX.Y.Z` must be platform-consistent |
+| `vX.Y.x` | frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
 | `devel` | unified integration branch; only all-platform-verified changes land here |
 | `devel-beta` | promotion stage: a tested `devel-alpha` merges here for the next test round |
 | `devel-alpha` | integration/test stage: completed platform work merges here first |
@@ -140,7 +182,7 @@ Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**.
 Work on your platform branch; merge completed units into `devel-alpha` and
 resolve the platform differences there; promote to `devel-beta` once Alpha
 passes, and to `devel` only when every available platform is green. `devel` then
-promotes to `main` / releases. Windows is not supported yet.
+promotes to `main` / releases.
 
 ## Guidelines
 

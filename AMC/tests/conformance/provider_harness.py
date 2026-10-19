@@ -61,6 +61,11 @@ class _Result:
     failed: int = 0
 
 
+def keep_artifacts() -> bool:
+    """Retain the temporary work directory when KEEP_ARTIFACTS=1 is set."""
+    return os.environ.get("KEEP_ARTIFACTS", "") == "1"
+
+
 class ProviderConformance:
     """Drives one `ProviderCase` and scores each step PASS/FAIL."""
 
@@ -182,5 +187,8 @@ class ProviderConformance:
     def finish(self) -> int:
         print(f"\n{self.result.passed} passed, {self.result.failed} failed")
         if self.case.work_dir is None:
-            shutil.rmtree(self.work, ignore_errors=True)
+            if keep_artifacts():
+                self.info(f"retained artifacts: {self.work}")
+            else:
+                shutil.rmtree(self.work, ignore_errors=True)
         return 0 if self.result.failed == 0 else 1
