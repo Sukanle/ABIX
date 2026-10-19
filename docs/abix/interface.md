@@ -504,7 +504,7 @@ layer on its own, `#include "ABIX/Interface/Interface.h"`.
 | `ABIX/Interface/Discovery.h` | `discover_module` — load → validate → register |
 | `ABIX/Interface/Owner.h` | Owner ABI — borrow/own/copy semantics for `handle` / `ref` |
 | `ABIX/Interface/Proxy.h` | C++ proxy API — `InterfaceProxy<Traits>`, `bind`/`call`, signature checks |
-| `ABIX/Interface/Declaration.h` | optional declaration macro — `ABIX_DECLARE_INTERFACE` |
+| `ABIX/Interface/Declaration.h` | optional declaration macros — `ABIX_DECLARE_INTERFACE` (hand-written signature) and `ABIX_DECLARE_INTERFACE_AUTO` (computed by `method_signature`) |
 
 ### `Contract.h` — interface identity and methods
 
@@ -795,11 +795,13 @@ only its methods, and `Traits` supplies the interface difference:
 | `call<Fn>(slot, args...)` (protected) | the `Fn` result | Directly call a cached entry (the object handle is supplied first); precondition: `valid()` and the slot is bound |
 | `call_checked<Fn>(out, slot, args...)` (protected) | `InterfaceStatus` | Status and result are separate: an unbound slot is `method_not_found`, so a legitimate result is never read as a failure |
 
-`ABIX_DECLARE_INTERFACE` (`Declaration.h`, optional sugar) removes the boilerplate
-with an X-macro and **never infers a signature** — the signature hash and slot are
-stated explicitly, which is exactly what the preprocessor does reliably. The
-identity is not written by hand: the macro computes it with
-`interface_id("Shape", version, methods)`, matching AMC exactly:
+`Declaration.h` (optional sugar) offers two declaration macros that differ only
+in how a method's signature hash is obtained. Both remove the
+boilerplate with an X-macro and **never let the preprocessor parse a signature**.
+The identity is not written by hand either: both compute it with
+`interface_id("Shape", version, methods)`, matching AMC exactly.
+
+`ABIX_DECLARE_INTERFACE` takes the signature as a `{lo, hi}` constant:
 
 ```cpp
 #define SHAPE_METHODS(X)                 \
@@ -809,6 +811,28 @@ identity is not written by hand: the macro computes it with
 ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
 ```
 
+`ABIX_DECLARE_INTERFACE_AUTO` computes it with `method_signature(...)` from AMC
+TypeIDs. Each entry is `X(method, return_type_id, parameters, parameter_count,
+return_type, slot)`, and the proxy forwards the method arguments:
+
+```cpp
+constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
+constexpr model::TypeId resize_params[] = {i32, i32};
+
+#define SHAPE_AUTO(X)                             \
+    X(area,   i32, nullptr,      0, int32_t, 0)   \
+    X(resize, i32, resize_params, 2, int32_t, 1)
+
+ABIX_DECLARE_INTERFACE_AUTO(Shape, 1, SHAPE_AUTO)
+
+// shape.area()             object handle first, no arguments
+// shape.resize(3, 4)       forwards two arguments
+// shape.resize(out, 3, 4)  explicit-status overload
+```
+
+The parameter array must be a name already in scope (the preprocessor cannot
+build `{i32, i32}`).
+
 A hand-written `Traits` can compute the signatures and the identity too (the
 helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`;
 `amc-core-test` checks them against AMC):
@@ -816,7 +840,7 @@ helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`;
 ```cpp
 struct ShapeTraits {
     // AMC's int32_t TypeID is an ABI key, not the C++ spelling.
-    static constexpr model::TypeId i32 = model::canonical_type_id("prim:i4");
+    static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // The method signature is generated too; the return/parameter TypeIDs must
     // match the provider.
     static constexpr InterfaceMethodHash sigs[] = {
@@ -833,7 +857,7 @@ struct ShapeTraits {
 
 `method_signature` / `canonical_type_id` only solve the last hop: their inputs —
 the method name and the return/parameter TypeIDs — are still AMC-derived. A
-primitive TypeID is an ABI key (`int32_t` → `prim:i4`, which varies with the
+primitive TypeID is an ABI key (`int32_t` → `prim:i32`, which varies with the
 target's width and signedness) that the preprocessor cannot infer from a C++
 spelling. Interfaces with parameters, overloads or complex signatures should
 still have AMC generate the signature table; the helpers are for simple contracts

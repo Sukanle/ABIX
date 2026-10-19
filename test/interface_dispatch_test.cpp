@@ -255,3 +255,38 @@ TEST_CASE("an interface proxy binds, verifies and calls through cached entries")
     REQUIRE(missing.bind(registry, &c, TypeId{0xde, 0xad}) == InterfaceStatus::interface_not_found);
     REQUIRE_FALSE(missing.valid());
 }
+
+namespace {
+int auto_area(const void *self) { return static_cast<const Counter *>(self)->n; }
+int auto_add(const void *self, int a, int b) { return static_cast<const Counter *>(self)->n + a + b; }
+}   // namespace
+
+// The auto variant computes each signature with `method_signature` from AMC
+// TypeIDs (int32_t is the ABI key `prim:i32`) and forwards method arguments.
+constexpr skl::abix::model::TypeId kAutoI32 = skl::abix::model::canonical_type_id("prim:i32");
+constexpr skl::abix::model::TypeId kAutoAddParams[] = {kAutoI32, kAutoI32};
+#define ABIX_TEST_AUTO_METHODS(X)         \
+    X(area, kAutoI32, nullptr, 0, int, 0) \
+    X(add, kAutoI32, kAutoAddParams, 2, int, 1)
+ABIX_DECLARE_INTERFACE_AUTO(TestAuto, 1, ABIX_TEST_AUTO_METHODS)
+
+TEST_CASE("the auto declaration computes signatures and forwards arguments") {
+    constexpr TypeId counter_id{0x21, 0x22};
+    const InterfaceMethod methods[] = {
+        {TestAutoTraits::signatures[0], interface_entry(&auto_area), 0, 0},
+        {TestAutoTraits::signatures[1],  interface_entry(&auto_add), 1, 0},
+    };
+    InterfaceRegistry<4> registry;
+    REQUIRE(registry.add({TestAutoTraits::id, counter_id, methods, 2, 1, 0}) == InterfaceStatus::ok);
+
+    Counter c{7};
+    TestAuto shape(registry, &c, counter_id);
+    REQUIRE(shape.valid());
+    REQUIRE(shape.area() == 7);
+
+    // A parameterised method forwards its arguments without a hand-written wrapper.
+    REQUIRE(shape.add(3, 4) == 14);
+    int out = 0;
+    REQUIRE(shape.add(out, 3, 4) == InterfaceStatus::ok);
+    REQUIRE(out == 14);
+}
