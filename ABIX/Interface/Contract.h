@@ -151,6 +151,30 @@ constexpr InterfaceId interface_id(
     return interface_id(name, version, signatures, Count);
 }
 
+// AMC's method signature hash, matching `AMC::signature_hash` for the
+// [[interface]] path. The canonical input is concatenated without separators:
+//   name + decimal(return.lo) + decimal(return.hi)
+//   + for each parameter: decimal(type.lo) + decimal(type.hi)
+// Parameter names are deliberately absent: AMC does not hash them. `name` must
+// be the canonical spelling AMC records and the TypeIDs come from
+// `model::canonical_type_id` or an AMC artifact. This removes the 64-bit
+// constants from a hand-written contract, but it still needs the same inputs
+// AMC used: it cannot infer a C++ spelling such as `int32_t` (AMC keys that as
+// `prim:i4`) from the preprocessor.
+constexpr InterfaceMethodHash method_signature(
+    const char *name, model::TypeId return_type, const model::TypeId *parameters, size_t count) noexcept {
+    util::CanonicalState state = util::canonical_hash_begin(0X5349474E41545552ULL);
+    for (size_t i = 0; name != nullptr && name[i] != '\0'; ++i)
+        state = util::canonical_hash_byte(state, static_cast<uint8_t>(name[i]));
+    state = interface_hash_u64(state, return_type.lo);
+    state = interface_hash_u64(state, return_type.hi);
+    for (size_t i = 0; i < count; ++i) {
+        state = interface_hash_u64(state, parameters[i].lo);
+        state = interface_hash_u64(state, parameters[i].hi);
+    }
+    return InterfaceMethodHash{state.lo, state.hi};
+}
+
 enum class InterfaceStatus : uint32_t {
     ok = 0,
     invalid_table,

@@ -479,6 +479,7 @@ registry.unregister_module(control.id);   // 现在可以卸载
 | `InterfaceMethodHash` | `model::SignatureHash` | 单个方法的 ABI 签名哈希 |
 | `interface_id(name, version, signatures, count)` | `InterfaceId` | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量 |
 | `InterfaceMethodKey` | `{signature, slot}` | 与槽位配对的签名，供 `interface_id` 的数组重载排序后计算身份 |
+| `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | 编译期从方法名与返回/参数 TypeID 算出方法签名；复刻 `AMC::signature_hash`（`[[interface]]` 路径，参数名不参与哈希）。TypeID 可由 `model::canonical_type_id`（`ABI.h`）得到 |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | 把函数指针拷入不透明的 `entry` 槽位；生成代码与调用方共用同一拼写 |
 | `to_string(status)` | `const char*` | `InterfaceStatus` 的可读名 |
 
@@ -740,12 +741,18 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
 ```
 
-手写 `Traits` 时同样不需要填 `id`，直接用编译期 helper（它复刻 `AMC::interface_identity`
-的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
+手写 `Traits` 时连签名与 `id` 都可以由编译期 helper 生成（它们复刻 `AMC::signature_hash` /
+`AMC::interface_identity` 的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
 
 ```cpp
 struct ShapeTraits {
-    static constexpr InterfaceMethodHash sigs[] = {{0x1234, 0x5678}, {0x9abc, 0xdef0}};
+    // AMC 的 int32_t TypeID 是 ABI key，不是 C++ 拼写。
+    static constexpr model::TypeId i32 = model::canonical_type_id("prim:i4");
+    // 方法签名也由函数生成；返回/参数 TypeID 必须与 provider 一致。
+    static constexpr InterfaceMethodHash sigs[] = {
+        method_signature("area", i32, nullptr, 0),
+        method_signature("size", i32, nullptr, 0),
+    };
     static constexpr InterfaceId id = interface_id("Shape", 1, sigs, 2);   // 自动生成
     static constexpr uint32_t version = 1;
     static constexpr size_t slots = 2;
@@ -754,9 +761,12 @@ struct ShapeTraits {
 };
 ```
 
-它生成 `ShapeTraits`（`id`/`version`/`slots`/`signatures`/`*_slot`）与一个 `Shape` 代理，方法为
-「对象句柄在首位」的直通调用，并提供返回 `InterfaceStatus` 的重载。带额外参数的方法、重载与复杂
-签名交给 AMC 生成（Clang 有 AST），宏只是便利，不是唯一机制。
+`method_signature` / `canonical_type_id` 只解决**最后一跳**：它们的输入——方法名与返回/参数
+TypeID——仍然是 AMC 派生的值。原始类型的 TypeID 是 ABI key（`int32_t` → `prim:i4`，随目标的
+位宽/符号变化），预处理器无法从 C++ 拼写推出。因此带参数、重载与复杂签名的接口仍应由
+`amc generate` 生成签名表，手写 helper 只用于简单且双方约定一致的契约。它生成 `ShapeTraits`
+（`id`/`version`/`slots`/`signatures`/`*_slot`）与一个 `Shape` 代理，方法为「对象句柄在首位」的
+直通调用，并提供返回 `InterfaceStatus` 的重载。
 
 `amc generate -l cpp` 会为 `[[interface]]` 生成与上面等价的 `Traits`，并在**每个方法首参都是对象
 句柄**时一并生成 `InterfaceProxy` 派生类（否则只生成 `Traits`，并注明原因）。

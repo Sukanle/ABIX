@@ -1315,6 +1315,34 @@ int main() {
                 skl::abix::poly::interface_id("IRenderer", 1, abix_fixed, 2);
             check(abix_fixed_id.lo == 0xB25E9B1A9FDB63AFULL && abix_fixed_id.hi == 0xB903D3C743AFC513ULL,
                 "interface identity fixed vector (ABIX)");
+
+            // `canonical_type_id` and `method_signature` reproduce AMC's
+            // name-based TypeID and `signature_hash` (the [[interface]] path).
+            // AMC hashes the parameter TypeIDs but not the parameter names.
+            const skl::abix::model::TypeId i32_type = skl::abix::model::canonical_type_id("prim:i4");
+            const skl::abix::model::TypeId void_type = skl::abix::model::canonical_type_id("prim:void");
+            const amc::Hash128 amc_i32 = amc::hash_text("prim:i4", 0x54595045);
+            check(i32_type.lo == amc_i32.lo && i32_type.hi == amc_i32.hi, "canonical_type_id matches AMC");
+            const skl::abix::poly::InterfaceMethodHash area_sig =
+                skl::abix::poly::method_signature("area", i32_type, nullptr, 0);
+            check(area_sig.lo == 0x8F5E7A7AAF617E03ULL && area_sig.hi == 0xAC4292482142EAE0ULL,
+                "method signature no-parameter fixed vector");
+
+            const skl::abix::model::TypeId resize_parameters[] = {i32_type, i32_type};
+            const skl::abix::poly::InterfaceMethodHash resize_sig =
+                skl::abix::poly::method_signature("resize", void_type, resize_parameters, 2);
+            amc::Function resize_function;
+            resize_function.name = "resize";
+            resize_function.return_type = amc::hash_text("prim:void", 0x54595045);
+            resize_function.parameters = {
+                { "width", amc::hash_text("prim:i4", 0x54595045), 0},
+                {"height", amc::hash_text("prim:i4", 0x54595045), 0}
+            };
+            const amc::Hash128 amc_resize = amc::signature_hash(resize_function);
+            check(resize_sig.lo == amc_resize.lo && resize_sig.hi == amc_resize.hi,
+                "ABIX method_signature matches AMC signature_hash");
+            check(resize_sig.lo == 0xE907A743B4879C3FULL && resize_sig.hi == 0xBC11C993667CDBDEULL,
+                "method signature fixed vector");
         }
 
         // A region with no interface reads empty.

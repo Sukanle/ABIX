@@ -514,6 +514,7 @@ layer on its own, `#include "ABIX/Interface/Interface.h"`.
 | `InterfaceMethodHash` | `model::SignatureHash` | One method's ABI signature hash |
 | `interface_id(name, version, signatures, count)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant |
 | `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` array overload to sort before hashing |
+| `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`) |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way |
 | `to_string(status)` | `const char*` | Readable name for an `InterfaceStatus` |
 
@@ -807,6 +808,36 @@ identity is not written by hand: the macro computes it with
 
 ABIX_DECLARE_INTERFACE(Shape, 1, SHAPE_METHODS)
 ```
+
+A hand-written `Traits` can compute the signatures and the identity too (the
+helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`;
+`amc-core-test` checks them against AMC):
+
+```cpp
+struct ShapeTraits {
+    // AMC's int32_t TypeID is an ABI key, not the C++ spelling.
+    static constexpr model::TypeId i32 = model::canonical_type_id("prim:i4");
+    // The method signature is generated too; the return/parameter TypeIDs must
+    // match the provider.
+    static constexpr InterfaceMethodHash sigs[] = {
+        method_signature("area", i32, nullptr, 0),
+        method_signature("size", i32, nullptr, 0),
+    };
+    static constexpr InterfaceId id = interface_id("Shape", 1, sigs, 2);
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 2;
+    static constexpr uint32_t area_slot = 0;
+    static constexpr uint32_t size_slot = 1;
+};
+```
+
+`method_signature` / `canonical_type_id` only solve the last hop: their inputs —
+the method name and the return/parameter TypeIDs — are still AMC-derived. A
+primitive TypeID is an ABI key (`int32_t` → `prim:i4`, which varies with the
+target's width and signedness) that the preprocessor cannot infer from a C++
+spelling. Interfaces with parameters, overloads or complex signatures should
+still have AMC generate the signature table; the helpers are for simple contracts
+where both sides agree.
 
 It emits `ShapeTraits` (`id`/`version`/`slots`/`signatures`/`*_slot`) and a `Shape`
 proxy whose methods are object-handle-first pass-throughs, plus a form returning
