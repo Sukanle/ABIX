@@ -10,6 +10,19 @@
 
 namespace amc::cli {
 
+void apply_target_and_layout(const toml::table &config, amc::AbiModule &module) {
+    if (const auto *target = config["target"].as_table()) {
+        if (auto value = (*target)["arch"].value<int64_t>()) module.arch = static_cast<uint32_t>(*value);
+        if (auto value = (*target)["os"].value<int64_t>()) module.os = static_cast<uint32_t>(*value);
+        if (auto value = (*target)["abi"].value<int64_t>()) module.target_abi = static_cast<uint32_t>(*value);
+        if (auto value = (*target)["pointer_bits"].value<int64_t>())
+            module.pointer_bits = static_cast<uint32_t>(*value);
+        const std::string endianness = (*target)["endianness"].value_or(std::string{});
+        if (!endianness.empty()) module.endianness = endianness == "little" ? 1u : (endianness == "big" ? 2u : 0u);
+    }
+    amc::recompute_layout_hashes(module);
+}
+
 namespace {
 
 // Resolve the `[[owned]]` ownership declarations against the frontend module:
@@ -557,16 +570,7 @@ int cmd_build(char **args, int arg_count, const fs::path &provider) {
                 return fail(amc::ErrorCategory::config, "build", error, config_path.string());
             if (!resolve_interfaces(config, full, error))
                 return fail(amc::ErrorCategory::config, "build", error, config_path.string());
-            if (const auto *target = config["target"].as_table()) {
-                if (auto value = (*target)["arch"].value<int64_t>()) full.arch = static_cast<uint32_t>(*value);
-                if (auto value = (*target)["os"].value<int64_t>()) full.os = static_cast<uint32_t>(*value);
-                if (auto value = (*target)["abi"].value<int64_t>()) full.target_abi = static_cast<uint32_t>(*value);
-                if (auto value = (*target)["pointer_bits"].value<int64_t>())
-                    full.pointer_bits = static_cast<uint32_t>(*value);
-                const std::string endianness = (*target)["endianness"].value_or(std::string{});
-                if (!endianness.empty())
-                    full.endianness = endianness == "little" ? 1u : (endianness == "big" ? 2u : 0u);
-            }
+            apply_target_and_layout(config, full);
             // ABIX-STD lowering: match each contracted instantiation against its
             // contract. Instantiation succeeded already (the frontend did it);
             // this decides whether the concrete type is the boundary entity

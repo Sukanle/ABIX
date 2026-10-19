@@ -413,6 +413,10 @@ struct InterfaceImplementation {
 struct AbiModule {
     std::string package_name, package_version;
     uint32_t arch = 0, os = 0, target_abi = 0, compiler = 1, calling_convention = 0;
+    // Layout identity rule used by the artifact: 0 = legacy text-based
+    // LayoutHash, 1 = Canonical Layout Encoding v1. The optional
+    // `layout_encoding` section carries this value; its absence means 0.
+    uint32_t layout_encoding_version = 0;
     // Target platform facts used for verification. 0 means "unknown", which is
     // reported as unverifiable rather than assumed compatible.
     uint32_t pointer_bits = 0;   // pointer width in bits
@@ -456,6 +460,9 @@ constexpr uint16_t canonical_layout_version = 1;
 constexpr uint64_t canonical_layout_domain = 0x4C41594F55545631ULL;   // "LAYOUTV1"
 std::vector<uint8_t> canonical_layout_encoding(const AbiModule &, const Type &, const std::vector<Field> &);
 Hash128 canonical_layout_hash(const AbiModule &, const Type &, const std::vector<Field> &);
+// Recompute every type's LayoutHash with CLE v1 and mark the module as using
+// that rule. Call after the target facts are final.
+void recompute_layout_hashes(AbiModule &);
 // The single definition of an interface identity: the canonical name, the
 // version and the ordered method signatures, hashed with `hash_text` over the
 // canonical form "ABIX-INTERFACE:" + name + ":" + version + per-slot

@@ -78,7 +78,8 @@ enum Section : uint32_t {
     interfaces,
     interface_methods,
     implementations,
-    method_bindings
+    method_bindings,
+    layout_encoding
 };
 
 constexpr uint32_t section_required = 1u << 0;
@@ -246,6 +247,17 @@ Hash128 canonical_layout_hash(const AbiModule &module, const Type &type, const s
         std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()), canonical_layout_domain);
 }
 
+void recompute_layout_hashes(AbiModule &module) {
+    module.layout_encoding_version = canonical_layout_version;
+    for (auto &type : module.types) {
+        std::vector<Field> fields;
+        fields.reserve(type.field_count);
+        for (uint32_t i = 0; i < type.field_count; ++i)
+            fields.push_back(module.fields[type.field_begin + i]);
+        type.layout_hash = canonical_layout_hash(module, type, fields);
+    }
+}
+
 Hash128 signature_hash(const Function &function) {
     std::string input =
         function.name + std::to_string(function.return_type.lo) + std::to_string(function.return_type.hi);
@@ -297,6 +309,7 @@ Hash128 effective_layout_hash(const AbiModule &module, const Type &type) {
     std::vector<Field> fields;
     for (uint32_t i = 0; i < type.field_count; ++i)
         fields.push_back(module.fields[type.field_begin + i]);
+    if (module.layout_encoding_version == canonical_layout_version) return canonical_layout_hash(module, type, fields);
     return layout_hash(type, fields);
 }
 std::vector<Symbol> effective_symbols(const AbiModule &module) {
@@ -1876,6 +1889,11 @@ bool write_abix(const AbiModule &module, const std::string &path, std::string &e
         }
         sections.push_back(std::move(binding_table));
     }
+    if (module.layout_encoding_version != 0) {
+        SectionData layout_encoding_section{layout_encoding, 1, 4, 0, {}};
+        put_u32(layout_encoding_section.bytes, module.layout_encoding_version);
+        sections.push_back(std::move(layout_encoding_section));
+    }
 
     std::vector<uint8_t> bytes = {'A', 'B', 'I', 'X'};
     put_u16(bytes, kFormatVersion);
@@ -2018,6 +2036,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
     const auto *interface_method_table = optional(interface_methods, kInterfaceMethodEntrySize);
     const auto *implementation_table = optional(implementations, kImplementationEntrySize);
     const auto *method_binding_table = optional(method_bindings, kMethodBindingEntrySize);
+    const auto *layout_encoding_table = optional(layout_encoding, 4);
     if (!error.empty()) return false;
     if (!string_table
         || !abi_identity
@@ -2470,7 +2489,25 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
         record.target_kind = static_cast<HashTargetKind>(target);
         loaded_records.push_back(record);
     }
+    if (layout_encoding_table != nullptr) {
+        size_t layout_encoding_offset = layout_encoding_table->offset;
+        uint32_t layout_encoding_value = 0;
+        if (!read_u32(bytes, layout_encoding_offset, layout_encoding_value, error)) return false;
+        module.layout_encoding_version = layout_encoding_value;
+    }
     if (!validate(module, error)) return false;
+    if (module.layout_encoding_version == canonical_layout_version) {
+        for (const auto &type : module.types) {
+            std::vector<Field> fields;
+            fields.reserve(type.field_count);
+            for (uint32_t i = 0; i < type.field_count; ++i)
+                fields.push_back(module.fields[type.field_begin + i]);
+            if (!(type.layout_hash == canonical_layout_hash(module, type, fields))) {
+                error = "layout hash does not match the canonical layout encoding";
+                return false;
+            }
+        }
+    }
     const auto expected_records = hash_table(module);
     if (loaded_records.size() != expected_records.size()) {
         error = "hash table count does not match artifact";

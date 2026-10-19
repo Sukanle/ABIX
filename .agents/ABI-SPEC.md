@@ -389,7 +389,7 @@ Each field entry is `type_id` (16 bytes: `lo`, `hi`), `offset` (4 bytes) and `fl
 
 The normative requirement is: for the same target ABI and the same canonical layout facts, every conforming ABIX or AMC implementation must produce identical CLE bytes and an identical `LayoutHash`. A matching `LayoutHash` proves layout compatibility within the scope of this encoding and nothing more; type identity and full call-ABI compatibility remain `TypeID` and the call-ABI signature.
 
-CLE v1 is a new identity rule. Artifacts that carry the previous `LayoutHash` cannot be reinterpreted under CLE v1: the artifact format or hash-descriptor version must select the rule, and old artifacts must be regenerated before a consumer may compare them with a CLE v1 value.
+CLE v1 is a new identity rule. It is selected by the optional `layout_encoding` section (`.abix` section id 28), whose payload is a single big-endian `u32` version. A value of `1` means every `LayoutHash` in the artifact is a CLE v1 value and a conforming reader must recompute it from the layout records; the absence of the section means the legacy text-based rule. Artifacts are therefore interpreted by their own rule and must be regenerated before a consumer may compare them with a CLE v1 value.
 
 ## 12. Compat Rules
 

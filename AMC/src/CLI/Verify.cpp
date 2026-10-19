@@ -93,6 +93,7 @@ int cmd_verify(char **args, int arg_count, const fs::path &provider) {
                 return fail(read_error_category(error), "read_abix", error, temporary.string());
             full.package_name = config["package"]["name"].value_or("cpp");
             full.package_version = config["package"]["version"].value_or("");
+            apply_target_and_layout(config, full);
 
             std::vector<amc::VerifyResult> results;
             std::string diagnostics_buffer;

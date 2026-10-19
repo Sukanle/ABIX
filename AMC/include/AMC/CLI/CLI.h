@@ -43,6 +43,9 @@ struct ExportSpec {
 };
 
 bool parse_exports(const toml::table &table, std::vector<ExportSpec> &exports, std::string &error);
+// Apply the `[target]` table to the module and recompute every LayoutHash with
+// the Canonical Layout Encoding v1. Call once the target facts are final.
+void apply_target_and_layout(const toml::table &config, amc::AbiModule &module);
 bool dispatch_provider(const fs::path &provider, const char *capability, const fs::path &input, const fs::path &output,
     std::string &error);
 // Resolve the `amc-<language>` provider executable that sits next to `amc`.

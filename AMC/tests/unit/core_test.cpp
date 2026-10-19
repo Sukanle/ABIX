@@ -1390,6 +1390,54 @@ int main() {
                 "CLE hash matches between AMC and ABIX");
         }
 
+        // `.abix` CLE v1: the optional selector is written, the reader
+        // recomputes the canonical layout hash, and a tampered hash is rejected.
+        {
+            amc::AbiModule layout_module;
+            layout_module.package_name = "layout";
+            layout_module.package_version = "1";
+            layout_module.arch = 1;
+            layout_module.os = 1;
+            layout_module.target_abi = 1;
+            layout_module.compiler = 1;
+            amc::Type i32_type;
+            i32_type.name = "int32_t";
+            i32_type.kind = amc::TypeKind::primitive;
+            i32_type.id = amc::hash_text("prim:i32", 0x54595045);
+            i32_type.size = 4;
+            i32_type.align = 4;
+            layout_module.types.push_back(i32_type);
+            amc::Type record;
+            record.name = "Point";
+            record.kind = amc::TypeKind::record;
+            record.id = amc::hash_text("Point", 0x54595045);
+            record.size = 8;
+            record.align = 4;
+            record.field_begin = 0;
+            record.field_count = 2;
+            layout_module.types.push_back(record);
+            layout_module.fields.push_back({record.id, "x", i32_type.id, 0, 0});
+            layout_module.fields.push_back({record.id, "y", i32_type.id, 4, 0});
+            amc::recompute_layout_hashes(layout_module);
+            check(layout_module.layout_encoding_version == amc::canonical_layout_version,
+                "recompute marks the artifact as CLE v1");
+            check(layout_module.types[1].layout_hash
+                      == amc::canonical_layout_hash(layout_module, layout_module.types[1], layout_module.fields),
+                "recompute uses the canonical layout hash");
+            check(amc::write_abix(layout_module, "amc_layout_v1.abix", error), "write CLE v1 artifact");
+            amc::AbiModule loaded_layout;
+            check(amc::read_abix("amc_layout_v1.abix", loaded_layout, error), "read CLE v1 artifact");
+            check(loaded_layout.layout_encoding_version == amc::canonical_layout_version
+                      && loaded_layout.types[1].layout_hash == layout_module.types[1].layout_hash,
+                "CLE v1 selector and hash round-trip");
+
+            amc::AbiModule tampered = layout_module;
+            tampered.types[1].layout_hash = {0xDEAD, 0xBEEF};
+            check(amc::write_abix(tampered, "amc_layout_bad.abix", error), "write tampered CLE artifact");
+            amc::AbiModule rejected;
+            check(!amc::read_abix("amc_layout_bad.abix", rejected, error), "tampered CLE hash is rejected");
+        }
+
         // A region with no interface reads empty.
         amc::AbiModule bare;
         bare.package_name = "bare";

@@ -81,7 +81,7 @@ registry.add({ShapeTraits::id, square_id, square_methods, 1, 1, 0});
 
 不要把这几者压成同一个值。同一个类型可以保持 `TypeID` 不变，而布局随目标平台变化；方法的逻辑身份相同，也不能证明两种调用约定可以安全互调。
 
-`canonical_layout_hash` 实现了 `ABI-SPEC.md` §11.2 的 Canonical Layout Encoding v1：编码与名字无关、带目标 ABI 约束，且 AMC 与 ABIX 逐字节一致。`structural_layout_hash` 仍是 ABIX 本地摘要，不是 artifact 的 `LayoutHash`；把 artifact 字段切换到 CLE v1 属于版本化的格式变更，不由本文档自动完成。
+`canonical_layout_hash` 实现了 `ABI-SPEC.md` §11.2 的 Canonical Layout Encoding v1：编码与名字无关、带目标 ABI 约束，且 AMC 与 ABIX 逐字节一致。新产物通过可选的 `layout_encoding` section 选择它；没有该 section 的产物仍按旧规则解释。`structural_layout_hash` 仍是 ABIX 本地摘要，不是 artifact 的 `LayoutHash`。
 
 `model::type_hash` 与 `model::signature_hash` 已移除：类型身份用 `canonical_type_id`，调用 ABI
 用 `abi_signature_hash`。旧的 `util::fnv1a` / `Value` / `Descriptor` / `ValueSet` 系列也一并移除；

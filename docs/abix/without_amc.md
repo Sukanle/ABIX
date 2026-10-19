@@ -91,7 +91,7 @@ algorithm:
 
 Do not collapse these into one value. The same type can keep its `TypeID` while its layout changes across targets; a method's logical identity does not prove that two calling conventions are interchangeable.
 
-`canonical_layout_hash` implements the versioned Canonical Layout Encoding v1 from `ABI-SPEC.md` §11.2: the encoding is name-independent, target-ABI-aware and byte-identical between AMC and ABIX. `structural_layout_hash` remains an ABIX-local digest and is not the artifact `LayoutHash`. Switching the artifact field to CLE v1 is a versioned format change and is not implied by this document.
+`canonical_layout_hash` implements the versioned Canonical Layout Encoding v1 from `ABI-SPEC.md` §11.2: the encoding is name-independent, target-ABI-aware and byte-identical between AMC and ABIX. New artifacts select it with the optional `layout_encoding` section; artifacts without that section keep the legacy rule. `structural_layout_hash` remains an ABIX-local digest and is not the artifact `LayoutHash`.
 
 `model::type_hash` and `model::signature_hash` were removed: use
 `canonical_type_id` for type identity and `abi_signature_hash` for the call ABI.
