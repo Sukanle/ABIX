@@ -134,7 +134,7 @@ int main() {
 
 - **纯 C++、编译期同构、无跨边界需求**：虚函数足够，零额外约定。
 - **跨 DLL / 跨语言 / 需要「面向接口、不认具体类型」**：用 Interface。消费者代码里可以只出现
-  `InterfaceId`（见[示例 1](#示例)的跨模块路径），provider 换了具体类型也无需重编消费者。
+  `InterfaceId`（见[示例 2](#示例)的跨模块路径），provider 换了具体类型也无需重编消费者。
 - **两者共存**：ABIX 不要求你放弃 C++ 语义——provider 内部照常用虚函数，只在边界处用适配器把某个
   具体类型的方法绑定到接口槽位（AMC 的 `[[interface]]` / `[[implements]]` 声明）。接口可以像 C++
   抽象类一样在头文件里声明：`[[interface]]` 定义契约、`[[implements]]` 建立绑定，`amc generate -l cpp`
@@ -284,9 +284,183 @@ Owner handle 会在释放前保持其创建模块处于加载状态，因此长�
 
 ## 示例
 
-以下示例除标注的共享头文件外都是完整的（示意性的 provider 对象构造从略）。
+示例 1 是完整可编译的进程内流程（一个接口、三个实现类、注册、解析与调用）；示例 2–4 分别演示跨模块发现、版本共存与 Owner ABI。
 
-### 示例 1 —— 跨模块发现并调用
+### 示例 1 —— 完整流程：接口类 + 三个实现类
+
+契约放在共享头文件里：`Traits` 承载接口身份、版本、槽位容量与期望签名，代理类只补方法。
+
+```cpp
+// shape.h
+#pragma once
+#include "ABIX/Interface/Interface.h"
+
+namespace demo {
+
+using skl::abix::model::TypeId;
+using skl::abix::poly::InterfaceId;
+using skl::abix::poly::interface_id;
+using skl::abix::poly::method_signature;
+
+inline constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+
+struct ShapeTraits {
+    static constexpr skl::abix::util::StaticArray signatures = {
+        method_signature("area", i32, nullptr, 0),
+        method_signature("perimeter", i32, nullptr, 0),
+    };
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 2;
+    static constexpr uint32_t area_slot = 0;
+    static constexpr uint32_t perimeter_slot = 1;
+};
+
+class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
+    using Base = skl::abix::poly::InterfaceProxy<ShapeTraits>;
+
+public:
+    using Base::Base;
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::area_slot); }
+    int perimeter() const noexcept {
+        return this->template call<int (*)(const void *)>(ShapeTraits::perimeter_slot);
+    }
+};
+
+}  // namespace demo
+```
+
+Provider 侧：三个普通实现类，每个方法一个适配器（首参是对象句柄），每个实现一张方法表并注册。
+
+```cpp
+// shapes.cpp
+// 构建：c++ -std=c++17 -I<abix_root> shapes.cpp -o shapes
+#include <cstdio>
+
+#include "shape.h"
+
+using demo::ShapeTraits;
+using skl::abix::model::TypeId;
+using skl::abix::poly::InterfaceMethod;
+using skl::abix::poly::InterfaceRegistry;
+using skl::abix::poly::InterfaceStatus;
+using skl::abix::poly::interface_entry;
+
+// 三个实现类：普通 struct，无基类、无虚函数、不包含 ABIX 成员。
+struct Square {
+    int side;
+};
+struct Rectangle {
+    int width;
+    int height;
+};
+struct Triangle {
+    int base;
+    int height;
+    int left;
+    int right;
+};
+
+// 每个方法一个适配器：首参是类型擦除的对象句柄。
+int square_area(const void *self) {
+    const auto *s = static_cast<const Square *>(self);
+    return s->side * s->side;
+}
+int square_perimeter(const void *self) {
+    return 4 * static_cast<const Square *>(self)->side;
+}
+int rectangle_area(const void *self) {
+    const auto *r = static_cast<const Rectangle *>(self);
+    return r->width * r->height;
+}
+int rectangle_perimeter(const void *self) {
+    const auto *r = static_cast<const Rectangle *>(self);
+    return 2 * (r->width + r->height);
+}
+int triangle_area(const void *self) {
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base * t->height / 2;
+}
+int triangle_perimeter(const void *self) {
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base + t->left + t->right;
+}
+
+// 每个实现一个具体类型身份；真实项目里由 AMC 记录。
+constexpr TypeId square_id{0x51, 0x01};
+constexpr TypeId rectangle_id{0x51, 0x02};
+constexpr TypeId triangle_id{0x51, 0x03};
+
+// 每个实现一张方法表：signature 与 slot 都直接取自共享契约。
+const InterfaceMethod square_methods[] = {
+    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&square_area), ShapeTraits::area_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&square_perimeter),
+        ShapeTraits::perimeter_slot, 0},
+};
+const InterfaceMethod rectangle_methods[] = {
+    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&rectangle_area), ShapeTraits::area_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&rectangle_perimeter),
+        ShapeTraits::perimeter_slot, 0},
+};
+const InterfaceMethod triangle_methods[] = {
+    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&triangle_area), ShapeTraits::area_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&triangle_perimeter),
+        ShapeTraits::perimeter_slot, 0},
+};
+
+InterfaceStatus register_shape(
+    InterfaceRegistry<8> &registry, TypeId type, const InterfaceMethod *methods, uint32_t count) {
+    return registry.add({ShapeTraits::id, type, methods, count, ShapeTraits::version, 0});
+}
+
+int main() {
+    // 注册：每个「实现类 → Shape 接口」一条记录。
+    InterfaceRegistry<8> registry;
+    if (register_shape(registry, square_id, square_methods, 2) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, rectangle_id, rectangle_methods, 2) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, triangle_id, triangle_methods, 2) != InterfaceStatus::ok) return 1;
+
+    Square square{5};
+    Rectangle rectangle{4, 6};
+    Triangle triangle{6, 4, 5, 5};
+
+    struct Instance {
+        void *object;
+        TypeId type;
+        const char *name;
+    };
+    const Instance instances[] = {
+        {&square, square_id, "square"},
+        {&rectangle, rectangle_id, "rectangle"},
+        {&triangle, triangle_id, "triangle"},
+    };
+
+    // 同一段调用代码服务三个实现：绑定一次，之后都是原生间接调用。
+    for (const auto &instance : instances) {
+        demo::Shape shape;
+        if (shape.bind(registry, instance.object, instance.type) != InterfaceStatus::ok) return 1;
+        std::printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
+    }
+    return 0;
+}
+```
+
+输出：
+
+```
+square    area=25 perimeter=20
+rectangle area=24 perimeter=20
+triangle  area=12 perimeter=16
+```
+
+要点：
+
+- `Square` / `Rectangle` / `Triangle` 从未继承 `Shape`，也没有被修改；它们仍是普通聚合。
+- `signatures` 让 `bind()` 逐槽校验：方法表里的 `signature` 与契约不一致时返回 `signature_mismatch`，不会静默调用。
+- 每次 `bind()` 只查表一次；循环里的 `area()` / `perimeter()` 都是普通原生间接调用。
+- 调用方只持有 `demo::Shape`，不依赖具体类型；新增实现只需补一张方法表并注册。
+
+### 示例 2 —— 跨模块发现并调用
 
 Provider 与 consumer 共享一份契约常量头（接口身份与版本必须一致）：
 
@@ -382,7 +556,7 @@ int main() {
 要点：`discover_module` 只在导出表里查 `abix_module_query_v1` 一个符号；绑定持有租约期间模块无法
 卸载，因此缓存的 `width` 指针永远不会悬垂。
 
-### 示例 2 —— 一个接口的多个实现与版本共存
+### 示例 3 —— 一个接口的多个实现与版本共存
 
 不经过动态库时，直接把多个 provider 的 `ModuleManifest` 注册进 `ModuleRegistry`：
 
@@ -413,7 +587,7 @@ const auto *newest = registry.find_first(kInterface, 0);    // 最新，即版�
 规则：请求版本精确匹配，`0` 取最新；同一模块内重复的 `(id, version)` 被拒绝
 （`duplicate_interface`），不同模块之间允许并存，查询返回全部且从不互相覆盖。
 
-### 示例 3 —— Owner ABI：跨模块创建与释放
+### 示例 4 —— Owner ABI：跨模块创建与释放
 
 Provider 通过自己的入口返回一个 owner handle，销毁入口位于该模块内：
 
@@ -425,7 +599,7 @@ skl::abix::owner::handle owner_counter_create(int base) {
 }
 ```
 
-Consumer 收养句柄并持有租约，离开作用域时恰好销毁一次（承接示例 1 的 `lib` / `control` / `binding`）：
+Consumer 收养句柄并持有租约，离开作用域时恰好销毁一次（承接示例 2 的 `lib` / `control` / `binding`）：
 
 ```cpp
 #include <cstdio>

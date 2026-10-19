@@ -140,7 +140,7 @@ The difference is not whether polymorphism is possible, but **what carries it**:
   functions are enough, with zero extra ceremony.
 - **Across DLLs / across languages / "program to the interface, not the type"**:
   use Interface. A consumer can mention only `InterfaceId` (see the cross-module
-  path in [Example 1](#examples)) and keep working when the provider changes its
+  path in [Example 2](#examples)) and keep working when the provider changes its
   concrete type.
 - **They coexist**: ABIX does not ask you to give up C++ semantics — a provider
   keeps using virtual functions internally and binds one concrete type's methods
@@ -309,10 +309,197 @@ handle transfers ownership; releasing twice is a no-op.
 
 ## Examples
 
-Each example below is complete apart from the shared header it names; the
-illustrative provider-object construction is elided.
+Example 1 is a complete in-process program (one interface, three implementation
+classes, registration, resolution and calls); Examples 2–4 cover cross-module
+discovery, version coexistence and the Owner ABI.
 
-### Example 1 — discover and call across a module
+### Example 1 — end to end: an interface class and three implementations
+
+The contract lives in a shared header: `Traits` carries the interface identity,
+version, slot capacity and expected signatures, and the proxy class only adds the
+methods.
+
+```cpp
+// shape.h — the shared contract
+#pragma once
+#include "ABIX/Interface/Interface.h"
+
+namespace demo {
+
+using skl::abix::model::TypeId;
+using skl::abix::poly::InterfaceId;
+using skl::abix::poly::interface_id;
+using skl::abix::poly::method_signature;
+
+inline constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+
+struct ShapeTraits {
+    static constexpr skl::abix::util::StaticArray signatures = {
+        method_signature("area", i32, nullptr, 0),
+        method_signature("perimeter", i32, nullptr, 0),
+    };
+    static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
+    static constexpr uint32_t version = 1;
+    static constexpr size_t slots = 2;
+    static constexpr uint32_t area_slot = 0;
+    static constexpr uint32_t perimeter_slot = 1;
+};
+
+class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
+    using Base = skl::abix::poly::InterfaceProxy<ShapeTraits>;
+
+public:
+    using Base::Base;
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::area_slot); }
+    int perimeter() const noexcept {
+        return this->template call<int (*)(const void *)>(ShapeTraits::perimeter_slot);
+    }
+};
+
+}  // namespace demo
+```
+
+On the provider side, three plain implementations; each method has one adapter
+whose first parameter is the object handle, and each implementation has one
+method table and one registration.
+
+```cpp
+// shapes.cpp
+// Build: c++ -std=c++17 -I<abix_root> shapes.cpp -o shapes
+#include <cstdio>
+
+#include "shape.h"
+
+using demo::ShapeTraits;
+using skl::abix::model::TypeId;
+using skl::abix::poly::InterfaceMethod;
+using skl::abix::poly::InterfaceRegistry;
+using skl::abix::poly::InterfaceStatus;
+using skl::abix::poly::interface_entry;
+
+// Three implementations: plain structs, no base class, no virtual functions,
+// no ABIX members.
+struct Square {
+    int side;
+};
+struct Rectangle {
+    int width;
+    int height;
+};
+struct Triangle {
+    int base;
+    int height;
+    int left;
+    int right;
+};
+
+// One adapter per method: the first parameter is the type-erased object handle.
+int square_area(const void *self) {
+    const auto *s = static_cast<const Square *>(self);
+    return s->side * s->side;
+}
+int square_perimeter(const void *self) {
+    return 4 * static_cast<const Square *>(self)->side;
+}
+int rectangle_area(const void *self) {
+    const auto *r = static_cast<const Rectangle *>(self);
+    return r->width * r->height;
+}
+int rectangle_perimeter(const void *self) {
+    const auto *r = static_cast<const Rectangle *>(self);
+    return 2 * (r->width + r->height);
+}
+int triangle_area(const void *self) {
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base * t->height / 2;
+}
+int triangle_perimeter(const void *self) {
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base + t->left + t->right;
+}
+
+// One concrete-type identity per implementation; AMC records these in a real
+// project.
+constexpr TypeId square_id{0x51, 0x01};
+constexpr TypeId rectangle_id{0x51, 0x02};
+constexpr TypeId triangle_id{0x51, 0x03};
+
+// One method table per implementation: signature and slot come straight from
+// the shared contract.
+const InterfaceMethod square_methods[] = {
+    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&square_area), ShapeTraits::area_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&square_perimeter),
+        ShapeTraits::perimeter_slot, 0},
+};
+const InterfaceMethod rectangle_methods[] = {
+    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&rectangle_area), ShapeTraits::area_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&rectangle_perimeter),
+        ShapeTraits::perimeter_slot, 0},
+};
+const InterfaceMethod triangle_methods[] = {
+    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&triangle_area), ShapeTraits::area_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&triangle_perimeter),
+        ShapeTraits::perimeter_slot, 0},
+};
+
+InterfaceStatus register_shape(
+    InterfaceRegistry<8> &registry, TypeId type, const InterfaceMethod *methods, uint32_t count) {
+    return registry.add({ShapeTraits::id, type, methods, count, ShapeTraits::version, 0});
+}
+
+int main() {
+    // Register: one record per "implementation class -> Shape" binding.
+    InterfaceRegistry<8> registry;
+    if (register_shape(registry, square_id, square_methods, 2) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, rectangle_id, rectangle_methods, 2) != InterfaceStatus::ok) return 1;
+    if (register_shape(registry, triangle_id, triangle_methods, 2) != InterfaceStatus::ok) return 1;
+
+    Square square{5};
+    Rectangle rectangle{4, 6};
+    Triangle triangle{6, 4, 5, 5};
+
+    struct Instance {
+        void *object;
+        TypeId type;
+        const char *name;
+    };
+    const Instance instances[] = {
+        {&square, square_id, "square"},
+        {&rectangle, rectangle_id, "rectangle"},
+        {&triangle, triangle_id, "triangle"},
+    };
+
+    // One call path serves all three implementations: bind once, then plain
+    // native indirect calls.
+    for (const auto &instance : instances) {
+        demo::Shape shape;
+        if (shape.bind(registry, instance.object, instance.type) != InterfaceStatus::ok) return 1;
+        std::printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
+    }
+    return 0;
+}
+```
+
+Output:
+
+```
+square    area=25 perimeter=20
+rectangle area=24 perimeter=20
+triangle  area=12 perimeter=16
+```
+
+Takeaways:
+
+- `Square` / `Rectangle` / `Triangle` never inherit from `Shape` and are never
+  modified; they stay plain aggregates.
+- `signatures` makes `bind()` verify every slot: a method table `signature` that
+  disagrees with the contract reports `signature_mismatch` instead of calling.
+- Each `bind()` resolves once; the `area()` / `perimeter()` calls in the loop
+  are plain native indirect calls.
+- The caller only holds `demo::Shape` and never names a concrete type; adding an
+  implementation means adding one method table and one registration.
+
+### Example 2 — discover and call across a module
 
 The provider and the consumer share one contract-constant header (the interface
 identity and version must match):
@@ -412,7 +599,7 @@ The point: `discover_module` consults the export table for the single symbol
 `abix_module_query_v1`; while a binding holds a lease the module cannot unload,
 so the cached `width` pointer can never dangle.
 
-### Example 2 — several implementations of one interface, and versions
+### Example 3 — several implementations of one interface, and versions
 
 Without a shared library, register several providers' `ModuleManifest`s directly:
 
@@ -444,7 +631,7 @@ A requested version is exact and `0` selects the newest; a duplicate
 `(id, version)` within one module is rejected (`duplicate_interface`), different
 modules may coexist, and queries return all of them without overwriting.
 
-### Example 3 — the owner ABI: create and release across a module
+### Example 4 — the owner ABI: create and release across a module
 
 The provider returns an owner handle from its own entry; the destroy entry lives
 inside that module:
@@ -458,7 +645,7 @@ skl::abix::owner::handle owner_counter_create(int base) {
 ```
 
 The consumer adopts the handle and holds a lease, destroying exactly once when it
-goes out of scope (continues Example 1's `lib` / `control` / `binding`):
+goes out of scope (continues Example 2's `lib` / `control` / `binding`):
 
 ```cpp
 #include <cstdio>
