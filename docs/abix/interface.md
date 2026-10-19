@@ -512,8 +512,8 @@ layer on its own, `#include "ABIX/Interface/Interface.h"`.
 |------|------|------|
 | `InterfaceId` | `Hash128` | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)` |
 | `InterfaceMethodHash` | `model::SignatureHash` | One method's ABI signature hash |
-| `interface_id(name, version, signatures, count)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant |
-| `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` array overload to sort before hashing |
+| `interface_id(name, version, signatures)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `util::StaticArray` or a variadic `InterfaceMethodHash` list |
+| `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` `util::StaticArray` overload to sort before hashing |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`) |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way |
 | `to_string(status)` | `const char*` | Readable name for an `InterfaceStatus` |
@@ -843,11 +843,11 @@ struct ShapeTraits {
     static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // The method signature is generated too; the return/parameter TypeIDs must
     // match the provider.
-    static constexpr InterfaceMethodHash sigs[] = {
+    static constexpr util::StaticArray sigs = {
         method_signature("area", i32, nullptr, 0),
         method_signature("size", i32, nullptr, 0),
     };
-    static constexpr InterfaceId id = interface_id("Shape", 1, sigs, 2);
+    static constexpr InterfaceId id = interface_id("Shape", 1, sigs);
     static constexpr uint32_t version = 1;
     static constexpr size_t slots = 2;
     static constexpr uint32_t area_slot = 0;
@@ -981,13 +981,13 @@ constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
 constexpr model::TypeId move_params[] = {point};
 constexpr model::TypeId open_params[] = {text};
 
-static constexpr InterfaceMethodHash sigs[] = {
+static constexpr util::StaticArray sigs = {
     method_signature("draw",  v,    nullptr,     0),
     method_signature("move",  v,    move_params, 1),
     method_signature("label", text, nullptr,     0),
     method_signature("open",  i32,  open_params, 1),
 };
-static constexpr InterfaceId id = interface_id("Canvas", 1, sigs, 4);
+static constexpr InterfaceId id = interface_id("Canvas", 1, sigs);
 ```
 
 If the provider is AMC-generated and its contract functions take the object

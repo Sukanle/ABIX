@@ -130,14 +130,39 @@ constexpr InterfaceId interface_id(
     return InterfaceId{state.lo, state.hi};
 }
 
+// The interface identity for a canonical name, a version and method signatures
+// already ordered by slot. This is exactly the byte string and algorithm
+// `AMC::interface_identity` hashes, so a hand-written provider and AMC derive
+// the same id. `name` must be the same canonical spelling AMC uses.
+//   interface_id("Shape", 1, util::StaticArray{sig_a, sig_b})
+template<size_t Count>
+constexpr InterfaceId interface_id(
+    const char *name, uint32_t version, const util::StaticArray<InterfaceMethodHash, Count> &signatures) noexcept {
+    return interface_id(name, version, signatures.data(), Count);
+}
+
+// Variadic signature list, zero allocation:
+//   interface_id("Shape", 1, sig_a, sig_b)
+template<typename... Signatures,
+    typename = std::enable_if_t<(std::is_same<Signatures, InterfaceMethodHash>::value && ...)>>
+constexpr InterfaceId interface_id(const char *name, uint32_t version, Signatures... signatures) noexcept {
+    if constexpr (sizeof...(Signatures) == 0) {
+        return interface_id(name, version, util::StaticArray<InterfaceMethodHash, 0>{});
+    } else {
+        const util::StaticArray<InterfaceMethodHash, sizeof...(Signatures)> list = {signatures...};
+        return interface_id(name, version, list);
+    }
+}
+
 // Overload for a method list that is not yet ordered: the entries are sorted by
 // slot before hashing, matching `AMC::interface_hash`. `ABIX_DECLARE_INTERFACE`
 // uses this so the method list can be written in any order.
+//   interface_id("Shape", 1, util::StaticArray{InterfaceMethodKey{...}, ...})
 template<size_t Count>
 constexpr InterfaceId interface_id(
-    const char *name, uint32_t version, const InterfaceMethodKey (&methods)[Count]) noexcept {
+    const char *name, uint32_t version, const util::StaticArray<InterfaceMethodKey, Count> &methods) noexcept {
     InterfaceMethodKey sorted[Count == 0 ? 1 : Count] = {};
-    InterfaceMethodHash signatures[Count == 0 ? 1 : Count] = {};
+    util::StaticArray<InterfaceMethodHash, Count> signatures = {};
     for (size_t i = 0; i < Count; ++i)
         sorted[i] = methods[i];
     for (size_t i = 1; i < Count; ++i) {
@@ -151,7 +176,7 @@ constexpr InterfaceId interface_id(
     }
     for (size_t i = 0; i < Count; ++i)
         signatures[i] = sorted[i].signature;
-    return interface_id(name, version, signatures, Count);
+    return interface_id(name, version, signatures);
 }
 
 // AMC's method signature hash, matching `AMC::signature_hash` for the

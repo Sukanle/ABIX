@@ -477,8 +477,8 @@ registry.unregister_module(control.id);   // 现在可以卸载
 |------|------|------|
 | `InterfaceId` | `Hash128` | 接口身份：对接口名、版本与有序方法签名计算的内容哈希。不是类名，也不是 vtable 地址；可用 `interface_id(...)` 自动生成 |
 | `InterfaceMethodHash` | `model::SignatureHash` | 单个方法的 ABI 签名哈希 |
-| `interface_id(name, version, signatures, count)` | `InterfaceId` | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量 |
-| `InterfaceMethodKey` | `{signature, slot}` | 与槽位配对的签名，供 `interface_id` 的数组重载排序后计算身份 |
+| `interface_id(name, version, signatures)` | `InterfaceId` | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `util::StaticArray` 或变参 `InterfaceMethodHash` 列表 |
+| `InterfaceMethodKey` | `{signature, slot}` | 与槽位配对的签名，供 `interface_id` 的 `util::StaticArray` 重载排序后计算身份 |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | 编译期从方法名与返回/参数 TypeID 算出方法签名；复刻 `AMC::signature_hash`（`[[interface]]` 路径，参数名不参与哈希）。TypeID 可由 `model::canonical_type_id`（`ABI.h`）得到 |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | 把函数指针拷入不透明的 `entry` 槽位；生成代码与调用方共用同一拼写 |
 | `to_string(status)` | `const char*` | `InterfaceStatus` 的可读名 |
@@ -773,11 +773,11 @@ struct ShapeTraits {
     // AMC 的 int32_t TypeID 是 ABI key，不是 C++ 拼写。
     static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // 方法签名也由函数生成；返回/参数 TypeID 必须与 provider 一致。
-    static constexpr InterfaceMethodHash sigs[] = {
+    static constexpr util::StaticArray sigs = {
         method_signature("area", i32, nullptr, 0),
         method_signature("size", i32, nullptr, 0),
     };
-    static constexpr InterfaceId id = interface_id("Shape", 1, sigs, 2);   // 自动生成
+    static constexpr InterfaceId id = interface_id("Shape", 1, sigs);   // 自动生成
     static constexpr uint32_t version = 1;
     static constexpr size_t slots = 2;
     static constexpr uint32_t area_slot = 0;
@@ -889,13 +889,13 @@ constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
 constexpr model::TypeId move_params[] = {point};
 constexpr model::TypeId open_params[] = {text};
 
-static constexpr InterfaceMethodHash sigs[] = {
+static constexpr util::StaticArray sigs = {
     method_signature("draw",  v,    nullptr,     0),
     method_signature("move",  v,    move_params, 1),
     method_signature("label", text, nullptr,     0),
     method_signature("open",  i32,  open_params, 1),
 };
-static constexpr InterfaceId id = interface_id("Canvas", 1, sigs, 4);
+static constexpr InterfaceId id = interface_id("Canvas", 1, sigs);
 ```
 
 若 provider 是 AMC 生成的、契约函数首参是对象句柄，请把句柄 TypeID 加到每个参数表的最前面

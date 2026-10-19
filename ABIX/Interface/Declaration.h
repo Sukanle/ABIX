@@ -89,7 +89,7 @@
 
 #define ABIX_DECLARE_INTERFACE(Name, ver, list)                                                                       \
     struct Name##Traits {                                                                                             \
-        static constexpr ::skl::abix::poly::InterfaceMethodKey id_methods[] = {list(ABIX_INTERFACE_KEY_ENTRY)};       \
+        static constexpr ::skl::abix::util::StaticArray id_methods = {list(ABIX_INTERFACE_KEY_ENTRY)};                \
         static constexpr ::skl::abix::poly::InterfaceId id = ::skl::abix::poly::interface_id(#Name, ver, id_methods); \
         static constexpr uint32_t version = ver;                                                                      \
         list(ABIX_INTERFACE_SLOT_ENTRY) static constexpr ::skl::abix::poly::InterfaceMethodHash signatures[] = {      \
@@ -142,7 +142,7 @@
 
 #define ABIX_DECLARE_INTERFACE_AUTO(Name, ver, list)                                                                  \
     struct Name##Traits {                                                                                             \
-        static constexpr ::skl::abix::poly::InterfaceMethodKey id_methods[] = {list(ABIX_AUTO_INTERFACE_KEY_ENTRY)};  \
+        static constexpr ::skl::abix::util::StaticArray id_methods = {list(ABIX_AUTO_INTERFACE_KEY_ENTRY)};           \
         static constexpr ::skl::abix::poly::InterfaceId id = ::skl::abix::poly::interface_id(#Name, ver, id_methods); \
         static constexpr uint32_t version = ver;                                                                      \
         list(ABIX_AUTO_INTERFACE_SLOT_ENTRY) static constexpr ::skl::abix::poly::InterfaceMethodHash signatures[] = { \
