@@ -13,6 +13,7 @@ graph TD
     R[文档] --> GS[快速开始]
     R --> AX[ABIX 核心]
     R --> AM[AMC 工具链]
+    R --> L[语言]
     R --> AR[架构]
     R --> AI[AI 与 Agent]
     R --> DV[开发]
@@ -27,6 +28,7 @@ graph TD
 | **安装并试用 ABIX** | [快速开始](getting-started/) |
 | **理解 ABI 模型** | [ABIX](abix/) |
 | **使用 AMC 工具链** | [AMC](amc/) |
+| **跨语言工作** | [语言](lang/) |
 | **了解内部架构** | [架构](architecture/) |
 | **集成 AI / Agent 工作流** | [AI](ai/) |
 | **查看基准测试和指标** | [基准测试](benchmark/) |
@@ -72,6 +74,17 @@ graph TD
 | [interface_zh.md](abix/interface_zh.md) | [interface.md](abix/interface.md) | Interface 层：契约、代理、发现与 Owner ABI |
 | [std_zh.md](abix/std_zh.md) | [std.md](abix/std.md) | ABIX-STD 跨语言 ABI 原语 |
 | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
+
+## 语言
+
+跨语言投影与各语言指南。
+
+| 文档 | English | 描述 |
+|------|---------|------|
+| [README_zh.md](lang/README_zh.md) | [README.md](lang/README.md) | ABIX 与 bind 式 FFI 的区别；投影模型 |
+| [cpp_zh.md](lang/cpp_zh.md) | [cpp.md](lang/cpp.md) | C++ 前端/后端、生成的布局检查、接口层 |
+| [rust_zh.md](lang/rust_zh.md) | [rust.md](lang/rust.md) | Rust provider、`repr(C)` 投影、所有权/`Result` 包装 |
+| [zig_zh.md](lang/zig_zh.md) | [zig.md](lang/zig.md) | Zig backend-only 投影、`extern` / `comptime` 检查 |
 
 ## AMC
 

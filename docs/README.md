@@ -13,6 +13,7 @@ graph TD
     R[Documentation] --> GS[Getting Started]
     R --> AX[ABIX Core]
     R --> AM[AMC Toolchain]
+    R --> L[Languages]
     R --> AR[Architecture]
     R --> AI[AI &amp; Agent]
     R --> DV[Development]
@@ -27,6 +28,7 @@ graph TD
 | **install and try ABIX** | [Getting Started](getting-started/) |
 | **understand the ABI model** | [ABIX](abix/) |
 | **use the AMC toolchain** | [AMC](amc/) |
+| **work across languages** | [Languages](lang/) |
 | **learn internal architecture** | [Architecture](architecture/) |
 | **integrate AI / Agent workflows** | [AI](ai/) |
 | **see benchmarks and metrics** | [Benchmark](benchmark/) |
@@ -72,6 +74,17 @@ Core ABI model, format, and API documentation.
 | [interface.md](abix/interface.md) | [interface_zh.md](abix/interface_zh.md) | the Interface layer: contracts, proxies, discovery, Owner ABI |
 | [std.md](abix/std.md) | [std_zh.md](abix/std_zh.md) | ABIX-STD cross-language ABI primitives |
 | [metadata_modes.md](abix/metadata_modes.md) | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo |
+
+## Languages
+
+Cross-language projections and per-language guides.
+
+| Document | 中文 | Description |
+|----------|------|-------------|
+| [README.md](lang/README.md) | [README_zh.md](lang/README_zh.md) | why ABIX differs from bind-style FFI; the projection model |
+| [cpp.md](lang/cpp.md) | [cpp_zh.md](lang/cpp_zh.md) | C++ frontend/backend, generated layout checks, Interface layer |
+| [rust.md](lang/rust.md) | [rust_zh.md](lang/rust_zh.md) | Rust provider, `repr(C)` projection, ownership/`Result` wrappers |
+| [zig.md](lang/zig.md) | [zig_zh.md](lang/zig_zh.md) | Zig backend-only projection, `extern` / `comptime` checks |
 
 ## AMC
 

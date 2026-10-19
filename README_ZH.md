@@ -464,6 +464,13 @@ ctest --test-dir build/Release --output-on-failure
 - [ABIX-STD](docs/abix/std_zh.md)
 - [自举](docs/getting-started/self-hosting_zh.md)
 
+### 语言
+
+- [跨语言 ABI 投影](docs/lang/README_zh.md)
+- [C++](docs/lang/cpp_zh.md)
+- [Rust](docs/lang/rust_zh.md)
+- [Zig](docs/lang/zig_zh.md)
+
 ### 运行时
 
 - [运行时概览](docs/architecture/runtime_zh.md)

@@ -464,6 +464,13 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 - [ABIX-STD](docs/abix/std.md)
 - [Self-Hosting](docs/getting-started/self-hosting.md)
 
+### Languages
+
+- [Cross-language ABI projections](docs/lang/README.md)
+- [C++](docs/lang/cpp.md)
+- [Rust](docs/lang/rust.md)
+- [Zig](docs/lang/zig.md)
+
 ### Runtime
 
 - [Runtime Overview](docs/architecture/runtime.md)
