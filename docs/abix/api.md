@@ -130,7 +130,7 @@ ABIX Runtime and AMC core metadata are covered by reproducible self-description 
 | `SKL_ABIX_WINDOWS` | `1` or `0` | Windows platform detection |
 | `SKL_ABIX_CALL_CDECL` | `__cdecl` or empty | `__cdecl` calling convention attribute |
 | `SKL_ABIX_CALL_STDCALL` | `__stdcall` or empty | `__stdcall` calling convention attribute |
-| `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` or visibility attribute | DLL export attribute |
+| `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` or visibility attribute | Provider-side export for fixed C module entries (`abi_get_table`, `abix_module_query_v1`, provider handles). ABIX has no shared core library to import. |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | Magic number for control blocks |
 
 ## 2. `ABIX/Runtime/Type.h` — Core Types

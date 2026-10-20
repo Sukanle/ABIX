@@ -18,6 +18,8 @@
 
 #include <stdint.h>
 
+#include "ABIX/Util/Config.h"
+
 #include "mics/utils/hash.h"
 
 namespace skl::abix::runtime {

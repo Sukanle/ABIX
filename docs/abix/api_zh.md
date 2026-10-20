@@ -130,7 +130,7 @@ ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。
 | `SKL_ABIX_WINDOWS` | `1` 或 `0` | Windows 平台检测 |
 | `SKL_ABIX_CALL_CDECL` | `__cdecl` 或空 | `__cdecl` 调用约定属性 |
 | `SKL_ABIX_CALL_STDCALL` | `__stdcall` 或空 | `__stdcall` 调用约定属性 |
-| `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` 或可见性属性 | DLL 导出属性 |
+| `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` 或可见性属性 | provider 侧固定 C 模块入口（`abi_get_table`、`abix_module_query_v1`、provider handle）的导出标记。ABIX 没有需要导入的共享核心库。 |
 | `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | 控制块的魔数 |
 
 ## 2. `ABIX/Runtime/Type.h` — 核心类型

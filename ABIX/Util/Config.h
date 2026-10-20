@@ -37,10 +37,23 @@
 #  define SKL_ABIX_CALL_STDCALL
 #endif
 
+// ABIX's runtime is header-only: there is no ABIX shared library whose public
+// symbols need import/export decoration. What does need an export annotation is
+// the provider side of the module ABI: the fixed C entry points
+// (`abi_get_table`, `abix_module_query_v1`) and provider handles that a consumer
+// resolves through `dlsym` / `GetProcAddress`.
+//
+// ABIX uses one macro for those definitions. On Windows every use in this
+// codebase is a definition inside a provider DLL, so `dllexport` is
+// unconditional; consumers never link these symbols directly. On ELF/Mach-O the
+// attribute keeps the entry visible even when the provider builds with
+// `-fvisibility=hidden` (as the plugin targets do).
 #if defined(SKL_ABIX_WINDOWS)
 #  define SKL_ABIX_DLL_EXPORT __declspec(dllexport)
-#else
+#elif defined(__GNUC__) || defined(__clang__)
 #  define SKL_ABIX_DLL_EXPORT __attribute__((visibility("default")))
+#else
+#  define SKL_ABIX_DLL_EXPORT
 #endif
 
 #ifndef SKL_NO_DEPRECATED
