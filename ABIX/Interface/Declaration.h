@@ -92,8 +92,10 @@
  *
  * `member_adapter<Member>::invoke` takes the const object handle first and
  * forwards the member's own parameters. It supports const/non-const and
- * noexcept members; volatile, ref-qualified and overloaded members need an
- * explicit member-pointer expression or a hand-written wrapper.
+ * noexcept members; the exception specification is a single `bool Noex`
+ * parameter so Clang does not see `const` and `const noexcept` as ambiguous
+ * partial specializations. Volatile, ref-qualified and overloaded members need
+ * an explicit member-pointer expression or a hand-written wrapper.
  */
 #ifndef SKL_ABIX_INTERFACE_DECLARATION_H
 #define SKL_ABIX_INTERFACE_DECLARATION_H
@@ -113,7 +115,10 @@ namespace skl::abix::poly {
 template<auto Member>
 struct member_adapter;
 
-template<typename R, typename C, typename... Args, R (C::*Member)(Args...)>
+// A single `noexcept(Noex)` parameter covers both throwing and non-throwing
+// members. Separate `const` and `const noexcept` specializations are ambiguous
+// under Clang's partial-ordering rules.
+template<typename R, typename C, typename... Args, bool Noex, R (C::*Member)(Args...) noexcept(Noex)>
 struct member_adapter<Member> {
     using function_type = R (*)(const void *, Args...);
 
@@ -123,30 +128,11 @@ struct member_adapter<Member> {
     }
 };
 
-template<typename R, typename C, typename... Args, R (C::*Member)(Args...) const>
+template<typename R, typename C, typename... Args, bool Noex, R (C::*Member)(Args...) const noexcept(Noex)>
 struct member_adapter<Member> {
     using function_type = R (*)(const void *, Args...);
 
     static R invoke(const void *self, Args... args) {
-        return (static_cast<const C *>(self)->*Member)(std::forward<Args>(args)...);
-    }
-};
-
-template<typename R, typename C, typename... Args, R (C::*Member)(Args...) noexcept>
-struct member_adapter<Member> {
-    using function_type = R (*)(const void *, Args...) noexcept;
-
-    static R invoke(const void *self, Args... args) noexcept {
-        auto *object = const_cast<C *>(static_cast<const C *>(self));
-        return (object->*Member)(std::forward<Args>(args)...);
-    }
-};
-
-template<typename R, typename C, typename... Args, R (C::*Member)(Args...) const noexcept>
-struct member_adapter<Member> {
-    using function_type = R (*)(const void *, Args...) noexcept;
-
-    static R invoke(const void *self, Args... args) noexcept {
         return (static_cast<const C *>(self)->*Member)(std::forward<Args>(args)...);
     }
 };
