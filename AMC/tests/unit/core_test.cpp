@@ -1276,12 +1276,12 @@ int main() {
                 m.interface_methods[0].signature.lo, m.interface_methods[0].signature.hi};
             const skl::abix::poly::InterfaceMethodHash sig1{
                 m.interface_methods[1].signature.lo, m.interface_methods[1].signature.hi};
-            const skl::abix::util::StaticArray keys = {
+            const skl::mics::utils::array keys = {
                 skl::abix::poly::InterfaceMethodKey{sig1, 1},
                 skl::abix::poly::InterfaceMethodKey{sig0, 0},
             };
             const skl::abix::poly::InterfaceId by_slot = skl::abix::poly::interface_id("IRenderer", 1, keys);
-            const skl::abix::util::StaticArray ordered = {sig0, sig1};
+            const skl::mics::utils::array ordered = {sig0, sig1};
             const skl::abix::poly::InterfaceId by_signatures = skl::abix::poly::interface_id("IRenderer", 1, ordered);
             const skl::abix::poly::InterfaceId by_variadic = skl::abix::poly::interface_id("IRenderer", 1, sig0, sig1);
             check(by_slot.lo == iface.id.lo
@@ -1311,7 +1311,7 @@ int main() {
             const amc::Hash128 amc_fixed = amc::interface_identity("IRenderer", 1, fixed_signatures);
             check(amc_fixed.lo == 0xB25E9B1A9FDB63AFULL && amc_fixed.hi == 0xB903D3C743AFC513ULL,
                 "interface identity fixed vector (AMC)");
-            const skl::abix::util::StaticArray abix_fixed = {
+            const skl::mics::utils::array abix_fixed = {
                 skl::abix::poly::InterfaceMethodHash{0x1111111111111111ULL, 0x2222222222222222ULL},
                 skl::abix::poly::InterfaceMethodHash{0x3333333333333333ULL, 0x4444444444444444ULL},
             };

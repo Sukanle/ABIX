@@ -280,7 +280,7 @@ TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter 
     constexpr skl::abix::model::TypeId params[] = {i32, i32};
 
     constexpr auto by_pointer = skl::abix::poly::method_signature("resize", v, params, 2);
-    constexpr auto by_array = skl::abix::poly::method_signature("resize", v, skl::abix::util::StaticArray{i32, i32});
+    constexpr auto by_array = skl::abix::poly::method_signature("resize", v, skl::mics::utils::array{i32, i32});
     constexpr auto by_variadic = skl::abix::poly::method_signature("resize", v, i32, i32);
 
     STATIC_REQUIRE(by_pointer == by_array);

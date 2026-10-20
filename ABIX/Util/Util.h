@@ -16,7 +16,6 @@
 #ifndef SKL_ABIX_UTIL_H
 #define SKL_ABIX_UTIL_H
 
-#include "ABIX/Util/Array.h"    // IWYU pragma: keep
 #include "ABIX/Util/Atomic.h"   // IWYU pragma: keep
 #include "ABIX/Util/Config.h"   // IWYU pragma: keep
 #include "ABIX/Util/Hash.h"     // IWYU pragma: keep

@@ -22,7 +22,7 @@
 #include <type_traits>
 
 #include "ABIX/Model/ABI.h"
-#include "ABIX/Util/Array.h"
+#include "mics/utils/array.h"
 
 // ABIX Interface layer — the cross-language interface contract.
 //
@@ -134,10 +134,10 @@ constexpr InterfaceId interface_id(
 // already ordered by slot. This is exactly the byte string and algorithm
 // `AMC::interface_identity` hashes, so a hand-written provider and AMC derive
 // the same id. `name` must be the same canonical spelling AMC uses.
-//   interface_id("Shape", 1, util::StaticArray{sig_a, sig_b})
+//   interface_id("Shape", 1, mics::utils::array{sig_a, sig_b})
 template<size_t Count>
 constexpr InterfaceId interface_id(
-    const char *name, uint32_t version, const util::StaticArray<InterfaceMethodHash, Count> &signatures) noexcept {
+    const char *name, uint32_t version, const mics::utils::array<InterfaceMethodHash, Count> &signatures) noexcept {
     return interface_id(name, version, signatures.data(), Count);
 }
 
@@ -147,9 +147,9 @@ template<typename... Signatures,
     typename = std::enable_if_t<(std::is_same<Signatures, InterfaceMethodHash>::value && ...)>>
 constexpr InterfaceId interface_id(const char *name, uint32_t version, Signatures... signatures) noexcept {
     if constexpr (sizeof...(Signatures) == 0) {
-        return interface_id(name, version, util::StaticArray<InterfaceMethodHash, 0>{});
+        return interface_id(name, version, mics::utils::array<InterfaceMethodHash, 0>{});
     } else {
-        const util::StaticArray<InterfaceMethodHash, sizeof...(Signatures)> list = {signatures...};
+        const mics::utils::array<InterfaceMethodHash, sizeof...(Signatures)> list = {signatures...};
         return interface_id(name, version, list);
     }
 }
@@ -157,12 +157,12 @@ constexpr InterfaceId interface_id(const char *name, uint32_t version, Signature
 // Overload for a method list that is not yet ordered: the entries are sorted by
 // slot before hashing, matching `AMC::interface_hash`. `ABIX_DECLARE_INTERFACE`
 // uses this so the method list can be written in any order.
-//   interface_id("Shape", 1, util::StaticArray{InterfaceMethodKey{...}, ...})
+//   interface_id("Shape", 1, mics::utils::array{InterfaceMethodKey{...}, ...})
 template<size_t Count>
 constexpr InterfaceId interface_id(
-    const char *name, uint32_t version, const util::StaticArray<InterfaceMethodKey, Count> &methods) noexcept {
+    const char *name, uint32_t version, const mics::utils::array<InterfaceMethodKey, Count> &methods) noexcept {
     InterfaceMethodKey sorted[Count == 0 ? 1 : Count] = {};
-    util::StaticArray<InterfaceMethodHash, Count> signatures = {};
+    mics::utils::array<InterfaceMethodHash, Count> signatures = {};
     for (size_t i = 0; i < Count; ++i)
         sorted[i] = methods[i];
     for (size_t i = 1; i < Count; ++i) {
@@ -204,11 +204,17 @@ constexpr InterfaceMethodHash method_signature(
 }
 
 // Inline parameter list, zero allocation:
-//   method_signature("resize", void_id, util::StaticArray{i32, i32})
+//   method_signature("resize", void_id, mics::utils::array{i32, i32})
 template<size_t Count>
 constexpr InterfaceMethodHash method_signature(
-    const char *name, model::TypeId return_type, const util::StaticArray<model::TypeId, Count> &parameters) noexcept {
+    const char *name, model::TypeId return_type, const mics::utils::array<model::TypeId, Count> &parameters) noexcept {
     return method_signature(name, return_type, parameters.data(), Count);
+}
+
+constexpr InterfaceMethodHash method_signature(const char *name, model::TypeId return_type,
+    const mics::utils::array<mics::utils::empty_element, 0> &parameters) noexcept {
+    (void)parameters;
+    return method_signature(name, return_type, nullptr, 0);
 }
 
 // Same inline form with an explicit count (the declaration macro passes one).
@@ -216,14 +222,14 @@ constexpr InterfaceMethodHash method_signature(
 // entry shape uniform.
 template<size_t Count>
 constexpr InterfaceMethodHash method_signature(const char *name, model::TypeId return_type,
-    const util::StaticArray<model::TypeId, Count> &parameters, size_t) noexcept {
+    const mics::utils::array<model::TypeId, Count> &parameters, size_t) noexcept {
     return method_signature(name, return_type, parameters.data(), Count);
 }
 
 // Variadic parameter list, zero allocation:
 //   method_signature("resize", void_id, i32, i32)
 // The `enable_if` keeps this overload out of the pointer + count calls and the
-// `util::StaticArray` form; a non-TypeId argument is a compile error, not a silent
+// `mics::utils::array` form; a non-TypeId argument is a compile error, not a silent
 // conversion.
 template<typename... Params, typename = std::enable_if_t<(std::is_same<Params, model::TypeId>::value && ...)>>
 constexpr InterfaceMethodHash method_signature(
