@@ -1401,6 +1401,74 @@ if (shape.resize(resized_out, width, height) == skl::abix::poly::InterfaceStatus
 - `ret_t` 不能是 `void`：检查形式需要 `ret_t& out`。无返回值的方法请使用 AMC 生成的代理或手写代理。
 - 代理方法的参数类型是从**调用点实参**经 `std::decay_t<Args>...` 推导出来的，宏本身并不知道契约里的 C++ 参数类型。因此调用时应传入与 adapter 原生签名一致的类型（例如 `int32_t` 变量，而不是 `double` 或大小不同的整数）。类型不一致时不会在宏层面报错，但会构造出错误的函数指针类型。
 
+#### 3.1 从现有类成员函数生成适配器
+
+如果 provider 已经有普通 C++ 类，不想再为每个方法手写 `R fn(const void*, ...)` 适配器，可以用：
+
+```cpp
+SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot_name, member_pointer_expression)
+```
+
+它生成一条 `InterfaceMethod`，内部用 `member_adapter<Member>::invoke` 转发到成员函数。例如：
+
+```cpp
+struct Box {
+    int32_t width;
+    int32_t height;
+
+    int32_t area() const noexcept { return width * height; }
+
+    int32_t resize(int32_t w, int32_t h) noexcept {
+        width = w;
+        height = h;
+        return width * height;
+    }
+};
+```
+
+接口契约仍然由 `Traits` 描述，slot 名来自 `Traits::slots`：
+
+```cpp
+const InterfaceMethod methods[] = {
+    SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, area, &Box::area),
+    SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, resize, &Box::resize),
+};
+
+InterfaceRegistry<4> registry;
+if (registry.add({ShapeTraits::id, box_id, methods, 2, ShapeTraits::version, 0})
+    != InterfaceStatus::ok)
+    return 1;
+
+Box box{3, 4};
+Shape shape(registry, &box, box_id);
+if (!shape.valid()) return 2;
+
+const int32_t area = shape.area();                 // Box::area()
+const int32_t resized = shape.resize(800, 600);   // Box::resize()
+```
+
+生成的适配器函数形状是：
+
+```cpp
+int32_t invoke(const void *self, int32_t width, int32_t height);
+```
+
+规则与限制：
+
+- 支持 `const` / 非 `const` 成员函数，以及它们的 `noexcept` 版本。
+- 非 `const` 成员函数会从 `const void*` 句柄内部 `const_cast` 回 `T*`；`const` 成员函数保持 `const T*`。
+- 适配器固定使用 `const void*` 首参，正好匹配 `SKL_ABIX_INTERFACE_DECLARE` 生成的 proxy。若手写 proxy 的首参是 `void*`，请手写 wrapper。
+- 不处理 `volatile`、引用限定成员（`&` / `&&`）以及重载。重载需要显式成员指针转换，并把整个表达式用括号包住：
+
+  ```cpp
+  SKL_ABIX_INTERFACE_MEMBER_ENTRY(
+      ShapeTraits, resize,
+      (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
+  ```
+
+- 它只生成 adapter entry，不生成 `Traits`、方法签名或 `id`。这些仍来自 `SKL_ABIX_INTERFACE_DECLARE` / AMC。
+- `slot_name` 是接口槽位字段名，可以和成员函数名不同；`member_pointer_expression` 决定实际调用的成员。
+
 #### 4. 注册与绑定：完整示例
 
 宏只生成声明；provider 仍要提供 adapter，并把生成的 `id` / `signatures` / `slots` 注册到 `InterfaceRegistry`：
@@ -1556,6 +1624,7 @@ SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS);
 | `SKL_ABIX_INTERFACE_SLOT(fn, ...)` | 在 `Slots` 中生成 `uint32_t fn;` |
 | `SKL_ABIX_INTERFACE_SLOTS(list)` | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()` |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)` | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式 |
+| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)` | 生成一条 `InterfaceMethod`，用 `member_adapter<member>::invoke` 适配现有成员函数 |
 | `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)` | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前 |
 | `SKL_ABIX_INTERFACE_DATA(type, list, ...)` | 生成继承 `InterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前 |
 | `SKL_ABIX_INTERFACE_DECLARE(type, list, ver, ...)` | `TRAITS` + `DATA`，属性同时传给两者 |

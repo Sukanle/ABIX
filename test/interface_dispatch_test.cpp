@@ -276,6 +276,54 @@ TEST_CASE("an interface proxy binds, verifies and calls through cached entries")
     REQUIRE_FALSE(missing.valid());
 }
 
+namespace {
+
+constexpr auto member_i32 = skl::abix::model::canonical_type_id("prim:i32");
+
+struct MemberBox {
+    int32_t width;
+    int32_t height;
+
+    int32_t area() const noexcept { return width * height; }
+    int32_t resize(int32_t w, int32_t h) noexcept {
+        width = w;
+        height = h;
+        return width * height;
+    }
+};
+
+constexpr TypeId member_box_id{0x31, 0x32};
+
+}   // namespace
+
+#define MEMBER_SHAPE_METHODS(X)      \
+    X(area, int32_t, member_i32, {}) \
+    X(resize, int32_t, member_i32, {member_i32, member_i32})
+
+SKL_ABIX_INTERFACE_DECLARE(MemberShape, MEMBER_SHAPE_METHODS, 1);
+
+TEST_CASE("member functions can be registered directly through the member-entry macro") {
+    const InterfaceMethod methods[] = {
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(MemberShapeTraits, area, &MemberBox::area),
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(MemberShapeTraits, resize, &MemberBox::resize),
+    };
+
+    InterfaceRegistry<4> registry;
+    REQUIRE(registry.add({MemberShapeTraits::id, member_box_id, methods, 2, MemberShapeTraits::version, 0})
+            == InterfaceStatus::ok);
+
+    MemberBox box{3, 4};
+    MemberShape shape(registry, &box, member_box_id);
+    REQUIRE(shape.valid());
+    REQUIRE(shape.area() == 12);
+
+    const int32_t width = 8;
+    const int32_t height = 6;
+    REQUIRE(shape.resize(width, height) == 48);
+    REQUIRE(box.width == width);
+    REQUIRE(box.height == height);
+}
+
 TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter lists") {
     constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
     constexpr auto v = skl::abix::model::canonical_type_id("prim:void");

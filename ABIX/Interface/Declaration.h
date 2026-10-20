@@ -76,6 +76,24 @@
  * it only when the generated Traits/proxy type is genuinely part of a DLL
  * boundary. Pass the same attribute to both half macros when using them
  * separately.
+ *
+ * Existing provider classes can supply adapter entries without hand-written
+ * thunks:
+ *
+ *   struct Box {
+ *       int32_t area() const noexcept;
+ *       int32_t resize(int32_t w, int32_t h) noexcept;
+ *   };
+ *
+ *   const InterfaceMethod methods[] = {
+ *       SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, area, &Box::area),
+ *       SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, resize, &Box::resize),
+ *   };
+ *
+ * `member_adapter<Member>::invoke` takes the const object handle first and
+ * forwards the member's own parameters. It supports const/non-const and
+ * noexcept members; volatile, ref-qualified and overloaded members need an
+ * explicit member-pointer expression or a hand-written wrapper.
  */
 #ifndef SKL_ABIX_INTERFACE_DECLARATION_H
 #define SKL_ABIX_INTERFACE_DECLARATION_H
@@ -84,6 +102,71 @@
 #include <utility>
 
 #include "ABIX/Interface/Proxy.h"   // IWYU pragma: keep
+
+namespace skl::abix::poly {
+
+// Adapters for existing C++ member functions. The generated function has the
+// interface adapter shape: the object handle first, then the member's own
+// parameters. A non-const member receives a const handle and removes const
+// internally; a const member keeps it. This matches the `const void*` first
+// parameter used by the declaration macros' generated proxies.
+template<auto Member>
+struct member_adapter;
+
+template<typename R, typename C, typename... Args, R (C::*Member)(Args...)>
+struct member_adapter<Member> {
+    using function_type = R (*)(const void *, Args...);
+
+    static R invoke(const void *self, Args... args) {
+        auto *object = const_cast<C *>(static_cast<const C *>(self));
+        return (object->*Member)(std::forward<Args>(args)...);
+    }
+};
+
+template<typename R, typename C, typename... Args, R (C::*Member)(Args...) const>
+struct member_adapter<Member> {
+    using function_type = R (*)(const void *, Args...);
+
+    static R invoke(const void *self, Args... args) {
+        return (static_cast<const C *>(self)->*Member)(std::forward<Args>(args)...);
+    }
+};
+
+template<typename R, typename C, typename... Args, R (C::*Member)(Args...) noexcept>
+struct member_adapter<Member> {
+    using function_type = R (*)(const void *, Args...) noexcept;
+
+    static R invoke(const void *self, Args... args) noexcept {
+        auto *object = const_cast<C *>(static_cast<const C *>(self));
+        return (object->*Member)(std::forward<Args>(args)...);
+    }
+};
+
+template<typename R, typename C, typename... Args, R (C::*Member)(Args...) const noexcept>
+struct member_adapter<Member> {
+    using function_type = R (*)(const void *, Args...) noexcept;
+
+    static R invoke(const void *self, Args... args) noexcept {
+        return (static_cast<const C *>(self)->*Member)(std::forward<Args>(args)...);
+    }
+};
+
+}   // namespace skl::abix::poly
+
+// Build one InterfaceMethod entry from an existing member function. `slot_name`
+// is the field name in Traits::slots; `member` is a member-pointer expression:
+//
+//   const InterfaceMethod methods[] = {
+//       SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, area, &Box::area),
+//       SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, resize, &Box::resize),
+//   };
+//
+// For overloaded members, pass an explicit cast expression. The expression may
+// need surrounding parentheses when its type contains top-level commas.
+#define SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot_name, member)                              \
+    {Traits::signatures[Traits::slots.slot_name],                                               \
+        ::skl::abix::poly::interface_entry(&::skl::abix::poly::member_adapter<member>::invoke), \
+        Traits::slots.slot_name, 0}
 
 // Pack a semantic version into one unsigned integer:
 //   major * 10'000'000 + minor * 100'000 + patch
