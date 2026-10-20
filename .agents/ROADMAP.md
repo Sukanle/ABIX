@@ -77,6 +77,31 @@ These are follow-up goals after the 0.2.0 cross-language milestone. They are not
 - deeper debugger integration (for example LLDB go-to-definition via Source
   Origin) — LLDB C++ plugin delivered, Python helper delivered.
 
+### P1 feat — AMC Interface Devirtualization (v0.3.0)
+
+ABIX Interface keeps its explicit versioned contract and runtime dispatch as the
+correctness baseline. This feature is a compile-time AMC optimization: use the
+Clang AST and ABIX metadata to prove the adapter/target reachable from a call
+site, then emit a direct adapter or native call when safe and fall back to the
+existing dispatch otherwise. It is not a new runtime mechanism and it does not
+change `.abix` contract semantics.
+
+Plan and analysis: [`memory/amc-interface.md`](../memory/amc-interface.md).
+
+- **P0** — reproducible baseline (direct / true vtable / ABIX unique+shared /
+  `pro::proxy`) and static `KnownTarget` direct-adapter calls.
+- **P1** — one target-determinism analysis for unique and shared proxies,
+  cross-function tracking and conservative alias fallback.
+- **P2** — guarded speculative devirtualization that preserves rebinding,
+  module unload, lifetime and concurrency semantics.
+- **P3** — whole-program / LTO target sets, with closed and extensible provider
+  sets kept distinct.
+
+Acceptance: a `KnownTarget` call site has no ABIX slot indirect dispatch and
+unchanged behavior; unknown/rebindable sites keep the dynamic path; diagnostics
+explain why a site was not optimized. See the plan for the full constraints and
+benchmark matrix.
+
 ### P2 — ecosystem
 
 - package ecosystem;

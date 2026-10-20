@@ -64,6 +64,29 @@ Target areas, not hard commitments:
 * Deeper debugger / editor integration (LLDB go-to-definition, Source Origin).
 * Application areas.
 
+#### feat — AMC Interface Devirtualization (v0.3.0)
+
+ABIX Interface deliberately keeps an explicit, versioned, cross-module contract; its runtime dispatch is the correctness baseline, not the optimization target. The v0.3.0 feature is a compile-time AMC optimization: use the Clang AST and ABIX metadata to prove which adapter/target a call site can reach, then emit a direct adapter or native call where that is safe, leaving the existing dispatch as the fallback. The goal is not to turn ABIX into another vtable mechanism and not to add a new runtime dispatch path.
+
+Plan and analysis: [`memory/amc-interface.md`](../../memory/amc-interface.md).
+
+Priorities:
+
+* **P0 — baseline + static `KnownTarget`**. Fix a reproducible benchmark, inspect LLVM IR/assembly for direct, virtual, ABIX unique/shared and `pro::proxy`, then prove the single-provider, fixed-binding case and replace its ABIX slot dispatch with a direct adapter call.
+* **P1 — unified target analysis**. Apply the same target-determinism rules to `UniqueInterfaceProxy` and `SharedInterfaceProxy`; track proxies across functions, handle aliasing conservatively, and fall back to dispatch when the target is not provable.
+* **P2 — guarded speculative devirtualization**. Only for hot call sites with a stable target identity: emit a target guard, fast direct path and the original dynamic fallback. A failed guard must preserve rebinding, module unload and lifecycle semantics.
+* **P3 — whole-program / LTO integration**. Combine interface implementations and adapters across translation units, distinguish closed implementation sets from dynamically extensible providers, and reuse LLVM LTO/ThinLTO where deployment makes it valid.
+
+Acceptance:
+
+* the baseline explains every call path (direct, true vtable, ABIX adapter/unique/shared, `pro::proxy`) at IR/assembly level and reproduces its trend;
+* for `KnownTarget` call sites, the ABIX slot indirect dispatch is gone and observable behavior is unchanged;
+* Unique and Shared use the same target-determinism rules, and dynamic/unknown bindings keep the original path;
+* guarded paths preserve rebinding, module unload, object lifetime, concurrency and error reporting;
+* AMC can explain why a call site was not optimized (unknown alias, rebindable binding, invisible implementation, lifecycle constraint).
+
+Explicit non-goals: changing `.abix` contract semantics, making `Unique` the boundary of the optimization, assuming the build-time provider set is the complete runtime set, or starting with an LLVM pass before the target analysis is sound.
+
 ### Version independence
 
 The ABIX specification version, the AMC toolchain version, and application versions are independent dimensions. Toolchain features (Rust, AI, Agent, LSP) never require a format version change by themselves. See [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §14.1.

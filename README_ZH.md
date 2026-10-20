@@ -527,7 +527,7 @@ ABIX 的发布按项目阶段划分，而不是功能清单：
 
 - **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (当前，pre-1.0/unstable)
 - **ABIX 0.2.0 — Cross-language** (进行中；Rust provider 与 Zig backend 已交付)
-- **ABIX 0.3.0 — Ecosystem** (AI/Agent 集成、LSP、包管理)
+- **ABIX 0.3.0 — Ecosystem** (AMC Interface 去分派优化、AI/Agent 集成、LSP、包管理)
 
 ```mermaid
 graph LR

@@ -64,6 +64,29 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * 更深的调试器/编辑器集成 (LLDB go-to-definition、Source Origin)。
 * 应用领域。
 
+#### feat — AMC 多态优化 / Interface Devirtualization（v0.3.0）
+
+ABIX Interface 刻意保留显式、版本化、跨模块的契约；它的运行时分派是正确性基线，而不是优化目标。v0.3.0 的新特性是 AMC 的编译期优化：利用 Clang AST 与 ABIX 元数据证明一个调用点可能到达的 adapter/目标，在安全时直接生成 adapter 或原生调用；无法证明时仍走现有分派。目标不是把 ABIX 变成另一套 vtable 机制，也不是增加新的运行时分派路径。
+
+计划与分析见 [`memory/amc-interface.md`](../../memory/amc-interface.md)。
+
+优先级：
+
+* **P0 — 基准 + 静态 `KnownTarget`**：固定可复现的基准，检查 direct、virtual、ABIX unique/shared 与 `pro::proxy` 的 LLVM IR/汇编；先证明单 provider、固定绑定场景，把该调用点的 ABIX slot 间接分派替换为直接 adapter 调用。
+* **P1 — 统一目标分析**：让 `UniqueInterfaceProxy` 与 `SharedInterfaceProxy` 使用同一套目标确定性规则；支持跨函数追踪 proxy，对未知别名保守回退。
+* **P2 — 守卫式投机去分派**：只用于目标稳定且值得优化的热点调用点：生成目标守卫、直接快速路径和原有动态回退。守卫失败时必须保留重绑定、模块卸载与生命周期语义。
+* **P3 — 全程序 / LTO 集成**：跨翻译单元汇总接口实现与 adapter，区分封闭实现集合与可动态扩展的 provider，并在部署允许时复用 LLVM LTO/ThinLTO。
+
+验收标准：
+
+* 基准能在 IR/汇编层解释每条调用路径（direct、真实 vtable、ABIX adapter/unique/shared、`pro::proxy`），且趋势可复现；
+* `KnownTarget` 调用点不再存在 ABIX slot 间接分派，行为与原路径一致；
+* Unique 与 Shared 使用相同的目标确定性规则，动态/未知绑定保留原路径；
+* 守卫路径保持重绑定、模块卸载、对象生命周期、并发与错误报告语义；
+* AMC 能解释某个调用点为何未优化（未知别名、可重绑定、实现不可见、生命周期约束等）。
+
+明确不做：修改 `.abix` 契约语义；把 `Unique` 当作优化边界；把构建时的 provider 集合当作运行时完整集合；在目标分析可靠之前先写 LLVM Pass。
+
 ### 版本独立性
 
 ABIX 规范版本、AMC 工具链版本与应用版本是相互独立的维度。工具链功能（Rust、AI、Agent、LSP）本身永远不会要求格式版本变更。见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §14.1。

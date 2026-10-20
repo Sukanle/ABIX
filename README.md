@@ -527,7 +527,7 @@ ABIX releases are project stages, not feature lists:
 
 - **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (current, pre-1.0/unstable)
 - **ABIX 0.2.0 — Cross-language** (in progress; the Rust provider and Zig backend are delivered)
-- **ABIX 0.3.0 — Ecosystem** (AI/agent integration, LSP, package management)
+- **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, AI/agent integration, LSP, package management)
 
 ```mermaid
 graph LR
