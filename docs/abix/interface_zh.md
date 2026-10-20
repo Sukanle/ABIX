@@ -839,6 +839,8 @@ hash_text("ABIX-INTERFACE:" + 规范名 + ":" + 版本 + 按槽位排序的签�
 
 在 64 位目标上，`InterfaceImplementation` 为 56 字节：两个 128 位 ID、方法表指针、`method_count`、`version`、保留的 `flags` 以及填充。因此 `InterfaceRegistry<8>` 为 464 字节（`8 * 56 + count/lookups`）。这是绑定期内存；通常一个共享 registry 比每个 controller 各带一个更合适。自定义紧凑记录可以去掉未使用的 `flags`（每项 48 字节）或减小容量，但会改变公共记录布局。
 
+`InterfaceRegistry` **不做内部同步**。`add()` 必须由调用方串行化，且不能与 `find()` 并发。registry 填充完成并且不再修改之后，并发调用 `find()` / `find_newest()` / `available()` 是安全的：它们只读取条目数组，诊断用的 lookup 计数器是 relaxed atomic。原子计数器并不会让并发 `add()` 变安全；运行时注册 provider 应使用带模块生命周期/lease 管理的 `ModuleRegistry`，并且其注册调用仍需调用方串行化。
+
 | 方法                                              | 返回值                           | 说明                                                                                                                                                                                           |
 | ------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `add(impl)`                                       | `InterfaceStatus`                | 注册一个实现。重复的 `(concrete_type, interface_id, version)` 返回 `duplicate_implementation`（冲突而非静默覆盖）；容量满返回 `capacity_exceeded`；id 为空或声明方法却空表返回 `invalid_table` |

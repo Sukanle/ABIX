@@ -18,6 +18,8 @@
 
 #include <stddef.h>
 
+#include <atomic>
+
 #include "ABIX/Interface/Contract.h"
 
 namespace skl::abix::poly {
@@ -25,6 +27,12 @@ namespace skl::abix::poly {
 // Binding-time registry of interface implementations. Adding and resolving are
 // setup work: a linear scan is fine because it never runs on the call path.
 // Capacity is fixed and allocation-free, like the type Registry.
+//
+// Threading: the registry is not internally synchronized. `add()` must be
+// serialized by the caller, and no `add()` may race a `find()`. Once the
+// registry has been populated and is no longer mutated, concurrent `find()`
+// calls are safe; the diagnostic lookup counter is a relaxed atomic so it does
+// not introduce a data race on that read-only path.
 template<size_t Capacity = 64>
 class InterfaceRegistry {
 public:
@@ -46,7 +54,7 @@ public:
     // newest registered one; a non-zero version requires an exact match.
     const InterfaceImplementation *find(
         model::TypeId concrete_type, InterfaceId interface_id, uint32_t version = 0) const noexcept {
-        ++_lookups;
+        _lookups.fetch_add(1, std::memory_order_relaxed);
         if (version == 0) return find_newest(concrete_type, interface_id);
         return find_exact(concrete_type, interface_id, version);
     }
@@ -77,8 +85,9 @@ public:
         return index < _count ? &_entries[index] : nullptr;
     }
     // Diagnostic only: how many find() calls this registry has served. Lets a
-    // test prove that resolve-then-call performs exactly one lookup.
-    size_t lookup_count() const noexcept { return _lookups; }
+    // test prove that resolve-then-call performs exactly one lookup. The
+    // counter is relaxed: it is not a synchronization or ordering primitive.
+    size_t lookup_count() const noexcept { return _lookups.load(std::memory_order_relaxed); }
 
 private:
     const InterfaceImplementation *find_exact(
@@ -93,7 +102,7 @@ private:
 
     InterfaceImplementation _entries[Capacity == 0 ? 1 : Capacity]{};
     size_t _count = 0;
-    mutable size_t _lookups = 0;
+    mutable std::atomic<size_t> _lookups{0};
 };
 
 }   // namespace skl::abix::poly
