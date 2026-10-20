@@ -185,6 +185,117 @@ int main() {
 - **跨 DLL / 跨语言 / 需要「面向接口、不认具体类型」**：用 Interface。消费者代码里可以只出现 `InterfaceId`（见[示例 2](#示例)的跨模块路径），provider 换了具体类型也无需重编消费者。
 - **两者共存**：ABIX 不要求你放弃 C++ 语义——provider 内部照常用虚函数，只在边界处用适配器把某个具体类型的方法绑定到接口槽位（AMC 的 `[[interface]]` / `[[implements]]` 声明）。接口可以像 C++ 抽象类一样在头文件里声明：`[[interface]]` 定义契约、`[[implements]]` 建立绑定，`amc generate -l cpp` 生成 `k<Name>Interface` / `k<Name>Version` / `<Name>_<method>_fn` / 带类型化 `Slots` 表的 `Traits`，消费者据此封装出 `Shape s = Shape::bind(...); s.area();` 这样的用法。
 
+## ABIX Interface 与 ngcpp/proxy 的对比
+
+[ngcpp/proxy](https://github.com/ngcpp/proxy)（前身是 Microsoft `proxy`）与 ABIX Interface 解决的是同一类大问题——不要求实现类型进入类继承体系，也能进行运行时多态——但两者把抽象放在不同的边界上。
+
+ABIX Interface 建模的是**独立、带版本、跨语言的接口契约**：`InterfaceId`、有序方法签名、按 slot 缓存的 adapter，以及显式的 bind 步骤。ngcpp/proxy 建模的是 **C++20 facade**：`pro::proxy<Facade>` 像指针一样使用，facade 由 dispatch 组合出 convention，任何在编译期满足这些表达式的类型都可以作为实现。
+
+下面的两个示例都使用各自库的宏写法，并且都返回 `area == 12`。
+
+<table>
+<tr>
+<th align="left">ABIX Interface：契约宏 + 成员适配</th>
+<th align="left">ngcpp/proxy：facade + dispatch 宏</th>
+</tr>
+<tr>
+<td valign="top" markdown="1">
+
+```cpp
+#include "ABIX/Interface/Declaration.h"
+
+using namespace skl::abix::poly;
+constexpr auto i32 =
+    skl::abix::model::canonical_type_id("prim:i32");
+
+#define SHAPE_METHODS(X) X(area, int32_t, i32, {})
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+
+struct Box {
+    int32_t width;
+    int32_t height;
+    int32_t area() const noexcept {
+        return width * height;
+    }
+};
+
+constexpr skl::abix::model::TypeId box_id{0x51, 0x01};
+
+int main() {
+    const InterfaceMethod methods[] = {
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(
+            ShapeTraits, area, &Box::area),
+    };
+
+    InterfaceRegistry<4> registry;
+    registry.add({ShapeTraits::id, box_id, methods,
+        1, ShapeTraits::version, 0});
+
+    Box box{3, 4};
+    Shape shape(registry, &box, box_id);
+    return shape.valid() && shape.area() == 12 ? 0 : 1;
+}
+```
+
+宏负责生成 `Traits`、`signatures`、零基 `Slots` 和 `Shape` 代理；`SKL_ABIX_INTERFACE_MEMBER_ENTRY` 把 `Box::area` 变成 adapter entry，再由 registry 绑定具体 `TypeId`。
+
+</td>
+<td valign="top" markdown="1">
+
+```cpp
+#include <proxy/proxy.h>
+
+PRO_DEF_MEM_DISPATCH(MemArea, area);
+
+struct Shape : pro::facade_builder
+    ::add_convention<MemArea, int() const noexcept>
+    ::build {};
+
+struct Box {
+    int width;
+    int height;
+    int area() const noexcept {
+        return width * height;
+    }
+};
+
+int main() {
+    Box box{3, 4};
+    pro::proxy<Shape> shape = &box;
+    return shape->area() == 12 ? 0 : 1;
+}
+```
+
+`PRO_DEF_MEM_DISPATCH` 生成 `area` 成员表达式的 dispatch；`Shape` 是 facade builder 组合出的 facade。用 `&box` 构造 proxy 时完成编译期适配检查，`shape->area()` 通过类型擦除后的指针调用成员。
+
+</td>
+</tr>
+</table>
+
+两者的宏职责不同：ABIX 的 `SKL_ABIX_INTERFACE_DECLARE` 生成契约数据（`id`、`signatures`、`Slots`）和代理类型；`PRO_DEF_MEM_DISPATCH` 只生成某一个成员表达式的 dispatch，facade 由 `facade_builder` 组合。ABIX 需要 provider 显式注册方法表；ngcpp/proxy 则是在用指针构造 proxy 时完成编译期适配检查。
+
+### 主要区别
+
+| 维度 | ABIX Interface | ngcpp/proxy |
+|------|----------------|-------------|
+| 抽象单位 | `InterfaceId` + 版本 + 有序方法签名 + 类型化 slot | 由 convention / dispatch / overload 组合出的 facade |
+| provider 适配 | 显式 `InterfaceRegistry` 注册 + provider 持有的 adapter 表 | 编译期隐式满足：传入的指针类型必须能通过 facade 检查 |
+| 绑定方式 | 运行时 `bind` / `bind_methods` 解析一次，之后使用缓存的 slot | 没有 registry 或 resolve 步骤，直接从指针构造 proxy |
+| 分派方式 | 按 slot 缓存的 adapter，做原生间接调用 | facade 生成的 dispatch/accessor，通过类型擦除指针调用 |
+| 版本 | 显式契约版本；支持精确/最新版本选择及 `version_mismatch` | facade 类型由源码定义；没有运行时版本协商 |
+| 跨语言 / 跨 DLL | 固定 C ABI、`abix_module_query_v1`、lease，支持跨语言消费者 | 仅 C++；facade 与实现共享同一 C++ ABI/工具链 |
+| 所有权 | 借用的对象句柄；module lease；owned handle 由独立 Owner ABI 管理 | 裸指针（不拥有）、`unique_ptr` / `shared_ptr`、或 `make_proxy` 原位存储 |
+| 失败模型 | `InterfaceStatus`（`interface_not_found`、`version_mismatch`、`signature_mismatch` 等） | 编译期约束；可选 `rtti` / `bad_proxy_cast`；可配置 weak dispatch |
+| 重载 | 不同 slot/签名；成员重载需要显式成员指针转换 | 原生 overload resolution，支持一个 convention 下多个 overload |
+| 生命周期 | provider 对象必须比 proxy 活得久；跨模块时 lease 保证 adapter 仍映射 | 由指针类型表达：裸指针不拥有，智能指针拥有，`make_proxy` 可原位存储 |
+| 依赖 | C++17，header-only 的 Interface 层 | C++20，header-only 的 facade/pointer 库 |
+
+### 如何选择
+
+- 选择 **ABIX Interface**：边界是 DLL/module 或其它语言；契约需要显式身份与版本；调用前必须校验方法签名；provider 对象已经存在且不能修改。
+- 选择 **ngcpp/proxy**：整个程序是 C++20；需要指针式所有权变化（裸指针、`unique_ptr`、`shared_ptr`、原位值）；需要原生重载/运算符 convention；希望只靠编译期 facade 检查，不需要 registry。
+- 两者可以组合：跨边界契约层使用 ABIX，内部 C++ 值/所有权多态使用 `pro::proxy`。ABIX 提供 ABI 和带版本的契约，ngcpp/proxy 提供纯 C++ 的指针抽象。
+
 ## 快速开始
 
 三步：**注册**（把「某具体类型实现某接口」写入注册表）→ **解析**（一次性查表并缓存适配器入口） → **调用**（普通原生间接调用）。下面的完整程序不需要动态库。
@@ -1666,3 +1777,4 @@ SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS);
 - [`std.md`](std_zh.md) —— ABIX-STD 原语与 borrow/owned/copy 契约。
 - [`abic.md`](abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
 - [`without_amc.md`](without_amc_zh.md) —— 只依赖 header-only ABIX、不使用 AMC 工具链。
+- [ngcpp/proxy](https://github.com/ngcpp/proxy) —— C++20 facade/指针式运行时多态库（见上文对比）。

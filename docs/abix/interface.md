@@ -186,6 +186,119 @@ The difference is not whether polymorphism is possible, but **what carries it**:
 - **Across DLLs / across languages / "program to the interface, not the type"**: use Interface. A consumer can mention only `InterfaceId` (see the cross-module path in [Example 2](#examples)) and keep working when the provider changes its concrete type.
 - **They coexist**: ABIX does not ask you to give up C++ semantics — a provider keeps using virtual functions internally and binds one concrete type's methods to interface slots at the boundary only (AMC's `[[interface]]` / `[[implements]]` declarations). The interface can be declared in a header like a C++ abstract class: `[[interface]]` defines the contract, `[[implements]]` establishes the binding, and `amc generate -l cpp` emits `k<Name>Interface` / `k<Name>Version` / `<Name>_<method>_fn` / a `Traits` struct with a typed `Slots` table, so a consumer can wrap it as `Shape s = Shape::bind(...); s.area();`.
 
+## ABIX Interface vs ngcpp/proxy
+
+[ngcpp/proxy](https://github.com/ngcpp/proxy) (formerly Microsoft `proxy`) and ABIX Interface solve the same broad problem — runtime polymorphism without forcing the implementation type into a class hierarchy — but they put the abstraction at different boundaries.
+
+ABIX Interface models an **independent, versioned, cross-language contract**: an `InterfaceId`, ordered method signatures, slot-indexed adapters and an explicit bind step. ngcpp/proxy models a **C++20 facade**: a pointer-like `pro::proxy<Facade>` whose facade declares conventions built from dispatches, and whose implementation is anything that satisfies those expressions at compile time.
+
+Both examples below use their library's macro form and both return `area == 12`.
+
+<table>
+<tr>
+<th align="left">ABIX Interface: contract macro + member adapter</th>
+<th align="left">ngcpp/proxy: facade + dispatch macro</th>
+</tr>
+<tr>
+<td valign="top" markdown="1">
+
+```cpp
+#include "ABIX/Interface/Declaration.h"
+
+using namespace skl::abix::poly;
+constexpr auto i32 =
+    skl::abix::model::canonical_type_id("prim:i32");
+
+#define SHAPE_METHODS(X) X(area, int32_t, i32, {})
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+
+struct Box {
+    int32_t width;
+    int32_t height;
+    int32_t area() const noexcept {
+        return width * height;
+    }
+};
+
+constexpr skl::abix::model::TypeId box_id{0x51, 0x01};
+
+int main() {
+    const InterfaceMethod methods[] = {
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(
+            ShapeTraits, area, &Box::area),
+    };
+
+    InterfaceRegistry<4> registry;
+    registry.add({ShapeTraits::id, box_id, methods,
+        1, ShapeTraits::version, 0});
+
+    Box box{3, 4};
+    Shape shape(registry, &box, box_id);
+    return shape.valid() && shape.area() == 12 ? 0 : 1;
+}
+```
+
+The macro generates the `Traits`, `signatures`, zero-based `Slots` and the `Shape` proxy. `SKL_ABIX_INTERFACE_MEMBER_ENTRY` turns `Box::area` into an adapter entry; the registry binding supplies the concrete `TypeId`.
+
+</td>
+<td valign="top" markdown="1">
+
+```cpp
+#include <proxy/proxy.h>
+
+PRO_DEF_MEM_DISPATCH(MemArea, area);
+
+struct Shape : pro::facade_builder
+    ::add_convention<MemArea, int() const noexcept>
+    ::build {};
+
+struct Box {
+    int width;
+    int height;
+    int area() const noexcept {
+        return width * height;
+    }
+};
+
+int main() {
+    Box box{3, 4};
+    pro::proxy<Shape> shape = &box;
+    return shape->area() == 12 ? 0 : 1;
+}
+```
+
+`PRO_DEF_MEM_DISPATCH` generates the dispatch for the `area` member expression. `Shape` is a facade assembled from `facade_builder`; assigning `&box` performs the compile-time conformance check, and `shape->area()` invokes the erased member.
+
+</td>
+</tr>
+</table>
+
+The macro roles are different: ABIX's `SKL_ABIX_INTERFACE_DECLARE` generates the contract data (`id`, `signatures`, `Slots`) and the proxy type, while `PRO_DEF_MEM_DISPATCH` generates only the dispatch for one member expression and `facade_builder` composes the facade. In ABIX the provider must register a method table; in ngcpp/proxy constructing the proxy from the pointer is the conformance check.
+
+### Where they differ
+
+| Dimension | ABIX Interface | ngcpp/proxy |
+|-----------|----------------|-------------|
+| Abstraction unit | `InterfaceId` + version + ordered method signatures + typed slots | Facade type built from conventions, dispatches and overloads |
+| Provider conformance | Explicit `InterfaceRegistry` registration and a provider-owned adapter table | Implicit at compile time: the pointer type must satisfy the facade |
+| Binding | Runtime lookup once (`bind` / `bind_methods`), then cached slot entries | No registry or resolve step; the proxy is constructed from a pointer |
+| Dispatch | Slot-indexed native indirect call through a cached adapter | Facade-generated dispatch/accessor over a type-erased pointer |
+| Versioning | Explicit contract version; exact/newest selection; `version_mismatch` | Source-level facade definition; no runtime version negotiation |
+| Cross-language / cross-DLL | Stable C ABI, `abix_module_query_v1`, leases, cross-language consumers | C++ only; facade and implementation share the same C++ ABI/toolchain |
+| Ownership | Borrowed object handle; module `lease`; separate Owner ABI for owned handles | Raw pointer (non-owning), `unique_ptr` / `shared_ptr`, or in-place `make_proxy` |
+| Failure model | `InterfaceStatus` (`interface_not_found`, `version_mismatch`, `signature_mismatch`, ...) | Compile-time constraints; optional `rtti` / `bad_proxy_cast`; weak dispatch can be configured |
+| Overloads | Separate slots/signatures; explicit member-pointer cast for overloaded members | Native overload resolution across convention overloads |
+| Lifetime | Provider object must outlive the proxy; a module lease keeps a discovered adapter mapped | Encoded by the pointer type: raw is non-owning, smart pointers own, `make_proxy` may be in-place |
+| Requirements | C++17, header-only interface layer | C++20, header-only facade/pointer library |
+
+### Which to use
+
+- Choose **ABIX Interface** when the boundary is a DLL/module or a foreign language, when the contract needs an explicit identity and version, when method signatures must be verified before a call, or when the provider object already exists and must stay untouched.
+- Choose **ngcpp/proxy** when the whole program is C++20, when you want pointer-like ownership variants (`raw`, `unique_ptr`, `shared_ptr`, in-place values), native overload/operator conventions, and compile-time facade checking without a registry.
+- They compose: use ABIX at the cross-boundary contract layer, and use a `pro::proxy` internally for C++ value/ownership polymorphism. ABIX supplies the ABI and versioned contract; ngcpp/proxy supplies a rich C++-only pointer abstraction.
+
+
+
 ## Quick start
 
 Three steps: **register** (record "this concrete type implements this interface" in the registry) → **resolve** (look the binding up once and cache the adapter entries) → **call** (a plain native indirect call). The complete program below needs no shared library.
@@ -1675,3 +1788,4 @@ For those, use `amc generate -l cpp`, or write `Traits` and the proxy by hand fo
 - [`std.md`](std.md) — ABIX-STD primitives and the borrow/owned/copy contract.
 - [`abic.md`](abic.md) — `[[interface]]` / `[[implements]]` build declarations.
 - [`without_amc.md`](without_amc.md) — using the header-only runtime without the AMC toolchain.
+- [ngcpp/proxy](https://github.com/ngcpp/proxy) — C++20 facade/pointer runtime-polymorphism library (compared above).
