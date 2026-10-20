@@ -329,7 +329,7 @@ The non-intrusive proxies match a true vtable dispatch in this microbenchmark. A
 | ABIX `InterfaceRef`         |             `32 + 24N` | none                            |             152 |             176 |
 | ABIX `InterfaceRegistry<8>` |                      — | 464                             |       bind-time |       bind-time |
 
-`pro::proxy_view` is 16–24 bytes. The ABIX registry and shared table are setup/implementation storage, not per-object storage. For many objects, `SharedInterfaceProxy` is the vtable-like choice: one 24-byte handle per object plus one slot table per implementation. For a handful of objects, `UniqueInterfaceProxy` removes one indirection at `8N` extra bytes per object.
+`pro::proxy_view` is 16–24 bytes. The ABIX registry and shared table are setup/implementation storage, not per-object storage. For many objects, `SharedInterfaceProxy` is the memory-density choice: one 24-byte handle per object plus one slot table per implementation. For one/few objects, `UniqueInterfaceProxy` is self-contained and avoids the table lifetime contract; it is also required when different objects of the same type need different adapter tables.
 
 ```cpp
 SKL_ABIX_INTERFACE_DECLARE_BOTH(Shape, SHAPE_METHODS, 1);
@@ -1083,12 +1083,36 @@ The proxy stores only the compact `InterfaceSlotCache`: object handle, highest b
 
 There are two proxy layouts:
 
-| Layout                         | Per-object size | Storage                                                                      | Use when                                           |
-| ------------------------------ | --------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
-| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N`    | Inline slot entries in every proxy                                           | Few objects; one less indirection on the call path |
-| `SharedInterfaceProxy<Traits>` | `24`            | One `InterfaceSlotTable<N>` shared by all objects of the same implementation | Many objects; vtable-like memory behavior          |
+| Layout | Per-object size | Extra storage | Best for |
+|--------|----------------:|---------------|----------|
+| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N` | none | One/few objects; per-object method tables; no shared-table lifetime |
+| `SharedInterfaceProxy<Traits>` | `24` | `InterfaceSlotTable`: `8 * N + 8` per implementation | Many objects of the same implementation; a table built once and shared read-only |
 
-`SharedInterfaceProxy` still verifies signatures when the shared table is built, but the table keeps only adapter entries. The table must be built once and must outlive every proxy that points at it; after `build()` it is read-only and safe to share.
+**Performance is not the deciding factor.** Both layouts measure at about 0.75 ns for the method call in the latency benchmark above; the extra table load in shared mode is hidden by the indirect call. Choose based on ownership of the adapter table, binding flexibility and total memory.
+
+##### Unique advantages
+
+- **Self-contained**: the proxy stores its own slot entries. There is no extra object to keep alive and no risk of a dangling `InterfaceSlotTable`.
+- **Per-object binding**: each proxy can use a different provider method table, even for the same `(concrete_type, interface_id, version)`. This matters for multiple module instances, hot reload, or provider instances with different adapter tables.
+- **Simplest setup**: `Shape shape(registry, &object, concrete_id)` is the whole binding; no table build step or table lifetime contract.
+- **Smallest total for a single object**: the shared layout adds the `8 * N + 8` table, so one object is usually smaller with unique storage.
+
+##### Shared advantages
+
+- **24-byte objects regardless of method count**: the table grows with `N`, not with the number of objects.
+- **One table per implementation**: adapter entries can be placed in static/read-only storage and reused by any number of objects.
+- **Better memory density for collections**: controllers, devices, nodes and other many-instance objects benefit most.
+
+For `K` objects and `N` methods:
+
+```text
+Unique total = K * (24 + 8N)
+Shared total = K * 24 + (8N + 8)
+```
+
+Shared wins as soon as the table is amortized. For `N >= 2`, that is already true at `K = 2`; for `N = 1`, it ties at `K = 2` and wins from `K = 3`. Unique is the better choice only for a single object, a per-instance adapter table, or when the table's lifetime cannot be managed safely.
+
+`SharedInterfaceProxy` still verifies signatures when the shared table is built, but the table keeps only adapter entries. Build it once and keep it alive for every proxy that points at it; after `build()` it is read-only and safe to share.
 
 Use `SKL_ABIX_INTERFACE_DECLARE_BOTH` to generate both proxy classes (`Shape` and `SharedShape`), or `SKL_ABIX_INTERFACE_DECLARE_SHARED` for only the shared class:
 
@@ -1103,7 +1127,7 @@ if (make_shared_slot_table<ShapeTraits>(table, registry, box_id) != InterfaceSta
 Box first{3, 4};
 Box second{5, 6};
 
-Shape exclusive(registry, &first, box_id);   // inline entries
+Shape exclusive(registry, &first, box_id);   // self-contained entries
 SharedShape shared_a(table, &first);         // object + shared table
 SharedShape shared_b(table, &second);        // same table, different object
 ```

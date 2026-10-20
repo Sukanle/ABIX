@@ -71,6 +71,11 @@
  * alive for every proxy that uses it. Shared proxies are 24 bytes regardless of
  * method count; inline proxies are roughly 24 + 8 * method_count.
  *
+ * The layouts perform the same in the call microbenchmark. Choose unique for a
+ * self-contained handle, per-object adapter tables or a single/few objects;
+ * choose shared for many objects of one implementation, where the table is
+ * amortized and can live in read-only storage.
+ *
  * The final variadic argument is an optional type attribute inserted before the
  * generated type names. It exists for platform DLL decorations, for example:
  *

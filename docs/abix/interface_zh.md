@@ -328,7 +328,7 @@ int main() {
 | ABIX `InterfaceRef`         |           `32 + 24N` | 无                             |        152 |        176 |
 | ABIX `InterfaceRegistry<8>` |                    — | 464                            |     绑定期 |     绑定期 |
 
-`pro::proxy_view` 为 16–24 字节。ABIX 的 registry 和共享表属于设置/实现存储，不是每对象存储。对象很多时，`SharedInterfaceProxy` 是接近 vtable 的选择：每对象一个 24 字节句柄，每实现一张 slot 表。对象很少时，`UniqueInterfaceProxy` 用每对象多 `8N` 字节换掉一次间接寻址。
+`pro::proxy_view` 为 16–24 字节。ABIX 的 registry 和共享表属于设置/实现存储，不是每对象存储。对象很多时，`SharedInterfaceProxy` 是内存密度优先的选择：每对象一个 24 字节句柄，每实现一张 slot 表。对象很少时，`UniqueInterfaceProxy` 自包含、不需要共享表生命周期；当同类型的不同对象需要不同 adapter 表时，也必须使用 Unique。
 
 ```cpp
 SKL_ABIX_INTERFACE_DECLARE_BOTH(Shape, SHAPE_METHODS, 1);
@@ -1074,10 +1074,34 @@ proxy 只保存紧凑的 `InterfaceSlotCache`：对象句柄、最高绑定槽�
 
 ABIX 提供两种 proxy 存储：
 
-| 形式                           | 每对象大小   | 存储                                             | 适用                           |
-| ------------------------------ | ------------ | ------------------------------------------------ | ------------------------------ |
-| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N` | 每个 proxy 内联 slot 入口                        | 对象少；调用路径少一次间接寻址 |
-| `SharedInterfaceProxy<Traits>` | `24`         | 同实现的多个对象共享一个 `InterfaceSlotTable<N>` | 对象多；接近 vtable 的内存行为 |
+| 形式 | 每对象大小 | 额外存储 | 适用 |
+|------|-----------:|----------|------|
+| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N` | 无 | 一个/少量对象；每对象独立方法表；不需要共享表生命周期 |
+| `SharedInterfaceProxy<Traits>` | `24` | 每实现一张 `InterfaceSlotTable`：`8 * N + 8` | 同一实现的大量对象；表构建一次后只读共享 |
+
+**性能不是选择依据。** 在上面的延迟基准里两者都约为 0.75 ns；shared 多出的一次表加载被间接调用成本掩盖。真正需要比较的是 adapter 表的归属、绑定灵活性和总内存。
+
+##### Unique 的优势
+
+- **自包含**：slot 入口就在 proxy 内部，不需要额外对象保活，也不存在 `InterfaceSlotTable` 悬空的问题。
+- **每对象独立绑定**：即使 `(concrete_type, interface_id, version)` 相同，不同对象也可以绑定不同的 provider 方法表。适用于多个 module 实例、热重载，或 adapter 表不同的 provider 实例。
+- **设置最简单**：`Shape shape(registry, &object, concrete_id)` 就是全部绑定步骤，没有建表步骤和表生命周期约定。
+- **单对象总内存更小**：shared 布局要额外保存 `8 * N + 8` 的表，因此只有一个对象时通常 unique 更小。
+
+##### Shared 的优势
+
+- **每对象固定 24 字节**：表随 `N` 增长，而不随对象数量增长。
+- **每实现一张表**：adapter 入口可以放在静态/只读存储中，被任意多个对象复用。
+- **集合内存密度更好**：controller、device、节点等多实例对象受益最大。
+
+设对象数为 `K`、方法数为 `N`：
+
+```text
+Unique 总量 = K * (24 + 8N)
+Shared 总量 = K * 24 + (8N + 8)
+```
+
+只要表被摊薄，Shared 就更省。`N >= 2` 时，`K = 2` 已经更省；`N = 1` 时 `K = 2` 持平，`K >= 3` 后 Shared 更省。只有单个对象、需要每实例独立方法表，或无法安全管理表生命周期时，Unique 才是更好的选择。
 
 共享式在构建表时仍然校验签名；表只保留 adapter 入口。表需要构建一次，并且必须比所有引用它的 proxy 活得久；`build()` 之后表只读，可安全共享。
 
@@ -1094,7 +1118,7 @@ if (make_shared_slot_table<ShapeTraits>(table, registry, box_id) != InterfaceSta
 Box first{3, 4};
 Box second{5, 6};
 
-Shape exclusive(registry, &first, box_id);   // 内联 slot 表
+Shape exclusive(registry, &first, box_id);   // 自包含入口
 SharedShape shared_a(table, &first);         // 对象 + 共享表
 SharedShape shared_b(table, &second);        // 同一张表，不同对象
 ```
