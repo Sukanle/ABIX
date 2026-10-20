@@ -848,6 +848,8 @@ The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard **FN
 
 `InterfaceRegistry<Capacity = 64>`: fixed capacity, allocation-free. Adding and resolving are setup work, so a linear scan is fine — it never runs on the call path. `add()` **registers**, `find()` **resolves**.
 
+On a 64-bit target `InterfaceImplementation` is 56 bytes: two 128-bit IDs, the method pointer, `method_count`, `version`, the reserved `flags` and padding. `InterfaceRegistry<8>` is therefore 464 bytes (`8 * 56 + count/lookups`). This is bind-time memory; one shared registry is usually preferable to one per controller. A custom compact record can drop the unused `flags` field (48 bytes per entry) or use a smaller capacity, but that changes the public record layout.
+
 | Method | Return | Description |
 |------|--------|------|
 | `add(impl)` | `InterfaceStatus` | Register one implementation. A repeated `(concrete_type, interface_id, version)` returns `duplicate_implementation` (a conflict, not a silent overwrite); a full registry returns `capacity_exceeded`; an empty id or a zero method table with a nonzero count returns `invalid_table` |
@@ -874,6 +876,8 @@ The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard **FN
 | `method_count()` | `uint32_t` | Slots spanned by the implementation (highest bound slot + 1) |
 
 `query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type, interface_id, version = 0)` — convenience that returns an `InterfaceRef` by value; check `valid()`.
+
+`InterfaceSlotCache<MaxMethods>` is the compact storage used by `InterfaceProxy`. It keeps only the object handle, the highest bound slot and the adapter entries; expected signatures are verified during resolve and then discarded. Its size is roughly `16 + 8 * MaxMethods` bytes instead of `InterfaceRef`'s `32 + 24 * MaxMethods`. Use `InterfaceRef` when you need `interface_id()` / `version()` / `signature()` diagnostics or a standalone raw handle; use a proxy for the per-object path.
 
 The provider's object must outlive the handle and must be the object the adapters were generated for (the handle creator owns the correct pointer and any `this` adjustment).
 
@@ -1007,23 +1011,24 @@ An interface proxy is a lightweight handle over "an object handle plus resolved 
 |------|------|
 | `id` | The `InterfaceId` (computed by AMC) |
 | `version` | The interface version |
-| `signatures` | The `mics::utils::array` of expected signatures, one per slot; its size is also the `InterfaceRef` cache capacity. A zero hash means "do not check this slot" |
+| `signatures` | The `mics::utils::array` of expected signatures, one per slot; its size is also the proxy's slot capacity. A zero hash means "do not check this slot" |
 | `slots` | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)` |
 
 `InterfaceProxy<Traits>`:
 
 | Method | Return | Description |
 |------|--------|------|
-| `bind(registry, object, concrete_type, version = Traits::version)` | `InterfaceStatus` | Binds and (when `signatures` exists) verifies; failure is **explicit** and also retained in the proxy |
-| `bind_methods(interface_id, version, methods, count, object)` | `InterfaceStatus` | Binds directly to a provider-owned table (dynamic discovery); the caller keeps the module lease |
+| `bind(registry, object, concrete_type, version = Traits::version)` | `InterfaceStatus` | Binds, verifies provider signatures against `Traits::signatures`, then discards the signatures; failure is **explicit** and retained in the proxy |
+| `bind_methods(interface_id, version, methods, count, object)` | `InterfaceStatus` | Binds directly to a provider-owned table (dynamic discovery); the caller keeps the module lease and the id/version must match the `Traits` |
 | `status()` / `valid()` | | Binding status / usable (`ok` and resolved) |
-| `object()` / `interface_id()` / `version()` / `method_count()` | | Object handle and contract facts |
-| `verify(slot)` | `InterfaceStatus` | Verify one slot: `method_not_found` if unbound, `signature_mismatch` on a wrong signature |
+| `object()` / `interface_id()` / `version()` / `method_count()` | | Object handle and contract facts (invalid proxy reports an empty id / zero version) |
+| `verify(slot)` | `InterfaceStatus` | After binding, checks that the slot is bound; the signature comparison already happened in `bind()` |
 | `call<Fn>(slot, args...)` (protected) | the `Fn` result | Directly call a cached entry (the object handle is supplied first); precondition: `valid()` and the slot is bound |
 | `call_checked<Fn>(out, slot, args...)` (protected) | `InterfaceStatus` | Status and result are separate: an unbound slot is `method_not_found`, so a legitimate result is never read as a failure |
 
-A hand-written `Traits` can compute the signatures and the identity too (the helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`; `amc-core-test` checks them against AMC):
+The proxy stores only the compact `InterfaceSlotCache`: object handle, highest bound slot and one pointer per slot. Provider signatures, interface id and version are not duplicated per proxy; they remain in `Traits` and are checked during binding.
 
+A hand-written `Traits` can compute the signatures and the identity too (the helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`; `amc-core-test` checks them against AMC):
 ```cpp
 struct ShapeTraits {
     // AMC's int32_t TypeID is an ABI key, not the C++ spelling.

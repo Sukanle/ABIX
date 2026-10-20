@@ -86,8 +86,8 @@ public:
     template<size_t RegistryCapacity>
     InterfaceStatus bind(const InterfaceRegistry<RegistryCapacity> &registry, void *object, model::TypeId concrete_type,
         uint32_t version = Traits::version) noexcept {
-        _status = _ref.resolve(registry, object, concrete_type, Traits::id, version);
-        return finish();
+        _status = _ref.resolve(registry, object, concrete_type, Traits::id, version, Traits::signatures);
+        return _status;
     }
 
     // Bind directly to a provider-owned adapter table (a discovered module's
@@ -95,24 +95,31 @@ public:
     // long as the proxy is used.
     InterfaceStatus bind_methods(InterfaceId interface_id, uint32_t version, const InterfaceMethod *methods,
         uint32_t method_count, void *object) noexcept {
-        _status = _ref.resolve_methods(interface_id, version, methods, method_count, object);
-        return finish();
+        if (interface_id != Traits::id) {
+            _ref.clear();
+            return _status = InterfaceStatus::interface_not_found;
+        }
+        if (version != Traits::version) {
+            _ref.clear();
+            return _status = InterfaceStatus::version_mismatch;
+        }
+        _status = _ref.resolve_methods(interface_id, version, methods, method_count, object, Traits::signatures);
+        return _status;
     }
 
     InterfaceStatus status() const noexcept { return _status; }
     bool valid() const noexcept { return _status == InterfaceStatus::ok && _ref.valid(); }
 
     void *object() const noexcept { return _ref.object(); }
-    InterfaceId interface_id() const noexcept { return _ref.interface_id(); }
-    uint32_t version() const noexcept { return _ref.version(); }
+    InterfaceId interface_id() const noexcept { return _ref.valid() ? Traits::id : InterfaceId{}; }
+    uint32_t version() const noexcept { return _ref.valid() ? Traits::version : 0; }
     uint32_t method_count() const noexcept { return _ref.method_count(); }
 
-    // Verify one slot against the contract's expected signature. A zero hash in
-    // `Traits::signatures` means "do not check this slot"; an out-of-range slot
-    // reports `method_not_found`.
+    // Verify that `slot` is bound. The contract signature was checked when the
+    // proxy was bound; provider signatures are not retained per proxy.
     InterfaceStatus verify(uint32_t slot) const noexcept {
-        if (slot >= slot_capacity) return InterfaceStatus::method_not_found;
-        return _ref.verify(slot, Traits::signatures[slot]);
+        if (slot >= slot_capacity || !_ref.bound(slot)) return InterfaceStatus::method_not_found;
+        return InterfaceStatus::ok;
     }
 
 protected:
@@ -142,19 +149,7 @@ protected:
     }
 
 private:
-    // After a successful resolve, check every declared signature. A zero expected
-    // hash means "do not check this slot".
-    InterfaceStatus finish() noexcept {
-        if (_status != InterfaceStatus::ok) return _status;
-        for (uint32_t slot = 0; slot < slot_capacity; ++slot) {
-            if (Traits::signatures[slot] == InterfaceMethodHash{}) continue;
-            const InterfaceStatus status = _ref.verify(slot, Traits::signatures[slot]);
-            if (status != InterfaceStatus::ok) return _status = status;
-        }
-        return _status;
-    }
-
-    InterfaceRef<slot_capacity> _ref;
+    InterfaceSlotCache<slot_capacity> _ref;
     InterfaceStatus _status = InterfaceStatus::interface_not_found;
 };
 

@@ -243,6 +243,10 @@ public:
     }
 };
 
+// The proxy path keeps only the object handle, the highest bound slot and the
+// adapter entries; provider signatures and identity metadata are not retained.
+static_assert(sizeof(TestShape) < sizeof(InterfaceRef<1>), "InterfaceProxy must stay smaller than a full InterfaceRef");
+
 TEST_CASE("an interface proxy binds, verifies and calls through cached entries") {
     constexpr TypeId counter_id{0x21, 0x22};
     const InterfaceMethod methods[] = {

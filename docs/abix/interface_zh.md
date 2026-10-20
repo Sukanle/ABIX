@@ -837,6 +837,8 @@ hash_text("ABIX-INTERFACE:" + 规范名 + ":" + 版本 + 按槽位排序的签�
 
 `InterfaceRegistry<Capacity = 64>`：固定容量、无分配。注册与解析都是 setup 工作，线性扫描即可 ——它永远不在调用路径上。`add()` 是**注册**，`find()` 是**解析**。
 
+在 64 位目标上，`InterfaceImplementation` 为 56 字节：两个 128 位 ID、方法表指针、`method_count`、`version`、保留的 `flags` 以及填充。因此 `InterfaceRegistry<8>` 为 464 字节（`8 * 56 + count/lookups`）。这是绑定期内存；通常一个共享 registry 比每个 controller 各带一个更合适。自定义紧凑记录可以去掉未使用的 `flags`（每项 48 字节）或减小容量，但会改变公共记录布局。
+
 | 方法 | 返回值 | 说明 |
 |------|--------|------|
 | `add(impl)` | `InterfaceStatus` | 注册一个实现。重复的 `(concrete_type, interface_id, version)` 返回 `duplicate_implementation`（冲突而非静默覆盖）；容量满返回 `capacity_exceeded`；id 为空或声明方法却空表返回 `invalid_table` |
@@ -863,6 +865,8 @@ hash_text("ABIX-INTERFACE:" + 规范名 + ":" + 版本 + 按槽位排序的签�
 | `method_count()` | `uint32_t` | 实现跨越的槽位数（最高绑定槽 + 1） |
 
 `query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type, interface_id, version = 0)` ——便利函数，按值返回 `InterfaceRef`；检查 `valid()`。
+
+`InterfaceSlotCache<MaxMethods>` 是 `InterfaceProxy` 使用的紧凑存储：只保留对象句柄、最高已绑定槽和 adapter 入口；期望签名在 resolve 阶段校验后即丢弃。大小约为 `16 + 8 * MaxMethods` 字节，而 `InterfaceRef` 约为 `32 + 24 * MaxMethods`。需要 `interface_id()` / `version()` / `signature()` 诊断或独立裸句柄时用 `InterfaceRef`；每个对象的热路径用 proxy。
 
 provider 对象必须比句柄长寿，且必须正是适配器所针对的对象（句柄创建者拥有正确的指针与任何 `this` 调整）。
 
@@ -996,20 +1000,22 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 |------|------|
 | `id` | `InterfaceId`，接口身份（由 AMC 计算） |
 | `version` | 接口版本 |
-| `signatures` | 按 slot 排列的期望签名 `mics::utils::array`；其大小同时是 `InterfaceRef` 缓存容量。零哈希表示该 slot 不校验 |
+| `signatures` | 按 slot 排列的期望签名 `mics::utils::array`；其大小同时是 proxy 的槽位容量。零哈希表示该 slot 不校验 |
 | `slots` | 类型化零基槽位表：`Traits::slots.<method>` 就是代理 `call(...)` 使用的 slot 值 |
 
 `InterfaceProxy<Traits>`：
 
 | 方法 | 返回值 | 说明 |
 |------|--------|------|
-| `bind(registry, object, concrete_type, version = Traits::version)` | `InterfaceStatus` | 绑定并（若有 `signatures`）校验；**失败显式可见**，同时存入代理 |
-| `bind_methods(interface_id, version, methods, count, object)` | `InterfaceStatus` | 直接绑定 provider 方法表（动态发现路径）；调用方需持有模块租约 |
+| `bind(registry, object, concrete_type, version = Traits::version)` | `InterfaceStatus` | 绑定并用 `Traits::signatures` 校验 provider 签名，随后丢弃签名；**失败显式可见**，同时存入代理 |
+| `bind_methods(interface_id, version, methods, count, object)` | `InterfaceStatus` | 直接绑定 provider 方法表（动态发现路径）；调用方需持有模块租约，且 id/version 必须与 `Traits` 一致 |
 | `status()` / `valid()` | | 绑定状态 / 是否可用（`ok` 且已解析） |
-| `object()` / `interface_id()` / `version()` / `method_count()` | | 对象句柄与契约信息 |
-| `verify(slot)` | `InterfaceStatus` | 校验单个槽位：未绑定 `method_not_found`，签名不符 `signature_mismatch` |
+| `object()` / `interface_id()` / `version()` / `method_count()` | | 对象句柄与契约信息（无效 proxy 返回空 id / 0 版本） |
+| `verify(slot)` | `InterfaceStatus` | 绑定后检查该槽位是否绑定；签名比较已在 `bind()` 阶段完成 |
 | `call<Fn>(slot, args...)`（protected） | `Fn` 的返回 | 直调缓存入口（首参自动补对象句柄）；前置条件：`valid()` 且槽位已绑定 |
 | `call_checked<Fn>(out, slot, args...)`（protected） | `InterfaceStatus` | 状态与结果分离：未绑定返回 `method_not_found`，合法结果绝不会被当成失败 |
+
+proxy 只保存紧凑的 `InterfaceSlotCache`：对象句柄、最高绑定槽和每槽一个入口指针。provider 签名、接口 id 与版本不会按 proxy 重复存储；它们留在 `Traits` 中，并在绑定阶段校验。
 
 手写 `Traits` 时连签名与 `id` 都可以由编译期 helper 生成（它们复刻 `AMC::signature_hash` / `AMC::interface_identity` 的字节串与算法，`amc-core-test` 有跨工具一致性检查）：
 
