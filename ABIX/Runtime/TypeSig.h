@@ -53,43 +53,43 @@ struct TypeSigImpl;
 template<typename T>
 struct TypeSigImpl<dll::UniquePtr<T>> {
     static constexpr sig_t value =
-        mics::utils::mix(mics::utils::cstr64("skl::abix::dll::UniquePtr"), mics::utils::type_hash<T>());
+        skl::mics::utils::mix(skl::mics::utils::cstr64("skl::abix::dll::UniquePtr"), skl::mics::utils::type_hash<T>());
 };
 template<typename T>
 struct TypeSigImpl<dll::RefPtr<T>> {
     static constexpr sig_t value =
-        mics::utils::mix(mics::utils::cstr64("skl::abix::dll::RefPtr"), mics::utils::type_hash<T>());
+        skl::mics::utils::mix(skl::mics::utils::cstr64("skl::abix::dll::RefPtr"), skl::mics::utils::type_hash<T>());
 };
 template<typename T>
 struct TypeSigImpl<dll::ViewPtr<T>> {
     static constexpr sig_t value =
-        mics::utils::mix(mics::utils::cstr64("skl::abix::dll::ViewPtr"), mics::utils::type_hash<T>());
+        skl::mics::utils::mix(skl::mics::utils::cstr64("skl::abix::dll::ViewPtr"), skl::mics::utils::type_hash<T>());
 };
 template<typename T>
 struct TypeSigImpl<dll::SharedPtr<T>> {
     static constexpr sig_t value =
-        mics::utils::mix(mics::utils::cstr64("skl::abix::dll::SharedPtr"), mics::utils::type_hash<T>());
+        skl::mics::utils::mix(skl::mics::utils::cstr64("skl::abix::dll::SharedPtr"), skl::mics::utils::type_hash<T>());
 };
 template<typename T>
 struct TypeSigImpl<dll::WeakPtr<T>> {
     static constexpr sig_t value =
-        mics::utils::mix(mics::utils::cstr64("skl::abix::dll::WeakPtr"), mics::utils::type_hash<T>());
+        skl::mics::utils::mix(skl::mics::utils::cstr64("skl::abix::dll::WeakPtr"), skl::mics::utils::type_hash<T>());
 };
 
 template<typename R, typename... Args>
 struct TypeSigImpl<runtime::Function<R(Args...)>> {
     static constexpr sig_t value = [] {
-        sig_t h = mics::utils::cstr64("skl::abix::runtime::Function");
-        h = mics::utils::mix(h, mics::utils::type_hash<R>());
+        sig_t h = skl::mics::utils::cstr64("skl::abix::runtime::Function");
+        h = skl::mics::utils::mix(h, skl::mics::utils::type_hash<R>());
         sig_t acc = 0;
-        ((acc = mics::utils::mix(acc, mics::utils::type_hash<std::remove_cv_t<Args>>())), ...);
-        return mics::utils::mix(h, acc);
+        ((acc = skl::mics::utils::mix(acc, skl::mics::utils::type_hash<std::remove_cv_t<Args>>())), ...);
+        return skl::mics::utils::mix(h, acc);
     }();
 };
 
 template<typename T>
 struct TypeSigImpl {
-    static constexpr sig_t value = mics::utils::type_hash<T>();
+    static constexpr sig_t value = skl::mics::utils::type_hash<T>();
 };
 
 }   // namespace detail

@@ -22,8 +22,8 @@
 
 namespace skl::abix::runtime {
 
-using sig_t = mics::utils::hash64_t;
-using name_hash_t = mics::utils::hash32_t;
+using sig_t = skl::mics::utils::hash64_t;
+using name_hash_t = skl::mics::utils::hash32_t;
 using version_t = uint64_t;
 using index_t = uint32_t;
 
@@ -35,18 +35,19 @@ using index_t = uint32_t;
 // Chosen by measuring average probe length offline over the real 1020-name
 // hotcache population at the index's actual capacity (2048):
 //   fold  h ^ (h >> 32)    1.298 avg / 7 worst / 304 insert collisions   <- this
-//   low32 h & 0xffffffff   1.375 / 8 / 383     (what mics::utils::cstr32 did)
+//   low32 h & 0xffffffff   1.375 / 8 / 383     (what skl::mics::utils::cstr32 did)
 //   fnv1a32 native         1.749 / 18 / 764
 //   high32 h >> 32        62.067 / 128 / 62288
 // An extra finalizer (fmix32) makes it worse, and a native 32-bit FNV loses the
 // 64-bit chain's mixing, so the fold is the optimum here. It costs one extra
 // shift+xor per hash and no memory-layout change.
 //
-// This replaces `mics::utils::cstr32` for the ABI table. `mics::utils::cstr64`
+// This replaces `skl::mics::utils::cstr32` for the ABI table. `skl::mics::utils::cstr64`
 // is the *type/function identity* hash (mics/utils/type_hash.h, fn_hash.h) and
 // must not be redefined.
 inline constexpr name_hash_t name_hash(const char *s) noexcept {
-    const mics::utils::hash64_t h = s != nullptr ? mics::utils::cstr64(s) : mics::utils::FNV1A_OFFSET_BASE;
+    const skl::mics::utils::hash64_t h =
+        s != nullptr ? skl::mics::utils::cstr64(s) : skl::mics::utils::FNV1A_OFFSET_BASE;
     return static_cast<name_hash_t>(h ^ (h >> 32));
 }
 

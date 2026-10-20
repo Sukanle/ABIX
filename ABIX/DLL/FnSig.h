@@ -38,8 +38,8 @@ namespace detail {
 template<cc::tag C, typename Ret, typename... Args>
 struct FnSigImpl {
     static constexpr runtime::sig_t value = [] {
-        auto h = static_cast<runtime::sig_t>(mics::utils::compute_fn_hash<type_sig<Ret>(), type_sig<Args>()...>());
-        h = mics::utils::mix(h, static_cast<runtime::sig_t>(static_cast<uint8_t>(C)) * 0x10001ULL);
+        auto h = static_cast<runtime::sig_t>(skl::mics::utils::compute_fn_hash<type_sig<Ret>(), type_sig<Args>()...>());
+        h = skl::mics::utils::mix(h, static_cast<runtime::sig_t>(static_cast<uint8_t>(C)) * 0x10001ULL);
         return h;
     }();
 };

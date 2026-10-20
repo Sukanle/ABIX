@@ -108,7 +108,7 @@ TEST_CASE("14.mics_integration", "[refl][prompt5-9]") {
 }
 
 TEST_CASE("runtime TypeId uses the full 128-bit identity") {
-    using namespace mics::rt;
+    using namespace skl::mics::rt;
     static_assert(sizeof(TypeId) == 16, "runtime TypeId must remain Hash128");
     const auto state = DRefl::type_id_of<CalcState>();
     const auto config = DRefl::type_id_of<CalcConfig>();

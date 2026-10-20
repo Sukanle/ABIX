@@ -27,7 +27,7 @@
 namespace skl::abix {
 
 namespace cc {
-using tag = mics::utils::cc::tag;
+using tag = skl::mics::utils::cc::tag;
 }
 
 #define SKL_ABIX_CCPICK_Cdecl ::skl::abix::cc::tag::Cdecl
@@ -40,7 +40,7 @@ using tag = mics::utils::cc::tag;
         reinterpret_cast<uintptr_t>(&func), ::skl::abix::runtime::name_hash(name), flg}
 #define SKL_ABIX_ENTRY_CC(name, func, cctype) SKL_ABIX_ENTRY_FULL(name, func, cctype, 0, 0)
 #define SKL_ABIX_ENTRY(name, func) SKL_ABIX_ENTRY_CC(name, func, Cdecl)
-#define SKL_ABIX_VERSION(v) mics::utils::version(v)
+#define SKL_ABIX_VERSION(v) skl::mics::utils::version(v)
 
 #define SKL_ABIX_TABLE_GETTER "abi_get_table"
 

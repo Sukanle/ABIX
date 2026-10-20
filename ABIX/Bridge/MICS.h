@@ -23,12 +23,12 @@ namespace skl::abix::bridge {
 
 // This conversion is intentionally explicit even though both values have the
 // same representation. It prevents accidental truncation at the API boundary.
-constexpr mics::rt::TypeId to_mics_type_id(model::TypeId id) noexcept { return {id.lo, id.hi}; }
+constexpr skl::mics::rt::TypeId to_mics_type_id(model::TypeId id) noexcept { return {id.lo, id.hi}; }
 
-constexpr model::TypeId to_abix_type_id(mics::rt::TypeId id) noexcept { return {id.lo, id.hi}; }
+constexpr model::TypeId to_abix_type_id(skl::mics::rt::TypeId id) noexcept { return {id.lo, id.hi}; }
 
-static_assert(
-    sizeof(model::TypeId) == sizeof(mics::rt::TypeId), "ABIX and MICS TypeId representations must remain compatible");
+static_assert(sizeof(model::TypeId) == sizeof(skl::mics::rt::TypeId),
+    "ABIX and MICS TypeId representations must remain compatible");
 
 }   // namespace skl::abix::bridge
 
