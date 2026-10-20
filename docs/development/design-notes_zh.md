@@ -285,9 +285,9 @@ flowchart TD
 
 纯静态反射零开销但固化，纯动态反射灵活但耗资源。MICS 把同一套元数据语义实现两遍：一遍在编译期，一遍在运行时。
 
-* **静态轨（`mics::ct` / SRefl）。** `type_list` 加类型函数式库（`map`/`filter`/`fold`/ `unique`），`field_traits`/`fn_traits`/`enum_traits` 萃取字段、方法与枚举；`type_info<T>()` 为 `consteval`。
-* **动态轨（`mics::rt` / DRefl）。** `Registry` 单例、`TypeInfo`、`FieldAccessor` （getter/setter）、`MethodInvoker` 与 `Any`（16 字节 SBO 类型擦除）。
-* **共享工具（`mics::utils` / URefl）。** ABI 稳定不可变容器 `URefl::vector`（固定 `sizeof`、仅移动、`malloc`/`free`、只能经 `vector_builder` 构造）是所有反射描述数据（字段、方法、参数、枚举项）的统一载体，也是跨编译器二进制兼容的关键。
+* **静态轨（`skl::mics::ct` / SRefl）。** `type_list` 加类型函数式库（`map`/`filter`/`fold`/ `unique`），`field_traits`/`fn_traits`/`enum_traits` 萃取字段、方法与枚举；`type_info<T>()` 为 `consteval`。
+* **动态轨（`skl::mics::rt` / DRefl）。** `Registry` 单例、`TypeInfo`、`FieldAccessor` （getter/setter）、`MethodInvoker` 与 `Any`（16 字节 SBO 类型擦除）。
+* **共享工具（`skl::mics::utils` / URefl）。** ABI 稳定不可变容器 `URefl::vector`（固定 `sizeof`、仅移动、`malloc`/`free`、只能经 `vector_builder` 构造）是所有反射描述数据（字段、方法、参数、枚举项）的统一载体，也是跨编译器二进制兼容的关键。
 * **哈希一致性。** 静态、动态两轨共用 `type_hash<T>()` 作为 TypeId 的唯一来源，使编译期类型身份与运行期查到的身份是同一份。
 
 写一个结构体加一段注册宏即可获得运行时反射；`register_dll_table` 把 DLL 导出表桥接到反射注册表，模块内对象也能被通用工具以反射方式访问。

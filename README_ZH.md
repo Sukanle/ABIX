@@ -198,11 +198,13 @@ using namespace skl::abix::poly;
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr skl::mics::utils::array signatures = {method_signature("area", i32, nullptr, 0)};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 1;
-    static constexpr uint32_t area_slot = 0;
+    struct alignas(8) Slots {
+        uint32_t area;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public InterfaceProxy<ShapeTraits> {
@@ -210,7 +212,7 @@ class Shape : public InterfaceProxy<ShapeTraits> {
 
 public:
     using Base::Base;
-    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::area_slot); }
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
 };
 
 Shape shape(registry, &square, square_id);   // i32 / registry / square / square_id 由 provider 提供

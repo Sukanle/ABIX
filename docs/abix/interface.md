@@ -30,8 +30,10 @@ The same task — three shapes each computing an area, then one polymorphic call
 <th align="left">ABIX Interface (non-intrusive)</th>
 </tr>
 <tr>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -52,19 +54,22 @@ struct Triangle : Shape {
     int area() const override { return base * height / 2; }
     int base, height;
 };
-int total(const Shape &amp;s) { return s.area(); }
+int total(const Shape &s) { return s.area(); }
 int main() {
     Square square{3};
     Rectangle rectangle{2, 6};
     Triangle triangle{4, 5};
-    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
+    const Shape *shapes[] = {&square, &rectangle, &triangle};
     for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
     return 0;
-}</code></pre>
-</td>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+}
+```
 
+</td>
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 #include "ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -75,18 +80,20 @@ constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
 
 // Interface class: Traits describes the contract; Shape only adds methods.
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr skl::mics::utils::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 1;
-    static constexpr uint32_t area_slot = 0;
+    struct alignas(8) Slots {
+        uint32_t area;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
-    using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+class Shape : public InterfaceProxy<ShapeTraits> {
+    using Base = InterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
-    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
 };
 
 // Three implementations: plain structs, no inheritance, no virtual functions.
@@ -103,32 +110,32 @@ struct Triangle {
 };
 
 int square_area(const void *self) {
-    const auto *s = static_cast&lt;const Square *&gt;(self);
-    return s-&gt;side * s-&gt;side;
+    const auto *s = static_cast<const Square *>(self);
+    return s->side * s->side;
 }
 int rectangle_area(const void *self) {
-    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
-    return r-&gt;width * r-&gt;height;
+    const auto *r = static_cast<const Rectangle *>(self);
+    return r->width * r->height;
 }
 int triangle_area(const void *self) {
-    const auto *t = static_cast&lt;const Triangle *&gt;(self);
-    return t-&gt;base * t-&gt;height / 2;
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base * t->height / 2;
 }
 
 constexpr TypeId square_id{0x11, 0x00};
 constexpr TypeId rectangle_id{0x12, 0x00};
 constexpr TypeId triangle_id{0x13, 0x00};
 
-InterfaceStatus register_shape(InterfaceRegistry&lt;4&gt; &amp;registry, TypeId type, const InterfaceMethod *methods) {
+InterfaceStatus register_shape(InterfaceRegistry<4> &registry, TypeId type, const InterfaceMethod *methods) {
     return registry.add({ShapeTraits::id, type, methods, 1, ShapeTraits::version, 0});
 }
 
 int main() {
-    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
-    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
-    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&triangle_area), 0, 0}};
 
-    InterfaceRegistry&lt;4&gt; registry;
+    InterfaceRegistry<4> registry;
     if (register_shape(registry, square_id, square_methods) != InterfaceStatus::ok) return 1;
     if (register_shape(registry, rectangle_id, rectangle_methods) != InterfaceStatus::ok) return 1;
     if (register_shape(registry, triangle_id, triangle_methods) != InterfaceStatus::ok) return 1;
@@ -140,14 +147,16 @@ int main() {
         void *object;
         TypeId type;
     };
-    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
-    for (const Case &amp;c : cases) {
+    const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
+    for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         if (!shape.valid()) return 1;
         std::printf("area=%d\n", shape.area());
     }
     return 0;
-}</code></pre>
+}
+```
+
 </td>
 </tr>
 </table>
@@ -175,7 +184,7 @@ The difference is not whether polymorphism is possible, but **what carries it**:
 
 - **Plain C++, one compile-time world, no cross-boundary need**: virtual functions are enough, with zero extra ceremony.
 - **Across DLLs / across languages / "program to the interface, not the type"**: use Interface. A consumer can mention only `InterfaceId` (see the cross-module path in [Example 2](#examples)) and keep working when the provider changes its concrete type.
-- **They coexist**: ABIX does not ask you to give up C++ semantics — a provider keeps using virtual functions internally and binds one concrete type's methods to interface slots at the boundary only (AMC's `[[interface]]` / `[[implements]]` declarations). The interface can be declared in a header like a C++ abstract class: `[[interface]]` defines the contract, `[[implements]]` establishes the binding, and `amc generate -l cpp` emits `k<Name>Interface` / `k<Name>Version` / `enum class <Name>Slot` / `<Name>_<method>_fn`, so a consumer can wrap it as `Shape s = Shape::bind(...); s.area();`.
+- **They coexist**: ABIX does not ask you to give up C++ semantics — a provider keeps using virtual functions internally and binds one concrete type's methods to interface slots at the boundary only (AMC's `[[interface]]` / `[[implements]]` declarations). The interface can be declared in a header like a C++ abstract class: `[[interface]]` defines the contract, `[[implements]]` establishes the binding, and `amc generate -l cpp` emits `k<Name>Interface` / `k<Name>Version` / `<Name>_<method>_fn` / a `Traits` struct with a typed `Slots` table, so a consumer can wrap it as `Shape s = Shape::bind(...); s.area();`.
 
 ## Quick start
 
@@ -315,7 +324,7 @@ Example 1 is a complete in-process program (one interface, three implementation 
 
 ### Example 1 — end to end: an interface class and three implementations
 
-The contract lives in a shared header: `Traits` carries the interface identity, version, slot capacity and expected signatures, and the proxy class only adds the methods.
+The contract lives in a shared header: `Traits` carries the interface identity, version, typed slot table and expected signatures, and the proxy class only adds the methods.
 
 ```cpp
 // shape.h — the shared contract
@@ -332,15 +341,17 @@ using skl::abix::poly::method_signature;
 inline constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {
+    static constexpr skl::mics::utils::array signatures = {
         method_signature("area", i32, nullptr, 0),
         method_signature("perimeter", i32, nullptr, 0),
     };
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 2;
-    static constexpr uint32_t area_slot = 0;
-    static constexpr uint32_t perimeter_slot = 1;
+    struct alignas(8) Slots {
+        uint32_t area;
+        uint32_t perimeter;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
@@ -348,9 +359,9 @@ class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
 
 public:
     using Base::Base;
-    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::area_slot); }
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
     int perimeter() const noexcept {
-        return this->template call<int (*)(const void *)>(ShapeTraits::perimeter_slot);
+        return this->template call<int (*)(const void *)>(ShapeTraits::slots.perimeter);
     }
 };
 
@@ -423,19 +434,19 @@ constexpr TypeId triangle_id{0x51, 0x03};
 // One method table per implementation: signature and slot come straight from
 // the shared contract.
 const InterfaceMethod square_methods[] = {
-    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&square_area), ShapeTraits::area_slot, 0},
-    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&square_perimeter),
-        ShapeTraits::perimeter_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.area], interface_entry(&square_area), ShapeTraits::slots.area, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.perimeter], interface_entry(&square_perimeter),
+        ShapeTraits::slots.perimeter, 0},
 };
 const InterfaceMethod rectangle_methods[] = {
-    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&rectangle_area), ShapeTraits::area_slot, 0},
-    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&rectangle_perimeter),
-        ShapeTraits::perimeter_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.area], interface_entry(&rectangle_area), ShapeTraits::slots.area, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.perimeter], interface_entry(&rectangle_perimeter),
+        ShapeTraits::slots.perimeter, 0},
 };
 const InterfaceMethod triangle_methods[] = {
-    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&triangle_area), ShapeTraits::area_slot, 0},
-    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&triangle_perimeter),
-        ShapeTraits::perimeter_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.area], interface_entry(&triangle_area), ShapeTraits::slots.area, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.perimeter], interface_entry(&triangle_perimeter),
+        ShapeTraits::slots.perimeter, 0},
 };
 
 InterfaceStatus register_shape(
@@ -673,7 +684,7 @@ The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace `skl::a
 | `ABIX/Interface/Discovery.h` | `discover_module` — load → validate → register |
 | `ABIX/Interface/Owner.h` | Owner ABI — borrow/own/copy semantics for `handle` / `ref` |
 | `ABIX/Interface/Proxy.h` | C++ proxy API — `InterfaceProxy<Traits>`, `bind`/`call`, signature checks |
-| `ABIX/Interface/Version.h` | version helpers — `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
+| `ABIX/Interface/Declaration.h` | declaration sugar — `SKL_ABIX_INTERFACE_DECLARE`; version helpers `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
 
 ### `Contract.h` — interface identity and methods
 
@@ -681,8 +692,8 @@ The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace `skl::a
 |------|------|------|
 | `InterfaceId` | `Hash128` | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)` |
 | `InterfaceMethodHash` | `model::SignatureHash` | One method's ABI signature hash |
-| `interface_id(name, version, signatures)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `util::StaticArray` or a variadic `InterfaceMethodHash` list |
-| `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` `util::StaticArray` overload to sort before hashing |
+| `interface_id(name, version, signatures)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `mics::utils::array` or a variadic `InterfaceMethodHash` list |
+| `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` `mics::utils::array` overload to sort before hashing |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`) |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way |
 | `to_string(status)` | `const char*` | Readable name for an `InterfaceStatus` |
@@ -883,8 +894,8 @@ An interface proxy is a lightweight handle over "an object handle plus resolved 
 |------|------|
 | `id` | The `InterfaceId` (computed by AMC) |
 | `version` | The interface version |
-| `slots` | The slot **capacity** (>= highest slot + 1), which sizes the `InterfaceRef` cache — not a magic number |
-| `signatures[]` (optional) | The expected signature per slot; when present, `bind()` verifies every slot (`0` means "do not check this slot") |
+| `signatures` | The `mics::utils::array` of expected signatures, one per slot; its size is also the `InterfaceRef` cache capacity. A zero hash means "do not check this slot" |
+| `slots` | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)` |
 
 `InterfaceProxy<Traits>`:
 
@@ -906,15 +917,17 @@ struct ShapeTraits {
     static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // The method signature is generated too; the return/parameter TypeIDs must
     // match the provider.
-    static constexpr util::StaticArray sigs = {
+    static constexpr skl::mics::utils::array sigs = {
         method_signature("area", i32, nullptr, 0),
         method_signature("size", i32, nullptr, 0),
     };
     static constexpr InterfaceId id = interface_id("Shape", 1, sigs);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 2;
-    static constexpr uint32_t area_slot = 0;
-    static constexpr uint32_t size_slot = 1;
+    struct alignas(8) Slots {
+        uint32_t area;
+        uint32_t size;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, sigs.size(), 0>();
 };
 ```
 
@@ -931,18 +944,18 @@ name + decimal(return_type.lo) + decimal(return_type.hi)
      + for each parameter: decimal(type.lo) + decimal(type.hi)
 ```
 
-with domain `0x5349474E41545552` (`"SIGNATUR"`). Parameter names are not hashed. `name` and `parameters` are those of the **contract function** AMC recorded, not an arbitrary label. If that function takes the object handle first (the usual adapter convention), the handle is parameter 0 and belongs in `parameters`; a free function has no handle. AMC already emits the exact `signatures[]` in the generated header — copy it when in doubt.
+with domain `0x5349474E41545552` (`"SIGNATUR"`). Parameter names are not hashed. `name` and `parameters` are those of the **contract function** AMC recorded, not an arbitrary label. If that function takes the object handle first (the usual adapter convention), the handle is parameter 0 and belongs in `parameters`; a free function has no handle. AMC already emits the exact `signatures` array in the generated header — copy it when in doubt.
 
 The parameter list can be passed in three equivalent, allocation-free forms:
 
 ```cpp
 constexpr TypeId params[] = {i32, i32};
 method_signature("resize", v, params, 2);                 // pointer + count
-method_signature("resize", v, util::StaticArray{i32, i32});     // inline fixed array
+method_signature("resize", v, mics::utils::array{i32, i32});     // inline fixed array
 method_signature("resize", v, i32, i32);                  // variadic
 ```
 
-`util::StaticArray` is the minimal fixed-size type in `ABIX/Util/Array.h`; its deduction guide makes `util::StaticArray{i32, i32}` name its own type. All three forms hash the same bytes and allocate nothing.
+`mics::utils::array` is the minimal fixed-size type in `mics/utils/array.h`; its deduction guide makes `mics::utils::array{i32, i32}` name its own type. All three forms hash the same bytes and allocate nothing.
 
 A signature mentions **TypeIDs**, not C++ types. For name-based identities, `model::canonical_type_id(canonical_name)` reproduces AMC's value:
 
@@ -1003,7 +1016,7 @@ constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
 constexpr model::TypeId move_params[] = {point};
 constexpr model::TypeId open_params[] = {text};
 
-static constexpr util::StaticArray sigs = {
+static constexpr mics::utils::array sigs = {
     method_signature("draw",  v,    nullptr,     0),
     method_signature("move",  v,    move_params, 1),
     method_signature("label", text, nullptr,     0),
@@ -1012,7 +1025,7 @@ static constexpr util::StaticArray sigs = {
 static constexpr InterfaceId id = interface_id("Canvas", 1, sigs);
 ```
 
-If the provider is AMC-generated and its contract functions take the object handle first, prepend the handle TypeID to each parameter list (or simply copy the generated `signatures[]`).
+If the provider is AMC-generated and its contract functions take the object handle first, prepend the handle TypeID to each parameter list (or simply copy the generated `signatures` array).
 
 **Getting the exact value.** For pointers, typedefs, template aliases and nested records, do not guess the canonical spelling. Read it from the artifact:
 
@@ -1038,8 +1051,10 @@ Left: C++ virtual functions; middle: ABIX manual registration (a hand-written ad
 <th align="left">ABIX: proxy (Proxy.h)</th>
 </tr>
 <tr>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -1064,14 +1079,17 @@ int main() {
     Square square{5};
     Rectangle rectangle{4, 6};
     Triangle triangle{6, 4};
-    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", shape-&gt;area());
+    const Shape *shapes[] = {&square, &rectangle, &triangle};
+    for (const Shape *shape : shapes) std::printf("area=%d\n", shape->area());
     return 0;
-}</code></pre>
-</td>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+}
+```
 
+</td>
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 #include "ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -1098,24 +1116,24 @@ struct Triangle {
 };
 
 int square_area(const void *self) {
-    const auto *s = static_cast&lt;const Square *&gt;(self);
-    return s-&gt;side * s-&gt;side;
+    const auto *s = static_cast<const Square *>(self);
+    return s->side * s->side;
 }
 int rectangle_area(const void *self) {
-    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
-    return r-&gt;width * r-&gt;height;
+    const auto *r = static_cast<const Rectangle *>(self);
+    return r->width * r->height;
 }
 int triangle_area(const void *self) {
-    const auto *t = static_cast&lt;const Triangle *&gt;(self);
-    return t-&gt;base * t-&gt;height / 2;
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base * t->height / 2;
 }
 
 int main() {
-    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
-    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
-    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&triangle_area), 0, 0}};
 
-    InterfaceRegistry&lt;4&gt; registry;
+    InterfaceRegistry<4> registry;
     if (registry.add({kShape, square_id, square_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
     if (registry.add({kShape, rectangle_id, rectangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
     if (registry.add({kShape, triangle_id, triangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
@@ -1127,33 +1145,39 @@ int main() {
         void *object;
         TypeId type;
     };
-    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
-    for (const Case &amp;c : cases) {
-        InterfaceRef&lt;2&gt; ref;
+    const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
+    for (const Case &c : cases) {
+        InterfaceRef<2> ref;
         if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
-        const auto area = ref.method&lt;AreaFn&gt;(0);
+        const auto area = ref.method<AreaFn>(0);
         std::printf("area=%d\n", area(ref.object()));
     }
     return 0;
-}</code></pre>
+}
+```
+
 </td>
-<td valign="top">
-<pre><code class="language-cpp">// contract, adapters, method tables and registration as in the middle column
+<td valign="top" markdown="1">
+
+```cpp
+// contract, adapters, method tables and registration as in the middle column
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr skl::mics::utils::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 1;
-    static constexpr uint32_t area_slot = 0;
+    struct alignas(8) Slots {
+        uint32_t area;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
-    using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+class Shape : public InterfaceProxy<ShapeTraits> {
+    using Base = InterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
-    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
-    InterfaceStatus area(int &amp;out) const noexcept {
-        return this-&gt;template call_checked&lt;int (*)(const void *)&gt;(out, ShapeTraits::area_slot);
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
+    InterfaceStatus area(int &out) const noexcept {
+        return this->template call_checked<int (*)(const void *)>(out, ShapeTraits::slots.area);
     }
 };
 int main() {
@@ -1162,13 +1186,15 @@ int main() {
         void *object;
         TypeId type;
     };
-    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
-    for (const Case &amp;c : cases) {
+    const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
+    for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
     }
     return 0;
-}</code></pre>
+}
+```
+
 </td>
 </tr>
 </table>
@@ -1179,24 +1205,335 @@ Comparing the three:
 - **ABIX manual registration** is the lowest-level explicit path (write an adapter → register → resolve → call), with no extra abstraction; the adapter's first parameter is the object handle.
 - **ABIX proxy** packages binding / status / calls into one type: the concrete type stays a plain `struct` (no inheritance, no virtual function), and after a single bind `shape.area()` is a plain native indirect call. The `Traits` can be written by hand, or generated by `amc generate -l cpp`.
 
-### `Version.h` — version packing helpers
+### `Declaration.h` — macro declarations and registration
 
-`SKL_ABIX_VERSION_NUMBER(major, minor, patch)` packs a semantic version into one `unsigned int`:
+`Declaration.h` is optional macro sugar. It does not add a runtime mechanism; it generates the pieces that would otherwise be written by hand:
+
+- the `InterfaceMethodHash` signature table `signatures`
+- the interface identity `id`
+- the zero-based slot table `Slots` / `slots`
+- the `Traits` struct
+- the `InterfaceProxy<Traits>`-derived proxy class and its typed forwarding methods
+
+The generated `Traits::id` / `signatures` / `slots` are registered and bound through the ordinary `InterfaceRegistry` (or `ModuleRegistry` + `bind_methods`), exactly like a hand-written `Traits`. The macro only removes declaration boilerplate; it does not perform runtime registration.
+
+> The macro sees the method name, the C++ return type, the return TypeID and the parameter TypeIDs, but not the C++ parameter types. It is intended for simple value-parameter contracts. Complex signatures, overloads, reference/record parameters and `void` returns should still be generated by `amc generate -l cpp` or written as a hand-written proxy.
+
+#### 1. The method list
+
+Define an `X` macro that takes exactly one argument:
 
 ```cpp
-#define SKL_ABIX_VERSION_NUMBER(major, minor, patch) \
-    ((((major) % 100U) * 10'000'000U) + (((minor) % 100U) * 100'000U) + ((patch) % 100'000U))
+constexpr skl::abix::model::TypeId i32 =
+    skl::abix::model::canonical_type_id("prim:i32");
+constexpr skl::abix::model::TypeId v =
+    skl::abix::model::canonical_type_id("prim:void");
+
+#define SHAPE_METHODS(X)       \
+    X(area, int32_t, i32, {}) \
+    X(resize, int32_t, i32, {i32, i32})
 ```
 
-`SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch)` unpacks it into three `unsigned int` variables; the caller supplies the trailing semicolon:
+Each entry has the form:
+
+```text
+X(method_name, cxx_return_type, return_type_id, {parameter_type_ids...})
+```
+
+| Field | Meaning |
+|------|---------|
+| `method_name` | Generated proxy method name and the field name in `Slots` |
+| `cxx_return_type` | C++ return type of the proxy method, e.g. `int32_t` |
+| `return_type_id` | `model::TypeId` used by `method_signature`; must match the provider / AMC |
+| `{...}` | Parameter TypeIDs used in the signature; `{}` means no parameters. The order must match the contract |
+
+Notes:
+
+- The **position in the list** determines the slot: the first entry is slot 0, the second is slot 1, and so on.
+- Elements in `{...}` are `model::TypeId`s, not C++ type names. When the provider is AMC-generated, copy the generated `signatures` / TypeID spelling.
+- The list is expanded several times by `TRAITS`, `SLOTS` and `DATA`, so it must contain only declaration entries, never runtime side effects.
+
+#### 2. One-line Traits and proxy
+
+```cpp
+#include "ABIX/Interface/Declaration.h"
+
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+```
+
+`SKL_ABIX_INTERFACE_DECLARE(type, list, version)` is equivalent to:
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(type, list, version);
+SKL_ABIX_INTERFACE_DATA(type, list);
+```
+
+Its expansion is, in essence:
+
+```cpp
+class Shape;
+
+struct ShapeTraits {
+    using Data = Shape;
+
+    static constexpr auto signatures = skl::mics::utils::array{
+        skl::abix::poly::method_signature("area", i32, skl::mics::utils::array{}),
+        skl::abix::poly::method_signature("resize", i32, skl::mics::utils::array{i32, i32}),
+    };
+    static constexpr auto version = 1;
+    static constexpr auto id = skl::abix::poly::interface_id("Shape", version, signatures);
+
+    struct alignas(8) Slots {
+        uint32_t area;
+        uint32_t resize;
+    };
+    alignas(8) static constexpr Slots slots =
+        skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+};
+
+struct Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
+    using InterfaceProxy<ShapeTraits>::InterfaceProxy;
+    using Traits = ShapeTraits;
+
+    // two overloads per method, see below
+};
+```
+
+Important details:
+
+- `id` is computed as `interface_id(#type, version, signatures)`. `#type` is the stringized macro argument, so invoke the macro inside the target namespace with the **unqualified** name `Shape`. Writing `SKL_ABIX_INTERFACE_DECLARE(ns::Shape, ...)` makes the interface name `"ns::Shape"`, which is usually not what AMC records.
+- The order of `signatures` is the slot order: `slots.area == 0`, `slots.resize == 1`.
+- `Traits::Data` aliases the proxy type (`Shape`), so generic code that only has the Traits can name the corresponding proxy type.
+- Renaming a method, reordering the list or changing the version changes `signatures` / `id` and is an ABI break. Do not reorder the list for cosmetic reasons.
+- `SKL_ABIX_INTERFACE_DECLARE(...)` needs a trailing semicolon: the generated struct definition does not carry one.
+
+#### 3. Generated proxy methods
+
+For every entry, `SKL_ABIX_INTERFACE_FORWARD` generates two template overloads:
+
+```cpp
+// 1) Direct result: the proxy is valid and the slot is bound
+template<typename... Args>
+auto resize(Args&&... args) const noexcept -> int32_t;
+
+// 2) Explicit status: an unbound slot returns method_not_found; success writes out
+template<typename... Args>
+auto resize(int32_t& out, Args&&... args) const noexcept
+    -> skl::abix::poly::InterfaceStatus;
+```
+
+Usage:
+
+```cpp
+Shape shape = /* after bind */;
+
+const int32_t area = shape.area();
+
+int32_t area_out = 0;
+if (shape.area(area_out) == skl::abix::poly::InterfaceStatus::ok) {
+    // area_out is valid
+}
+
+const int32_t width = 800;
+const int32_t height = 600;
+const int32_t resized = shape.resize(width, height);
+
+int32_t resized_out = 0;
+if (shape.resize(resized_out, width, height) == skl::abix::poly::InterfaceStatus::ok) {
+    // resized_out is valid
+}
+```
+
+Semantics:
+
+- The forwarding form calls `InterfaceProxy::call` directly and does not check whether the slot is bound. It is the hot path after `proxy.valid()` has been established, and costs the same as a hand-written `call<Fn>(Traits::slots.fn, ...)`.
+- The checked form calls `InterfaceProxy::call_checked`: an unbound slot returns `InterfaceStatus::method_not_found` instead of calling a null pointer; success returns `ok` and writes `out`. Signature verification already happened during `bind()` / `bind_methods()`; it is not repeated per call.
+- `ret_t` cannot be `void`: the checked overload needs `ret_t& out`. Methods with no return value should use an AMC-generated proxy or a hand-written proxy.
+- The proxy method's parameter types are deduced from the **call-site arguments** via `std::decay_t<Args>...`; the macro does not know the C++ parameter types in the contract. Pass arguments whose types match the adapter's native signature (for example, `int32_t` variables rather than `double` or a different-width integer). A mismatch is not diagnosed by the macro, but constructs the wrong function-pointer type.
+
+#### 4. Registration and binding: complete example
+
+The macro only declares. The provider still supplies adapters and registers the generated `id` / `signatures` / `slots` with `InterfaceRegistry`:
+
+```cpp
+#include "ABIX/Interface/Declaration.h"
+
+namespace demo {
+
+using namespace skl::abix::poly;
+using skl::abix::model::TypeId;
+
+constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+
+#define SHAPE_METHODS(X)       \
+    X(area, int32_t, i32, {}) \
+    X(resize, int32_t, i32, {i32, i32})
+
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+
+// Provider: a plain aggregate, no ABIX members and no Shape base.
+struct Box {
+    int32_t width;
+    int32_t height;
+};
+
+// The adapter's first parameter is the object handle.
+int32_t box_area(const void *self) {
+    const auto *box = static_cast<const Box *>(self);
+    return box->width * box->height;
+}
+
+int32_t box_resize(void *self, int32_t width, int32_t height) {
+    auto *box = static_cast<Box *>(self);
+    box->width = width;
+    box->height = height;
+    return box->width * box->height;
+}
+
+constexpr TypeId box_id{0x51, 0x01};
+
+int run() {
+    // Slot values and signatures come from the generated Traits.
+    const InterfaceMethod methods[] = {
+        {ShapeTraits::signatures[ShapeTraits::slots.area],
+            interface_entry(&box_area), ShapeTraits::slots.area, 0},
+        {ShapeTraits::signatures[ShapeTraits::slots.resize],
+            interface_entry(&box_resize), ShapeTraits::slots.resize, 0},
+    };
+
+    InterfaceRegistry<4> registry;
+    if (registry.add({ShapeTraits::id, box_id, methods, 2, ShapeTraits::version, 0})
+        != InterfaceStatus::ok)
+        return 1;
+
+    Box box{3, 4};
+    Shape shape(registry, &box, box_id);
+    if (!shape.valid()) return 2;
+
+    // Hot path: a cached native indirect call.
+    const int32_t area = shape.area();
+
+    // Checked path: an unbound slot returns method_not_found.
+    int32_t checked = 0;
+    if (shape.area(checked) != InterfaceStatus::ok) return 3;
+
+    const int32_t width = 8;
+    const int32_t height = 6;
+    const int32_t resized = shape.resize(width, height);
+
+    int32_t checked_resize = 0;
+    if (shape.resize(checked_resize, width, height) != InterfaceStatus::ok) return 4;
+
+    return area == 12 && checked == 12 && resized == 48 && checked_resize == 48 ? 0 : 5;
+}
+
+}   // namespace demo
+```
+
+For a dynamically discovered module whose adapter table comes from a manifest, bypass `InterfaceRegistry`:
+
+```cpp
+Shape shape;
+if (shape.bind_methods(ShapeTraits::id, ShapeTraits::version, methods, 2, &box)
+    != InterfaceStatus::ok)
+    return 1;
+```
+
+`bind_methods` uses the provider-owned method table directly; hold the module lease for as long as the cached function pointers are used, or they will dangle after unload.
+
+#### 5. Versions and interface identity
+
+The third argument of `SKL_ABIX_INTERFACE_DECLARE` / `SKL_ABIX_INTERFACE_TRAITS` is `version`. It feeds:
+
+- `Traits::version`
+- the identity calculation `interface_id(#type, version, signatures)`
+- version matching when the binding is registered
+
+A plain integer is fine for small iterations. For semantic versions use:
 
 ```cpp
 constexpr unsigned int version = SKL_ABIX_VERSION_NUMBER(1, 2, 3);
-SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);
+// version == 10'200'003
+
+uint32_t major = 0, minor = 0, patch = 0;
+SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);   // caller supplies ';'
 // major == 1, minor == 2, patch == 3
 ```
 
-`major` / `minor` are reduced to two decimal digits and `patch` to five, so the packed value is stable and compact.
+Packing rule:
+
+```text
+major * 10'000'000 + minor * 100'000 + patch
+```
+
+`major` / `minor` are reduced to two decimal digits and `patch` to five. `SKL_ABIX_VERSION_EXTRACT` is the inverse and needs three assignable variables; the caller supplies the trailing semicolon.
+
+Identity rules:
+
+- Same name, different version → different `id`.
+- Same version, different method list → different `id`.
+- Reordering methods → different signature order → different `id`, and the slot meanings change, so it is an ABI break.
+- If another TU generates the same contract with `amc generate -l cpp`, its `kNameInterface` should equal the macro's `interface_id("Name", version, signatures)`. A `static_assert` can pin this down.
+
+#### 6. Step-by-step use: `TRAITS` and `DATA`
+
+The two halves can be used separately:
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1);
+```
+
+This emits only `ShapeTraits` (plus a forward declaration of `class Shape;`), not the `Shape` proxy. Useful when:
+
+- only registration is needed, not a C++ proxy;
+- a custom proxy exposes only part of the contract;
+- the contract constants live in a public header and the proxy in another.
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS);
+```
+
+`SKL_ABIX_INTERFACE_DATA(type, list)` generates only the proxy class and requires `type##Traits` to exist. `SKL_ABIX_INTERFACE_DECLARE` combines both steps.
+
+#### 7. Internal expansion macros
+
+These are normally not used directly, but they explain expansion errors:
+
+| Macro | Effect |
+|------|--------|
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)` | Emits one `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` entry |
+| `SKL_ABIX_INTERFACE_SLOT(fn, ...)` | Emits `uint32_t fn;` inside `Slots` |
+| `SKL_ABIX_INTERFACE_SLOTS(list)` | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()` |
+| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)` | Emits the direct-return and `InterfaceStatus` checked overloads |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver)` | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`) |
+| `SKL_ABIX_INTERFACE_DATA(type, list)` | Emits the `InterfaceProxy<typeTraits>`-derived `type` proxy |
+| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver)` | `TRAITS` + `DATA` |
+
+Common expansion errors:
+
+- Missing semicolon after `SKL_ABIX_INTERFACE_DECLARE` / `SKL_ABIX_INTERFACE_DATA`.
+- Using C++ type names (`int32_t`) instead of `model::TypeId` variables (`i32`) in the parameter list.
+- Template arguments containing commas splitting the macro arguments; parenthesize or switch to AMC.
+- A method name colliding with an existing macro/type; `fn` becomes both the member name and the `Slots` field name.
+
+#### 8. Limitations and when to use AMC
+
+The macro is a good fit for:
+
+- simple contracts with value parameters and no overloads;
+- header-only consumers that do not want to run `amc generate`;
+- quick test fixtures and examples.
+
+The macro is not suitable for:
+
+- `void` returns (the checked overload needs `ret_t&`);
+- reference, array, function-pointer or record parameters (`std::decay_t` changes the type);
+- overloaded methods (same-name entries generate duplicate members);
+- complex ABI signatures that must match the compiler AST exactly;
+- providers that need an automatically generated manifest.
+
+For those, use `amc generate -l cpp`, or write `Traits` and the proxy by hand following [`Proxy.h`](../../ABIX/Interface/Proxy.h). AMC has the Clang AST and therefore knows the real C++ parameter types; its signatures and adapter typedefs are not limited by macro text.
 
 ## What it is not
 

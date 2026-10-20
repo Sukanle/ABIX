@@ -45,7 +45,7 @@ The frontend and AMC handle templates, `std::` types, attributes, `[[interface]]
 amc generate build/package.abix -l cpp -o gen/
 ```
 
-`amc_generated.hpp` contains layout-compatible C++ types and typedefs, ABI constants, ownership and error-boundary helpers, and metadata-region accessors. For an interface contract it also emits `k<Name>Interface`, `k<Name>Version`, `enum class <Name>Slot`, the `<Name>_<method>_fn` typedefs, a `Traits` struct and, when every method takes the object handle first, an `InterfaceProxy`-derived proxy.
+`amc_generated.hpp` contains layout-compatible C++ types and typedefs, ABI constants, ownership and error-boundary helpers, and metadata-region accessors. For an interface contract it also emits `k<Name>Interface`, `k<Name>Version`, the `<Name>_<method>_fn` typedefs, a `Traits` struct with a typed zero-based `Slots` table and expected signatures, and, when every method takes the object handle first, an `InterfaceProxy`-derived proxy.
 
 `amc_abi_check.hpp` is the compile-time layout check. Include it after the native declarations it names:
 
@@ -65,7 +65,7 @@ The C++ interface layer is header-only and lives in [`ABIX/Interface/`](../../AB
 - `Registry.h` / `Ref.h`: in-process registration and one-time resolution.
 - `Module.h` / `ModuleRegistry.h` / `Lease.h` / `Discovery.h`: dynamic module manifests and leases.
 - `Owner.h`: cross-module ownership.
-- `Version.h`: version packing helpers.
+- `Declaration.h`: declaration sugar (`SKL_ABIX_INTERFACE_DECLARE`) and version packing helpers.
 
 A provider keeps its classes, virtual functions and layout. The adapter is the only bridge, and the interface never feeds `TypeID` / `LayoutHash` / `ABIHash`.
 

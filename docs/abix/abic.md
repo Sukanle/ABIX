@@ -250,7 +250,7 @@ The interface identity is a content hash over the name, version and ordered meth
 | `type` | string | The concrete type implementing it |
 | `methods` | string[] | In slot order, the recorded adapter function bound to each interface method; its count must equal the interface's method count |
 
-The binding maps `(interface_id, slot)` to an adapter function signature; the adapter's first parameter is the object handle. ABIX standardises no private vtable: a provider keeps its own layout and virtual functions, and the adapter is the only bridge. `amc generate -l cpp` projects each interface as `k<Name>Interface`, `k<Name>Version`, `enum class <Name>Slot`, a `<Name>_<method>_fn` typedef, a `Traits` struct (id / version / slots / expected signatures) and — when every method takes the object handle first — an `InterfaceProxy<Traits>`-derived proxy class, so a consumer can declare, bind and call the interface without touching the provider's layout. See [`interface.md`](interface.md) and ABI-SPEC §19.
+The binding maps `(interface_id, slot)` to an adapter function signature; the adapter's first parameter is the object handle. ABIX standardises no private vtable: a provider keeps its own layout and virtual functions, and the adapter is the only bridge. `amc generate -l cpp` projects each interface as `k<Name>Interface`, `k<Name>Version`, a `<Name>_<method>_fn` typedef, a `Traits` struct with a typed zero-based `Slots` table (`Traits::slots.<method>`) and the expected signatures, and — when every method takes the object handle first — an `InterfaceProxy<Traits>`-derived proxy class, so a consumer can declare, bind and call the interface without touching the provider's layout. See [`interface.md`](interface.md) and ABI-SPEC §19.
 
 ### `[target]`
 

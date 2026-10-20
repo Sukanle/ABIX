@@ -30,8 +30,10 @@ C++ 虚调用并不只是从对象取出一个函数指针：它可能涉及多�
 <th align="left">ABIX Interface（非侵入式）</th>
 </tr>
 <tr>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -52,19 +54,22 @@ struct Triangle : Shape {
     int area() const override { return base * height / 2; }
     int base, height;
 };
-int total(const Shape &amp;s) { return s.area(); }
+int total(const Shape &s) { return s.area(); }
 int main() {
     Square square{3};
     Rectangle rectangle{2, 6};
     Triangle triangle{4, 5};
-    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
+    const Shape *shapes[] = {&square, &rectangle, &triangle};
     for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
     return 0;
-}</code></pre>
-</td>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+}
+```
 
+</td>
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 #include "ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -75,18 +80,20 @@ constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
 
 // 接口类：Traits 描述契约，Shape 只补方法。
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr skl::mics::utils::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 1;
-    static constexpr uint32_t area_slot = 0;
+    struct alignas(8) Slots {
+        uint32_t area;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
-    using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+class Shape : public InterfaceProxy<ShapeTraits> {
+    using Base = InterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
-    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
 };
 
 // 三个实现类：普通 struct，不继承 Shape，不含虚函数。
@@ -103,32 +110,31 @@ struct Triangle {
 };
 
 int square_area(const void *self) {
-    const auto *s = static_cast&lt;const Square *&gt;(self);
-    return s-&gt;side * s-&gt;side;
+    const auto *s = static_cast<const Square *>(self);
+    return s->side * s->side;
 }
 int rectangle_area(const void *self) {
-    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
-    return r-&gt;width * r-&gt;height;
+    const auto *r = static_cast<const Rectangle *>(self);
+    return r->width * r->height;
 }
 int triangle_area(const void *self) {
-    const auto *t = static_cast&lt;const Triangle *&gt;(self);
-    return t-&gt;base * t-&gt;height / 2;
+    const auto *t = static_cast<const Triangle *>(self);
+    return t->base * t->height / 2;
 }
 
 constexpr TypeId square_id{0x11, 0x00};
 constexpr TypeId rectangle_id{0x12, 0x00};
 constexpr TypeId triangle_id{0x13, 0x00};
 
-InterfaceStatus register_shape(InterfaceRegistry&lt;4&gt; &amp;registry, TypeId type, const InterfaceMethod *methods) {
+InterfaceStatus register_shape(InterfaceRegistry<4> &registry, TypeId type, const InterfaceMethod *methods) {
     return registry.add({ShapeTraits::id, type, methods, 1, ShapeTraits::version, 0});
 }
 
 int main() {
-    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
-    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
-    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
-
-    InterfaceRegistry&lt;4&gt; registry;
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&triangle_area), 0, 0}};
+    InterfaceRegistry<4> registry;
     if (register_shape(registry, square_id, square_methods) != InterfaceStatus::ok) return 1;
     if (register_shape(registry, rectangle_id, rectangle_methods) != InterfaceStatus::ok) return 1;
     if (register_shape(registry, triangle_id, triangle_methods) != InterfaceStatus::ok) return 1;
@@ -140,14 +146,16 @@ int main() {
         void *object;
         TypeId type;
     };
-    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
-    for (const Case &amp;c : cases) {
+    const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
+    for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         if (!shape.valid()) return 1;
         std::printf("area=%d\n", shape.area());
     }
     return 0;
-}</code></pre>
+}
+```
+
 </td>
 </tr>
 </table>
@@ -175,7 +183,7 @@ int main() {
 
 - **纯 C++、编译期同构、无跨边界需求**：虚函数足够，零额外约定。
 - **跨 DLL / 跨语言 / 需要「面向接口、不认具体类型」**：用 Interface。消费者代码里可以只出现 `InterfaceId`（见[示例 2](#示例)的跨模块路径），provider 换了具体类型也无需重编消费者。
-- **两者共存**：ABIX 不要求你放弃 C++ 语义——provider 内部照常用虚函数，只在边界处用适配器把某个具体类型的方法绑定到接口槽位（AMC 的 `[[interface]]` / `[[implements]]` 声明）。接口可以像 C++ 抽象类一样在头文件里声明：`[[interface]]` 定义契约、`[[implements]]` 建立绑定，`amc generate -l cpp` 生成 `k<Name>Interface` / `k<Name>Version` / `enum class <Name>Slot` / `<Name>_<method>_fn`，消费者据此封装出 `Shape s = Shape::bind(...); s.area();` 这样的用法。
+- **两者共存**：ABIX 不要求你放弃 C++ 语义——provider 内部照常用虚函数，只在边界处用适配器把某个具体类型的方法绑定到接口槽位（AMC 的 `[[interface]]` / `[[implements]]` 声明）。接口可以像 C++ 抽象类一样在头文件里声明：`[[interface]]` 定义契约、`[[implements]]` 建立绑定，`amc generate -l cpp` 生成 `k<Name>Interface` / `k<Name>Version` / `<Name>_<method>_fn` / 带类型化 `Slots` 表的 `Traits`，消费者据此封装出 `Shape s = Shape::bind(...); s.area();` 这样的用法。
 
 ## 快速开始
 
@@ -314,7 +322,7 @@ Owner handle 会在释放前保持其创建模块处于加载状态，因此长�
 
 ### 示例 1 —— 完整流程：接口类 + 三个实现类
 
-契约放在共享头文件里：`Traits` 承载接口身份、版本、槽位容量与期望签名，代理类只补方法。
+契约放在共享头文件里：`Traits` 承载接口身份、版本、类型化槽位表与期望签名，代理类只补方法。
 
 ```cpp
 // shape.h
@@ -331,15 +339,17 @@ using skl::abix::poly::method_signature;
 inline constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {
+    static constexpr skl::mics::utils::array signatures = {
         method_signature("area", i32, nullptr, 0),
         method_signature("perimeter", i32, nullptr, 0),
     };
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 2;
-    static constexpr uint32_t area_slot = 0;
-    static constexpr uint32_t perimeter_slot = 1;
+    struct alignas(8) Slots {
+        uint32_t area;
+        uint32_t perimeter;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
@@ -347,9 +357,9 @@ class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
 
 public:
     using Base::Base;
-    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::area_slot); }
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
     int perimeter() const noexcept {
-        return this->template call<int (*)(const void *)>(ShapeTraits::perimeter_slot);
+        return this->template call<int (*)(const void *)>(ShapeTraits::slots.perimeter);
     }
 };
 
@@ -419,19 +429,19 @@ constexpr TypeId triangle_id{0x51, 0x03};
 
 // 每个实现一张方法表：signature 与 slot 都直接取自共享契约。
 const InterfaceMethod square_methods[] = {
-    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&square_area), ShapeTraits::area_slot, 0},
-    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&square_perimeter),
-        ShapeTraits::perimeter_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.area], interface_entry(&square_area), ShapeTraits::slots.area, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.perimeter], interface_entry(&square_perimeter),
+        ShapeTraits::slots.perimeter, 0},
 };
 const InterfaceMethod rectangle_methods[] = {
-    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&rectangle_area), ShapeTraits::area_slot, 0},
-    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&rectangle_perimeter),
-        ShapeTraits::perimeter_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.area], interface_entry(&rectangle_area), ShapeTraits::slots.area, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.perimeter], interface_entry(&rectangle_perimeter),
+        ShapeTraits::slots.perimeter, 0},
 };
 const InterfaceMethod triangle_methods[] = {
-    {ShapeTraits::signatures[ShapeTraits::area_slot], interface_entry(&triangle_area), ShapeTraits::area_slot, 0},
-    {ShapeTraits::signatures[ShapeTraits::perimeter_slot], interface_entry(&triangle_perimeter),
-        ShapeTraits::perimeter_slot, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.area], interface_entry(&triangle_area), ShapeTraits::slots.area, 0},
+    {ShapeTraits::signatures[ShapeTraits::slots.perimeter], interface_entry(&triangle_perimeter),
+        ShapeTraits::slots.perimeter, 0},
 };
 
 InterfaceStatus register_shape(
@@ -666,7 +676,7 @@ registry.unregister_module(control.id);   // 现在可以卸载
 | `ABIX/Interface/Discovery.h` | `discover_module` —— 加载 → 校验 → 注册 |
 | `ABIX/Interface/Owner.h` | Owner ABI —— `handle` / `ref` 的借用/拥有/复制语义 |
 | `ABIX/Interface/Proxy.h` | C++ 代理 API —— `InterfaceProxy<Traits>`、`bind`/`call`、签名校验 |
-| `ABIX/Interface/Version.h` | 版本辅助宏 —— `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
+| `ABIX/Interface/Declaration.h` | 声明糖 —— `SKL_ABIX_INTERFACE_DECLARE`；版本辅助宏 `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
 
 ### `Contract.h` —— 接口身份与方法
 
@@ -674,8 +684,8 @@ registry.unregister_module(control.id);   // 现在可以卸载
 |------|------|------|
 | `InterfaceId` | `Hash128` | 接口身份：对接口名、版本与有序方法签名计算的内容哈希。不是类名，也不是 vtable 地址；可用 `interface_id(...)` 自动生成 |
 | `InterfaceMethodHash` | `model::SignatureHash` | 单个方法的 ABI 签名哈希 |
-| `interface_id(name, version, signatures)` | `InterfaceId` | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `util::StaticArray` 或变参 `InterfaceMethodHash` 列表 |
-| `InterfaceMethodKey` | `{signature, slot}` | 与槽位配对的签名，供 `interface_id` 的 `util::StaticArray` 重载排序后计算身份 |
+| `interface_id(name, version, signatures)` | `InterfaceId` | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `mics::utils::array` 或变参 `InterfaceMethodHash` 列表 |
+| `InterfaceMethodKey` | `{signature, slot}` | 与槽位配对的签名，供 `interface_id` 的 `mics::utils::array` 重载排序后计算身份 |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | 编译期从方法名与返回/参数 TypeID 算出方法签名；复刻 `AMC::signature_hash`（`[[interface]]` 路径，参数名不参与哈希）。TypeID 可由 `model::canonical_type_id`（`ABI.h`）得到 |
 | `interface_entry<Fn>(fn)` | `uintptr_t` | 把函数指针拷入不透明的 `entry` 槽位；生成代码与调用方共用同一拼写 |
 | `to_string(status)` | `const char*` | `InterfaceStatus` 的可读名 |
@@ -875,8 +885,8 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 |------|------|
 | `id` | `InterfaceId`，接口身份（由 AMC 计算） |
 | `version` | 接口版本 |
-| `slots` | **槽位容量**（≥ 最高 slot + 1），据此确定 `InterfaceRef` 的缓存大小，不是魔法数字 |
-| `signatures[]`（可选） | 每个 slot 期望的方法签名；提供时 `bind()` 会逐槽校验（`0` 表示该槽不校验） |
+| `signatures` | 按 slot 排列的期望签名 `mics::utils::array`；其大小同时是 `InterfaceRef` 缓存容量。零哈希表示该 slot 不校验 |
+| `slots` | 类型化零基槽位表：`Traits::slots.<method>` 就是代理 `call(...)` 使用的 slot 值 |
 
 `InterfaceProxy<Traits>`：
 
@@ -897,15 +907,17 @@ struct ShapeTraits {
     // AMC 的 int32_t TypeID 是 ABI key，不是 C++ 拼写。
     static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // 方法签名也由函数生成；返回/参数 TypeID 必须与 provider 一致。
-    static constexpr util::StaticArray sigs = {
+    static constexpr skl::mics::utils::array sigs = {
         method_signature("area", i32, nullptr, 0),
         method_signature("size", i32, nullptr, 0),
     };
     static constexpr InterfaceId id = interface_id("Shape", 1, sigs);   // 自动生成
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 2;
-    static constexpr uint32_t area_slot = 0;
-    static constexpr uint32_t size_slot = 1;
+    struct alignas(8) Slots {
+        uint32_t area;
+        uint32_t size;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, sigs.size(), 0>();
 };
 ```
 
@@ -922,18 +934,18 @@ name + decimal(return_type.lo) + decimal(return_type.hi)
      + 每个参数：decimal(type.lo) + decimal(type.hi)
 ```
 
-域是 `0x5349474E41545552`（`"SIGNATUR"`），参数名不参与哈希。`name`/`parameters` 是 AMC 记录的**契约函数**的名字与参数，不是随手写的标签。若该函数的首参是对象句柄（常见的适配器约定），句柄就是第 0 个参数；自由函数没有句柄。AMC 生成的头文件里已经有精确的 `signatures[]`，不确定时直接抄。
+域是 `0x5349474E41545552`（`"SIGNATUR"`），参数名不参与哈希。`name`/`parameters` 是 AMC 记录的**契约函数**的名字与参数，不是随手写的标签。若该函数的首参是对象句柄（常见的适配器约定），句柄就是第 0 个参数；自由函数没有句柄。AMC 生成的头文件里已经有精确的 `signatures` 数组，不确定时直接抄。
 
 参数表有三种等价、零分配的形式：
 
 ```cpp
 constexpr TypeId params[] = {i32, i32};
 method_signature("resize", v, params, 2);                 // 指针 + 数量
-method_signature("resize", v, util::StaticArray{i32, i32});     // 内联定长数组
+method_signature("resize", v, mics::utils::array{i32, i32});     // 内联定长数组
 method_signature("resize", v, i32, i32);                  // 变参
 ```
 
-`util::StaticArray` 是 `ABIX/Util/Array.h` 里的最小定长类型；其 deduction guide 让 `util::StaticArray{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
+`mics::utils::array` 是 `mics/utils/array.h` 里的最小定长类型；其 deduction guide 让 `mics::utils::array{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
 
 签名里是 **TypeID**，不是 C++ 类型。对基于名字的身份，`model::canonical_type_id(规范名)` 可以复刻 AMC 的值：
 
@@ -994,7 +1006,7 @@ constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
 constexpr model::TypeId move_params[] = {point};
 constexpr model::TypeId open_params[] = {text};
 
-static constexpr util::StaticArray sigs = {
+static constexpr mics::utils::array sigs = {
     method_signature("draw",  v,    nullptr,     0),
     method_signature("move",  v,    move_params, 1),
     method_signature("label", text, nullptr,     0),
@@ -1003,7 +1015,7 @@ static constexpr util::StaticArray sigs = {
 static constexpr InterfaceId id = interface_id("Canvas", 1, sigs);
 ```
 
-若 provider 是 AMC 生成的、契约函数首参是对象句柄，请把句柄 TypeID 加到每个参数表的最前面（或直接抄生成的 `signatures[]`）。
+若 provider 是 AMC 生成的、契约函数首参是对象句柄，请把句柄 TypeID 加到每个参数表的最前面（或直接抄生成的 `signatures` 数组）。
 
 **拿到精确值**：指针、typedef、模板别名、嵌套记录不要猜规范拼写，从 artifact 读：
 
@@ -1029,8 +1041,10 @@ amc-dump module.abix                       # 完整 section dump
 <th align="left">ABIX：代理（Proxy.h）</th>
 </tr>
 <tr>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -1055,14 +1069,17 @@ int main() {
     Square square{5};
     Rectangle rectangle{4, 6};
     Triangle triangle{6, 4};
-    const Shape *shapes[] = {&amp;square, &amp;rectangle, &amp;triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", shape-&gt;area());
+    const Shape *shapes[] = {&square, &rectangle, &triangle};
+    for (const Shape *shape : shapes) std::printf("area=%d\n", shape->area());
     return 0;
-}</code></pre>
-</td>
-<td valign="top">
-<pre><code class="language-cpp">#include &lt;cstdio&gt;
+}
+```
 
+</td>
+<td valign="top" markdown="1">
+
+```cpp
+#include <cstdio>
 #include "ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -1089,24 +1106,24 @@ struct Triangle {
 };
 
 int square_area(const void *self) {
-    const auto *s = static_cast&lt;const Square *&gt;(self);
-    return s-&gt;side * s-&gt;side;
+    const auto *s = static_cast<const Square *>(self);
+    return s->side * s->side;
 }
 int rectangle_area(const void *self) {
-    const auto *r = static_cast&lt;const Rectangle *&gt;(self);
-    return r-&gt;width * r-&gt;height;
+    const auto *r = static_cast<const Rectangle *>(self);
+    return r->width * r->height;
 }
 int triangle_area(const void *self) {
-    const auto *t = static_cast&lt;const Triangle *&gt;(self);
-    return t-&gt;base * t-&gt;height / 2;
+     const auto *t = static_cast<const Triangle *>(self);
+    return t->base * t->height / 2;
 }
 
 int main() {
-    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&amp;square_area), 0, 0}};
-    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&amp;rectangle_area), 0, 0}};
-    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&amp;triangle_area), 0, 0}};
+    const InterfaceMethod square_methods[] = {{area_sig, interface_entry(&square_area), 0, 0}};
+    const InterfaceMethod rectangle_methods[] = {{area_sig, interface_entry(&rectangle_area), 0, 0}};
+    const InterfaceMethod triangle_methods[] = {{area_sig, interface_entry(&triangle_area), 0, 0}};
 
-    InterfaceRegistry&lt;4&gt; registry;
+    InterfaceRegistry<4> registry;
     if (registry.add({kShape, square_id, square_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
     if (registry.add({kShape, rectangle_id, rectangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
     if (registry.add({kShape, triangle_id, triangle_methods, 1, 1, 0}) != InterfaceStatus::ok) return 1;
@@ -1118,33 +1135,39 @@ int main() {
         void *object;
         TypeId type;
     };
-    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
-    for (const Case &amp;c : cases) {
-        InterfaceRef&lt;2&gt; ref;
+    const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
+    for (const Case &c : cases) {
+        InterfaceRef<2> ref;
         if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
-        const auto area = ref.method&lt;AreaFn&gt;(0);
+        const auto area = ref.method<AreaFn>(0);
         std::printf("area=%d\n", area(ref.object()));
     }
     return 0;
-}</code></pre>
+}
+```
+
 </td>
-<td valign="top">
-<pre><code class="language-cpp">// 契约、适配器、方法表与注册同中栏
+<td valign="top" markdown="1">
+
+```cpp
+// 契约、适配器、方法表与注册同中栏
 struct ShapeTraits {
-    static constexpr skl::abix::util::StaticArray signatures = {area_sig};
+    static constexpr skl::mics::utils::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 1;
-    static constexpr uint32_t area_slot = 0;
+    struct alignas(8) Slots {
+        uint32_t area;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy&lt;ShapeTraits&gt; {
-    using Base = InterfaceProxy&lt;ShapeTraits&gt;;
+class Shape : public InterfaceProxy<ShapeTraits> {
+    using Base = InterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
-    int area() const noexcept { return this-&gt;template call&lt;int (*)(const void *)&gt;(ShapeTraits::area_slot); }
-    InterfaceStatus area(int &amp;out) const noexcept {
-        return this-&gt;template call_checked&lt;int (*)(const void *)&gt;(out, ShapeTraits::area_slot);
+    int area() const noexcept { return this->template call<int (*)(const void *)>(ShapeTraits::slots.area); }
+    InterfaceStatus area(int &out) const noexcept {
+        return this->template call_checked<int (*)(const void *)>(out, ShapeTraits::slots.area);
     }
 };
 int main() {
@@ -1153,13 +1176,15 @@ int main() {
         void *object;
         TypeId type;
     };
-    const Case cases[] = {{&amp;square, square_id}, {&amp;rectangle, rectangle_id}, {&amp;triangle, triangle_id}};
-    for (const Case &amp;c : cases) {
+    const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
+    for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
     }
     return 0;
-}</code></pre>
+}
+```
+
 </td>
 </tr>
 </table>
@@ -1170,24 +1195,336 @@ int main() {
 - **ABIX 手动注册**是最底层的显式步骤（写适配器 → 注册 → 解析 → 调用），无额外抽象；`adapter` 的首参是对象句柄。
 - **ABIX 代理**把绑定/状态/调用封装成一个类型：具体类型仍是普通 `struct`（不继承、不含虚函数），绑定一次后 `shape.area()` 即普通原生间接调用；`Traits` 可手写，也可由 `amc generate -l cpp` 生成。
 
-### `Version.h` —— 版本打包辅助宏
+### `Declaration.h` —— 宏声明与注册
 
-`SKL_ABIX_VERSION_NUMBER(major, minor, patch)` 把语义版本打包成一个 `unsigned int`：
+`Declaration.h` 是一层可选的宏语法糖。它不引入新的运行时机制，而是把下面这些原本要手写的内容在一次展开中生成出来：
+
+- 每个方法的 `InterfaceMethodHash` 签名表 `signatures`
+- 接口身份 `id`
+- 零基槽位表 `Slots` / `slots`
+- `Traits` 结构
+- 继承 `InterfaceProxy<Traits>` 的代理类，以及每个方法的类型化转发入口
+
+生成出来的 `Traits::id` / `signatures` / `slots` 仍然通过普通的
+`InterfaceRegistry`（或 `ModuleRegistry` + `bind_methods`）注册和绑定，和手写 `Traits` 走完全相同的路径。宏只负责“少写声明代码”，不负责运行时注册。
+
+> 宏只能看到方法名、C++ 返回类型、返回类型的 TypeID 和参数 TypeID，看不到 C++ 参数类型。因此它适合简单的值参数契约；复杂签名、重载、引用/记录参数和 `void` 返回仍应由 `amc generate -l cpp` 或手写代理生成。
+
+#### 1. 方法列表
+
+先定义一个有且只有一个参数的 `X` 宏：
 
 ```cpp
-#define SKL_ABIX_VERSION_NUMBER(major, minor, patch) \
-    ((((major) % 100U) * 10'000'000U) + (((minor) % 100U) * 100'000U) + ((patch) % 100'000U))
+constexpr skl::abix::model::TypeId i32 =
+    skl::abix::model::canonical_type_id("prim:i32");
+constexpr skl::abix::model::TypeId v =
+    skl::abix::model::canonical_type_id("prim:void");
+
+#define SHAPE_METHODS(X)       \
+    X(area, int32_t, i32, {}) \
+    X(resize, int32_t, i32, {i32, i32})
 ```
 
-`SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch)` 把它拆成三个 `unsigned int` 变量；调用方补上末尾分号：
+每个条目的形状是：
+
+```text
+X(method_name, cxx_return_type, return_type_id, {parameter_type_ids...})
+```
+
+| 字段 | 含义 |
+|------|------|
+| `method_name` | 生成的代理方法名，同时也是 `Slots` 里的字段名 |
+| `cxx_return_type` | 代理方法的 C++ 返回类型，例如 `int32_t` |
+| `return_type_id` | 参与 `method_signature` 的返回类型 `model::TypeId`，必须与 provider / AMC 一致 |
+| `{...}` | 参与签名的参数 TypeID 列表；空 `{}` 表示无参数。顺序必须与契约一致 |
+
+注意：
+
+- `method_name` 所在条目在**宏列表里的顺序**决定 slot：第一条是 slot 0，第二条是 slot 1，以此类推。
+- `{...}` 里的元素是 `model::TypeId`，不是 C++ 类型名。若 provider 由 AMC 生成，直接从生成的 `signatures` 或 TypeID 写法抄写。
+- 列表宏会被 `TRAITS`、`SLOTS`、`DATA` 多次展开，因此只能包含声明条目，不能有运行时副作用。
+
+#### 2. 一行生成 Traits 和代理
+
+```cpp
+#include "ABIX/Interface/Declaration.h"
+
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+```
+
+`SKL_ABIX_INTERFACE_DECLARE(type, list, version)` 等价于：
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(type, list, version);
+SKL_ABIX_INTERFACE_DATA(type, list);
+```
+
+它展开后的核心结构如下（省略了宏自身的 `X(...)` 展开细节）：
+
+```cpp
+class Shape;
+
+struct ShapeTraits {
+    using Data = Shape;
+
+    static constexpr auto signatures = skl::mics::utils::array{
+        skl::abix::poly::method_signature("area", i32, skl::mics::utils::array{}),
+        skl::abix::poly::method_signature("resize", i32, skl::mics::utils::array{i32, i32}),
+    };
+    static constexpr auto version = 1;
+    static constexpr auto id = skl::abix::poly::interface_id("Shape", version, signatures);
+
+    struct alignas(8) Slots {
+        uint32_t area;
+        uint32_t resize;
+    };
+    alignas(8) static constexpr Slots slots =
+        skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+};
+
+struct Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
+    using InterfaceProxy<ShapeTraits>::InterfaceProxy;
+    using Traits = ShapeTraits;
+
+    // 每个方法生成两个重载，见下一节
+};
+```
+
+几个关键点：
+
+- `id` 由 `interface_id(#type, version, signatures)` 计算。`#type` 是宏参数的字符串化结果，所以要把宏调用放在目标命名空间内，并使用**非限定名** `Shape`，这样得到的接口名与 AMC 记录的名字一致。写成 `SKL_ABIX_INTERFACE_DECLARE(ns::Shape, ...)` 会让 `#type` 变成 `"ns::Shape"`，通常不是想要的接口名。
+- `signatures` 的顺序就是 slot 顺序；`slots.area == 0`、`slots.resize == 1`。
+- `Traits::Data` 是指向代理类型 `Shape` 的别名，方便模板代码在只拿到 Traits 时取得对应的代理类型。
+- 方法顺序、方法名或版本一旦变化，`signatures`/`id` 都会变化，属于 ABI 不兼容变更。不要为了“整理代码”重排列表。
+- `SKL_ABIX_INTERFACE_DECLARE(...)` 末尾需要分号，因为生成的结构体定义没有自带分号。
+
+#### 3. 生成的代理方法
+
+对列表中的每个方法，`SKL_ABIX_INTERFACE_FORWARD` 生成两个模板重载：
+
+```cpp
+// 1) 直接返回结果：要求 proxy 已成功绑定，slot 已绑定
+template<typename... Args>
+auto resize(Args&&... args) const noexcept -> int32_t;
+
+// 2) 显式返回状态：未绑定的 slot 返回 method_not_found，成功时写入 out
+template<typename... Args>
+auto resize(int32_t& out, Args&&... args) const noexcept
+    -> skl::abix::poly::InterfaceStatus;
+```
+
+调用方式：
+
+```cpp
+Shape shape = /* bind 之后 */;
+
+const int32_t area = shape.area();
+
+int32_t area_out = 0;
+if (shape.area(area_out) == skl::abix::poly::InterfaceStatus::ok) {
+    // area_out 有效
+}
+
+const int32_t width = 800;
+const int32_t height = 600;
+const int32_t resized = shape.resize(width, height);
+
+int32_t resized_out = 0;
+if (shape.resize(resized_out, width, height) == skl::abix::poly::InterfaceStatus::ok) {
+    // resized_out 有效
+}
+```
+
+语义：
+
+- 转发形式直接调用 `InterfaceProxy::call`，不检查 slot 是否绑定。它适合已经确认 `proxy.valid()` 且契约完整的热路径，性能和手写 `call<Fn>(Traits::slots.fn, ...)` 相同。
+- 检查形式调用 `InterfaceProxy::call_checked`：slot 未绑定时返回 `InterfaceStatus::method_not_found`，不会执行空函数指针；成功时返回 `ok` 并写入 `out`。签名校验已经由 `bind()` / `bind_methods()` 在绑定阶段完成，不会每次调用重新验签。
+- `ret_t` 不能是 `void`：检查形式需要 `ret_t& out`。无返回值的方法请使用 AMC 生成的代理或手写代理。
+- 代理方法的参数类型是从**调用点实参**经 `std::decay_t<Args>...` 推导出来的，宏本身并不知道契约里的 C++ 参数类型。因此调用时应传入与 adapter 原生签名一致的类型（例如 `int32_t` 变量，而不是 `double` 或大小不同的整数）。类型不一致时不会在宏层面报错，但会构造出错误的函数指针类型。
+
+#### 4. 注册与绑定：完整示例
+
+宏只生成声明；provider 仍要提供 adapter，并把生成的 `id` / `signatures` / `slots` 注册到 `InterfaceRegistry`：
+
+```cpp
+#include "ABIX/Interface/Declaration.h"
+
+namespace demo {
+
+using namespace skl::abix::poly;
+using skl::abix::model::TypeId;
+
+constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
+
+#define SHAPE_METHODS(X)       \
+    X(area, int32_t, i32, {}) \
+    X(resize, int32_t, i32, {i32, i32})
+
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+
+// Provider：普通聚合，没有任何 ABIX 成员，也不继承 Shape。
+struct Box {
+    int32_t width;
+    int32_t height;
+};
+
+// adapter 的首参是对象句柄。
+int32_t box_area(const void *self) {
+    const auto *box = static_cast<const Box *>(self);
+    return box->width * box->height;
+}
+
+int32_t box_resize(void *self, int32_t width, int32_t height) {
+    auto *box = static_cast<Box *>(self);
+    box->width = width;
+    box->height = height;
+    return box->width * box->height;
+}
+
+constexpr TypeId box_id{0x51, 0x01};
+
+int run() {
+    // slot 值、签名都来自生成的 Traits，避免手写魔法数字。
+    const InterfaceMethod methods[] = {
+        {ShapeTraits::signatures[ShapeTraits::slots.area],
+            interface_entry(&box_area), ShapeTraits::slots.area, 0},
+        {ShapeTraits::signatures[ShapeTraits::slots.resize],
+            interface_entry(&box_resize), ShapeTraits::slots.resize, 0},
+    };
+
+    InterfaceRegistry<4> registry;
+    if (registry.add({ShapeTraits::id, box_id, methods, 2, ShapeTraits::version, 0})
+        != InterfaceStatus::ok)
+        return 1;
+
+    Box box{3, 4};
+    Shape shape(registry, &box, box_id);
+    if (!shape.valid()) return 2;
+
+    // 热路径：缓存后的原生间接调用。
+    const int32_t area = shape.area();
+
+    // 带状态路径：未绑定 slot 返回 method_not_found。
+    int32_t checked = 0;
+    if (shape.area(checked) != InterfaceStatus::ok) return 3;
+
+    const int32_t width = 8;
+    const int32_t height = 6;
+    const int32_t resized = shape.resize(width, height);
+
+    int32_t checked_resize = 0;
+    if (shape.resize(checked_resize, width, height) != InterfaceStatus::ok) return 4;
+
+    return area == 12 && checked == 12 && resized == 48 && checked_resize == 48 ? 0 : 5;
+}
+
+}   // namespace demo
+```
+
+对于动态发现的 module，如果 adapter 表来自 manifest，可以绕过 `InterfaceRegistry`：
+
+```cpp
+Shape shape;
+if (shape.bind_methods(ShapeTraits::id, ShapeTraits::version, methods, 2, &box)
+    != InterfaceStatus::ok)
+    return 1;
+```
+
+`bind_methods` 直接使用 provider 拥有的方法表；调用期间必须持有对应 module 的 lease，否则模块卸载后缓存的函数指针会悬空。
+
+#### 5. 版本与接口身份
+
+`SKL_ABIX_INTERFACE_DECLARE` / `SKL_ABIX_INTERFACE_TRAITS` 的第三个参数是 `version`，它同时用于：
+
+- `Traits::version`
+- `interface_id(#type, version, signatures)` 的身份计算
+- registry 注册时的版本匹配
+
+小版本迭代可以直接写整数；需要语义版本时使用辅助宏：
 
 ```cpp
 constexpr unsigned int version = SKL_ABIX_VERSION_NUMBER(1, 2, 3);
-SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);
+// version == 10'200'003
+
+uint32_t major = 0, minor = 0, patch = 0;
+SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);   // 调用方补分号
 // major == 1, minor == 2, patch == 3
 ```
 
-`major` / `minor` 只保留两位十进制数字，`patch` 保留五位，因此打包值稳定且紧凑。
+`SKL_ABIX_VERSION_NUMBER(major, minor, patch)` 的打包规则：
+
+```text
+major * 10'000'000 + minor * 100'000 + patch
+```
+
+`major` / `minor` 只保留两位十进制数字，`patch` 保留五位。`SKL_ABIX_VERSION_EXTRACT` 是它的逆操作，必须传入三个可赋值的变量，且调用方补末尾分号。
+
+接口身份与版本的关系：
+
+- 同名接口、不同版本 → 不同 `id`。
+- 同版本但方法列表变化 → 不同 `id`。
+- 方法重排 → `signatures` 顺序变化 → 不同 `id`，同时 slot 含义改变，必须视为不兼容变更。
+- 如果另一个 TU 用 `amc generate -l cpp` 生成了同一个契约，它生成的 `kNameInterface` 应与宏计算的 `interface_id("Name", version, signatures)` 相等。可以用 `static_assert` 固定这一点。
+
+#### 6. 分步使用：`TRAITS` 与 `DATA`
+
+如果不想一次生成代理类，可以分开使用：
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1);
+```
+
+只生成 `ShapeTraits`（以及前置声明 `class Shape;`），不生成 `Shape` 代理。适合：
+
+- 只需要注册，不需要 C++ 代理；
+- 想手写一个只暴露部分方法的代理；
+- 把契约常量放在公共头，把代理放在另一个头。
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS);
+```
+
+`SKL_ABIX_INTERFACE_DATA(type, list)` 只生成代理类，要求 `type##Traits` 已经存在。`SKL_ABIX_INTERFACE_DECLARE` 就是这两步的合并。
+
+#### 7. 内部展开宏
+
+下面这些宏通常不直接使用，但理解它们有助于排查展开错误：
+
+| 宏 | 作用 |
+|------|------|
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)` | 生成 `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` 这一项 |
+| `SKL_ABIX_INTERFACE_SLOT(fn, ...)` | 在 `Slots` 中生成 `uint32_t fn;` |
+| `SKL_ABIX_INTERFACE_SLOTS(list)` | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()` |
+| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)` | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式 |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver)` | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`） |
+| `SKL_ABIX_INTERFACE_DATA(type, list)` | 生成继承 `InterfaceProxy<typeTraits>` 的 `type` 代理类 |
+| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver)` | `TRAITS` + `DATA` |
+
+宏展开的常见错误：
+
+- 忘记在 `SKL_ABIX_INTERFACE_DECLARE` / `SKL_ABIX_INTERFACE_DATA` 后写分号。
+- 列表条目的参数 TypeID 用了 C++ 类型名（例如 `int32_t`）而不是 `model::TypeId` 变量（例如 `i32`）。
+- 在列表宏里使用了带逗号的模板参数，导致宏参数被拆开；必要时用括号保护或改用 AMC。
+- 方法名与已有宏/类型冲突；列表里的 `fn` 会直接成为成员名和 `Slots` 字段名。
+
+#### 8. 限制与何时改用 AMC
+
+宏适合：
+
+- 只有值参数、没有重载的简单契约；
+- header-only 消费方，不想依赖 `amc generate`；
+- 需要快速写一个测试 fixture 或示例。
+
+宏不适合：
+
+- `void` 返回（检查重载需要 `ret_t&`）；
+- 引用、数组、函数指针、记录/结构体参数（`std::decay_t` 会改变类型）；
+- 重载方法（同名条目会生成重复成员）；
+- 需要与编译器 AST 完全一致的复杂 ABI 签名；
+- 需要自动发现/生成 manifest 的 provider。
+
+这些情况直接使用 `amc generate -l cpp`，或按 [`Proxy.h`](../../ABIX/Interface/Proxy.h) 的约定手写 `Traits` 和代理类。AMC 具有 Clang AST，能拿到真实的 C++ 参数类型，生成的签名和 adapter typedef 不受宏的文本限制。
 
 ## 它不是什么
 

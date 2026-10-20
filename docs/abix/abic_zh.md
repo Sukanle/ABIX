@@ -249,7 +249,7 @@ STL 类型不能裸穿边界（见 [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §
 | `type` | string | 实现它的具体类型 |
 | `methods` | string[] | 按 slot 顺序，每个接口方法绑定到一个已记录的适配器函数；数量必须与接口方法数一致 |
 
-绑定把 `(interface_id, slot)` 映射到适配器函数的签名；适配器的第一个参数是对象句柄。ABIX 不规定任何私有 vtable：provider 保留自己的布局与虚函数，适配器是唯一的桥。`amc generate -l cpp` 会把每个接口投影为 `k<Name>Interface`、`k<Name>Version`、`enum class <Name>Slot`、`<Name>_<method>_fn` typedef、一个 `Traits`（id / version / slots / 期望签名），并在**每个方法首参都是对象句柄**时生成 `InterfaceProxy<Traits>` 派生代理类——消费者因此能声明、绑定并调用该接口，而不触碰 provider 的布局。见 [`interface_zh.md`](interface_zh.md) 与 ABI-SPEC §19。
+绑定把 `(interface_id, slot)` 映射到适配器函数的签名；适配器的第一个参数是对象句柄。ABIX 不规定任何私有 vtable：provider 保留自己的布局与虚函数，适配器是唯一的桥。`amc generate -l cpp` 会把每个接口投影为 `k<Name>Interface`、`k<Name>Version`、`<Name>_<method>_fn` typedef、一个带类型化零基 `Slots` 表（`Traits::slots.<method>`）与期望签名的 `Traits`，并在**每个方法首参都是对象句柄**时生成 `InterfaceProxy<Traits>` 派生代理类——消费者因此能声明、绑定并调用该接口，而不触碰 provider 的布局。见 [`interface_zh.md`](interface_zh.md) 与 ABI-SPEC §19。
 
 ### `[target]`
 
