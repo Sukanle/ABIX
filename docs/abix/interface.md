@@ -1261,17 +1261,32 @@ Notes:
 SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
 ```
 
-`SKL_ABIX_INTERFACE_DECLARE(type, list, version)` is equivalent to:
+`SKL_ABIX_INTERFACE_DECLARE(type, list, version, ...)` is equivalent to:
 
 ```cpp
-SKL_ABIX_INTERFACE_TRAITS(type, list, version);
-SKL_ABIX_INTERFACE_DATA(type, list);
+SKL_ABIX_INTERFACE_TRAITS(type, list, version, __VA_ARGS__);
+SKL_ABIX_INTERFACE_DATA(type, list, __VA_ARGS__);
+```
+
+The optional fourth and later arguments are **type attributes / export attributes** inserted verbatim before the generated `typeTraits` and `type` names:
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+// expands to:
+// struct SHAPE_API ShapeTraits { ... };
+// struct SHAPE_API Shape : public InterfaceProxy<ShapeTraits> { ... };
+```
+
+Without attributes, the original form is unchanged:
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
 ```
 
 Its expansion is, in essence:
 
 ```cpp
-class Shape;
+struct Shape;
 
 struct ShapeTraits {
     using Data = Shape;
@@ -1306,6 +1321,50 @@ Important details:
 - `Traits::Data` aliases the proxy type (`Shape`), so generic code that only has the Traits can name the corresponding proxy type.
 - Renaming a method, reordering the list or changing the version changes `signatures` / `id` and is an ABI break. Do not reorder the list for cosmetic reasons.
 - `SKL_ABIX_INTERFACE_DECLARE(...)` needs a trailing semicolon: the generated struct definition does not carry one.
+
+**Windows DLL import/export attributes**
+
+The final variadic parameter of `SKL_ABIX_INTERFACE_DECLARE`, `SKL_ABIX_INTERFACE_TRAITS` and `SKL_ABIX_INTERFACE_DATA` exists for platform attributes such as Windows DLL decorations. It is inserted verbatim before the generated type name, so it accepts `__declspec(dllimport)`, `__declspec(dllexport)` or a project-owned API macro:
+
+```cpp
+// shape_api.h
+#if defined(_WIN32)
+#  ifdef SHAPE_BUILD_DLL
+#    define SHAPE_API __declspec(dllexport)
+#  else
+#    define SHAPE_API __declspec(dllimport)
+#  endif
+#else
+#  define SHAPE_API
+#endif
+
+#define SHAPE_METHODS(X)       \
+    X(area, int32_t, i32, {}) \
+    X(resize, int32_t, i32, {i32, i32})
+
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+```
+
+- A provider building the DLL defines `SHAPE_BUILD_DLL`, producing `dllexport`.
+- A consumer does not define it and gets `dllimport`.
+- On non-Windows platforms `SHAPE_API` is empty and the expansion is unchanged.
+
+When using the two half macros separately, pass the attribute to both:
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1, SHAPE_API);
+SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS, SHAPE_API);
+```
+
+Be clear about the scope: ABIX Interface is header-only. `ShapeTraits` / `Shape` are normally compile-time types with inline forwarding methods, and **do not need DLL import/export decoration in the normal case**. Use the attribute only when the generated type is genuinely part of a Windows DLL boundary and you accept MSVC's rules for imported classes with inline/static members.
+
+`SKL_ABIX_DLL_EXPORT` (from `ABIX/Util/Config.h`) is a different concern: it marks provider-side fixed C entries such as:
+
+```cpp
+extern "C" SKL_ABIX_DLL_EXPORT const void *shape_instance(void);
+```
+
+It exports symbols found by name (`abi_get_table`, `abix_module_query_v1`); the interface macro attribute decorates the generated `Traits` / proxy type.
 
 #### 3. Generated proxy methods
 
@@ -1506,9 +1565,9 @@ These are normally not used directly, but they explain expansion errors:
 | `SKL_ABIX_INTERFACE_SLOT(fn, ...)` | Emits `uint32_t fn;` inside `Slots` |
 | `SKL_ABIX_INTERFACE_SLOTS(list)` | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()` |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)` | Emits the direct-return and `InterfaceStatus` checked overloads |
-| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver)` | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`) |
-| `SKL_ABIX_INTERFACE_DATA(type, list)` | Emits the `InterfaceProxy<typeTraits>`-derived `type` proxy |
-| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver)` | `TRAITS` + `DATA` |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)` | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
+| `SKL_ABIX_INTERFACE_DATA(type, list, ...)` | Emits the `InterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type` |
+| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver, ...)` | `TRAITS` + `DATA`; the attributes are passed to both |
 
 Common expansion errors:
 

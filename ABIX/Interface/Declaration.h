@@ -56,11 +56,32 @@
  * `SKL_ABIX_INTERFACE_TRAITS` and `SKL_ABIX_INTERFACE_DATA` are the two halves;
  * `SKL_ABIX_INTERFACE_DECLARE` combines them. The generated struct definition
  * does not include a trailing semicolon, so the invocation needs one.
+ *
+ * The final variadic argument is an optional type attribute inserted before the
+ * generated type names. It exists for platform DLL decorations, for example:
+ *
+ *   #if defined(_WIN32)
+ *   #  ifdef SHAPE_BUILD_DLL
+ *   #    define SHAPE_API __declspec(dllexport)
+ *   #  else
+ *   #    define SHAPE_API __declspec(dllimport)
+ *   #  endif
+ *   #else
+ *   #  define SHAPE_API
+ *   #endif
+ *
+ *   SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+ *
+ * ABIX Interface is header-only, so the attribute is usually unnecessary; use
+ * it only when the generated Traits/proxy type is genuinely part of a DLL
+ * boundary. Pass the same attribute to both half macros when using them
+ * separately.
  */
 #ifndef SKL_ABIX_INTERFACE_DECLARATION_H
 #define SKL_ABIX_INTERFACE_DECLARATION_H
 
 #include <type_traits>
+#include <utility>
 
 #include "ABIX/Interface/Proxy.h"   // IWYU pragma: keep
 
@@ -87,12 +108,12 @@
     template<typename... Args>                                                                 \
     auto fn(Args &&...args) const noexcept -> ret_t {                                          \
         return this->template call<ret_t (*)(const void *, std::decay_t<Args>...)>(            \
-            Traits::slots.fn, static_cast<Args &&>(args)...);                                  \
+            Traits::slots.fn, std::forward<Args>(args)...);                                    \
     }                                                                                          \
     template<typename... Args>                                                                 \
     auto fn(ret_t &out, Args &&...args) const noexcept -> ::skl::abix::poly::InterfaceStatus { \
         return this->template call_checked<ret_t (*)(const void *, std::decay_t<Args>...)>(    \
-            out, Traits::slots.fn, static_cast<Args &&>(args)...);                             \
+            out, Traits::slots.fn, std::forward<Args>(args)...);                               \
     }
 
 #define SKL_ABIX_INTERFACE_SLOT(fn, ...) uint32_t fn;
@@ -103,9 +124,9 @@
     };                                 \
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 
-#define SKL_ABIX_INTERFACE_TRAITS(type, list, ver)                                                   \
-    class type;                                                                                      \
-    struct type##Traits {                                                                            \
+#define SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)                                              \
+    struct type;                                                                                     \
+    struct __VA_ARGS__ type##Traits {                                                                \
         using Data = type;                                                                           \
         static constexpr auto signatures = skl::mics::utils::array{list(SKL_ABIX_INTERFACE_METHOD)}; \
         static constexpr auto version = ver;                                                         \
@@ -113,15 +134,15 @@
         SKL_ABIX_INTERFACE_SLOTS(list)                                                               \
     };
 
-#define SKL_ABIX_INTERFACE_DATA(type, list)                              \
-    struct type : public skl::abix::poly::InterfaceProxy<type##Traits> { \
-        using InterfaceProxy<type##Traits>::InterfaceProxy;              \
-        using Traits = type##Traits;                                     \
-        list(SKL_ABIX_INTERFACE_FORWARD)                                 \
+#define SKL_ABIX_INTERFACE_DATA(type, list, ...)                                     \
+    struct __VA_ARGS__ type : public skl::abix::poly::InterfaceProxy<type##Traits> { \
+        using InterfaceProxy<type##Traits>::InterfaceProxy;                          \
+        using Traits = type##Traits;                                                 \
+        list(SKL_ABIX_INTERFACE_FORWARD)                                             \
     }
 
-#define SKL_ABIX_INTERFACE_DECLARE(type, list, ver) \
-    SKL_ABIX_INTERFACE_TRAITS(type, list, ver)      \
-    SKL_ABIX_INTERFACE_DATA(type, list)
+#define SKL_ABIX_INTERFACE_DECLARE(type, list, ver, ...)    \
+    SKL_ABIX_INTERFACE_TRAITS(type, list, ver, __VA_ARGS__) \
+    SKL_ABIX_INTERFACE_DATA(type, list, __VA_ARGS__)
 
 #endif   // SKL_ABIX_INTERFACE_DECLARATION_H

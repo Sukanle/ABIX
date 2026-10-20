@@ -1252,17 +1252,32 @@ X(method_name, cxx_return_type, return_type_id, {parameter_type_ids...})
 SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
 ```
 
-`SKL_ABIX_INTERFACE_DECLARE(type, list, version)` 等价于：
+`SKL_ABIX_INTERFACE_DECLARE(type, list, version, ...)` 等价于：
 
 ```cpp
-SKL_ABIX_INTERFACE_TRAITS(type, list, version);
-SKL_ABIX_INTERFACE_DATA(type, list);
+SKL_ABIX_INTERFACE_TRAITS(type, list, version, __VA_ARGS__);
+SKL_ABIX_INTERFACE_DATA(type, list, __VA_ARGS__);
+```
+
+第四个及之后的参数是可选的**类型属性/导出属性**，会原样插到生成的 `typeTraits` 和 `type` 之前：
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+// 展开为：
+// struct SHAPE_API ShapeTraits { ... };
+// struct SHAPE_API Shape : public InterfaceProxy<ShapeTraits> { ... };
+```
+
+不传属性时保持原来的写法：
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
 ```
 
 它展开后的核心结构如下（省略了宏自身的 `X(...)` 展开细节）：
 
 ```cpp
-class Shape;
+struct Shape;
 
 struct ShapeTraits {
     using Data = Shape;
@@ -1297,6 +1312,50 @@ struct Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
 - `Traits::Data` 是指向代理类型 `Shape` 的别名，方便模板代码在只拿到 Traits 时取得对应的代理类型。
 - 方法顺序、方法名或版本一旦变化，`signatures`/`id` 都会变化，属于 ABI 不兼容变更。不要为了“整理代码”重排列表。
 - `SKL_ABIX_INTERFACE_DECLARE(...)` 末尾需要分号，因为生成的结构体定义没有自带分号。
+
+**Windows DLL 导入/导出属性**
+
+`SKL_ABIX_INTERFACE_DECLARE`、`SKL_ABIX_INTERFACE_TRAITS` 和 `SKL_ABIX_INTERFACE_DATA` 的最后一个可变参数就是为 Windows 这类平台准备的。它会被原样放在生成的类型名之前，因此可以传入 `__declspec(dllimport)`、`__declspec(dllexport)` 或项目自己的 API 宏：
+
+```cpp
+// shape_api.h
+#if defined(_WIN32)
+#  ifdef SHAPE_BUILD_DLL
+#    define SHAPE_API __declspec(dllexport)
+#  else
+#    define SHAPE_API __declspec(dllimport)
+#  endif
+#else
+#  define SHAPE_API
+#endif
+
+#define SHAPE_METHODS(X)       \
+    X(area, int32_t, i32, {}) \
+    X(resize, int32_t, i32, {i32, i32})
+
+SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+```
+
+- provider 编译 DLL 时定义 `SHAPE_BUILD_DLL`，得到 `dllexport`。
+- 消费方不定义它，得到 `dllimport`。
+- 非 Windows 平台上 `SHAPE_API` 为空，宏展开不受影响。
+
+如果分开使用两个半成品宏，属性必须同时传给两边：
+
+```cpp
+SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1, SHAPE_API);
+SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS, SHAPE_API);
+```
+
+需要澄清的是：ABIX Interface 本身是 header-only 的，`ShapeTraits` / `Shape` 通常只是编译期类型和 inline 转发方法，**正常情况下不需要 DLL 导入/导出属性**。只有当你确实要把这个生成类型作为 DLL 边界的一部分、并接受 MSVC 对 imported class 的 inline/static 成员规则时才使用它。
+
+另外，`SKL_ABIX_DLL_EXPORT`（见 `ABIX/Util/Config.h`）用于 provider 的固定 C 入口，例如：
+
+```cpp
+extern "C" SKL_ABIX_DLL_EXPORT const void *shape_instance(void);
+```
+
+它和这里的接口类型属性是两件事：前者导出 `abi_get_table` / `abix_module_query_v1` 这类按名字查找的 C 符号，后者修饰生成的 `Traits` / proxy 类型。
 
 #### 3. 生成的代理方法
 
@@ -1497,9 +1556,9 @@ SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS);
 | `SKL_ABIX_INTERFACE_SLOT(fn, ...)` | 在 `Slots` 中生成 `uint32_t fn;` |
 | `SKL_ABIX_INTERFACE_SLOTS(list)` | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()` |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)` | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式 |
-| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver)` | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`） |
-| `SKL_ABIX_INTERFACE_DATA(type, list)` | 生成继承 `InterfaceProxy<typeTraits>` 的 `type` 代理类 |
-| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver)` | `TRAITS` + `DATA` |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)` | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前 |
+| `SKL_ABIX_INTERFACE_DATA(type, list, ...)` | 生成继承 `InterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前 |
+| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver, ...)` | `TRAITS` + `DATA`，属性同时传给两者 |
 
 宏展开的常见错误：
 
