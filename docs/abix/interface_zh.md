@@ -296,6 +296,52 @@ int main() {
 - 选择 **ngcpp/proxy**：整个程序是 C++20；需要指针式所有权变化（裸指针、`unique_ptr`、`shared_ptr`、原位值）；需要原生重载/运算符 convention；希望只靠编译期 facade 检查，不需要 registry。
 - 两者可以组合：跨边界契约层使用 ABIX，内部 C++ 值/所有权多态使用 `pro::proxy`。ABIX 提供 ABI 和带版本的契约，ngcpp/proxy 提供纯 C++ 的指针抽象。
 
+### 性能与体积
+
+以下测量使用同一个方法 `int32_t area() const noexcept`、非拥有 proxy，并对所有机制使用同一个 box 对象。ABIX 以 `C++17` 构建，ngcpp/proxy 以 `C++20` 构建；原生虚调用通过 `noinline` 的不透明基类指针进入，避免被编译器去虚化。
+
+**调用延迟**（x86-64，GCC 16.2.1，`-O3 -DNDEBUG`，Google Benchmark，约 2 秒，CPU scaling 开启；关注趋势而非绝对纳秒）：
+
+| 机制                         | ns/次 | 相对原生虚调用 |
+| ---------------------------- | ----: | -------------: |
+| 原生直接调用                 |  0.19 |           0.7x |
+| 原生虚调用                   |  0.26 |           1.0x |
+| ABIX 直接 adapter            |  0.19 |           0.7x |
+| ABIX `InterfaceRef` 缓存入口 |  0.76 |           2.9x |
+| ABIX `UniqueInterfaceProxy`  |  0.76 |           2.9x |
+| ABIX `SharedInterfaceProxy`  |  0.76 |           2.9x |
+| ngcpp/proxy `pro::proxy`     |  0.76 |           2.9x |
+
+在这个微基准里，几种非侵入式 proxy 的成本基本重合：主导因素是间接调用和对象句柄；shared 模式多出的一次表加载没有单独显现。这是不接管对象模型（注册、类型擦除、跨 DLL/跨语言契约）的代价，而不是每次调用都查 registry。
+
+**体积**（64 位；`N` = 接口方法数）：
+
+| 机制                        |               每对象 | 每实现 / 每类型                | 5 方法对象 | 6 方法对象 |
+| --------------------------- | -------------------: | ------------------------------ | ---------: | ---------: |
+| 原生 vtable                 | 8 字节 `vptr` + 字段 | vtable ≈ `8N` + RTTI/头部      |   8 + 字段 |   8 + 字段 |
+| ngcpp/proxy `pro::proxy`    |                24–32 | 静态 dispatch/accessor 表      |      24–32 |      24–32 |
+| ABIX `UniqueInterfaceProxy` |            `24 + 8N` | 无                             |         64 |         72 |
+| ABIX `SharedInterfaceProxy` |               **24** | `InterfaceSlotTable`：`8N + 8` |    24 + 48 |    24 + 56 |
+| ABIX `InterfaceRef`         |           `32 + 24N` | 无                             |        152 |        176 |
+| ABIX `InterfaceRegistry<8>` |                    — | 464                            |     绑定期 |     绑定期 |
+
+`pro::proxy_view` 为 16–24 字节。ABIX 的 registry 和共享表属于设置/实现存储，不是每对象存储。对象很多时，`SharedInterfaceProxy` 是接近 vtable 的选择：每对象一个 24 字节句柄，每实现一张 slot 表。对象很少时，`UniqueInterfaceProxy` 用每对象多 `8N` 字节换掉一次间接寻址。
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE_BOTH(Shape, SHAPE_METHODS, 1);
+
+// 对象少：内联 slot 入口
+Shape shape(registry, &box, box_id);
+
+// 对象多：每实现一张共享表
+InterfaceSlotTable<ShapeTraits::signatures.size()> table;
+make_shared_slot_table<ShapeTraits>(table, registry, box_id);
+
+Box a{3, 4}, b{5, 6};
+SharedShape first(table, &a);   // 24 字节
+SharedShape second(table, &b);  // 24 字节，同一张表
+```
+
 ## 快速开始
 
 三步：**注册**（把「某具体类型实现某接口」写入注册表）→ **解析**（一次性查表并缓存适配器入口） → **调用**（普通原生间接调用）。下面的完整程序不需要动态库。
@@ -1769,20 +1815,20 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 
 下面这些宏通常不直接使用，但理解它们有助于排查展开错误：
 
-| 宏                                                        | 作用                                                                                                           |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`    | 生成 `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` 这一项                                |
-| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                        | 在 `Slots` 中生成 `uint32_t fn;`                                                                               |
-| `SKL_ABIX_INTERFACE_SLOTS(list)`                          | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()`                                             |
-| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`              | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式                                                            |
-| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`   | 生成一条 `InterfaceMethod`，用 `member_adapter<member>::invoke` 适配现有成员函数                               |
-| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`         | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前         |
-| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`                | 生成继承 `UniqueInterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前                 |
-| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`         | 生成继承 `SharedInterfaceProxy<typeTraits>` 的 `Shared##type` 代理类；`...` 作为类型属性放在 `Shared##type` 前 |
-| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`；`storage` 为 `UNIQUE` 或 `SHARED` |
-| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)` | `TRAITS` + `UNIQUE_DATA` |
-| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)` | `TRAITS` + `SHARED_DATA` |
-| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)` | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA` |
+| 宏                                                          | 作用                                                                                                           |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | 生成 `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` 这一项                                |
+| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | 在 `Slots` 中生成 `uint32_t fn;`                                                                               |
+| `SKL_ABIX_INTERFACE_SLOTS(list)`                            | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()`                                             |
+| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式                                                            |
+| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | 生成一条 `InterfaceMethod`，用 `member_adapter<member>::invoke` 适配现有成员函数                               |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前         |
+| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | 生成继承 `UniqueInterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前                 |
+| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | 生成继承 `SharedInterfaceProxy<typeTraits>` 的 `Shared##type` 代理类；`...` 作为类型属性放在 `Shared##type` 前 |
+| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`；`storage` 为 `UNIQUE` 或 `SHARED`                              |
+| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)`   | `TRAITS` + `UNIQUE_DATA`                                                                                       |
+| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)`   | `TRAITS` + `SHARED_DATA`                                                                                       |
+| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)`     | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA`                                                                       |
 
 宏展开的常见错误：
 

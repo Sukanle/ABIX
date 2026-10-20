@@ -297,6 +297,52 @@ The macro roles are different: ABIX's `SKL_ABIX_INTERFACE_DECLARE` generates the
 - Choose **ngcpp/proxy** when the whole program is C++20, when you want pointer-like ownership variants (`raw`, `unique_ptr`, `shared_ptr`, in-place values), native overload/operator conventions, and compile-time facade checking without a registry.
 - They compose: use ABIX at the cross-boundary contract layer, and use a `pro::proxy` internally for C++ value/ownership polymorphism. ABIX supplies the ABI and versioned contract; ngcpp/proxy supplies a rich C++-only pointer abstraction.
 
+### Performance and footprint
+
+Measurements below use one method, `int32_t area() const noexcept`, a non-owning proxy, and the same box object for every mechanism. ABIX was built as `C++17`; ngcpp/proxy as `C++20`. The native virtual call goes through a `noinline` opaque base pointer so the compiler cannot devirtualise it.
+
+**Call latency** (x86-64, GCC 16.2.1, `-O3 -DNDEBUG`, Google Benchmark, ~2 s, CPU scaling enabled — compare trends, not absolute nanoseconds):
+
+| Mechanism                        | ns/call | vs native virtual |
+| -------------------------------- | ------: | ----------------: |
+| native direct call               |    0.19 |              0.7x |
+| native virtual call              |    0.26 |              1.0x |
+| ABIX direct adapter              |    0.19 |              0.7x |
+| ABIX `InterfaceRef` cached entry |    0.76 |              2.9x |
+| ABIX `UniqueInterfaceProxy`      |    0.76 |              2.9x |
+| ABIX `SharedInterfaceProxy`      |    0.76 |              2.9x |
+| ngcpp/proxy `pro::proxy`         |    0.76 |              2.9x |
+
+The non-intrusive proxies converge at roughly the same cost in this microbenchmark: the indirect call and object-handle indirection dominate, and the extra table load in shared mode is not separately visible. This is the price of not owning the object model (registration, type erasure, cross-DLL/cross-language contracts); it is not a per-call registry lookup.
+
+**Footprint** (64-bit; `N` = number of interface methods):
+
+| Mechanism                   |             Per object | Per implementation / type       | 5-method object | 6-method object |
+| --------------------------- | ---------------------: | ------------------------------- | --------------: | --------------: |
+| native vtable               | 8-byte `vptr` + fields | vtable ≈ `8N` + RTTI/header     |      8 + fields |      8 + fields |
+| ngcpp/proxy `pro::proxy`    |                  24–32 | static dispatch/accessor tables |           24–32 |           24–32 |
+| ABIX `UniqueInterfaceProxy` |              `24 + 8N` | none                            |              64 |              72 |
+| ABIX `SharedInterfaceProxy` |                 **24** | `InterfaceSlotTable`: `8N + 8`  |         24 + 48 |         24 + 56 |
+| ABIX `InterfaceRef`         |             `32 + 24N` | none                            |             152 |             176 |
+| ABIX `InterfaceRegistry<8>` |                      — | 464                             |       bind-time |       bind-time |
+
+`pro::proxy_view` is 16–24 bytes. The ABIX registry and shared table are setup/implementation storage, not per-object storage. For many objects, `SharedInterfaceProxy` is the vtable-like choice: one 24-byte handle per object plus one slot table per implementation. For a handful of objects, `UniqueInterfaceProxy` removes one indirection at `8N` extra bytes per object.
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE_BOTH(Shape, SHAPE_METHODS, 1);
+
+// few objects: inline entries
+Shape shape(registry, &box, box_id);
+
+// many objects: one table per implementation
+InterfaceSlotTable<ShapeTraits::signatures.size()> table;
+make_shared_slot_table<ShapeTraits>(table, registry, box_id);
+
+Box a{3, 4}, b{5, 6};
+SharedShape first(table, &a);   // 24 bytes
+SharedShape second(table, &b);  // 24 bytes, same table
+```
+
 ## Quick start
 
 Three steps: **register** (record "this concrete type implements this interface" in the registry) → **resolve** (look the binding up once and cache the adapter entries) → **call** (a plain native indirect call). The complete program below needs no shared library.
@@ -1778,20 +1824,20 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 
 These are normally not used directly, but they explain expansion errors:
 
-| Macro                                                     | Effect                                                                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`    | Emits one `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` entry                                 |
-| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                        | Emits `uint32_t fn;` inside `Slots`                                                                                 |
-| `SKL_ABIX_INTERFACE_SLOTS(list)`                          | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                |
-| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`              | Emits the direct-return and `InterfaceStatus` checked overloads                                                     |
-| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`   | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`     |
-| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`         | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
-| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`                | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                    |
-| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`         | Emits the `SharedInterfaceProxy<typeTraits>`-derived `Shared##type` proxy; `...` is placed before `Shared##type`    |
-| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`; `storage` is `UNIQUE` or `SHARED` |
-| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)` | `TRAITS` + `UNIQUE_DATA` |
-| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)` | `TRAITS` + `SHARED_DATA` |
-| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)` | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA` |
+| Macro                                                       | Effect                                                                                                              |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | Emits one `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` entry                                 |
+| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | Emits `uint32_t fn;` inside `Slots`                                                                                 |
+| `SKL_ABIX_INTERFACE_SLOTS(list)`                            | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                |
+| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | Emits the direct-return and `InterfaceStatus` checked overloads                                                     |
+| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`     |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
+| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                    |
+| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | Emits the `SharedInterfaceProxy<typeTraits>`-derived `Shared##type` proxy; `...` is placed before `Shared##type`    |
+| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`; `storage` is `UNIQUE` or `SHARED`                                   |
+| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)`   | `TRAITS` + `UNIQUE_DATA`                                                                                            |
+| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)`   | `TRAITS` + `SHARED_DATA`                                                                                            |
+| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)`     | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA`                                                                            |
 
 Common expansion errors:
 
