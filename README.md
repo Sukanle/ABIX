@@ -191,7 +191,7 @@ ABIX also provides an **interface contract layer** for non-intrusive polymorphis
 - **Interface identity** is a content hash over the interface name, version and ordered method signatures. It is separate from `TypeID` / `LayoutHash` / `ABIHash` and never feeds them.
 - **Method identity** is `(interface_id, slot)`; `bind()` verifies the recorded signature and reports `signature_mismatch` instead of calling an incompatible adapter.
 - **Static and dynamic discovery**: an in-process `InterfaceRegistry`, module manifests with leases for plugins, and an Owner ABI for cross-module ownership.
-- **Proxy**: `InterfaceProxy<Traits>` turns a contract into `shape.area()`; after one `bind()` the call is a native indirect call.
+- **Proxy**: `UniqueInterfaceProxy<Traits>` turns a contract into `shape.area()`; after one `bind()` the call is a native indirect call.
 
 ```cpp
 using namespace skl::abix::poly;
@@ -207,8 +207,8 @@ struct ShapeTraits {
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;

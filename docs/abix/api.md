@@ -92,15 +92,15 @@ Headers: `ABIX/Metadata/Descriptor.h`, `ABIX/Runtime/Registry.h`.
 
 `ModuleDescriptor` is the generated, static view of one metadata module. `runtime::Registry<Capacity>::register_module()` first validates the entire module, including type references and duplicate IDs, then registers it atomically from the caller's perspective. The registry retains canonical `model::TypeDesc`/`TypeLayout` views alongside generated descriptors. Registration is keyed by `(TypeID, version)`: a repeated `TypeID` within the same version must carry an identical `LayoutHash` (Boundary #1), while a later version may carry a different layout and coexists as its own entry.
 
-| API | Result |
-|---|---|
-| `register_module(const ModuleDescriptor&)` | `runtime::RegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules |
-| `register_module(const ModuleDescriptor&, uint32_t version)` | Versioned registration; the same `TypeID` may coexist across versions with different layouts |
-| `find_by_id(TypeId)` / `find_by_name(const char*)` | Generated `runtime::RegistryEntry`, or `nullptr`; `find_by_id` returns the newest version |
-| `find_type(TypeId, uint32_t version)` | Entry for that exact `(TypeID, version)` pair, or `nullptr` |
-| `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | Leading decimal integer of a module version string (`"2.1"` → `2`) |
-| `type_of<T>()` | Entry selected by generated `TypeTraits<T>::type_id` |
-| `canonical()` | Underlying bounded `metadata::Registry` view |
+| API                                                                      | Result                                                                                       |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `register_module(const ModuleDescriptor&)`                               | `runtime::RegisterStatus`; rejects malformed, duplicate, oversized, or unresolved modules    |
+| `register_module(const ModuleDescriptor&, uint32_t version)`             | Versioned registration; the same `TypeID` may coexist across versions with different layouts |
+| `find_by_id(TypeId)` / `find_by_name(const char*)`                       | Generated `runtime::RegistryEntry`, or `nullptr`; `find_by_id` returns the newest version    |
+| `find_type(TypeId, uint32_t version)`                                    | Entry for that exact `(TypeID, version)` pair, or `nullptr`                                  |
+| `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | Leading decimal integer of a module version string (`"2.1"` → `2`)                           |
+| `type_of<T>()`                                                           | Entry selected by generated `TypeTraits<T>::type_id`                                         |
+| `canonical()`                                                            | Underlying bounded `metadata::Registry` view                                                 |
 
 `type_of<T>()` is intentionally available only for types whose generated header defines `TypeTraits<T>`. Enable those specializations explicitly:
 
@@ -125,13 +125,13 @@ ABIX Runtime and AMC core metadata are covered by reproducible self-description 
 
 ### Platform Macros
 
-| Macro | Value | Description |
-|-------|-------|-------------|
-| `SKL_ABIX_WINDOWS` | `1` or `0` | Windows platform detection |
-| `SKL_ABIX_CALL_CDECL` | `__cdecl` or empty | `__cdecl` calling convention attribute |
-| `SKL_ABIX_CALL_STDCALL` | `__stdcall` or empty | `__stdcall` calling convention attribute |
-| `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` or visibility attribute | Provider-side export for fixed C module entries (`abi_get_table`, `abix_module_query_v1`, provider handles). ABIX has no shared core library to import. |
-| `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | Magic number for control blocks |
+| Macro                   | Value                                           | Description                                                                                                                                             |
+| ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SKL_ABIX_WINDOWS`      | `1` or `0`                                      | Windows platform detection                                                                                                                              |
+| `SKL_ABIX_CALL_CDECL`   | `__cdecl` or empty                              | `__cdecl` calling convention attribute                                                                                                                  |
+| `SKL_ABIX_CALL_STDCALL` | `__stdcall` or empty                            | `__stdcall` calling convention attribute                                                                                                                |
+| `SKL_ABIX_DLL_EXPORT`   | `__declspec(dllexport)` or visibility attribute | Provider-side export for fixed C module entries (`abi_get_table`, `abix_module_query_v1`, provider handles). ABIX has no shared core library to import. |
+| `SKL_ABIX_MAGIC64`      | `0xFDFDFDFDFDFDFDFDULL`                         | Magic number for control blocks                                                                                                                         |
 
 ## 2. `ABIX/Runtime/Type.h` — Core Types
 
@@ -139,20 +139,20 @@ ABIX Runtime and AMC core metadata are covered by reproducible self-description 
 
 ### Type Aliases
 
-| Symbol | Type | Description |
-|--------|------|-------------|
-| `sig_t` | `uint64_t` | Function signature hash (FNV-1a 64-bit) |
-| `name_hash_t` | `uint32_t` | Function name hash (FNV-1a 32-bit) |
-| `version_t` | `uint64_t` | Version token (FNV-1a hash of version string) |
-| `index_t` | `uint32_t` | Entry index within the table |
+| Symbol        | Type       | Description                                   |
+| ------------- | ---------- | --------------------------------------------- |
+| `sig_t`       | `uint64_t` | Function signature hash (FNV-1a 64-bit)       |
+| `name_hash_t` | `uint32_t` | Function name hash (FNV-1a 32-bit)            |
+| `version_t`   | `uint64_t` | Version token (FNV-1a hash of version string) |
+| `index_t`     | `uint32_t` | Entry index within the table                  |
 
 ### Constants
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `SKL_ABIX_TABLE_MAGIC` | `0xAB1E7A81U` | Table magic number for validation |
-| `SKL_ABIX_TABLE_FORMAT_VERSION` | `1U` | Table format version |
-| `SKL_ABIX_ENTRY_HOT` | `0x1ULL` | Hot entry flag |
+| Constant                        | Value         | Description                       |
+| ------------------------------- | ------------- | --------------------------------- |
+| `SKL_ABIX_TABLE_MAGIC`          | `0xAB1E7A81U` | Table magic number for validation |
+| `SKL_ABIX_TABLE_FORMAT_VERSION` | `1U`          | Table format version              |
+| `SKL_ABIX_ENTRY_HOT`            | `0x1ULL`      | Hot entry flag                    |
 
 ### `runtime::Entry` — Function Table Entry
 
@@ -194,33 +194,33 @@ Creates a static `Table` from a compile-time entry array. Used internally by `SK
 
 ### Export Table Macros
 
-| Macro | Description |
-|-------|-------------|
-| `SKL_ABIX_DEFINE_TABLE(...)` | Define the export table with a comma-separated list of `SKL_ABIX_ENTRY*` macros. Generates `abi_get_table()` |
-| `SKL_ABIX_ENTRY(name, func)` | Register a function with `Cdecl` calling convention and version `0` |
-| `SKL_ABIX_ENTRY_CC(name, func, cctype)` | Register a function with a specific calling convention (`Cdecl` or `Stdcall`) |
-| `SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)` | Register a function with all parameters: calling convention, version, and flags |
-| `SKL_ABIX_VERSION("1.0")` | Create a version token from a version string (FNV-1a hash) |
+| Macro                                               | Description                                                                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `SKL_ABIX_DEFINE_TABLE(...)`                        | Define the export table with a comma-separated list of `SKL_ABIX_ENTRY*` macros. Generates `abi_get_table()` |
+| `SKL_ABIX_ENTRY(name, func)`                        | Register a function with `Cdecl` calling convention and version `0`                                          |
+| `SKL_ABIX_ENTRY_CC(name, func, cctype)`             | Register a function with a specific calling convention (`Cdecl` or `Stdcall`)                                |
+| `SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)` | Register a function with all parameters: calling convention, version, and flags                              |
+| `SKL_ABIX_VERSION("1.0")`                           | Create a version token from a version string (FNV-1a hash)                                                   |
 
 ### Calling Convention Pickers
 
-| Macro | Expands To |
-|-------|------------|
-| `SKL_ABIX_CCPICK(Cdecl)` | `::skl::abix::cc::tag::Cdecl` |
+| Macro                      | Expands To                      |
+| -------------------------- | ------------------------------- |
+| `SKL_ABIX_CCPICK(Cdecl)`   | `::skl::abix::cc::tag::Cdecl`   |
 | `SKL_ABIX_CCPICK(Stdcall)` | `::skl::abix::cc::tag::Stdcall` |
 
 ### Memory Allocation
 
 Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
 
-| Function | Description |
-|----------|-------------|
-| `mem::alloc(n)` | Allocate `n` bytes (`HeapAlloc` on Windows, `malloc` otherwise) |
-| `mem::zalloc(n)` | Zero-initialised allocation |
-| `mem::alloc_array(count, elem)` | Overflow-checked array allocation |
-| `mem::alloc_aligned(n, align)` | Aligned allocation (pair with `dealloc_aligned`) |
-| `mem::dealloc(p)` | Free memory from `alloc` / `zalloc` / `alloc_array` |
-| `mem::dealloc_aligned(p)` | Free memory from `alloc_aligned` |
+| Function                        | Description                                                     |
+| ------------------------------- | --------------------------------------------------------------- |
+| `mem::alloc(n)`                 | Allocate `n` bytes (`HeapAlloc` on Windows, `malloc` otherwise) |
+| `mem::zalloc(n)`                | Zero-initialised allocation                                     |
+| `mem::alloc_array(count, elem)` | Overflow-checked array allocation                               |
+| `mem::alloc_aligned(n, align)`  | Aligned allocation (pair with `dealloc_aligned`)                |
+| `mem::dealloc(p)`               | Free memory from `alloc` / `zalloc` / `alloc_array`             |
+| `mem::dealloc_aligned(p)`       | Free memory from `alloc_aligned`                                |
 
 ## 4. `ABIX/DLL/Object.h` — DLL Module Wrapper
 
@@ -228,19 +228,19 @@ Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
 
 ### `dll::CallError` Enum
 
-| Value | Description |
-|-------|-------------|
-| `none` | No error |
-| `not_loaded` | DLL is not loaded |
-| `not_found` | Function name not found in the export table |
-| `sig_mismatch` | Signature hash does not match |
-| `version_mismatch` | Version token does not match |
-| `stale_handle` | Cannot unload while live handles reference the module |
-| `table_changed` | Table content changed after handle was resolved |
-| `invalid` | Invalid handle or corrupted closure |
-| `load_failed` | DLL load failed (missing file, bad table, etc.) |
-| `unloading` | DLL is currently unloading (RCU grace period) |
-| `lock_timeout` | The Control writer lock was not acquired within the configured reclaim timeout (only possible when `set_reclaim_timeout_ms()` is non-zero) |
+| Value              | Description                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `none`             | No error                                                                                                                                   |
+| `not_loaded`       | DLL is not loaded                                                                                                                          |
+| `not_found`        | Function name not found in the export table                                                                                                |
+| `sig_mismatch`     | Signature hash does not match                                                                                                              |
+| `version_mismatch` | Version token does not match                                                                                                               |
+| `stale_handle`     | Cannot unload while live handles reference the module                                                                                      |
+| `table_changed`    | Table content changed after handle was resolved                                                                                            |
+| `invalid`          | Invalid handle or corrupted closure                                                                                                        |
+| `load_failed`      | DLL load failed (missing file, bad table, etc.)                                                                                            |
+| `unloading`        | DLL is currently unloading (RCU grace period)                                                                                              |
+| `lock_timeout`     | The Control writer lock was not acquired within the configured reclaim timeout (only possible when `set_reclaim_timeout_ms()` is non-zero) |
 
 ### `last_error()`
 
@@ -252,28 +252,29 @@ Returns a reference to the thread-local last error code. Thread-safe (each threa
 
 ### `dll::Object`
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `load(path)` | `bool` | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version and build the hash index **with no lock held**, then publish the image under the writer lock. A failed load leaves the previous image in place (same as `reload()`) |
-| `unload()` | `bool` | Refuses with `stale_handle` while any `Function` handle is alive (`ref_count() != 0`); otherwise swaps the image out and retires it for the domain to reclaim after a grace period |
-| `force_unload()` | `void` | Detach and free the image immediately, bypassing the grace period (the caller must already have excluded readers) |
-| `reload(path)` | `bool` | Load the new module and build its index with no lock held, swap it in atomically, then retire the previous image (EBR-protected, not a `force_unload` + `load`) |
-| `is_loaded()` | `bool` | `state == rcu::State::active` and an image is published |
-| `get_table()` | `const runtime::Table*` | The validated export table of the current image |
-| `module()` | `module_handle` | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX) |
-| `module_path()` | `const char*` | Path this object was loaded from (POSIX takes a second OS reference with it) |
-| `resolve(name)` | `void*` | Raw exported symbol lookup (fixed entry points such as `abi_get_table`); not the name+sig table, and no protection is held: valid only while the module stays loaded, so re-resolve after a reload instead of caching it |
-| `image_acquire()` | `Image*` | Current image pointer (used by the unload path) |
-| `ref_count()` | `uint32_t` | Number of live `dll::Function` handles (strong references to the shared `Control`) |
-| `enter_read()` | `const runtime::Table*` | Enter a read-side critical section and return the current table, or `nullptr` (setting `CallError::unloading`) when nothing is loaded |
-| `exit_read()` | `void` | Leave the read-side critical section |
-| `set_reclaim_timeout_ms(ms)` | `void` | Bound how long an operation waits for a retired image's grace period; a *duration*, derived fresh per operation, 0 = unbounded. See "Bounding a Reclaim Wait" |
-| `reclaim_timeout_ms()` | `uint64_t` | The configured duration |
-| `reclaim_outcome()` | `ReclaimOutcome` | What happened to the image retired by the most recent operation |
+| Method                       | Returns                 | Description                                                                                                                                                                                                                          |
+| ---------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `load(path)`                 | `bool`                  | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version and build the hash index **with no lock held**, then publish the image under the writer lock. A failed load leaves the previous image in place (same as `reload()`) |
+| `unload()`                   | `bool`                  | Refuses with `stale_handle` while any `Function` handle is alive (`ref_count() != 0`); otherwise swaps the image out and retires it for the domain to reclaim after a grace period                                                   |
+| `force_unload()`             | `void`                  | Detach and free the image immediately, bypassing the grace period (the caller must already have excluded readers)                                                                                                                    |
+| `reload(path)`               | `bool`                  | Load the new module and build its index with no lock held, swap it in atomically, then retire the previous image (EBR-protected, not a `force_unload` + `load`)                                                                      |
+| `is_loaded()`                | `bool`                  | `state == rcu::State::active` and an image is published                                                                                                                                                                              |
+| `get_table()`                | `const runtime::Table*` | The validated export table of the current image                                                                                                                                                                                      |
+| `module()`                   | `module_handle`         | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX)                                                                                                                                                                        |
+| `module_path()`              | `const char*`           | Path this object was loaded from (POSIX takes a second OS reference with it)                                                                                                                                                         |
+| `resolve(name)`              | `void*`                 | Raw exported symbol lookup (fixed entry points such as `abi_get_table`); not the name+sig table, and no protection is held: valid only while the module stays loaded, so re-resolve after a reload instead of caching it             |
+| `image_acquire()`            | `Image*`                | Current image pointer (used by the unload path)                                                                                                                                                                                      |
+| `ref_count()`                | `uint32_t`              | Number of live `dll::Function` handles (strong references to the shared `Control`)                                                                                                                                                   |
+| `enter_read()`               | `const runtime::Table*` | Enter a read-side critical section and return the current table, or `nullptr` (setting `CallError::unloading`) when nothing is loaded                                                                                                |
+| `exit_read()`                | `void`                  | Leave the read-side critical section                                                                                                                                                                                                 |
+| `set_reclaim_timeout_ms(ms)` | `void`                  | Bound how long an operation waits for a retired image's grace period; a _duration_, derived fresh per operation, 0 = unbounded. See "Bounding a Reclaim Wait"                                                                        |
+| `reclaim_timeout_ms()`       | `uint64_t`              | The configured duration                                                                                                                                                                                                              |
+| `reclaim_outcome()`          | `ReclaimOutcome`        | What happened to the image retired by the most recent operation                                                                                                                                                                      |
 
 **Writer-lock scope.** `load`/`reload`/`unload` hold the per-`Object` Control writer lock **only for the image swap**: loading the module, building the index and waiting for a retired image's grace period all happen outside it (the image is retired after the lock is released). This keeps the wait for that lock O(one swap) instead of O(module load + index build + grace period). When `set_reclaim_timeout_ms()` is non-zero that duration also bounds the lock acquisition, which then reports `CallError::lock_timeout` and changes nothing; the default (0) waits indefinitely, as before.
 
 **Usage Example:**
+
 ```cpp
 dll::Object lib;
 if (lib.load("my_plugin.dll")) {
@@ -289,23 +290,24 @@ ABIX implements RCU (Read-Copy-Update) with epoch-based reclamation (EBR) for th
 
 **Architecture:**
 
-| Role | Operation | Notes |
-|------|-----------|-------|
-| Reader | `enter_read()` -> `rcu::Domain::enter()` | Records the current global epoch; lock-free, uncontended |
-| Reader | `exit_read()` -> `rcu::Domain::exit()` | Marks this thread quiescent (epoch = 0) |
+| Role   | Operation                                  | Notes                                                                                |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Reader | `enter_read()` -> `rcu::Domain::enter()`   | Records the current global epoch; lock-free, uncontended                             |
+| Reader | `exit_read()` -> `rcu::Domain::exit()`     | Marks this thread quiescent (epoch = 0)                                              |
 | Writer | `unload()` -> `retire()` + `synchronize()` | Pushes the old image onto the retired list, waits for readers to pass, then reclaims |
-| Writer | `reload()` -> `retire()` + `synchronize()` | Atomically swaps in the new image, retires the old one asynchronously |
+| Writer | `reload()` -> `retire()` + `synchronize()` | Atomically swaps in the new image, retires the old one asynchronously                |
 
 **Design:**
 
 - **Global EBR domain**: every `dll::Object` shares the same `rcu::Domain` singleton, so epoch advancement applies to all modules at once. There is no per-module reader counter.
 - **Thread-local state**: each thread registers itself in TLS on its first `enter()`; `exit()` only writes its own cache line, so readers never contend.
 - **Retire batching**: `retire()` accumulates up to 64 objects in a thread-local batch before publishing them to the global list, which keeps the writer lock out of the per-retire path.
-- **Two reclaim classes**: `retire()` puts an object in the *batched* class, which `synchronize()` reclaims only when it advances the epoch (once every `SKL_ABIX_RCU_EPOCH_BATCH` calls). `retire_eager()` puts an object in the *eager* class, which `synchronize_eager()` reclaims on its next call without touching the batched schedule. Both share the same grace period but keep separate "reclaimed up to" watermarks. `Object::reload` uses the split so that a swapped-out index slot array is reusable by the very next `build`, while the module image keeps the batched delay (which is what keeps an alternating hot reload on the loader's already-resident path).
+- **Two reclaim classes**: `retire()` puts an object in the _batched_ class, which `synchronize()` reclaims only when it advances the epoch (once every `SKL_ABIX_RCU_EPOCH_BATCH` calls). `retire_eager()` puts an object in the _eager_ class, which `synchronize_eager()` reclaims on its next call without touching the batched schedule. Both share the same grace period but keep separate "reclaimed up to" watermarks. `Object::reload` uses the split so that a swapped-out index slot array is reusable by the very next `build`, while the module image keeps the batched delay (which is what keeps an alternating hot reload on the loader's already-resident path).
 - **Zero `<atomic>` dependency**: atomics operate on plain integers and pointers via compiler builtins, so the layout does not vary across STL implementations.
-- **`force_unload` bypasses the grace period**: it detaches and frees the image immediately, so the caller must already have excluded readers. `unload()` and `reload()` do *not* bypass EBR; they retire the old image and let the domain reclaim it.
+- **`force_unload` bypasses the grace period**: it detaches and frees the image immediately, so the caller must already have excluded readers. `unload()` and `reload()` do _not_ bypass EBR; they retire the old image and let the domain reclaim it.
 
 **Usage Example:**
+
 ```cpp
 // Thread 1: Reader
 auto add = dll::Function<int(int, int)>(lib, "add");
@@ -319,28 +321,28 @@ lib.unload();  // retires the old image -> synchronize -> reclaim
 
 **Namespace:** `skl::abix::rcu`
 
-| Member | Returns | Description |
-|--------|---------|-------------|
-| `instance()` | `rcu::Domain&` | Global singleton |
-| `enter()` | `void` | Enter a read-side critical section: records the current global epoch; lock-free |
-| `exit()` | `void` | Leave the critical section: marks the thread quiescent (epoch = 0) |
-| `retire(obj, reclaim)` | `void` | Adds the object to the thread-local retired batch (**batched class**), published after 64 entries; reclaimed when `synchronize()` advances the epoch (every `SKL_ABIX_RCU_EPOCH_BATCH` calls, default 8) |
-| `retire_eager(obj, reclaim)` | `void` | Same, but the **eager class**: reclaimed by the next `synchronize_eager()`. For objects whose only value is becoming reusable soon (a swapped-out index buffer), without shortening the batched delay |
-| `retire_token(obj, reclaim)` | `uint64_t` | As `retire()`, but returns the epoch the object was queued at (0 when nothing was queued). Pair it with `reclaimed_through()` to ask "has the domain released it yet?" without observing the callback |
-| `reclaimed_through(token, cls)` | `bool` | Whether that class has been collected through `token`, i.e. every object retired at or before it has had its reclaim callback run. Monotonic per class, and only ever advanced after a proven grace period |
-| `synchronize()` | `void` | Advances the global epoch (once every `SKL_ABIX_RCU_EPOCH_BATCH` calls), waits for every thread to pass, reclaims the safe **batched** objects |
-| `synchronize_eager()` | `void` | Advances the global epoch **immediately** and reclaims only the safe **eager** objects; the batched delay is unaffected. Cheap when there is nothing to collect |
-| `synchronize_until(deadline)` | `bool` | Requests one grace period and waits at most until `Deadline`. `true` means the grace period **was proven** — nothing more: no promise that a collection scan ran or that any callback executed. `false` means it was **not proven** (the deadline expired, or another writer held the advancement): no reader is known to have left, no watermark moved, no callback ran. It always asks for a real grace period, so enabling it gives up the batched delay (see below) |
-| `try_collect()` | `void` | Opportunistic reclaim: if the writer lock is free, scans and reclaims passed objects of both classes |
-| `global_epoch()` | `uint64_t` | Diagnostics: current global epoch |
-| `stats()` | `Stats` | Snapshot of the optional advancement diagnostics (see below). All-zero, and lock-free, when the build does not enable them |
-| `reset_stats()` | `void` | Zeroes the diagnostic counters; a no-op when diagnostics are compiled out |
-| `stats_enabled()` | `static constexpr bool` | Whether this build collects the diagnostics |
+| Member                          | Returns                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `instance()`                    | `rcu::Domain&`          | Global singleton                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `enter()`                       | `void`                  | Enter a read-side critical section: records the current global epoch; lock-free                                                                                                                                                                                                                                                                                                                                                                                         |
+| `exit()`                        | `void`                  | Leave the critical section: marks the thread quiescent (epoch = 0)                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `retire(obj, reclaim)`          | `void`                  | Adds the object to the thread-local retired batch (**batched class**), published after 64 entries; reclaimed when `synchronize()` advances the epoch (every `SKL_ABIX_RCU_EPOCH_BATCH` calls, default 8)                                                                                                                                                                                                                                                                |
+| `retire_eager(obj, reclaim)`    | `void`                  | Same, but the **eager class**: reclaimed by the next `synchronize_eager()`. For objects whose only value is becoming reusable soon (a swapped-out index buffer), without shortening the batched delay                                                                                                                                                                                                                                                                   |
+| `retire_token(obj, reclaim)`    | `uint64_t`              | As `retire()`, but returns the epoch the object was queued at (0 when nothing was queued). Pair it with `reclaimed_through()` to ask "has the domain released it yet?" without observing the callback                                                                                                                                                                                                                                                                   |
+| `reclaimed_through(token, cls)` | `bool`                  | Whether that class has been collected through `token`, i.e. every object retired at or before it has had its reclaim callback run. Monotonic per class, and only ever advanced after a proven grace period                                                                                                                                                                                                                                                              |
+| `synchronize()`                 | `void`                  | Advances the global epoch (once every `SKL_ABIX_RCU_EPOCH_BATCH` calls), waits for every thread to pass, reclaims the safe **batched** objects                                                                                                                                                                                                                                                                                                                          |
+| `synchronize_eager()`           | `void`                  | Advances the global epoch **immediately** and reclaims only the safe **eager** objects; the batched delay is unaffected. Cheap when there is nothing to collect                                                                                                                                                                                                                                                                                                         |
+| `synchronize_until(deadline)`   | `bool`                  | Requests one grace period and waits at most until `Deadline`. `true` means the grace period **was proven** — nothing more: no promise that a collection scan ran or that any callback executed. `false` means it was **not proven** (the deadline expired, or another writer held the advancement): no reader is known to have left, no watermark moved, no callback ran. It always asks for a real grace period, so enabling it gives up the batched delay (see below) |
+| `try_collect()`                 | `void`                  | Opportunistic reclaim: if the writer lock is free, scans and reclaims passed objects of both classes                                                                                                                                                                                                                                                                                                                                                                    |
+| `global_epoch()`                | `uint64_t`              | Diagnostics: current global epoch                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `stats()`                       | `Stats`                 | Snapshot of the optional advancement diagnostics (see below). All-zero, and lock-free, when the build does not enable them                                                                                                                                                                                                                                                                                                                                              |
+| `reset_stats()`                 | `void`                  | Zeroes the diagnostic counters; a no-op when diagnostics are compiled out                                                                                                                                                                                                                                                                                                                                                                                               |
+| `stats_enabled()`               | `static constexpr bool` | Whether this build collects the diagnostics                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 **Design notes**
 
 - **Thread-local state**: the first `enter()` on a thread registers it in TLS; `exit()` writes only that cache line.
-- **The reader registry only grows**: a thread that ever called `enter()` keeps its node with `epoch == 0`, and every grace-period poll walks all of them. This is deliberate — `readers_passed()` and `try_collect()` both walk the list *without* the writer lock, so unlinking a node could be a use-after-free for a concurrent walker. The cost is bounded by the number of threads that *ever* entered: measured ~**3.4 ns per registered node** (10 threads ≈ 12 ns, 1,000 ≈ 2 µs, 10,000 ≈ **34 µs per poll** — and the poll sits in a spin loop), plus one never-returned allocation per thread. Watch `stats().registered_threads` on a host that recreates threads; bounding the registry is a roadmap item.
+- **The reader registry only grows**: a thread that ever called `enter()` keeps its node with `epoch == 0`, and every grace-period poll walks all of them. This is deliberate — `readers_passed()` and `try_collect()` both walk the list _without_ the writer lock, so unlinking a node could be a use-after-free for a concurrent walker. The cost is bounded by the number of threads that _ever_ entered: measured ~**3.4 ns per registered node** (10 threads ≈ 12 ns, 1,000 ≈ 2 µs, 10,000 ≈ **34 µs per poll** — and the poll sits in a spin loop), plus one never-returned allocation per thread. Watch `stats().registered_threads` on a host that recreates threads; bounding the registry is a roadmap item.
 - **Retire batching**: `SKL_ABIX_RCU_BATCH_PUBLISH` (default 64) objects accumulate locally to reduce global lock contention.
 - **Two reclaim delays**: the batched class (default 8 synchronizations) keeps a swapped-out image mapped so that alternating hot reloads still hit the loader's already-resident path; the eager class (next synchronization) makes a swapped-out index buffer reusable by the next `build`. Each class has its own watermark, so one cannot swallow the other's safe epoch.
 - **Advancement ownership**: a thread that takes the advancement owns `sync` and clears it on every path out; a thread that finds `sync` taken waits, retries, or times out, and never clears a `sync` it does not own.
@@ -349,7 +351,7 @@ lib.unload();  // retires the old image -> synchronize -> reclaim
 
 ### Bounding a Grace-Period Wait
 
-`rcu::Deadline` (`ABIX/RCU/Deadline.h`) says *how long* to wait, never what to do when the wait runs out:
+`rcu::Deadline` (`ABIX/RCU/Deadline.h`) says _how long_ to wait, never what to do when the wait runs out:
 
 ```cpp
 namespace skl::abix::rcu {
@@ -384,29 +386,29 @@ auto s = skl::abix::rcu::Domain::instance().stats();
 
 The counters keep apart what a single "RCU timeout" number would conflate:
 
-| Field | Meaning |
-|---|---|
-| `advance_attempts` | Times a thread tried to take the advancement right |
-| `advance_contentions` | Attempts that found another writer already owned it (`sync` set) |
-| `advance_retries` | Failed attempts retried by `synchronize_until()` |
-| `advance_timeouts` | Gave up waiting for the advancement right at the deadline — **never got to run a grace period** |
-| `advance_max_wait_ns` | Longest observed wait for the advancement right (0 if never contended) |
-| `grace_period_timeouts` | Owned the advancement but did not prove the grace period — **a reader held it open** |
-| `retired_backlog` | Retired nodes published but not yet reclaimed, at the snapshot |
-| `retired_oldest_age_ns` | Age of the oldest such node, at the snapshot |
-| `registered_threads` | Threads that have **ever** entered a read-side section, at the snapshot. Monotonically non-decreasing: a thread that leaves keeps its `epoch == 0` node, and every grace-period poll walks all of them (see the registry note above). The gauge to watch on a host with thread churn |
+| Field                   | Meaning                                                                                                                                                                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `advance_attempts`      | Times a thread tried to take the advancement right                                                                                                                                                                                                                                   |
+| `advance_contentions`   | Attempts that found another writer already owned it (`sync` set)                                                                                                                                                                                                                     |
+| `advance_retries`       | Failed attempts retried by `synchronize_until()`                                                                                                                                                                                                                                     |
+| `advance_timeouts`      | Gave up waiting for the advancement right at the deadline — **never got to run a grace period**                                                                                                                                                                                      |
+| `advance_max_wait_ns`   | Longest observed wait for the advancement right (0 if never contended)                                                                                                                                                                                                               |
+| `grace_period_timeouts` | Owned the advancement but did not prove the grace period — **a reader held it open**                                                                                                                                                                                                 |
+| `retired_backlog`       | Retired nodes published but not yet reclaimed, at the snapshot                                                                                                                                                                                                                       |
+| `retired_oldest_age_ns` | Age of the oldest such node, at the snapshot                                                                                                                                                                                                                                         |
+| `registered_threads`    | Threads that have **ever** entered a read-side section, at the snapshot. Monotonically non-decreasing: a thread that leaves keeps its `epoch == 0` node, and every grace-period poll walks all of them (see the registry note above). The gauge to watch on a host with thread churn |
 
 `advance_timeouts` and `grace_period_timeouts` are the two distinct failures; `deferred_batched` (the normal batched schedule) is neither and is reported by the `dll::Object` layer as a `ReclaimOutcome`, not here. The last two fields are gauges sampled from the retired list under the writer lock, which is why `stats()` is a diagnostics endpoint, not a hot-loop call. See `Optimize-plan.md` (D-1) for why the plan is to measure first and only then decide whether a cancellable FIFO arbitration is warranted.
 
 ### Who Owns Validity
 
-The grace period protects *calls*: `dll::Function::operator()` holds a read-side section for the whole call and revalidates the cached entry against the current image, so a reload can never make it call into a retired module. It does **not** protect a bare pointer that was copied out of the module, because nothing ties that pointer to a live image:| Way to reach module code | Protection across the call | What keeps it valid across a reload |
+The grace period protects _calls_: `dll::Function::operator()` holds a read-side section for the whole call and revalidates the cached entry against the current image, so a reload can never make it call into a retired module. It does **not** protect a bare pointer that was copied out of the module, because nothing ties that pointer to a live image:| Way to reach module code | Protection across the call | What keeps it valid across a reload |
 |---|---|---|
 | `dll::Function::operator()` | read-side section, entry revalidated per call | the `dll::Function` handle (and `unload()` refuses while any handle is alive) |
 | `dll::Function::raw()` | none | nothing: re-resolve after a reload |
 | `Object::resolve(name)` | none | nothing: re-resolve after a reload |
 | `runtime::Function` (closure) | none | nothing: keep the module loaded yourself |
-| `InterfaceProxy::call` | its own **lease** model (`ModuleControl`, `pin`/`unpin`) | the lease: "the binding stays valid exactly as long as the caller holds a lease" |
+| `UniqueInterfaceProxy::call` | its own **lease** model (`ModuleControl`, `pin`/`unpin`) | the lease: "the binding stays valid exactly as long as the caller holds a lease" |
 
 So if a call target has to survive a reload, hold a handle or a lease — not a pointer.
 
@@ -434,19 +436,19 @@ unload() / force_unload()  -> zombie   (image detached, later reclaimed)
 
 ### Bounding a Reclaim Wait (`dll::Object`)
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `set_reclaim_timeout_ms(ms)` | `void` | Bounds how long a load/reload/unload waits for a retired image's grace period. The value is a **duration**: every operation derives a fresh deadline from it, so a configured timeout is never reused as an absolute instant. `0` (default) means unbounded |
-| `reclaim_timeout_ms()` | `uint64_t` | The configured duration |
-| `reclaim_outcome()` | `ReclaimOutcome` | What happened to the image retired by the most recent operation |
+| Method                       | Returns          | Description                                                                                                                                                                                                                                                 |
+| ---------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `set_reclaim_timeout_ms(ms)` | `void`           | Bounds how long a load/reload/unload waits for a retired image's grace period. The value is a **duration**: every operation derives a fresh deadline from it, so a configured timeout is never reused as an absolute instant. `0` (default) means unbounded |
+| `reclaim_timeout_ms()`       | `uint64_t`       | The configured duration                                                                                                                                                                                                                                     |
+| `reclaim_outcome()`          | `ReclaimOutcome` | What happened to the image retired by the most recent operation                                                                                                                                                                                             |
 
-`ReclaimOutcome` describes the *retired image*, never the operation itself — a reload that swapped the module in is still successful when the previous image is deferred:
+`ReclaimOutcome` describes the _retired image_, never the operation itself — a reload that swapped the module in is still successful when the previous image is deferred:
 
-| Value | Meaning |
-|-------|---------|
-| `not_attempted` | The operation retired nothing (nothing was loaded yet) |
-| `reclaimed` | The retired image was released |
-| `deferred_batched` | No timeout is configured and the batched schedule had not advanced yet; a later operation releases it |
+| Value              | Meaning                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `not_attempted`    | The operation retired nothing (nothing was loaded yet)                                                  |
+| `reclaimed`        | The retired image was released                                                                          |
+| `deferred_batched` | No timeout is configured and the batched schedule had not advanced yet; a later operation releases it   |
 | `deferred_timeout` | A timeout is configured and the grace period was not proven in time; the image stays retired and mapped |
 
 Enabling a bound is an explicit trade, as described under "Bounding a Grace-Period Wait": the wait then asks for a real grace period on every operation instead of sharing the batched one, so the alternating-reload cost of ~4.97x applies to the Objects that opt in. A deferral is not a leak: once a grace period can be proven, the next operation reclaims every pending image — the same pull-based mechanism that already expresses "reclaim later".
@@ -455,21 +457,21 @@ Enabling a bound is an explicit trade, as described under "Bounding a Grace-Peri
 
 **Namespace:** `skl::abix::util`
 
-| Type / Function | Description |
-|-----------------|-------------|
-| `LogLevel` | Enum: `Debug`, `Info`, `Warning`, `Error` |
-| `log_sink_t` | `void (*)(LogLevel level, const char *message)` — C-callback, ABI-safe |
-| `set_log_sink(sink)` | Set the global log sink. Default: no-op (no output). |
+| Type / Function        | Description                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `LogLevel`             | Enum: `Debug`, `Info`, `Warning`, `Error`                                           |
+| `log_sink_t`           | `void (*)(LogLevel level, const char *message)` — C-callback, ABI-safe              |
+| `set_log_sink(sink)`   | Set the global log sink. Default: no-op (no output).                                |
 | `log(level, fmt, ...)` | Internal formatter; formats via `vsnprintf` into a 1KB buffer, then calls the sink. |
 
 **Macros:**
 
-| Macro | When Active |
-|-------|------------|
-| `ABIX_LOG_DEBUG(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
-| `ABIX_LOG_INFO(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_INFO` |
+| Macro                        | When Active                                                       |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `ABIX_LOG_DEBUG(fmt, ...)`   | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_DEBUG`   |
+| `ABIX_LOG_INFO(fmt, ...)`    | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_INFO`    |
 | `ABIX_LOG_WARNING(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
-| `ABIX_LOG_ERROR(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR` |
+| `ABIX_LOG_ERROR(fmt, ...)`   | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
 
 ## 5. `ABIX/DLL/Function.h` — Typed Function Handles
 
@@ -482,17 +484,18 @@ The primary template for typed function handles. Template parameters:
 - `C` — Calling convention tag (`cc::tag::Cdecl` or `cc::tag::Stdcall`)
 - `Sig` — Function signature (e.g., `int(int, double)`)
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `resolve(lib, name, ver)` | `void` | Resolve a function by name and optional version |
-| `valid()` | `bool` | Whether the handle is valid and the library is loaded |
-| `operator bool()` | `bool` | Same as `valid()` |
-| `index()` | `index_t` | Entry index in the table |
-| `handle_id()` | `uint64_t` | Opaque handle ID (stable across reload) |
-| `raw()` | `fn_type` | Raw function pointer. Handed out after the read-side section is released, so it is valid only while this handle's image is current: a reload invalidates it (re-resolve, or call `operator()`, which revalidates per call) |
-| `operator()(Args...)` | `R` | Call the function with type safety |
+| Method                    | Returns    | Description                                                                                                                                                                                                                |
+| ------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve(lib, name, ver)` | `void`     | Resolve a function by name and optional version                                                                                                                                                                            |
+| `valid()`                 | `bool`     | Whether the handle is valid and the library is loaded                                                                                                                                                                      |
+| `operator bool()`         | `bool`     | Same as `valid()`                                                                                                                                                                                                          |
+| `index()`                 | `index_t`  | Entry index in the table                                                                                                                                                                                                   |
+| `handle_id()`             | `uint64_t` | Opaque handle ID (stable across reload)                                                                                                                                                                                    |
+| `raw()`                   | `fn_type`  | Raw function pointer. Handed out after the read-side section is released, so it is valid only while this handle's image is current: a reload invalidates it (re-resolve, or call `operator()`, which revalidates per call) |
+| `operator()(Args...)`     | `R`        | Call the function with type safety                                                                                                                                                                                         |
 
 **`operator()` behavior:**
+
 - Fast path: enters the read-side critical section (`rcu::Domain::enter()`), then confirms the cached snapshot in one relaxed load — the current image must be the one `_index` was validated against, and that entry must still carry the resolved name hash and signature. Only then does it call; the `strcmp` stays on the slow path.
 - Slow path (first call, after a reload, or on a stale snapshot): re-checks the state, revalidates the entry by index, name hash, signature and `strcmp`, and records the snapshot.
 - Releases the critical section via `exit_read()` on all exit paths (including error paths).
@@ -511,6 +514,7 @@ class dll::Function : public dll::FunctionCC<C, Sig> { ... };
 ```
 
 **Usage Example:**
+
 ```cpp
 dll::Object lib;
 lib.load("math_dll.dll");
@@ -544,8 +548,8 @@ struct FnSig;
 
 Compile-time function signature hash generator. The `value` member is a `sig_t` constant.
 
-| Member | Type | Description |
-|--------|------|-------------|
+| Member  | Type              | Description                                  |
+| ------- | ----------------- | -------------------------------------------- |
 | `value` | `constexpr sig_t` | Unique FNV-1a hash of the function signature |
 
 ### `FnSigV<Sig, C>`
@@ -567,6 +571,7 @@ constexpr sig_t type_sig();
 Returns the compile-time type signature hash for type `T`. Strips cv-qualifiers and resolves references.
 
 **Usage Example:**
+
 ```cpp
 constexpr sig_t add_sig = FnSig<int(int, int)>::value;
 constexpr sig_t mul_sig = FnSigV<double(double, double)>;
@@ -581,15 +586,15 @@ constexpr sig_t int_sig = type_sig<int>();
 
 Specialized for ABIX smart pointer types and `runtime::Function`:
 
-| Type | Hash Formula |
-|------|-------------|
-| `dll::UniquePtr<T>` | `mix(cstr64("abix::dll::UniquePtr"), type_hash<T>)` |
-| `dll::RefPtr<T>` | `mix(cstr64("abix::dll::RefPtr"), type_hash<T>)` |
-| `dll::ViewPtr<T>` | `mix(cstr64("abix::dll::ViewPtr"), type_hash<T>)` |
-| `dll::SharedPtr<T>` | `mix(cstr64("abix::dll::SharedPtr"), type_hash<T>)` |
-| `dll::WeakPtr<T>` | `mix(cstr64("abix::dll::WeakPtr"), type_hash<T>)` |
+| Type                            | Hash Formula                                        |
+| ------------------------------- | --------------------------------------------------- |
+| `dll::UniquePtr<T>`             | `mix(cstr64("abix::dll::UniquePtr"), type_hash<T>)` |
+| `dll::RefPtr<T>`                | `mix(cstr64("abix::dll::RefPtr"), type_hash<T>)`    |
+| `dll::ViewPtr<T>`               | `mix(cstr64("abix::dll::ViewPtr"), type_hash<T>)`   |
+| `dll::SharedPtr<T>`             | `mix(cstr64("abix::dll::SharedPtr"), type_hash<T>)` |
+| `dll::WeakPtr<T>`               | `mix(cstr64("abix::dll::WeakPtr"), type_hash<T>)`   |
 | `runtime::Function<R(Args...)>` | Compound hash of return type and all argument types |
-| All other types | Delegates to `Utils::type_hash<T>()` |
+| All other types                 | Delegates to `Utils::type_hash<T>()`                |
 
 ### `SKL_ABIX_TYPE_TAG(T, tag)`
 
@@ -605,13 +610,13 @@ Register a custom type tag for user type `T`, enabling stable cross-compiler typ
 
 ### `runtime::LookupResult` Enum
 
-| Value | Description |
-|-------|-------------|
-| `ok` | Entry found with matching signature |
-| `not_found` | No entry with the given name |
-| `sig_mismatch` | Name found but signature differs |
-| `version_mismatch` | Name found but version differs |
-| `bad_table` | Invalid or corrupted table |
+| Value              | Description                         |
+| ------------------ | ----------------------------------- |
+| `ok`               | Entry found with matching signature |
+| `not_found`        | No entry with the given name        |
+| `sig_mismatch`     | Name found but signature differs    |
+| `version_mismatch` | Name found but version differs      |
+| `bad_table`        | Invalid or corrupted table          |
 
 ### `find_index()`
 
@@ -620,6 +625,7 @@ inline runtime::LookupResult find_index(const runtime::Table &t, const runtime::
 ```
 
 Automatically selects the optimal lookup strategy based on whether `idx` is valid:
+
 - If `idx.valid()` → uses HashIndex lookup (`find_hash`)
 - Otherwise → uses linear scan (`find_linear`)
 
@@ -632,6 +638,7 @@ inline runtime::LookupResult find_linear(const runtime::Table &t, const char *na
 Full table linear scan. Used for small tables (< 64 entries).
 
 **Search logic:**
+
 1. Validate table magic
 2. Compute 32-bit name hash (FNV-1a)
 3. Linear scan: match name hash → strcmp → version check → sig check
@@ -688,19 +695,20 @@ struct runtime::HashIndex {
 
 Runtime hash index for large tables. Built once at DLL load time.
 
-| Member | Type | Description |
-|--------|------|-------------|
-| `slots` | `runtime::HashSlot*` | Open-addressing slot array (power-of-two capacity) |
-| `capacity` | `uint32_t` | Total number of slots (always `next_pow2(count * 2)`) |
-| `mask` | `uint32_t` | `capacity - 1` for fast modulo |
+| Member     | Type                 | Description                                           |
+| ---------- | -------------------- | ----------------------------------------------------- |
+| `slots`    | `runtime::HashSlot*` | Open-addressing slot array (power-of-two capacity)    |
+| `capacity` | `uint32_t`           | Total number of slots (always `next_pow2(count * 2)`) |
+| `mask`     | `uint32_t`           | `capacity - 1` for fast modulo                        |
 
-| Method | Description |
-|--------|-------------|
-| `valid()` | Whether the hash index has been built (slots != nullptr) |
-| `build(t)` | Build the hash index from a table. Inserts all entries with linear probing |
-| `destroy()` | Free the slot array |
+| Method      | Description                                                                |
+| ----------- | -------------------------------------------------------------------------- |
+| `valid()`   | Whether the hash index has been built (slots != nullptr)                   |
+| `build(t)`  | Build the hash index from a table. Inserts all entries with linear probing |
+| `destroy()` | Free the slot array                                                        |
 
 **Design notes:**
+
 - **Load factor ~50%**: `capacity = next_pow2(count * 2)`
 - **Open addressing**: Linear probing `pos = (pos + 1) & mask` on collision
 - **Zero ABI impact**: `runtime::HashIndex` is runtime-only metadata; `table` and `entry` structs remain unchanged
@@ -708,10 +716,10 @@ Runtime hash index for large tables. Built once at DLL load time.
 
 ### Constants
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `SKL_ABIX_HASH_THRESHOLD` | `64` | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
-| `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots |
+| Constant                  | Value         | Description                                                                       |
+| ------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| `SKL_ABIX_HASH_THRESHOLD` | `64`          | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
+| `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots                                               |
 
 ## 9. `ABIX/Runtime/Function.h` — Cross-Boundary Closure
 
@@ -722,6 +730,7 @@ Runtime hash index for large tables. Built once at DLL load time.
 An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Similar to `std::function` but uses a stable ABI with manual memory management via `mem::alloc`/`mem::dealloc`.
 
 **Design:**
+
 - `sizeof(runtime::Function<R(Args...)>)` == 8 bytes (always, on 64-bit platforms)
 - Stores a heap-allocated `closure_base` pointer as a `uint64_t` handle
 - Closure contains invoke/destroy/clone function pointers
@@ -731,20 +740,21 @@ An 8-byte (64-bit) closure type for passing callbacks across DLL boundaries. Sim
 
 **API:**
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `runtime::Function()` | — | Default constructor, empty |
-| `runtime::Function(F f)` | — | Construct from a callable (lambda, function pointer, etc.) |
-| `runtime::Function(const&)` | — | Copy constructor (deep copy via clone handler) |
-| `runtime::Function(&&)` | — | Move constructor |
-| `operator=(rhs)` | `runtime::Function&` | Copy-and-swap assignment |
-| `operator()(Args...)` | `R` | Invoke the stored callable |
-| `operator bool()` | `bool` | Whether the closure contains a callable |
-| `empty()` | `bool` | Whether the closure is empty |
-| `handle()` | `uint64_t` | Raw handle value |
-| `swap(other)` | `void` | Swap two closures |
+| Method                      | Returns              | Description                                                |
+| --------------------------- | -------------------- | ---------------------------------------------------------- |
+| `runtime::Function()`       | —                    | Default constructor, empty                                 |
+| `runtime::Function(F f)`    | —                    | Construct from a callable (lambda, function pointer, etc.) |
+| `runtime::Function(const&)` | —                    | Copy constructor (deep copy via clone handler)             |
+| `runtime::Function(&&)`     | —                    | Move constructor                                           |
+| `operator=(rhs)`            | `runtime::Function&` | Copy-and-swap assignment                                   |
+| `operator()(Args...)`       | `R`                  | Invoke the stored callable                                 |
+| `operator bool()`           | `bool`               | Whether the closure contains a callable                    |
+| `empty()`                   | `bool`               | Whether the closure is empty                               |
+| `handle()`                  | `uint64_t`           | Raw handle value                                           |
+| `swap(other)`               | `void`               | Swap two closures                                          |
 
 **Usage Example:**
+
 ```cpp
 int captured = 100;
 runtime::Function<void(int)> cb = [captured](int x) {
@@ -776,15 +786,15 @@ Raw handle pair (pointer + deleter). Used as the return type of `release()` on s
 
 Exclusive-ownership smart pointer. Calls the DLL-side deleter on destruction.
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `dll::UniquePtr(p, d)` | — | Construct with pointer and deleter function |
-| `reset(p, d)` | `void` | Release current and take new ownership |
-| `release()` | `dll::UniqueHandle<T>*` | Release ownership without destroying |
-| `get()` | `T*` | Raw pointer |
-| `operator->()` | `T*` | Pointer access |
-| `operator*()` | `T&` | Dereference |
-| `operator bool()` | `bool` | Whether non-null |
+| Method                 | Returns                 | Description                                 |
+| ---------------------- | ----------------------- | ------------------------------------------- |
+| `dll::UniquePtr(p, d)` | —                       | Construct with pointer and deleter function |
+| `reset(p, d)`          | `void`                  | Release current and take new ownership      |
+| `release()`            | `dll::UniqueHandle<T>*` | Release ownership without destroying        |
+| `get()`                | `T*`                    | Raw pointer                                 |
+| `operator->()`         | `T*`                    | Pointer access                              |
+| `operator*()`          | `T&`                    | Dereference                                 |
+| `operator bool()`      | `bool`                  | Whether non-null                            |
 
 ### `dll::FnDeleter<T>`
 
@@ -802,55 +812,55 @@ Custom deleter for use with `std::unique_ptr<T, dll::FnDeleter<T>>`, wrapping a 
 
 Non-atomic reference-counted shared pointer. Single-thread safe.
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `dll::RefPtr(p, d)` | — | Construct with pointer and deleter |
-| `get()` | `T*` | Raw pointer |
-| `operator->()` | `T*` | Pointer access |
-| `operator*()` | `T&` | Dereference |
-| `use_count()` | `uint32_t` | Current reference count |
-| `view_count()` | `uint32_t` | Current view count |
-| `try_unique()` | `bool` | Whether `use_count() == 1` |
-| `from_unique(uhd)` | `dll::RefPtr<D>` | Static factory from `dll::UniqueHandle` |
+| Method              | Returns          | Description                             |
+| ------------------- | ---------------- | --------------------------------------- |
+| `dll::RefPtr(p, d)` | —                | Construct with pointer and deleter      |
+| `get()`             | `T*`             | Raw pointer                             |
+| `operator->()`      | `T*`             | Pointer access                          |
+| `operator*()`       | `T&`             | Dereference                             |
+| `use_count()`       | `uint32_t`       | Current reference count                 |
+| `view_count()`      | `uint32_t`       | Current view count                      |
+| `try_unique()`      | `bool`           | Whether `use_count() == 1`              |
+| `from_unique(uhd)`  | `dll::RefPtr<D>` | Static factory from `dll::UniqueHandle` |
 
 ### `dll::ViewPtr<T>`
 
 Non-owning observer for `dll::RefPtr<T>`. Does not prevent resource destruction.
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `dll::ViewPtr()` | — | Default constructor, empty |
-| `dll::ViewPtr(const dll::RefPtr<T>&)` | — | Construct from a `dll::RefPtr` |
-| `alive()` | `bool` | Whether the referenced resource is still alive |
-| `expired()` | `bool` | Whether the resource has been destroyed |
-| `lock()` | `dll::RefPtr<T>` | Promote to a `dll::RefPtr` (if alive) |
-| `use_count()` | `uint32_t` | Current ref count of the underlying resource |
+| Method                                | Returns          | Description                                    |
+| ------------------------------------- | ---------------- | ---------------------------------------------- |
+| `dll::ViewPtr()`                      | —                | Default constructor, empty                     |
+| `dll::ViewPtr(const dll::RefPtr<T>&)` | —                | Construct from a `dll::RefPtr`                 |
+| `alive()`                             | `bool`           | Whether the referenced resource is still alive |
+| `expired()`                           | `bool`           | Whether the resource has been destroyed        |
+| `lock()`                              | `dll::RefPtr<T>` | Promote to a `dll::RefPtr` (if alive)          |
+| `use_count()`                         | `uint32_t`       | Current ref count of the underlying resource   |
 
 ### `dll::SharedPtr<T>`
 
 Atomic reference-counted shared pointer. Thread-safe.
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `dll::SharedPtr(p, d)` | — | Construct with pointer and deleter |
-| `get()` | `T*` | Raw pointer |
-| `use_count()` | `uint32_t` | Current strong reference count |
-| `weak_count()` | `uint32_t` | Current weak reference count |
-| `try_unique()` | `bool` | Whether `use_count() == 1` |
-| `from_unique(uhd)` | `dll::SharedPtr<D>` | Static factory from `dll::UniqueHandle` |
+| Method                 | Returns             | Description                             |
+| ---------------------- | ------------------- | --------------------------------------- |
+| `dll::SharedPtr(p, d)` | —                   | Construct with pointer and deleter      |
+| `get()`                | `T*`                | Raw pointer                             |
+| `use_count()`          | `uint32_t`          | Current strong reference count          |
+| `weak_count()`         | `uint32_t`          | Current weak reference count            |
+| `try_unique()`         | `bool`              | Whether `use_count() == 1`              |
+| `from_unique(uhd)`     | `dll::SharedPtr<D>` | Static factory from `dll::UniqueHandle` |
 
 ### `dll::WeakPtr<T>`
 
 Non-owning observer for `dll::SharedPtr<T>`. Does not prevent resource destruction.
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `dll::WeakPtr()` | — | Default constructor, empty |
-| `dll::WeakPtr(const dll::SharedPtr<T>&)` | — | Construct from a `dll::SharedPtr` |
-| `alive()` | `bool` | Whether the referenced resource is still alive |
-| `expired()` | `bool` | Whether the resource has been destroyed |
-| `lock()` | `dll::SharedPtr<T>` | Promote to a `dll::SharedPtr` (if alive) |
-| `use_count()` | `uint32_t` | Current strong count of the underlying resource |
+| Method                                   | Returns             | Description                                     |
+| ---------------------------------------- | ------------------- | ----------------------------------------------- |
+| `dll::WeakPtr()`                         | —                   | Default constructor, empty                      |
+| `dll::WeakPtr(const dll::SharedPtr<T>&)` | —                   | Construct from a `dll::SharedPtr`               |
+| `alive()`                                | `bool`              | Whether the referenced resource is still alive  |
+| `expired()`                              | `bool`              | Whether the resource has been destroyed         |
+| `lock()`                                 | `dll::SharedPtr<T>` | Promote to a `dll::SharedPtr` (if alive)        |
+| `use_count()`                            | `uint32_t`          | Current strong count of the underlying resource |
 
 ## 11. `ABIX/Bridge/Refl.h` — Dynamic mics Integration
 
@@ -858,13 +868,13 @@ Non-owning observer for `dll::SharedPtr<T>`. Does not prevent resource destructi
 
 ### Type Aliases
 
-| Alias | Full Type | Description |
-|-------|-----------|-------------|
-| `DynamicAny` | `DRefl::Any` | Type-erased value container |
-| `DynamicRegistry` | `DRefl::Registry` | Global type registry singleton |
-| `DynamicTypeInfo` | `DRefl::TypeInfo` | Runtime type descriptor |
+| Alias                  | Full Type              | Description                       |
+| ---------------------- | ---------------------- | --------------------------------- |
+| `DynamicAny`           | `DRefl::Any`           | Type-erased value container       |
+| `DynamicRegistry`      | `DRefl::Registry`      | Global type registry singleton    |
+| `DynamicTypeInfo`      | `DRefl::TypeInfo`      | Runtime type descriptor           |
 | `DynamicFieldAccessor` | `DRefl::FieldAccessor` | Field accessor with getter/setter |
-| `DynamicFieldInfo` | `DRefl::FieldInfo` | Field metadata |
+| `DynamicFieldInfo`     | `DRefl::FieldInfo`     | Field metadata                    |
 
 ### `make_pod_type_info<T>()`
 
@@ -912,11 +922,11 @@ Registers all entries from an ABIX export table into the dynamic mics registry.
 
 ### Compile-time mics Helpers (`bridge` namespace)
 
-| Symbol | Description |
-|--------|-------------|
-| `FnEntryTag<SigValue, NameHashValue>` | Tag type pairing a signature hash and name hash |
-| `HasUniqueSigs<TypeList>` | Compile-time check: all `FnEntryTag` entries in the list have unique signatures |
-| `FindBySig<TypeList, TargetSig>` | Compile-time search: find the index of a `FnEntryTag` with matching `sig` |
+| Symbol                                | Description                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `FnEntryTag<SigValue, NameHashValue>` | Tag type pairing a signature hash and name hash                                 |
+| `HasUniqueSigs<TypeList>`             | Compile-time check: all `FnEntryTag` entries in the list have unique signatures |
+| `FindBySig<TypeList, TargetSig>`      | Compile-time search: find the index of a `FnEntryTag` with matching `sig`       |
 
 ## 12. Complete Usage Example
 

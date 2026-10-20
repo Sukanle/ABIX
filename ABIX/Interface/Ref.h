@@ -154,7 +154,45 @@ inline InterfaceRef<MaxMethods> query_interface(const InterfaceRegistry<Registry
     return ref;
 }
 
-// A compact slot cache for InterfaceProxy. After binding it needs only the
+namespace detail {
+
+// Shared by InterfaceSlotCache (exclusive proxy) and InterfaceSlotTable
+// (shared proxy). The caller resets its entries first; a failure leaves them
+// zeroed.
+template<size_t MaxMethods, size_t ExpectedCount>
+InterfaceStatus fill_slot_entries(uintptr_t *entries, uint32_t &highest, const InterfaceMethod *methods,
+    uint32_t method_count, const mics::utils::array<InterfaceMethodHash, ExpectedCount> &expected) noexcept {
+    static_assert(ExpectedCount <= MaxMethods, "contract declares more signatures than the slot capacity");
+    highest = 0;
+    for (uint32_t i = 0; i < method_count; ++i) {
+        const uint32_t slot = methods[i].slot;
+        if (slot >= MaxMethods) return InterfaceStatus::method_capacity_exceeded;
+        if (slot + 1 > highest) highest = slot + 1;
+    }
+
+    // A zero expected hash means "do not check this slot"; a non-zero one
+    // without a matching provider entry is method_not_found.
+    for (uint32_t slot = 0; slot < ExpectedCount; ++slot) {
+        if (expected[slot] == InterfaceMethodHash{}) continue;
+        const InterfaceMethod *found = nullptr;
+        for (uint32_t i = 0; i < method_count; ++i) {
+            if (methods[i].slot == slot) {
+                found = &methods[i];
+                break;
+            }
+        }
+        if (found == nullptr || found->entry == 0) return InterfaceStatus::method_not_found;
+        if (!(found->signature == expected[slot])) return InterfaceStatus::signature_mismatch;
+    }
+
+    for (uint32_t i = 0; i < method_count; ++i)
+        entries[methods[i].slot] = methods[i].entry;
+    return InterfaceStatus::ok;
+}
+
+}   // namespace detail
+
+// A compact slot cache for UniqueInterfaceProxy. After binding it needs only the
 // object handle, the highest bound slot and the adapter entries; provider
 // signatures are checked during resolve and then discarded. This is the
 // per-proxy path, not a general-purpose InterfaceRef.
@@ -188,31 +226,13 @@ public:
         if (object == nullptr || (method_count != 0 && methods == nullptr)) return InterfaceStatus::invalid_table;
 
         uint32_t highest = 0;
-        for (uint32_t i = 0; i < method_count; ++i) {
-            const uint32_t slot = methods[i].slot;
-            if (slot >= MaxMethods) return InterfaceStatus::method_capacity_exceeded;
-            if (slot + 1 > highest) highest = slot + 1;
-        }
-        static_assert(ExpectedCount <= MaxMethods, "contract declares more signatures than the cache capacity");
-
-        // Verify against the expected contract before publishing any entry. A
-        // zero expected hash means "do not check this slot"; a non-zero one
-        // without a matching provider entry is method_not_found.
-        for (uint32_t slot = 0; slot < ExpectedCount; ++slot) {
-            if (expected[slot] == InterfaceMethodHash{}) continue;
-            const InterfaceMethod *found = nullptr;
-            for (uint32_t i = 0; i < method_count; ++i) {
-                if (methods[i].slot == slot) {
-                    found = &methods[i];
-                    break;
-                }
-            }
-            if (found == nullptr || found->entry == 0) return InterfaceStatus::method_not_found;
-            if (!(found->signature == expected[slot])) return InterfaceStatus::signature_mismatch;
+        const InterfaceStatus status =
+            detail::fill_slot_entries<MaxMethods>(_entries, highest, methods, method_count, expected);
+        if (status != InterfaceStatus::ok) {
+            reset();
+            return status;
         }
 
-        for (uint32_t i = 0; i < method_count; ++i)
-            _entries[methods[i].slot] = methods[i].entry;
         _object = object;
         _method_count = highest;
         return InterfaceStatus::ok;
@@ -244,6 +264,56 @@ private:
     void *_object = nullptr;
     uint32_t _method_count = 0;
     uintptr_t _entries[MaxMethods == 0 ? 1 : MaxMethods]{};
+};
+
+// A slot-indexed adapter table that can be shared by many SharedInterfaceProxy
+// objects of the same concrete implementation. Build it once (from a registry
+// or a provider method table), keep it alive, and pass it to each proxy. The
+// table owns no object handle; the proxy supplies that per instance.
+template<size_t MaxMethods = 32>
+class InterfaceSlotTable {
+public:
+    InterfaceSlotTable() noexcept = default;
+
+    template<size_t ExpectedCount>
+    InterfaceStatus build(const InterfaceMethod *methods, uint32_t method_count,
+        const mics::utils::array<InterfaceMethodHash, ExpectedCount> &expected) noexcept {
+        reset();
+        if (method_count != 0 && methods == nullptr) return InterfaceStatus::invalid_table;
+        uint32_t highest = 0;
+        const InterfaceStatus status =
+            detail::fill_slot_entries<MaxMethods>(_entries, highest, methods, method_count, expected);
+        if (status != InterfaceStatus::ok) return status;
+        _method_count = highest;
+        _ready = true;
+        return InterfaceStatus::ok;
+    }
+
+    template<typename Fn>
+    Fn method(uint32_t slot) const noexcept {
+        static_assert(sizeof(Fn) <= sizeof(uintptr_t), "function pointer wider than uintptr_t");
+        if (slot >= MaxMethods || _entries[slot] == 0) return nullptr;
+        Fn fn = nullptr;
+        memcpy(&fn, &_entries[slot], sizeof(Fn));
+        return fn;
+    }
+
+    bool bound(uint32_t slot) const noexcept { return _ready && slot < MaxMethods && _entries[slot] != 0; }
+    bool valid() const noexcept { return _ready; }
+    uint32_t method_count() const noexcept { return _method_count; }
+    void clear() noexcept { reset(); }
+
+private:
+    void reset() noexcept {
+        _method_count = 0;
+        _ready = false;
+        for (size_t i = 0; i < (MaxMethods == 0 ? 1 : MaxMethods); ++i)
+            _entries[i] = 0;
+    }
+
+    uintptr_t _entries[MaxMethods == 0 ? 1 : MaxMethods]{};
+    uint32_t _method_count = 0;
+    bool _ready = false;
 };
 
 }   // namespace skl::abix::poly

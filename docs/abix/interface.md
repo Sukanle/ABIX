@@ -88,8 +88,8 @@ struct ShapeTraits {
     };
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
@@ -168,17 +168,17 @@ The difference is not whether polymorphism is possible, but **what carries it**:
 
 ### Side by side
 
-| Dimension | C++ virtual functions | ABIX Interface |
-|-----------|-----------------------|----------------|
-| What carries the abstraction | Base class + pure virtual (the type system) | Interface identity `InterfaceId` + method `slot` (a contract) |
-| Intrusion on the concrete type | Must inherit, must `override` | None; a plain C++ `struct` / Rust / Zig type all work |
-| Dispatch basis | vptr in the object → a compiler-private vtable slot | An explicitly resolved adapter entry `(interface_id, slot)` |
-| `this` adjustment / multiple inheritance | Compiler-generated thunk hidden in the vtable | The provider's adapter, with the object handle as its first argument |
-| Resolve timing | Implicitly fetches the vptr on every call | `resolve()` once, then zero lookups |
-| Heterogeneous collection | Via a base pointer `const Shape*` | `{ void* object, adapter }`, one uniform signature |
-| Cross-language | Not portable (layout/order differ) | One `interface_id` implemented by several languages |
-| Failure mode | UB (wrong call, dangling vptr) | `InterfaceStatus`: `interface_not_found` / `version_mismatch` / `method_not_found` |
-| ABI stability | Adding a virtual or changing inheritance is an ABI break | An interface is a contract; it never feeds `TypeID` / `ABIHash` |
+| Dimension                                | C++ virtual functions                                    | ABIX Interface                                                                     |
+| ---------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| What carries the abstraction             | Base class + pure virtual (the type system)              | Interface identity `InterfaceId` + method `slot` (a contract)                      |
+| Intrusion on the concrete type           | Must inherit, must `override`                            | None; a plain C++ `struct` / Rust / Zig type all work                              |
+| Dispatch basis                           | vptr in the object → a compiler-private vtable slot      | An explicitly resolved adapter entry `(interface_id, slot)`                        |
+| `this` adjustment / multiple inheritance | Compiler-generated thunk hidden in the vtable            | The provider's adapter, with the object handle as its first argument               |
+| Resolve timing                           | Implicitly fetches the vptr on every call                | `resolve()` once, then zero lookups                                                |
+| Heterogeneous collection                 | Via a base pointer `const Shape*`                        | `{ void* object, adapter }`, one uniform signature                                 |
+| Cross-language                           | Not portable (layout/order differ)                       | One `interface_id` implemented by several languages                                |
+| Failure mode                             | UB (wrong call, dangling vptr)                           | `InterfaceStatus`: `interface_not_found` / `version_mismatch` / `method_not_found` |
+| ABI stability                            | Adding a virtual or changing inheritance is an ABI break | An interface is a contract; it never feeds `TypeID` / `ABIHash`                    |
 
 ### Which to use
 
@@ -210,7 +210,7 @@ constexpr auto i32 =
     skl::abix::model::canonical_type_id("prim:i32");
 
 #define SHAPE_METHODS(X) X(area, int32_t, i32, {})
-SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 
 struct Box {
     int32_t width;
@@ -277,27 +277,25 @@ The macro roles are different: ABIX's `SKL_ABIX_INTERFACE_DECLARE` generates the
 
 ### Where they differ
 
-| Dimension | ABIX Interface | ngcpp/proxy |
-|-----------|----------------|-------------|
-| Abstraction unit | `InterfaceId` + version + ordered method signatures + typed slots | Facade type built from conventions, dispatches and overloads |
-| Provider conformance | Explicit `InterfaceRegistry` registration and a provider-owned adapter table | Implicit at compile time: the pointer type must satisfy the facade |
-| Binding | Runtime lookup once (`bind` / `bind_methods`), then cached slot entries | No registry or resolve step; the proxy is constructed from a pointer |
-| Dispatch | Slot-indexed native indirect call through a cached adapter | Facade-generated dispatch/accessor over a type-erased pointer |
-| Versioning | Explicit contract version; exact/newest selection; `version_mismatch` | Source-level facade definition; no runtime version negotiation |
-| Cross-language / cross-DLL | Stable C ABI, `abix_module_query_v1`, leases, cross-language consumers | C++ only; facade and implementation share the same C++ ABI/toolchain |
-| Ownership | Borrowed object handle; module `lease`; separate Owner ABI for owned handles | Raw pointer (non-owning), `unique_ptr` / `shared_ptr`, or in-place `make_proxy` |
-| Failure model | `InterfaceStatus` (`interface_not_found`, `version_mismatch`, `signature_mismatch`, ...) | Compile-time constraints; optional `rtti` / `bad_proxy_cast`; weak dispatch can be configured |
-| Overloads | Separate slots/signatures; explicit member-pointer cast for overloaded members | Native overload resolution across convention overloads |
-| Lifetime | Provider object must outlive the proxy; a module lease keeps a discovered adapter mapped | Encoded by the pointer type: raw is non-owning, smart pointers own, `make_proxy` may be in-place |
-| Requirements | C++17, header-only interface layer | C++20, header-only facade/pointer library |
+| Dimension                  | ABIX Interface                                                                           | ngcpp/proxy                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Abstraction unit           | `InterfaceId` + version + ordered method signatures + typed slots                        | Facade type built from conventions, dispatches and overloads                                     |
+| Provider conformance       | Explicit `InterfaceRegistry` registration and a provider-owned adapter table             | Implicit at compile time: the pointer type must satisfy the facade                               |
+| Binding                    | Runtime lookup once (`bind` / `bind_methods`), then cached slot entries                  | No registry or resolve step; the proxy is constructed from a pointer                             |
+| Dispatch                   | Slot-indexed native indirect call through a cached adapter                               | Facade-generated dispatch/accessor over a type-erased pointer                                    |
+| Versioning                 | Explicit contract version; exact/newest selection; `version_mismatch`                    | Source-level facade definition; no runtime version negotiation                                   |
+| Cross-language / cross-DLL | Stable C ABI, `abix_module_query_v1`, leases, cross-language consumers                   | C++ only; facade and implementation share the same C++ ABI/toolchain                             |
+| Ownership                  | Borrowed object handle; module `lease`; separate Owner ABI for owned handles             | Raw pointer (non-owning), `unique_ptr` / `shared_ptr`, or in-place `make_proxy`                  |
+| Failure model              | `InterfaceStatus` (`interface_not_found`, `version_mismatch`, `signature_mismatch`, ...) | Compile-time constraints; optional `rtti` / `bad_proxy_cast`; weak dispatch can be configured    |
+| Overloads                  | Separate slots/signatures; explicit member-pointer cast for overloaded members           | Native overload resolution across convention overloads                                           |
+| Lifetime                   | Provider object must outlive the proxy; a module lease keeps a discovered adapter mapped | Encoded by the pointer type: raw is non-owning, smart pointers own, `make_proxy` may be in-place |
+| Requirements               | C++17, header-only interface layer                                                       | C++20, header-only facade/pointer library                                                        |
 
 ### Which to use
 
 - Choose **ABIX Interface** when the boundary is a DLL/module or a foreign language, when the contract needs an explicit identity and version, when method signatures must be verified before a call, or when the provider object already exists and must stay untouched.
 - Choose **ngcpp/proxy** when the whole program is C++20, when you want pointer-like ownership variants (`raw`, `unique_ptr`, `shared_ptr`, in-place values), native overload/operator conventions, and compile-time facade checking without a registry.
 - They compose: use ABIX at the cross-boundary contract layer, and use a `pro::proxy` internally for C++ value/ownership polymorphism. ABIX supplies the ABI and versioned contract; ngcpp/proxy supplies a rich C++-only pointer abstraction.
-
-
 
 ## Quick start
 
@@ -345,7 +343,7 @@ int main() {
 
 ## Binding-time resolution, native call
 
-The runtime facility is deliberately a *binding-time* one. `InterfaceRegistry` holds "this concrete type implements this interface" records. `InterfaceRef` resolves once and caches the adapter pointers by slot; every call afterwards is a plain native indirect call. The runtime never becomes a generic dispatch loop.
+The runtime facility is deliberately a _binding-time_ one. `InterfaceRegistry` holds "this concrete type implements this interface" records. `InterfaceRef` resolves once and caches the adapter pointers by slot; every call afterwards is a plain native indirect call. The runtime never becomes a generic dispatch loop.
 
 ```cpp
 #include "ABIX/Interface/Interface.h"
@@ -467,8 +465,8 @@ struct ShapeTraits {
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-class Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
-    using Base = skl::abix::poly::InterfaceProxy<ShapeTraits>;
+class Shape : public skl::abix::poly::UniqueInterfaceProxy<ShapeTraits> {
+    using Base = skl::abix::poly::UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
@@ -786,30 +784,30 @@ registry.unregister_module(control.id);   // now it can unload
 
 The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace `skl::abix::poly` except the owner ABI (`skl::abix::owner`). To pull in the whole layer on its own, `#include "ABIX/Interface/Interface.h"`.
 
-| Header | Contents |
-|------|------|
-| `ABIX/Interface/Contract.h` | Interface identity, `InterfaceMethod` / `InterfaceImplementation`, `InterfaceStatus`, `interface_entry` |
-| `ABIX/Interface/Registry.h` | `InterfaceRegistry` — binding-time registration and resolution |
-| `ABIX/Interface/Ref.h` | `InterfaceRef` — resolve once, call natively through a slot cache |
-| `ABIX/Interface/Module.h` | The fixed entry `abix_module_query_v1`, `ModuleManifest`, `validate_manifest` |
-| `ABIX/Interface/Lease.h` | The `ModuleControl` state machine and the RAII `ModuleLease` |
-| `ABIX/Interface/ModuleRegistry.h` | `ModuleRegistry` — register and query discovered module interfaces |
-| `ABIX/Interface/Discovery.h` | `discover_module` — load → validate → register |
-| `ABIX/Interface/Owner.h` | Owner ABI — borrow/own/copy semantics for `handle` / `ref` |
-| `ABIX/Interface/Proxy.h` | C++ proxy API — `InterfaceProxy<Traits>`, `bind`/`call`, signature checks |
-| `ABIX/Interface/Declaration.h` | declaration sugar — `SKL_ABIX_INTERFACE_DECLARE`; version helpers `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
+| Header                            | Contents                                                                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `ABIX/Interface/Contract.h`       | Interface identity, `InterfaceMethod` / `InterfaceImplementation`, `InterfaceStatus`, `interface_entry`                  |
+| `ABIX/Interface/Registry.h`       | `InterfaceRegistry` — binding-time registration and resolution                                                           |
+| `ABIX/Interface/Ref.h`            | `InterfaceRef` — resolve once, call natively through a slot cache                                                        |
+| `ABIX/Interface/Module.h`         | The fixed entry `abix_module_query_v1`, `ModuleManifest`, `validate_manifest`                                            |
+| `ABIX/Interface/Lease.h`          | The `ModuleControl` state machine and the RAII `ModuleLease`                                                             |
+| `ABIX/Interface/ModuleRegistry.h` | `ModuleRegistry` — register and query discovered module interfaces                                                       |
+| `ABIX/Interface/Discovery.h`      | `discover_module` — load → validate → register                                                                           |
+| `ABIX/Interface/Owner.h`          | Owner ABI — borrow/own/copy semantics for `handle` / `ref`                                                               |
+| `ABIX/Interface/Proxy.h`          | C++ proxy API — `UniqueInterfaceProxy<Traits>`, `bind`/`call`, signature checks                                          |
+| `ABIX/Interface/Declaration.h`    | declaration sugar — `SKL_ABIX_INTERFACE_DECLARE`; version helpers `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
 
 ### `Contract.h` — interface identity and methods
 
-| Symbol | Type | Description |
-|------|------|------|
-| `InterfaceId` | `Hash128` | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)` |
-| `InterfaceMethodHash` | `model::SignatureHash` | One method's ABI signature hash |
-| `interface_id(name, version, signatures)` | `InterfaceId` | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `mics::utils::array` or a variadic `InterfaceMethodHash` list |
-| `InterfaceMethodKey` | `{signature, slot}` | A signature paired with its slot, for the `interface_id` `mics::utils::array` overload to sort before hashing |
-| `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash` | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`) |
-| `interface_entry<Fn>(fn)` | `uintptr_t` | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way |
-| `to_string(status)` | `const char*` | Readable name for an `InterfaceStatus` |
+| Symbol                                                   | Type                   | Description                                                                                                                                                                                                                                              |
+| -------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InterfaceId`                                            | `Hash128`              | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)`                                                                          |
+| `InterfaceMethodHash`                                    | `model::SignatureHash` | One method's ABI signature hash                                                                                                                                                                                                                          |
+| `interface_id(name, version, signatures)`                | `InterfaceId`          | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `mics::utils::array` or a variadic `InterfaceMethodHash` list |
+| `InterfaceMethodKey`                                     | `{signature, slot}`    | A signature paired with its slot, for the `interface_id` `mics::utils::array` overload to sort before hashing                                                                                                                                            |
+| `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash`  | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`)                  |
+| `interface_entry<Fn>(fn)`                                | `uintptr_t`            | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way                                                                                                                                        |
+| `to_string(status)`                                      | `const char*`          | Readable name for an `InterfaceStatus`                                                                                                                                                                                                                   |
 
 **Cross-tool identity contract.** `InterfaceId` is defined identically by `AMC::interface_identity` and `ABIX::poly::interface_id`:
 
@@ -824,23 +822,23 @@ The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard **FN
 
 `InterfaceMethod` — one method's adapter entry:
 
-| Field | Type | Description |
-|------|------|------|
-| `signature` | `InterfaceMethodHash` | Method ABI signature hash recorded by AMC |
-| `entry` | `uintptr_t` | Adapter entry point, called with the object handle as its first argument; `0` means the slot is unbound |
-| `slot` | `uint32_t` | Stable dispatch slot |
-| `flags` | `uint32_t` | Reserved |
+| Field       | Type                  | Description                                                                                             |
+| ----------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
+| `signature` | `InterfaceMethodHash` | Method ABI signature hash recorded by AMC                                                               |
+| `entry`     | `uintptr_t`           | Adapter entry point, called with the object handle as its first argument; `0` means the slot is unbound |
+| `slot`      | `uint32_t`            | Stable dispatch slot                                                                                    |
+| `flags`     | `uint32_t`            | Reserved                                                                                                |
 
 `InterfaceImplementation` — one concrete type's implementation of an interface:
 
-| Field | Type | Description |
-|------|------|------|
-| `interface_id` | `InterfaceId` | |
-| `concrete_type` | `model::TypeId` | The concrete type implementing the interface |
-| `methods` | `const InterfaceMethod*` | Provider-owned method table |
-| `method_count` | `uint32_t` | Number of entries |
-| `version` | `uint32_t` | Interface version |
-| `flags` | `uint32_t` | Reserved |
+| Field           | Type                     | Description                                  |
+| --------------- | ------------------------ | -------------------------------------------- |
+| `interface_id`  | `InterfaceId`            |                                              |
+| `concrete_type` | `model::TypeId`          | The concrete type implementing the interface |
+| `methods`       | `const InterfaceMethod*` | Provider-owned method table                  |
+| `method_count`  | `uint32_t`               | Number of entries                            |
+| `version`       | `uint32_t`               | Interface version                            |
+| `flags`         | `uint32_t`               | Reserved                                     |
 
 `InterfaceStatus`: `ok`, `invalid_table`, `duplicate_implementation`, `capacity_exceeded`, `interface_not_found`, `version_mismatch`, `method_not_found`, `method_capacity_exceeded`.
 
@@ -850,61 +848,63 @@ The seeds are shared with ABIX's own `fnv1a`: `lo` starts from the standard **FN
 
 On a 64-bit target `InterfaceImplementation` is 56 bytes: two 128-bit IDs, the method pointer, `method_count`, `version`, the reserved `flags` and padding. `InterfaceRegistry<8>` is therefore 464 bytes (`8 * 56 + count/lookups`). This is bind-time memory; one shared registry is usually preferable to one per controller. A custom compact record can drop the unused `flags` field (48 bytes per entry) or use a smaller capacity, but that changes the public record layout.
 
-| Method | Return | Description |
-|------|--------|------|
-| `add(impl)` | `InterfaceStatus` | Register one implementation. A repeated `(concrete_type, interface_id, version)` returns `duplicate_implementation` (a conflict, not a silent overwrite); a full registry returns `capacity_exceeded`; an empty id or a zero method table with a nonzero count returns `invalid_table` |
-| `find(concrete_type, interface_id, version = 0)` | `const InterfaceImplementation*` | `version == 0` selects the newest registered version, otherwise an exact match; `nullptr` when absent |
-| `find_newest(concrete_type, interface_id)` | `const InterfaceImplementation*` | Newest version, or `nullptr` |
-| `available(concrete_type, interface_id, newest&)` | `bool` | Whether any version exists; `newest` receives the newest version — lets a caller distinguish "unknown interface" from "wrong version" without a second full scan |
-| `size()` | `size_t` | Number of registered implementations |
-| `at(index)` | `const InterfaceImplementation*` | Indexed access; `nullptr` out of range |
-| `lookup_count()` | `size_t` | Diagnostic: how many `find()` calls were served; proves resolve-then-call performs exactly one lookup |
+| Method                                            | Return                           | Description                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add(impl)`                                       | `InterfaceStatus`                | Register one implementation. A repeated `(concrete_type, interface_id, version)` returns `duplicate_implementation` (a conflict, not a silent overwrite); a full registry returns `capacity_exceeded`; an empty id or a zero method table with a nonzero count returns `invalid_table` |
+| `find(concrete_type, interface_id, version = 0)`  | `const InterfaceImplementation*` | `version == 0` selects the newest registered version, otherwise an exact match; `nullptr` when absent                                                                                                                                                                                  |
+| `find_newest(concrete_type, interface_id)`        | `const InterfaceImplementation*` | Newest version, or `nullptr`                                                                                                                                                                                                                                                           |
+| `available(concrete_type, interface_id, newest&)` | `bool`                           | Whether any version exists; `newest` receives the newest version — lets a caller distinguish "unknown interface" from "wrong version" without a second full scan                                                                                                                       |
+| `size()`                                          | `size_t`                         | Number of registered implementations                                                                                                                                                                                                                                                   |
+| `at(index)`                                       | `const InterfaceImplementation*` | Indexed access; `nullptr` out of range                                                                                                                                                                                                                                                 |
+| `lookup_count()`                                  | `size_t`                         | Diagnostic: how many `find()` calls were served; proves resolve-then-call performs exactly one lookup                                                                                                                                                                                  |
 
 ### `Ref.h` — resolved handle
 
 `InterfaceRef<MaxMethods = 32>`: one resolve copies the bound adapter pointers into a slot-indexed cache; every call afterwards is a plain native indirect call — no per-call lookup, name comparison or type inspection.
 
-| Method | Return | Description |
-|------|--------|------|
-| `resolve<RegCap>(registry, object, concrete_type, interface_id, version = 0)` | `InterfaceStatus` | Exactly one registry lookup; `object == nullptr` returns `invalid_table`; on failure distinguishes `version_mismatch` (interface exists, version does not) from `interface_not_found` |
-| `resolve_methods(interface_id, version, methods, method_count, object)` | `InterfaceStatus` | Resolve directly from a provider-owned table — the path a dynamically discovered module uses (table from its manifest, caller holds the lease); a slot above `MaxMethods` returns `method_capacity_exceeded` |
-| `method<Fn>(slot)` | `Fn` | The cached entry point, or `nullptr` when the slot is unbound or out of range. `Fn` takes the object handle as its first argument; pass `object()` |
-| `bound(slot)` | `bool` | Whether the slot is bound |
-| `valid()` | `bool` | Resolved and the object is non-null |
-| `object()` | `void*` | The provider's object handle (the first argument of a call) |
-| `interface_id()` / `version()` | | Resolved interface identity / version |
-| `method_count()` | `uint32_t` | Slots spanned by the implementation (highest bound slot + 1) |
+| Method                                                                        | Return            | Description                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `resolve<RegCap>(registry, object, concrete_type, interface_id, version = 0)` | `InterfaceStatus` | Exactly one registry lookup; `object == nullptr` returns `invalid_table`; on failure distinguishes `version_mismatch` (interface exists, version does not) from `interface_not_found`                        |
+| `resolve_methods(interface_id, version, methods, method_count, object)`       | `InterfaceStatus` | Resolve directly from a provider-owned table — the path a dynamically discovered module uses (table from its manifest, caller holds the lease); a slot above `MaxMethods` returns `method_capacity_exceeded` |
+| `method<Fn>(slot)`                                                            | `Fn`              | The cached entry point, or `nullptr` when the slot is unbound or out of range. `Fn` takes the object handle as its first argument; pass `object()`                                                           |
+| `bound(slot)`                                                                 | `bool`            | Whether the slot is bound                                                                                                                                                                                    |
+| `valid()`                                                                     | `bool`            | Resolved and the object is non-null                                                                                                                                                                          |
+| `object()`                                                                    | `void*`           | The provider's object handle (the first argument of a call)                                                                                                                                                  |
+| `interface_id()` / `version()`                                                |                   | Resolved interface identity / version                                                                                                                                                                        |
+| `method_count()`                                                              | `uint32_t`        | Slots spanned by the implementation (highest bound slot + 1)                                                                                                                                                 |
 
 `query_interface<MaxMethods = 32, RegCap>(registry, object, concrete_type, interface_id, version = 0)` — convenience that returns an `InterfaceRef` by value; check `valid()`.
 
-`InterfaceSlotCache<MaxMethods>` is the compact storage used by `InterfaceProxy`. It keeps only the object handle, the highest bound slot and the adapter entries; expected signatures are verified during resolve and then discarded. Its size is roughly `16 + 8 * MaxMethods` bytes instead of `InterfaceRef`'s `32 + 24 * MaxMethods`. Use `InterfaceRef` when you need `interface_id()` / `version()` / `signature()` diagnostics or a standalone raw handle; use a proxy for the per-object path.
+`InterfaceSlotCache<MaxMethods>` is the compact storage used by `UniqueInterfaceProxy`. It keeps only the object handle, the highest bound slot and the adapter entries; expected signatures are verified during resolve and then discarded. Its size is roughly `16 + 8 * MaxMethods` bytes instead of `InterfaceRef`'s `32 + 24 * MaxMethods`. Use `InterfaceRef` when you need `interface_id()` / `version()` / `signature()` diagnostics or a standalone raw handle; use a proxy for the per-object path.
+
+`InterfaceSlotTable<MaxMethods>` is the shareable form of that cache: build it once with `build()` / `make_shared_slot_table<Traits>()` and pass it to any number of `SharedInterfaceProxy` objects. The table itself is roughly `8 * MaxMethods + 8` bytes.
 
 The provider's object must outlive the handle and must be the object the adapters were generated for (the handle creator owns the correct pointer and any `this` adjustment).
 
 ### `Module.h` — the discovery manifest
 
-| Symbol | Type | Description |
-|------|------|------|
-| `ModuleInstanceId` | `uint64_t` | Unique per load; the same file loaded twice, or reloaded, gets a new id; `0` is invalid |
-| `invalid_module_instance` | constant | |
-| `abix_manifest_version` | `uint32_t` | Version of the manifest ABI itself; a consumer that does not know a version must refuse it rather than guess |
-| `abix_module_query_symbol` | `const char*` | The fixed entry name `"abix_module_query_v1"` |
-| `abix_max_manifest_interfaces` / `abix_max_manifest_methods` | constants | Sanity bounds so a malformed manifest cannot drive an unbounded loop |
-| `ModuleQueryFn` | `const ModuleManifest* (*)(void)` | The fixed entry signature |
-| `SKL_ABIX_DEFINE_MODULE_QUERY(manifest)` | macro | Defines the `extern "C"` `abix_module_query_v1` |
-| `ManifestStatus` | enum | Result of `validate_manifest`; `to_string` gives the name |
-| `validate_manifest(const ModuleManifest*)` | `ManifestStatus` | Validates a manifest |
+| Symbol                                                       | Type                              | Description                                                                                                  |
+| ------------------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ModuleInstanceId`                                           | `uint64_t`                        | Unique per load; the same file loaded twice, or reloaded, gets a new id; `0` is invalid                      |
+| `invalid_module_instance`                                    | constant                          |                                                                                                              |
+| `abix_manifest_version`                                      | `uint32_t`                        | Version of the manifest ABI itself; a consumer that does not know a version must refuse it rather than guess |
+| `abix_module_query_symbol`                                   | `const char*`                     | The fixed entry name `"abix_module_query_v1"`                                                                |
+| `abix_max_manifest_interfaces` / `abix_max_manifest_methods` | constants                         | Sanity bounds so a malformed manifest cannot drive an unbounded loop                                         |
+| `ModuleQueryFn`                                              | `const ModuleManifest* (*)(void)` | The fixed entry signature                                                                                    |
+| `SKL_ABIX_DEFINE_MODULE_QUERY(manifest)`                     | macro                             | Defines the `extern "C"` `abix_module_query_v1`                                                              |
+| `ManifestStatus`                                             | enum                              | Result of `validate_manifest`; `to_string` gives the name                                                    |
+| `validate_manifest(const ModuleManifest*)`                   | `ManifestStatus`                  | Validates a manifest                                                                                         |
 
 `InterfaceManifestEntry` (fixed 40-byte wire layout):
 
-| Field | Type | Description |
-|------|------|------|
-| `interface_id` | `InterfaceId` | |
-| `interface_version` | `uint32_t` | Distinguishes compatible contract revisions |
-| `flags` | `uint32_t` | Reserved |
-| `methods` | `const InterfaceMethod*` | Provider-owned adapter table |
-| `method_count` | `uint32_t` | Number of entries |
-| `reserved` | `uint32_t` | |
+| Field               | Type                     | Description                                 |
+| ------------------- | ------------------------ | ------------------------------------------- |
+| `interface_id`      | `InterfaceId`            |                                             |
+| `interface_version` | `uint32_t`               | Distinguishes compatible contract revisions |
+| `flags`             | `uint32_t`               | Reserved                                    |
+| `methods`           | `const InterfaceMethod*` | Provider-owned adapter table                |
+| `method_count`      | `uint32_t`               | Number of entries                           |
+| `reserved`          | `uint32_t`               |                                             |
 
 `ModuleManifest` (40 bytes): `manifest_version`, `module_abi_version`, `flags`, `interface_count`, `interfaces`, `extension_count`, `reserved`, `extensions`. `extensions` is an opaque, optional, forward-compatible region: a consumer that does not know it skips it, but must still validate its declared boundary.
 
@@ -920,20 +920,20 @@ The lifecycle is a small state machine with a lease count:
 loading ──activate──▶ active ──begin_unload──▶ draining ──idle──▶ unloaded
 ```
 
-| Symbol | Type | Description |
-|------|------|------|
-| `ModuleState` | enum | `loading` / `active` / `draining` / `unloaded`; `to_string` gives the name |
-| `ModuleControl` | struct | The loader-owned lifecycle token: `id`, `name`, `state`, `leases`, plus the platform `module_handle` and the `pin`/`unpin` hooks. Kept outside the registry so the loader can tie it to the platform module handle |
-| `next_module_instance_id()` | `ModuleInstanceId` | Monotonic; never reused |
-| `module_state(control)` | `ModuleState` | Reads the current state |
-| `activate_module(control)` | `bool` | `loading → active` (CAS); `false` when not loading |
-| `try_acquire_lease(control)` | `bool` | Acquires only while `active`; the state is re-checked after the increment so a concurrent `begin_unload` cannot be missed. Takes an OS-level reference (`pin`) so the module stays mapped while the lease is held |
-| `release_lease(control)` | `void` | Releases one lease |
-| `begin_unload(control)` | `bool` | Stops admitting new leases (enters `draining`); `true` if already draining/unloaded, `false` if never activated |
-| `wait_for_idle(control, max_spins = 1000000)` | `bool` | Waits until every lease is released; bounded so a leaked lease cannot hang a caller forever |
-| `mark_unloaded(control)` | `void` | Sets `unloaded` |
-| `ModuleLease` | RAII class | Movable, non-copyable; `valid()`, `release()`; the destructor releases; releasing an unheld lease is a no-op |
-| `acquire_lease(control)` | `ModuleLease` | An invalid lease (never a partial one) when the module is not `active` |
+| Symbol                                        | Type               | Description                                                                                                                                                                                                        |
+| --------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ModuleState`                                 | enum               | `loading` / `active` / `draining` / `unloaded`; `to_string` gives the name                                                                                                                                         |
+| `ModuleControl`                               | struct             | The loader-owned lifecycle token: `id`, `name`, `state`, `leases`, plus the platform `module_handle` and the `pin`/`unpin` hooks. Kept outside the registry so the loader can tie it to the platform module handle |
+| `next_module_instance_id()`                   | `ModuleInstanceId` | Monotonic; never reused                                                                                                                                                                                            |
+| `module_state(control)`                       | `ModuleState`      | Reads the current state                                                                                                                                                                                            |
+| `activate_module(control)`                    | `bool`             | `loading → active` (CAS); `false` when not loading                                                                                                                                                                 |
+| `try_acquire_lease(control)`                  | `bool`             | Acquires only while `active`; the state is re-checked after the increment so a concurrent `begin_unload` cannot be missed. Takes an OS-level reference (`pin`) so the module stays mapped while the lease is held  |
+| `release_lease(control)`                      | `void`             | Releases one lease                                                                                                                                                                                                 |
+| `begin_unload(control)`                       | `bool`             | Stops admitting new leases (enters `draining`); `true` if already draining/unloaded, `false` if never activated                                                                                                    |
+| `wait_for_idle(control, max_spins = 1000000)` | `bool`             | Waits until every lease is released; bounded so a leaked lease cannot hang a caller forever                                                                                                                        |
+| `mark_unloaded(control)`                      | `void`             | Sets `unloaded`                                                                                                                                                                                                    |
+| `ModuleLease`                                 | RAII class         | Movable, non-copyable; `valid()`, `release()`; the destructor releases; releasing an unheld lease is a no-op                                                                                                       |
+| `acquire_lease(control)`                      | `ModuleLease`      | An invalid lease (never a partial one) when the module is not `active`                                                                                                                                             |
 
 A lease is held for the duration of an active call or a live object handle. This is what makes a cached method binding safe: the binding stays valid exactly as long as the caller holds a lease.
 
@@ -947,15 +947,15 @@ A lease is held for the duration of an active call or a live object handle. This
 
 `ModuleRegistry<ModuleCapacity = 16, InterfaceCapacity = 128>`:
 
-| Method | Return | Description |
-|------|--------|------|
-| `register_module(control, manifest)` | `ModuleStatus` | Validates the manifest, rejects a duplicate `(id, version)` within the module, activates and registers; re-registering the same control is idempotent (`already_registered`); a `control` not in the loading state returns `invalid_state` |
-| `unregister_module(id)` | `ModuleStatus` | Begins unloading: `begin_unload`, then removes only once every lease is released; otherwise the module is draining (no new leases) and the caller retries after in-flight calls — reported as `busy` |
-| `registered(id)` | `bool` | |
-| `module_count()` / `interface_count()` | `size_t` | |
-| `interface_at(index)` | `const ModuleInterface*` | Indexed access |
-| `find_interface(id, version, out, max)` | `size_t` | Writes **all** implementations in registration order (`version == 0` matches any); returns the count written (up to `max`) |
-| `find_first(id, version = 0)` | `const ModuleInterface*` | The newest implementation, or `nullptr` |
+| Method                                  | Return                   | Description                                                                                                                                                                                                                                |
+| --------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `register_module(control, manifest)`    | `ModuleStatus`           | Validates the manifest, rejects a duplicate `(id, version)` within the module, activates and registers; re-registering the same control is idempotent (`already_registered`); a `control` not in the loading state returns `invalid_state` |
+| `unregister_module(id)`                 | `ModuleStatus`           | Begins unloading: `begin_unload`, then removes only once every lease is released; otherwise the module is draining (no new leases) and the caller retries after in-flight calls — reported as `busy`                                       |
+| `registered(id)`                        | `bool`                   |                                                                                                                                                                                                                                            |
+| `module_count()` / `interface_count()`  | `size_t`                 |                                                                                                                                                                                                                                            |
+| `interface_at(index)`                   | `const ModuleInterface*` | Indexed access                                                                                                                                                                                                                             |
+| `find_interface(id, version, out, max)` | `size_t`                 | Writes **all** implementations in registration order (`version == 0` matches any); returns the count written (up to `max`)                                                                                                                 |
+| `find_first(id, version = 0)`           | `const ModuleInterface*` | The newest implementation, or `nullptr`                                                                                                                                                                                                    |
 
 Several modules may implement one interface; queries return all of them and never overwrite one with another; a version is exact when requested and "newest" when `0` is requested.
 
@@ -963,9 +963,9 @@ Several modules may implement one interface; queries return all of them and neve
 
 ### `Discovery.h` — load and discover
 
-| Symbol | Type | Description |
-|------|------|------|
-| `DiscoveryResult` | struct | `manifest` (`ManifestStatus`), `registration` (`ModuleStatus`), `queried` (the manifest pointer), `ok()` |
+| Symbol                                                                                     | Type              | Description                                                                                                         |
+| ------------------------------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `DiscoveryResult`                                                                          | struct            | `manifest` (`ManifestStatus`), `registration` (`ModuleStatus`), `queried` (the manifest pointer), `ok()`            |
 | `discover_module<ModuleCapacity = 16, InterfaceCapacity = 128>(module, control, registry)` | `DiscoveryResult` | Resolves `abix_module_query_v1` from a loaded module, validates it with `validate_manifest`, then `register_module` |
 
 The platform export table is consulted for **that one symbol only**: no other export is decoded and no interface meaning is inferred from a symbol. A missing entry, an unknown manifest version, a malformed manifest or a duplicate declaration all fail explicitly. On success `control` becomes `active`.
@@ -974,61 +974,93 @@ The platform export table is consulted for **that one symbol only**: no other ex
 
 Namespace `skl::abix::owner`. Interface ABI says how to call an object; the owner ABI says who owns it, who releases it, and where the releasing code lives.
 
-| Symbol | Type | Description |
-|------|------|------|
-| `abix_owner_abi_version` | `uint32_t` | Owner ABI version |
-| `mode` | enum | `borrowed` / `owned` / `copied`; `to_string` gives the name |
-| `destroy_fn` | `void (*)(void*)` | The creator's destroy entry, with a fixed C ABI |
-| `handle` | struct (32 bytes) | POD handle: `object`, `mode`, `flags`, `destroy`, `module_instance` |
-| `valid(handle)` | `bool` | `object != nullptr` |
-| `make_borrowed(object)` | `handle` | Non-owning reference |
-| `make_owned(object, destroy, module_instance = invalid)` | `handle` | Exclusive ownership, released through `destroy` |
-| `make_copied(object, destroy, module_instance = invalid)` | `handle` | Independent copy, released through `destroy` |
+| Symbol                                                    | Type              | Description                                                         |
+| --------------------------------------------------------- | ----------------- | ------------------------------------------------------------------- |
+| `abix_owner_abi_version`                                  | `uint32_t`        | Owner ABI version                                                   |
+| `mode`                                                    | enum              | `borrowed` / `owned` / `copied`; `to_string` gives the name         |
+| `destroy_fn`                                              | `void (*)(void*)` | The creator's destroy entry, with a fixed C ABI                     |
+| `handle`                                                  | struct (32 bytes) | POD handle: `object`, `mode`, `flags`, `destroy`, `module_instance` |
+| `valid(handle)`                                           | `bool`            | `object != nullptr`                                                 |
+| `make_borrowed(object)`                                   | `handle`          | Non-owning reference                                                |
+| `make_owned(object, destroy, module_instance = invalid)`  | `handle`          | Exclusive ownership, released through `destroy`                     |
+| `make_copied(object, destroy, module_instance = invalid)` | `handle`          | Independent copy, released through `destroy`                        |
 
 `handle` fields: `object` (opaque to the consumer), `mode`, `flags`, `destroy` (required for owned, optional for copied), `module_instance` (diagnostic: which load created it).
 
 `ref` — the runtime owner handle: the creator's POD `handle` plus a module lease that keeps the destroying module loaded for as long as the object lives.
 
-| Method | Return | Description |
-|------|--------|------|
-| `adopt(handle, control = nullptr)` | `ref` | Adopts a creator-returned handle; for an owned/copied handle pass the creating module's `control` to hold the lease; a borrowed handle may omit it |
-| `borrow(object, control = nullptr)` | `ref` | Convenience: `adopt(make_borrowed(object), control)` |
-| `valid()` | `bool` | Object is non-null |
-| `object()` | `void*` | The object pointer |
-| `ownership()` | `mode` | Ownership mode |
-| `owns()` | `bool` | `owned` or `copied` |
-| `leased()` | `bool` | Whether a module lease is held |
-| `raw()` | `const handle&` | The underlying POD handle |
-| `release()` | `void` | Releases exactly once: for owned/copied it calls the creator's `destroy`, then drops the module lease; a borrowed handle is not destroyed. The handle is cleared, so releasing twice is a no-op |
+| Method                              | Return          | Description                                                                                                                                                                                     |
+| ----------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adopt(handle, control = nullptr)`  | `ref`           | Adopts a creator-returned handle; for an owned/copied handle pass the creating module's `control` to hold the lease; a borrowed handle may omit it                                              |
+| `borrow(object, control = nullptr)` | `ref`           | Convenience: `adopt(make_borrowed(object), control)`                                                                                                                                            |
+| `valid()`                           | `bool`          | Object is non-null                                                                                                                                                                              |
+| `object()`                          | `void*`         | The object pointer                                                                                                                                                                              |
+| `ownership()`                       | `mode`          | Ownership mode                                                                                                                                                                                  |
+| `owns()`                            | `bool`          | `owned` or `copied`                                                                                                                                                                             |
+| `leased()`                          | `bool`          | Whether a module lease is held                                                                                                                                                                  |
+| `raw()`                             | `const handle&` | The underlying POD handle                                                                                                                                                                       |
+| `release()`                         | `void`          | Releases exactly once: for owned/copied it calls the creator's `destroy`, then drops the module lease; a borrowed handle is not destroyed. The handle is cleared, so releasing twice is a no-op |
 
 A failed creation returns an invalid handle (`object == nullptr`) rather than a partial one; `destroy` returns `void` — a release cannot fail, so any failure must be reported at creation time. Moving the handle transfers ownership.
 
 ### `Proxy.h` — the C++ proxy API
 
-An interface proxy is a lightweight handle over "an object handle plus resolved adapters". It reads like a C++ `Shape*`, but it is not a base class — the concrete type is never modified and no compiler vtable is used. `InterfaceProxy<Traits>` holds the shared machinery; a per-interface class adds only its methods, and `Traits` supplies the interface difference:
+An interface proxy is a lightweight handle over "an object handle plus resolved adapters". It reads like a C++ `Shape*`, but it is not a base class — the concrete type is never modified and no compiler vtable is used. `UniqueInterfaceProxy<Traits>` holds the shared machinery; a per-interface class adds only its methods, and `Traits` supplies the interface difference:
 
-| `Traits` member | Description |
-|------|------|
-| `id` | The `InterfaceId` (computed by AMC) |
-| `version` | The interface version |
-| `signatures` | The `mics::utils::array` of expected signatures, one per slot; its size is also the proxy's slot capacity. A zero hash means "do not check this slot" |
-| `slots` | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)` |
+| `Traits` member | Description                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | The `InterfaceId` (computed by AMC)                                                                                                                   |
+| `version`       | The interface version                                                                                                                                 |
+| `signatures`    | The `mics::utils::array` of expected signatures, one per slot; its size is also the proxy's slot capacity. A zero hash means "do not check this slot" |
+| `slots`         | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)`                                             |
 
-`InterfaceProxy<Traits>`:
+`UniqueInterfaceProxy<Traits>`:
 
-| Method | Return | Description |
-|------|--------|------|
+| Method                                                             | Return            | Description                                                                                                                                       |
+| ------------------------------------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bind(registry, object, concrete_type, version = Traits::version)` | `InterfaceStatus` | Binds, verifies provider signatures against `Traits::signatures`, then discards the signatures; failure is **explicit** and retained in the proxy |
-| `bind_methods(interface_id, version, methods, count, object)` | `InterfaceStatus` | Binds directly to a provider-owned table (dynamic discovery); the caller keeps the module lease and the id/version must match the `Traits` |
-| `status()` / `valid()` | | Binding status / usable (`ok` and resolved) |
-| `object()` / `interface_id()` / `version()` / `method_count()` | | Object handle and contract facts (invalid proxy reports an empty id / zero version) |
-| `verify(slot)` | `InterfaceStatus` | After binding, checks that the slot is bound; the signature comparison already happened in `bind()` |
-| `call<Fn>(slot, args...)` (protected) | the `Fn` result | Directly call a cached entry (the object handle is supplied first); precondition: `valid()` and the slot is bound |
-| `call_checked<Fn>(out, slot, args...)` (protected) | `InterfaceStatus` | Status and result are separate: an unbound slot is `method_not_found`, so a legitimate result is never read as a failure |
+| `bind_methods(interface_id, version, methods, count, object)`      | `InterfaceStatus` | Binds directly to a provider-owned table (dynamic discovery); the caller keeps the module lease and the id/version must match the `Traits`        |
+| `status()` / `valid()`                                             |                   | Binding status / usable (`ok` and resolved)                                                                                                       |
+| `object()` / `interface_id()` / `version()` / `method_count()`     |                   | Object handle and contract facts (invalid proxy reports an empty id / zero version)                                                               |
+| `verify(slot)`                                                     | `InterfaceStatus` | After binding, checks that the slot is bound; the signature comparison already happened in `bind()`                                               |
+| `call<Fn>(slot, args...)` (protected)                              | the `Fn` result   | Directly call a cached entry (the object handle is supplied first); precondition: `valid()` and the slot is bound                                 |
+| `call_checked<Fn>(out, slot, args...)` (protected)                 | `InterfaceStatus` | Status and result are separate: an unbound slot is `method_not_found`, so a legitimate result is never read as a failure                          |
 
 The proxy stores only the compact `InterfaceSlotCache`: object handle, highest bound slot and one pointer per slot. Provider signatures, interface id and version are not duplicated per proxy; they remain in `Traits` and are checked during binding.
 
+#### Exclusive vs shared storage
+
+There are two proxy layouts:
+
+| Layout                         | Per-object size | Storage                                                                      | Use when                                           |
+| ------------------------------ | --------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- |
+| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N`    | Inline slot entries in every proxy                                           | Few objects; one less indirection on the call path |
+| `SharedInterfaceProxy<Traits>` | `24`            | One `InterfaceSlotTable<N>` shared by all objects of the same implementation | Many objects; vtable-like memory behavior          |
+
+`SharedInterfaceProxy` still verifies signatures when the shared table is built, but the table keeps only adapter entries. The table must be built once and must outlive every proxy that points at it; after `build()` it is read-only and safe to share.
+
+Use `SKL_ABIX_INTERFACE_DECLARE_BOTH` to generate both proxy classes (`Shape` and `SharedShape`), or `SKL_ABIX_INTERFACE_DECLARE_SHARED` for only the shared class:
+
+```cpp
+SKL_ABIX_INTERFACE_DECLARE_BOTH(Shape, SHAPE_METHODS, 1);
+
+// One table per (concrete type, interface, version).
+InterfaceSlotTable<ShapeTraits::signatures.size()> table;
+if (make_shared_slot_table<ShapeTraits>(table, registry, box_id) != InterfaceStatus::ok)
+    return 1;
+
+Box first{3, 4};
+Box second{5, 6};
+
+Shape exclusive(registry, &first, box_id);   // inline entries
+SharedShape shared_a(table, &first);         // object + shared table
+SharedShape shared_b(table, &second);        // same table, different object
+```
+
+`SharedShape` is 24 bytes regardless of method count; `InterfaceSlotTable<N>` is roughly `8 * N + 8` bytes per implementation. Rebuild the table only when the provider's adapter table changes (and keep the module lease alive if it comes from a discovered module).
+
 A hand-written `Traits` can compute the signatures and the identity too (the helpers reproduce `AMC::signature_hash` / `AMC::interface_identity`; `amc-core-test` checks them against AMC):
+
 ```cpp
 struct ShapeTraits {
     // AMC's int32_t TypeID is an ABI key, not the C++ spelling.
@@ -1077,19 +1109,19 @@ method_signature("resize", v, i32, i32);                  // variadic
 
 A signature mentions **TypeIDs**, not C++ types. For name-based identities, `model::canonical_type_id(canonical_name)` reproduces AMC's value:
 
-| C++ type | canonical name | Notes |
-|---|---|---|
-| `int` / `int32_t` | `prim:i32` | integer keys are ABI-derived **bit** widths; ABI-equal spellings collapse |
-| `uint64_t` | `prim:u64` | |
-| `double` | `prim:fieee64` | float keys keep the format (`ieee`, `bfloat`, `x87`, `ppc`) |
-| `bool` | `prim:bool` | |
-| `void` | `prim:void` | return position only |
-| `char` | `prim:char_s` / `prim:char_u` | signedness is target-defined |
-| `cv::Point` | `cv::Point` | qualified record name |
-| `std::errc` | `std::errc` | enum; `[[expose]]` rejects raw `std::*` parameters (see below) |
-| `std::string` | `abix_str_utf8` | the `[[adapt]]` target; `std::string` itself is rejected |
-| `std::vector<int32_t>` | `abix_span_i32` | via `[[adapt]]` / `[[instantiate]]` |
-| `T*` / `const T*` | Clang's pointer spelling | not stable to hand-write; read it from `amc query` / `amc-dump` |
+| C++ type               | canonical name                | Notes                                                                     |
+| ---------------------- | ----------------------------- | ------------------------------------------------------------------------- |
+| `int` / `int32_t`      | `prim:i32`                    | integer keys are ABI-derived **bit** widths; ABI-equal spellings collapse |
+| `uint64_t`             | `prim:u64`                    |                                                                           |
+| `double`               | `prim:fieee64`                | float keys keep the format (`ieee`, `bfloat`, `x87`, `ppc`)               |
+| `bool`                 | `prim:bool`                   |                                                                           |
+| `void`                 | `prim:void`                   | return position only                                                      |
+| `char`                 | `prim:char_s` / `prim:char_u` | signedness is target-defined                                              |
+| `cv::Point`            | `cv::Point`                   | qualified record name                                                     |
+| `std::errc`            | `std::errc`                   | enum; `[[expose]]` rejects raw `std::*` parameters (see below)            |
+| `std::string`          | `abix_str_utf8`               | the `[[adapt]]` target; `std::string` itself is rejected                  |
+| `std::vector<int32_t>` | `abix_span_i32`               | via `[[adapt]]` / `[[instantiate]]`                                       |
+| `T*` / `const T*`      | Clang's pointer spelling      | not stable to hand-write; read it from `amc query` / `amc-dump`           |
 
 **Custom value records — `cv::Point`.** A plain value record is representable; its TypeID is the qualified name:
 
@@ -1154,13 +1186,13 @@ amc-dump module.abix                       # full section dump
 
 `amc-core-test` pins `method_signature` against `AMC::signature_hash` and `canonical_type_id` against `AMC::hash_text`, so the helpers cannot drift from the generator.
 
-`amc generate -l cpp` emits the equivalent `Traits` for a `[[interface]]`, and — when **every** method takes the object handle first — an `InterfaceProxy`-derived class as well (otherwise only `Traits`, with a note explaining why).
+`amc generate -l cpp` emits the equivalent `Traits` for a `[[interface]]`, and — when **every** method takes the object handle first — an `UniqueInterfaceProxy`-derived class as well (otherwise only `Traits`, with a note explaining why).
 
 #### Three ways to do it
 
 The same task — measure three shapes' areas and call them polymorphically — written three ways, all printing `area=25`, `area=24` and `area=12`.
 
-Left: C++ virtual functions; middle: ABIX manual registration (a hand-written adapter + `InterfaceRegistry` + `InterfaceRef`); right: an ABIX proxy (`Traits` + `InterfaceProxy`).
+Left: C++ virtual functions; middle: ABIX manual registration (a hand-written adapter + `InterfaceRegistry` + `InterfaceRef`); right: an ABIX proxy (`Traits` + `UniqueInterfaceProxy`).
 
 <table>
 <tr>
@@ -1288,8 +1320,8 @@ struct ShapeTraits {
     };
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
@@ -1331,7 +1363,7 @@ Comparing the three:
 - the interface identity `id`
 - the zero-based slot table `Slots` / `slots`
 - the `Traits` struct
-- the `InterfaceProxy<Traits>`-derived proxy class and its typed forwarding methods
+- the `UniqueInterfaceProxy<Traits>`-derived proxy class and its typed forwarding methods
 
 The generated `Traits::id` / `signatures` / `slots` are registered and bound through the ordinary `InterfaceRegistry` (or `ModuleRegistry` + `bind_methods`), exactly like a hand-written `Traits`. The macro only removes declaration boilerplate; it does not perform runtime registration.
 
@@ -1358,12 +1390,12 @@ Each entry has the form:
 X(method_name, cxx_return_type, return_type_id, {parameter_type_ids...})
 ```
 
-| Field | Meaning |
-|------|---------|
-| `method_name` | Generated proxy method name and the field name in `Slots` |
-| `cxx_return_type` | C++ return type of the proxy method, e.g. `int32_t` |
-| `return_type_id` | `model::TypeId` used by `method_signature`; must match the provider / AMC |
-| `{...}` | Parameter TypeIDs used in the signature; `{}` means no parameters. The order must match the contract |
+| Field             | Meaning                                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------- |
+| `method_name`     | Generated proxy method name and the field name in `Slots`                                            |
+| `cxx_return_type` | C++ return type of the proxy method, e.g. `int32_t`                                                  |
+| `return_type_id`  | `model::TypeId` used by `method_signature`; must match the provider / AMC                            |
+| `{...}`           | Parameter TypeIDs used in the signature; `{}` means no parameters. The order must match the contract |
 
 Notes:
 
@@ -1376,29 +1408,31 @@ Notes:
 ```cpp
 #include "ABIX/Interface/Declaration.h"
 
-SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 ```
 
-`SKL_ABIX_INTERFACE_DECLARE(type, list, version, ...)` is equivalent to:
+`SKL_ABIX_INTERFACE_DECLARE(storage, type, list, version, ...)` is equivalent to:
 
 ```cpp
 SKL_ABIX_INTERFACE_TRAITS(type, list, version, __VA_ARGS__);
-SKL_ABIX_INTERFACE_DATA(type, list, __VA_ARGS__);
+SKL_ABIX_INTERFACE_##storage##_DATA(type, list, __VA_ARGS__);
 ```
+
+`storage` is `UNIQUE` or `SHARED`. `UNIQUE` generates the inline `type` proxy; `SHARED` generates `Shared##type`. `SKL_ABIX_INTERFACE_DECLARE_SHARED` and `SKL_ABIX_INTERFACE_DECLARE_BOTH` are convenience spellings; `_BOTH` emits both the inline proxy and the shared proxy.
 
 The optional fourth and later arguments are **type attributes / export attributes** inserted verbatim before the generated `typeTraits` and `type` names:
 
 ```cpp
-SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1, SHAPE_API);
 // expands to:
 // struct SHAPE_API ShapeTraits { ... };
-// struct SHAPE_API Shape : public InterfaceProxy<ShapeTraits> { ... };
+// struct SHAPE_API Shape : public UniqueInterfaceProxy<ShapeTraits> { ... };
 ```
 
 Without attributes, the original form is unchanged:
 
 ```cpp
-SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 ```
 
 Its expansion is, in essence:
@@ -1407,8 +1441,6 @@ Its expansion is, in essence:
 struct Shape;
 
 struct ShapeTraits {
-    using Data = Shape;
-
     static constexpr auto signatures = skl::mics::utils::array{
         skl::abix::poly::method_signature("area", i32, skl::mics::utils::array{}),
         skl::abix::poly::method_signature("resize", i32, skl::mics::utils::array{i32, i32}),
@@ -1424,8 +1456,8 @@ struct ShapeTraits {
         skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-struct Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
-    using InterfaceProxy<ShapeTraits>::InterfaceProxy;
+struct Shape : public skl::abix::poly::UniqueInterfaceProxy<ShapeTraits> {
+    using UniqueInterfaceProxy<ShapeTraits>::UniqueInterfaceProxy;
     using Traits = ShapeTraits;
 
     // two overloads per method, see below
@@ -1434,15 +1466,14 @@ struct Shape : public skl::abix::poly::InterfaceProxy<ShapeTraits> {
 
 Important details:
 
-- `id` is computed as `interface_id(#type, version, signatures)`. `#type` is the stringized macro argument, so invoke the macro inside the target namespace with the **unqualified** name `Shape`. Writing `SKL_ABIX_INTERFACE_DECLARE(ns::Shape, ...)` makes the interface name `"ns::Shape"`, which is usually not what AMC records.
+- `id` is computed as `interface_id(#type, version, signatures)`. `#type` is the stringized macro argument, so invoke the macro inside the target namespace with the **unqualified** name `Shape`. Writing `SKL_ABIX_INTERFACE_DECLARE(UNIQUE, ns::Shape, ...)` makes the interface name `"ns::Shape"`, which is usually not what AMC records.
 - The order of `signatures` is the slot order: `slots.area == 0`, `slots.resize == 1`.
-- `Traits::Data` aliases the proxy type (`Shape`), so generic code that only has the Traits can name the corresponding proxy type.
 - Renaming a method, reordering the list or changing the version changes `signatures` / `id` and is an ABI break. Do not reorder the list for cosmetic reasons.
 - `SKL_ABIX_INTERFACE_DECLARE(...)` needs a trailing semicolon: the generated struct definition does not carry one.
 
 **Windows DLL import/export attributes**
 
-The final variadic parameter of `SKL_ABIX_INTERFACE_DECLARE`, `SKL_ABIX_INTERFACE_TRAITS` and `SKL_ABIX_INTERFACE_DATA` exists for platform attributes such as Windows DLL decorations. It is inserted verbatim before the generated type name, so it accepts `__declspec(dllimport)`, `__declspec(dllexport)` or a project-owned API macro:
+The final variadic parameter of `SKL_ABIX_INTERFACE_DECLARE`, `SKL_ABIX_INTERFACE_TRAITS` and `SKL_ABIX_INTERFACE_UNIQUE_DATA` / `SHARED_DATA` exists for platform attributes such as Windows DLL decorations. It is inserted verbatim before the generated type name, so it accepts `__declspec(dllimport)`, `__declspec(dllexport)` or a project-owned API macro:
 
 ```cpp
 // shape_api.h
@@ -1460,7 +1491,7 @@ The final variadic parameter of `SKL_ABIX_INTERFACE_DECLARE`, `SKL_ABIX_INTERFAC
     X(area, int32_t, i32, {}) \
     X(resize, int32_t, i32, {i32, i32})
 
-SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1, SHAPE_API);
 ```
 
 - A provider building the DLL defines `SHAPE_BUILD_DLL`, producing `dllexport`.
@@ -1471,7 +1502,7 @@ When using the two half macros separately, pass the attribute to both:
 
 ```cpp
 SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1, SHAPE_API);
-SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS, SHAPE_API);
+SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS, SHAPE_API);
 ```
 
 Be clear about the scope: ABIX Interface is header-only. `ShapeTraits` / `Shape` are normally compile-time types with inline forwarding methods, and **do not need DLL import/export decoration in the normal case**. Use the attribute only when the generated type is genuinely part of a Windows DLL boundary and you accept MSVC's rules for imported classes with inline/static members.
@@ -1523,8 +1554,8 @@ if (shape.resize(resized_out, width, height) == skl::abix::poly::InterfaceStatus
 
 Semantics:
 
-- The forwarding form calls `InterfaceProxy::call` directly and does not check whether the slot is bound. It is the hot path after `proxy.valid()` has been established, and costs the same as a hand-written `call<Fn>(Traits::slots.fn, ...)`.
-- The checked form calls `InterfaceProxy::call_checked`: an unbound slot returns `InterfaceStatus::method_not_found` instead of calling a null pointer; success returns `ok` and writes `out`. Signature verification already happened during `bind()` / `bind_methods()`; it is not repeated per call.
+- The forwarding form calls `UniqueInterfaceProxy::call` directly and does not check whether the slot is bound. It is the hot path after `proxy.valid()` has been established, and costs the same as a hand-written `call<Fn>(Traits::slots.fn, ...)`.
+- The checked form calls `UniqueInterfaceProxy::call_checked`: an unbound slot returns `InterfaceStatus::method_not_found` instead of calling a null pointer; success returns `ok` and writes `out`. Signature verification already happened during `bind()` / `bind_methods()`; it is not repeated per call.
 - `ret_t` cannot be `void`: the checked overload needs `ret_t& out`. Methods with no return value should use an AMC-generated proxy or a hand-written proxy.
 - The proxy method's parameter types are deduced from the **call-site arguments** via `std::decay_t<Args>...`; the macro does not know the C++ parameter types in the contract. Pass arguments whose types match the adapter's native signature (for example, `int32_t` variables rather than `double` or a different-width integer). A mismatch is not diagnosed by the macro, but constructs the wrong function-pointer type.
 
@@ -1587,11 +1618,11 @@ Rules and limitations:
 - The adapter always uses `const void*` as its first parameter, matching the proxy generated by `SKL_ABIX_INTERFACE_DECLARE`. If a hand-written proxy expects `void*`, write a wrapper.
 - It does not handle `volatile`, ref-qualified members (`&` / `&&`) or overload sets. For an overload, pass an explicit member-pointer cast wrapped in parentheses:
 
-  ```cpp
-  SKL_ABIX_INTERFACE_MEMBER_ENTRY(
-      ShapeTraits, resize,
-      (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
-  ```
+    ```cpp
+    SKL_ABIX_INTERFACE_MEMBER_ENTRY(
+        ShapeTraits, resize,
+        (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
+    ```
 
 - It only generates the adapter entry; it does not produce `Traits`, method signatures or the `id`. Those come from `SKL_ABIX_INTERFACE_DECLARE` / AMC.
 - `slot_name` is the interface slot field; it may differ from the member name. `member_pointer_expression` selects the member actually called.
@@ -1614,7 +1645,7 @@ constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
     X(area, int32_t, i32, {}) \
     X(resize, int32_t, i32, {i32, i32})
 
-SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 
 // Provider: a plain aggregate, no ABIX members and no Shape base.
 struct Box {
@@ -1736,29 +1767,33 @@ This emits only `ShapeTraits` (plus a forward declaration of `class Shape;`), no
 
 ```cpp
 SKL_ABIX_INTERFACE_TRAITS(Shape, SHAPE_METHODS, 1);
-SKL_ABIX_INTERFACE_DATA(Shape, SHAPE_METHODS);
+SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 ```
 
-`SKL_ABIX_INTERFACE_DATA(type, list)` generates only the proxy class and requires `type##Traits` to exist. `SKL_ABIX_INTERFACE_DECLARE` combines both steps.
+`SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list)` generates only the inline proxy class and requires `type##Traits` to exist. `SKL_ABIX_INTERFACE_SHARED_DATA(type, list)` generates the shared `Shared##type` class from the same Traits. `SKL_ABIX_INTERFACE_DECLARE` / `_SHARED` / `_BOTH` combine the appropriate steps.
 
 #### 7. Internal expansion macros
 
 These are normally not used directly, but they explain expansion errors:
 
-| Macro | Effect |
-|------|--------|
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)` | Emits one `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` entry |
-| `SKL_ABIX_INTERFACE_SLOT(fn, ...)` | Emits `uint32_t fn;` inside `Slots` |
-| `SKL_ABIX_INTERFACE_SLOTS(list)` | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()` |
-| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)` | Emits the direct-return and `InterfaceStatus` checked overloads |
-| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)` | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke` |
-| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)` | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
-| `SKL_ABIX_INTERFACE_DATA(type, list, ...)` | Emits the `InterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type` |
-| `SKL_ABIX_INTERFACE_DECLARE(type, list, ver, ...)` | `TRAITS` + `DATA`; the attributes are passed to both |
+| Macro                                                     | Effect                                                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`    | Emits one `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` entry                                 |
+| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                        | Emits `uint32_t fn;` inside `Slots`                                                                                 |
+| `SKL_ABIX_INTERFACE_SLOTS(list)`                          | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                |
+| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`              | Emits the direct-return and `InterfaceStatus` checked overloads                                                     |
+| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`   | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`     |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`         | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
+| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`                | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                    |
+| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`         | Emits the `SharedInterfaceProxy<typeTraits>`-derived `Shared##type` proxy; `...` is placed before `Shared##type`    |
+| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`; `storage` is `UNIQUE` or `SHARED` |
+| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)` | `TRAITS` + `UNIQUE_DATA` |
+| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)` | `TRAITS` + `SHARED_DATA` |
+| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)` | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA` |
 
 Common expansion errors:
 
-- Missing semicolon after `SKL_ABIX_INTERFACE_DECLARE` / `SKL_ABIX_INTERFACE_DATA`.
+- Missing semicolon after `SKL_ABIX_INTERFACE_DECLARE` / `SKL_ABIX_INTERFACE_UNIQUE_DATA` / `SHARED_DATA`.
 - Using C++ type names (`int32_t`) instead of `model::TypeId` variables (`i32`) in the parameter list.
 - Template arguments containing commas splitting the macro arguments; parenthesize or switch to AMC.
 - A method name colliding with an existing macro/type; `fn` becomes both the member name and the `Slots` field name.

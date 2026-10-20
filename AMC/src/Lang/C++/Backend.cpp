@@ -284,7 +284,7 @@ int backend(const char *input, const char *output) {
     // identity, version, adapter typedefs and a `Traits` struct with a typed
     // zero-based slot table (`Traits::slots.<method>`) plus the expected
     // signatures. When every method takes the object handle first it also emits
-    // a proxy class derived from `InterfaceProxy<Traits>` — so a consumer can
+    // a proxy class derived from `UniqueInterfaceProxy<Traits>` — so a consumer can
     // bind, verify and call through a header-declared interface without touching
     // the provider's layout.
     for (const auto &record : m.interfaces) {
@@ -351,8 +351,8 @@ int backend(const char *input, const char *output) {
             continue;
         }
         o.print(
-            "class {} : public ::skl::abix::poly::InterfaceProxy<{}Traits> {{\n"
-            "    using Base = ::skl::abix::poly::InterfaceProxy<{}Traits>;\n\n"
+            "class {} : public ::skl::abix::poly::UniqueInterfaceProxy<{}Traits> {{\n"
+            "    using Base = ::skl::abix::poly::UniqueInterfaceProxy<{}Traits>;\n\n"
             "public:\n"
             "    using Base::Base;\n",
             name, name, name);

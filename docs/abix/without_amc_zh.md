@@ -18,7 +18,7 @@ ABIX 和 AMC 的职责不同：
 | 能力                     | 头文件                                                                           | 需要 AMC？                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Interface 身份与方法签名 | `ABIX/Interface/Contract.h`                                                      | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
-| 手写 `Traits` 与代理     | `ABIX/Interface/Proxy.h`                                                         | 否——`InterfaceProxy<Traits>` 是 header-only                                  |
+| 手写 `Traits` 与代理     | `ABIX/Interface/Proxy.h`                                                         | 否——`UniqueInterfaceProxy<Traits>` 是 header-only                            |
 | 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h`                                                 | 否                                                                           |
 | 动态库发现与租约         | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h`                         | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY`                   |
 | Owner ABI                | `Owner.h`                                                                        | 否                                                                           |
@@ -44,8 +44,8 @@ struct ShapeTraits {
     };
     alignas(8) static constexpr Slots slots = mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;

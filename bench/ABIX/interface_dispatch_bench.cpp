@@ -1,14 +1,14 @@
 // ============================================================
 // Interface dispatch benchmarks — the hot path.
 //
-// The consumer-facing path is an `InterfaceProxy`: bind once (resolve the
+// The consumer-facing path is an `UniqueInterfaceProxy`: bind once (resolve the
 // binding and verify every declared method signature), then call typed methods.
 // This file measures what that path costs after it is bound, against the
 // mechanisms underneath it:
 //
 //   BM_Interface_Direct              adapter called directly (the floor)
 //   BM_Interface_CachedCall          cached InterfaceRef adapter, no proxy layer
-//   BM_Interface_ProxyCall           method through a bound InterfaceProxy
+//   BM_Interface_ProxyCall           method through a bound UniqueInterfaceProxy
 //   BM_Interface_ProxyResize         a two-argument method through the proxy
 //   BM_Interface_ProxyCheckedCall    call_checked (null check + status + out)
 //   BM_Interface_MacroProxyCall      the same contract declared by
@@ -35,11 +35,11 @@ using skl::abix::poly::interface_entry;
 using skl::abix::poly::interface_id;
 using skl::abix::poly::InterfaceId;
 using skl::abix::poly::InterfaceMethod;
-using skl::abix::poly::InterfaceProxy;
 using skl::abix::poly::InterfaceRef;
 using skl::abix::poly::InterfaceRegistry;
 using skl::abix::poly::InterfaceStatus;
 using skl::abix::poly::method_signature;
+using skl::abix::poly::UniqueInterfaceProxy;
 
 // ------------------------------------------------------------
 // The contract: a hand-written Traits + proxy, as AMC would emit one.
@@ -66,8 +66,8 @@ struct ShapeTraits {
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;
@@ -91,7 +91,7 @@ public:
     X(area, int32_t, i32, {})     \
     X(resize, int32_t, i32, {i32, i32})
 
-SKL_ABIX_INTERFACE_DECLARE(DeclaredShape, DISPATCH_SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, DeclaredShape, DISPATCH_SHAPE_METHODS, 1);
 
 // ------------------------------------------------------------
 // Provider: a plain aggregate plus one adapter per method.

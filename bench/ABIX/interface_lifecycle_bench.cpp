@@ -39,7 +39,6 @@ using skl::abix::poly::InterfaceId;
 using skl::abix::poly::InterfaceManifestEntry;
 using skl::abix::poly::InterfaceMethod;
 using skl::abix::poly::InterfaceMethodHash;
-using skl::abix::poly::InterfaceProxy;
 using skl::abix::poly::InterfaceRegistry;
 using skl::abix::poly::InterfaceStatus;
 using skl::abix::poly::ManifestStatus;
@@ -48,6 +47,7 @@ using skl::abix::poly::ModuleControl;
 using skl::abix::poly::ModuleManifest;
 using skl::abix::poly::ModuleRegistry;
 using skl::abix::poly::ModuleStatus;
+using skl::abix::poly::UniqueInterfaceProxy;
 using skl::abix::poly::validate_manifest;
 
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
@@ -77,8 +77,8 @@ struct ServiceTraits {
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-class Service : public InterfaceProxy<ServiceTraits> {
-    using Base = InterfaceProxy<ServiceTraits>;
+class Service : public UniqueInterfaceProxy<ServiceTraits> {
+    using Base = UniqueInterfaceProxy<ServiceTraits>;
 
 public:
     using Base::Base;

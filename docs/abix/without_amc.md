@@ -18,7 +18,7 @@ The trade-off is that the contract becomes manual: you write the adapter tables 
 | Capability                               | Header                                                                           | AMC required?                                                                   |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Interface identity and method signatures | `ABIX/Interface/Contract.h`                                                      | No — `interface_id`, `method_signature` and `canonical_type_id` are `constexpr` |
-| Hand-written `Traits` and proxies        | `ABIX/Interface/Proxy.h`                                                         | No — `InterfaceProxy<Traits>` is header-only                                    |
+| Hand-written `Traits` and proxies        | `ABIX/Interface/Proxy.h`                                                         | No — `UniqueInterfaceProxy<Traits>` is header-only                              |
 | In-process register / resolve / call     | `Registry.h`, `Ref.h`, `Proxy.h`                                                 | No                                                                              |
 | Dynamic-library discovery and leases     | `Module.h`, `ModuleRegistry.h`, `Discovery.h`, `Lease.h`                         | No — write the `ModuleManifest` by hand and use `SKL_ABIX_DEFINE_MODULE_QUERY`  |
 | Owner ABI                                | `Owner.h`                                                                        | No                                                                              |
@@ -44,8 +44,8 @@ struct ShapeTraits {
     };
     alignas(8) static constexpr Slots slots = mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;

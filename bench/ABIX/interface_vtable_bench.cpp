@@ -62,11 +62,11 @@ using skl::abix::poly::interface_entry;
 using skl::abix::poly::interface_id;
 using skl::abix::poly::InterfaceId;
 using skl::abix::poly::InterfaceMethod;
-using skl::abix::poly::InterfaceProxy;
 using skl::abix::poly::InterfaceRef;
 using skl::abix::poly::InterfaceRegistry;
 using skl::abix::poly::InterfaceStatus;
 using skl::abix::poly::method_signature;
+using skl::abix::poly::UniqueInterfaceProxy;
 
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 
@@ -85,8 +85,8 @@ struct ShapeTraits {
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;

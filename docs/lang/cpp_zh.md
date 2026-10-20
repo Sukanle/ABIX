@@ -45,7 +45,7 @@ symbols = ["DemoVec2", "demo_add", "demo_div"]
 amc generate build/package.abix -l cpp -o gen/
 ```
 
-`amc_generated.hpp` 包含布局兼容的 C++ 类型与 typedef、ABI 常量、所有权与错误边界 helper，以及 metadata region 访问器。对接口契约，它还会生成 `k<Name>Interface`、`k<Name>Version`、`<Name>_<method>_fn` typedef、一个带类型化零基 `Slots` 表与期望签名的 `Traits` struct，以及当每个方法首参都是对象句柄时的 `InterfaceProxy` 派生代理。
+`amc_generated.hpp` 包含布局兼容的 C++ 类型与 typedef、ABI 常量、所有权与错误边界 helper，以及 metadata region 访问器。对接口契约，它还会生成 `k<Name>Interface`、`k<Name>Version`、`<Name>_<method>_fn` typedef、一个带类型化零基 `Slots` 表与期望签名的 `Traits` struct，以及当每个方法首参都是对象句柄时的 `UniqueInterfaceProxy` 派生代理。
 
 `amc_abi_check.hpp` 是编译期布局检查。请把它放在它所引用的原生声明之后：
 
@@ -61,7 +61,7 @@ amc generate build/package.abix -l cpp -o gen/
 C++ 接口层是 header-only 的，位于 [`ABIX/Interface/`](../../ABIX/Interface/)：
 
 - `Contract.h`：`InterfaceId`、`method_signature`、`interface_id`、`InterfaceMethod` 与 `InterfaceImplementation`。
-- `Proxy.h`：`InterfaceProxy<Traits>`；生成或手写的代理提供 `shape.area()`。
+- `Proxy.h`：`UniqueInterfaceProxy<Traits>`；生成或手写的代理提供 `shape.area()`。
 - `Registry.h` / `Ref.h`：进程内注册与一次性解析。
 - `Module.h` / `ModuleRegistry.h` / `Lease.h` / `Discovery.h`：动态 module manifest 与租约。
 - `Owner.h`：跨模块所有权。

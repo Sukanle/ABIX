@@ -14,10 +14,10 @@ using skl::abix::poly::interface_entry;
 using skl::abix::poly::InterfaceId;
 using skl::abix::poly::InterfaceMethod;
 using skl::abix::poly::InterfaceMethodHash;
-using skl::abix::poly::InterfaceProxy;
 using skl::abix::poly::InterfaceRef;
 using skl::abix::poly::InterfaceRegistry;
 using skl::abix::poly::InterfaceStatus;
+using skl::abix::poly::UniqueInterfaceProxy;
 
 // Provider types. They carry no vtable and are never modified: the adapters
 // below are the only bridge, so the consumer never reads the object layout.
@@ -232,8 +232,8 @@ struct TestShapeTraits {
     };
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
-class TestShape : public InterfaceProxy<TestShapeTraits> {
-    using Base = InterfaceProxy<TestShapeTraits>;
+class TestShape : public UniqueInterfaceProxy<TestShapeTraits> {
+    using Base = UniqueInterfaceProxy<TestShapeTraits>;
 
 public:
     using Base::Base;
@@ -245,7 +245,8 @@ public:
 
 // The proxy path keeps only the object handle, the highest bound slot and the
 // adapter entries; provider signatures and identity metadata are not retained.
-static_assert(sizeof(TestShape) < sizeof(InterfaceRef<1>), "InterfaceProxy must stay smaller than a full InterfaceRef");
+static_assert(
+    sizeof(TestShape) < sizeof(InterfaceRef<1>), "UniqueInterfaceProxy must stay smaller than a full InterfaceRef");
 
 TEST_CASE("an interface proxy binds, verifies and calls through cached entries") {
     constexpr TypeId counter_id{0x21, 0x22};
@@ -304,7 +305,7 @@ constexpr TypeId member_box_id{0x31, 0x32};
     X(area, int32_t, member_i32, {}) \
     X(resize, int32_t, member_i32, {member_i32, member_i32})
 
-SKL_ABIX_INTERFACE_DECLARE(MemberShape, MEMBER_SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE_BOTH(MemberShape, MEMBER_SHAPE_METHODS, 1);
 
 TEST_CASE("member functions can be registered directly through the member-entry macro") {
     const InterfaceMethod methods[] = {
@@ -326,6 +327,86 @@ TEST_CASE("member functions can be registered directly through the member-entry 
     REQUIRE(shape.resize(width, height) == 48);
     REQUIRE(box.width == width);
     REQUIRE(box.height == height);
+}
+
+TEST_CASE("shared slot tables drive many proxies with one entry table") {
+    const InterfaceMethod methods[] = {
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(MemberShapeTraits, area, &MemberBox::area),
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(MemberShapeTraits, resize, &MemberBox::resize),
+    };
+
+    InterfaceRegistry<4> registry;
+    REQUIRE(registry.add({MemberShapeTraits::id, member_box_id, methods, 2, MemberShapeTraits::version, 0})
+            == InterfaceStatus::ok);
+
+    skl::abix::poly::InterfaceSlotTable<MemberShapeTraits::signatures.size()> table;
+    REQUIRE(skl::abix::poly::make_shared_slot_table<MemberShapeTraits>(table, registry, member_box_id)
+            == InterfaceStatus::ok);
+    REQUIRE(table.valid());
+    REQUIRE(table.method_count() == 2);
+
+    MemberBox first{3, 4};
+    MemberBox second{5, 6};
+    SharedMemberShape a(table, &first);
+    SharedMemberShape b(table, &second);
+
+    REQUIRE(a.valid());
+    REQUIRE(b.valid());
+    REQUIRE(a.area() == 12);
+    REQUIRE(b.area() == 30);
+    REQUIRE(a.verify(MemberShapeTraits::slots.area) == InterfaceStatus::ok);
+
+    const int32_t width = 8;
+    const int32_t height = 6;
+    REQUIRE(a.resize(width, height) == 48);
+    REQUIRE(first.width == width);
+    REQUIRE(second.width == 5);   // b still dispatches to its own object
+
+    static_assert(sizeof(SharedMemberShape) < sizeof(MemberShape), "shared proxy is the compact option");
+}
+
+#define STORAGE_SHAPE_METHODS(X) X(area, int32_t, member_i32, {})
+
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, InlineStorageShape, STORAGE_SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE(SHARED, AltStorage, STORAGE_SHAPE_METHODS, 1);
+SKL_ABIX_INTERFACE_DECLARE_BOTH(BothStorage, STORAGE_SHAPE_METHODS, 1);
+
+TEST_CASE("storage-first declaration macro selects the requested proxy layout") {
+    const InterfaceMethod methods[] = {
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(InlineStorageShapeTraits, area, &MemberBox::area),
+    };
+
+    InterfaceRegistry<8> registry;
+    REQUIRE(
+        registry.add({InlineStorageShapeTraits::id, member_box_id, methods, 1, InlineStorageShapeTraits::version, 0})
+        == InterfaceStatus::ok);
+    REQUIRE(registry.add({AltStorageTraits::id, member_box_id, methods, 1, AltStorageTraits::version, 0})
+            == InterfaceStatus::ok);
+    REQUIRE(registry.add({BothStorageTraits::id, member_box_id, methods, 1, BothStorageTraits::version, 0})
+            == InterfaceStatus::ok);
+
+    MemberBox box{3, 4};
+
+    InlineStorageShape unique(registry, &box, member_box_id);
+    REQUIRE(unique.valid());
+    REQUIRE(unique.area() == 12);
+
+    skl::abix::poly::InterfaceSlotTable<AltStorageTraits::signatures.size()> alt_table;
+    REQUIRE(skl::abix::poly::make_shared_slot_table<AltStorageTraits>(alt_table, registry, member_box_id)
+            == InterfaceStatus::ok);
+    SharedAltStorage shared(alt_table, &box);
+    REQUIRE(shared.valid());
+    REQUIRE(shared.area() == 12);
+
+    skl::abix::poly::InterfaceSlotTable<BothStorageTraits::signatures.size()> both_table;
+    REQUIRE(skl::abix::poly::make_shared_slot_table<BothStorageTraits>(both_table, registry, member_box_id)
+            == InterfaceStatus::ok);
+    SharedBothStorage both_shared(both_table, &box);
+    REQUIRE(both_shared.valid());
+    REQUIRE(both_shared.area() == 12);
+
+    static_assert(sizeof(InlineStorageShape) > sizeof(SharedAltStorage), "unique stores inline slot entries");
+    static_assert(sizeof(BothStorage) > sizeof(SharedBothStorage), "both generates distinct proxy layouts");
 }
 
 TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter lists") {

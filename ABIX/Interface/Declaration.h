@@ -15,11 +15,12 @@
  *
  * ABIX Interface layer: optional declaration sugar for signatures and proxies.
  *
- * `SKL_ABIX_INTERFACE_DECLARE(Type, list, version)` expands one method list into
- * `TypeTraits` (signatures / id / Slots) and a `Type` proxy derived from
- * `InterfaceProxy<TypeTraits>`. Runtime registration stays explicit: register
- * `TypeTraits::id` and an adapter table with `InterfaceRegistry`, or pass the
- * table directly to `bind_methods()`.
+ * `SKL_ABIX_INTERFACE_DECLARE(storage, Type, list, version)` expands one method
+ * list into `TypeTraits` (signatures / id / Slots) and a proxy. `storage` is
+ * `UNIQUE` (inline slot entries, class `Type`) or `SHARED` (class `SharedType`,
+ * with a shared `InterfaceSlotTable`). Runtime registration stays explicit:
+ * register `TypeTraits::id` and an adapter table with `InterfaceRegistry`, or
+ * pass the table directly to `bind_methods()`.
  *
  * Each list entry is:
  *
@@ -32,7 +33,8 @@
  *       X(area, int32_t, i32, {}) \
  *       X(resize, int32_t, i32, {i32, i32})
  *
- *   SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1);
+ *   SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
+ *   SKL_ABIX_INTERFACE_DECLARE(SHARED, Shape, SHAPE_METHODS, 1);
  *
  * `return_type_id` and each parameter are `model::TypeId`s from
  * `model::canonical_type_id`; `method_signature` hashes those, not their names.
@@ -53,9 +55,21 @@
  * the target namespace with an unqualified type name: the stringized name is
  * the interface identity.
  *
- * `SKL_ABIX_INTERFACE_TRAITS` and `SKL_ABIX_INTERFACE_DATA` are the two halves;
- * `SKL_ABIX_INTERFACE_DECLARE` combines them. The generated struct definition
- * does not include a trailing semicolon, so the invocation needs one.
+ * `SKL_ABIX_INTERFACE_TRAITS` plus `SKL_ABIX_INTERFACE_UNIQUE_DATA` or
+ * `_SHARED_DATA` are the two halves; `DECLARE`, `DECLARE_UNIQUE`,
+ * `DECLARE_SHARED` and `DECLARE_BOTH` combine them. The generated struct
+ * definition does not include a trailing semicolon, so the invocation needs one.
+ *
+ * Two proxy layouts are available:
+ *
+ *   SKL_ABIX_INTERFACE_DECLARE(UNIQUE, ...)  // inline slot entries (type)
+ *   SKL_ABIX_INTERFACE_DECLARE(SHARED, ...)  // shared table (Shared##type)
+ *   SKL_ABIX_INTERFACE_DECLARE_BOTH(...)     // both classes
+ *
+ * A shared proxy points at one InterfaceSlotTable<slot_capacity>; build it with
+ * make_shared_slot_table<Traits>(table, registry, concrete_type) and keep it
+ * alive for every proxy that uses it. Shared proxies are 24 bytes regardless of
+ * method count; inline proxies are roughly 24 + 8 * method_count.
  *
  * The final variadic argument is an optional type attribute inserted before the
  * generated type names. It exists for platform DLL decorations, for example:
@@ -70,7 +84,7 @@
  *   #  define SHAPE_API
  *   #endif
  *
- *   SKL_ABIX_INTERFACE_DECLARE(Shape, SHAPE_METHODS, 1, SHAPE_API);
+ *   SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1, SHAPE_API);
  *
  * ABIX Interface is header-only, so the attribute is usually unnecessary; use
  * it only when the generated Traits/proxy type is genuinely part of a DLL
@@ -196,22 +210,48 @@ struct member_adapter<Member> {
 #define SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)                                              \
     struct type;                                                                                     \
     struct __VA_ARGS__ type##Traits {                                                                \
-        using Data = type;                                                                           \
         static constexpr auto signatures = skl::mics::utils::array{list(SKL_ABIX_INTERFACE_METHOD)}; \
         static constexpr auto version = ver;                                                         \
         static constexpr auto id = skl::abix::poly::interface_id(#type, version, signatures);        \
         SKL_ABIX_INTERFACE_SLOTS(list)                                                               \
     };
 
-#define SKL_ABIX_INTERFACE_DATA(type, list, ...)                                     \
-    struct __VA_ARGS__ type : public skl::abix::poly::InterfaceProxy<type##Traits> { \
-        using InterfaceProxy<type##Traits>::InterfaceProxy;                          \
-        using Traits = type##Traits;                                                 \
-        list(SKL_ABIX_INTERFACE_FORWARD)                                             \
+#define SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)                                    \
+    struct __VA_ARGS__ type : public skl::abix::poly::UniqueInterfaceProxy<type##Traits> { \
+        using UniqueInterfaceProxy<type##Traits>::UniqueInterfaceProxy;                    \
+        using Traits = type##Traits;                                                       \
+        list(SKL_ABIX_INTERFACE_FORWARD)                                                   \
     }
 
-#define SKL_ABIX_INTERFACE_DECLARE(type, list, ver, ...)    \
-    SKL_ABIX_INTERFACE_TRAITS(type, list, ver, __VA_ARGS__) \
-    SKL_ABIX_INTERFACE_DATA(type, list, __VA_ARGS__)
+// Backward-compatible spelling for the inline/exclusive data macro.
+#define SKL_ABIX_INTERFACE_DATA(type, list, ...) SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, __VA_ARGS__)
+
+#define SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)                                            \
+    struct __VA_ARGS__ Shared##type : public skl::abix::poly::SharedInterfaceProxy<type##Traits> { \
+        using SharedInterfaceProxy<type##Traits>::SharedInterfaceProxy;                            \
+        using Traits = type##Traits;                                                               \
+        list(SKL_ABIX_INTERFACE_FORWARD)                                                           \
+    }
+
+#define SKL_ABIX_INTERFACE_UNIQUE_DECLARE(type, list, ver, ...) \
+    SKL_ABIX_INTERFACE_TRAITS(type, list, ver, __VA_ARGS__)     \
+    SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, __VA_ARGS__)
+
+#define SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...) \
+    SKL_ABIX_INTERFACE_UNIQUE_DECLARE(type, list, ver, __VA_ARGS__)
+
+#define SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...) \
+    SKL_ABIX_INTERFACE_TRAITS(type, list, ver, __VA_ARGS__)     \
+    SKL_ABIX_INTERFACE_SHARED_DATA(type, list, __VA_ARGS__)
+
+#define SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...) \
+    SKL_ABIX_INTERFACE_TRAITS(type, list, ver, __VA_ARGS__)   \
+    SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, __VA_ARGS__);  \
+    SKL_ABIX_INTERFACE_SHARED_DATA(type, list, __VA_ARGS__)
+
+// storage is UNIQUE or SHARED.
+#define SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...) \
+    SKL_ABIX_INTERFACE_TRAITS(type, list, ver, __VA_ARGS__)       \
+    SKL_ABIX_INTERFACE_##storage##_DATA(type, list, __VA_ARGS__)
 
 #endif   // SKL_ABIX_INTERFACE_DECLARATION_H

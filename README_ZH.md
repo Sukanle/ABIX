@@ -191,7 +191,7 @@ ABIX 还提供**接口契约层**，用于跨共享库、跨语言的**非侵入
 - **接口身份** 是接口名、版本与有序方法签名的内容哈希；它与 `TypeID` / `LayoutHash` / `ABIHash` 相互独立，也从不参与它们的计算。
 - **方法身份** 是 `(interface_id, slot)`；`bind()` 会校验记录的方法签名，不匹配时返回 `signature_mismatch`，而不是调用不兼容的适配器。
 - **静态与动态发现**：进程内 `InterfaceRegistry`、带租约的插件 module manifest，以及用于跨模块所有权的 Owner ABI。
-- **代理**：`InterfaceProxy<Traits>` 把契约变成 `shape.area()`；一次 `bind()` 之后就是普通原生间接调用。
+- **代理**：`UniqueInterfaceProxy<Traits>` 把契约变成 `shape.area()`；一次 `bind()` 之后就是普通原生间接调用。
 
 ```cpp
 using namespace skl::abix::poly;
@@ -207,8 +207,8 @@ struct ShapeTraits {
     alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 
-class Shape : public InterfaceProxy<ShapeTraits> {
-    using Base = InterfaceProxy<ShapeTraits>;
+class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+    using Base = UniqueInterfaceProxy<ShapeTraits>;
 
 public:
     using Base::Base;

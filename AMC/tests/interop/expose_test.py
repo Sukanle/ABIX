@@ -274,7 +274,7 @@ def main() -> int:
           "native string/vector/span parameters adapted onto ABIX-STD views", (r.stdout + r.stderr)[-400:])
 
     # Interface contracts: [[interface]] + [[implements]] project to a C++ header
-    # carrying the identity, a Traits struct and an InterfaceProxy-derived class,
+    # carrying the identity, a Traits struct and an UniqueInterfaceProxy-derived class,
     # so a consumer can declare and call the interface without a private vtable.
     for name in ("shapes.hpp", "shapes.abic.toml"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
@@ -286,8 +286,8 @@ def main() -> int:
             header = open(iface_header, encoding="utf-8").read()
             check("kShapeInterface" in header and "struct ShapeTraits" in header and "Shape_shape_area_fn" in header,
                   "the interface identity, Traits and method typedef were emitted")
-            check("class Shape : public ::skl::abix::poly::InterfaceProxy<ShapeTraits>" in header,
-                  "a handle interface projects to an InterfaceProxy-derived class")
+            check("class Shape : public ::skl::abix::poly::UniqueInterfaceProxy<ShapeTraits>" in header,
+                  "a handle interface projects to an UniqueInterfaceProxy-derived class")
             proxy_src = os.path.join(work, "shapes_proxy.cpp")
             open(proxy_src, "w", encoding="utf-8").write(
                 '#include "shapes.hpp"\n'

@@ -18,7 +18,7 @@
  * An interface proxy is a lightweight handle that binds an interface contract to
  * one provider object and caches the resolved adapters. It reads like a C++
  * `Shape*`, but it is not a base class: the concrete type is never modified and
- * no compiler vtable is used. `InterfaceProxy<Traits>` holds the shared
+ * no compiler vtable is used. `UniqueInterfaceProxy<Traits>` holds the shared
  * machinery (binding, status, object access, cached calls); a per-interface
  * class adds only its methods, and `Traits` supplies the contract's identity,
  * version, expected method signatures and typed slot table.
@@ -39,8 +39,8 @@
  *       alignas(8) static constexpr Slots slots =
  *           mics::utils::make_iota<Slots, signatures.size(), 0>();
  *   };
- *   class Shape : public InterfaceProxy<ShapeTraits> {
- *       using Base = InterfaceProxy<ShapeTraits>;
+ *   class Shape : public UniqueInterfaceProxy<ShapeTraits> {
+ *       using Base = UniqueInterfaceProxy<ShapeTraits>;
  *   public:
  *       using Base::Base;
  *       int32_t area() const noexcept { return this->template call<int(*)(const void*)>(ShapeTraits::slots.area); }
@@ -48,6 +48,11 @@
  *           return this->template call_checked<int(*)(const void*)>(out, ShapeTraits::slots.area);
  *       }
  *   };
+ *
+ * `UniqueInterfaceProxy` stores the adapter entries inline (one cache per object).
+ * `SharedInterfaceProxy<Traits>` is the compact alternative: it stores the
+ * object handle plus a pointer to one `InterfaceSlotTable<slot_capacity>`
+ * shared by every object of the same implementation.
  */
 #ifndef SKL_ABIX_INTERFACE_PROXY_H
 #define SKL_ABIX_INTERFACE_PROXY_H
@@ -69,16 +74,16 @@ namespace skl::abix::poly {
 // slots used by the proxy's methods. `signatures.size()` is the slot capacity:
 // one signature is required for every slot, including sparse zero placeholders.
 template<typename Traits>
-class InterfaceProxy {
+class UniqueInterfaceProxy {
 public:
     static constexpr size_t slot_capacity = Traits::signatures.size();
 
-    InterfaceProxy() noexcept = default;
+    UniqueInterfaceProxy() noexcept = default;
 
     // Bind through an in-process registry. The status is retained; use
     // `status()` or `valid()` to observe it (bind never throws or aborts).
     template<size_t RegistryCapacity>
-    InterfaceProxy(const InterfaceRegistry<RegistryCapacity> &registry, void *object, model::TypeId concrete_type,
+    UniqueInterfaceProxy(const InterfaceRegistry<RegistryCapacity> &registry, void *object, model::TypeId concrete_type,
         uint32_t version = Traits::version) noexcept {
         (void)bind(registry, object, concrete_type, version);
     }
@@ -150,6 +155,117 @@ protected:
 
 private:
     InterfaceSlotCache<slot_capacity> _ref;
+    InterfaceStatus _status = InterfaceStatus::interface_not_found;
+};
+
+// Build a shared adapter table from the registry. The caller owns the table and
+// must keep it alive for every SharedInterfaceProxy that references it.
+template<typename Traits, size_t RegistryCapacity>
+InterfaceStatus make_shared_slot_table(InterfaceSlotTable<Traits::signatures.size()> &table,
+    const InterfaceRegistry<RegistryCapacity> &registry, model::TypeId concrete_type,
+    uint32_t version = Traits::version) noexcept {
+    const auto *impl = registry.find(concrete_type, Traits::id, version);
+    if (impl == nullptr) {
+        table.clear();
+        uint32_t newest = 0;
+        if (registry.available(concrete_type, Traits::id, newest)) return InterfaceStatus::version_mismatch;
+        return InterfaceStatus::interface_not_found;
+    }
+    return table.build(impl->methods, impl->method_count, Traits::signatures);
+}
+
+template<typename Traits>
+InterfaceStatus make_shared_slot_table(InterfaceSlotTable<Traits::signatures.size()> &table,
+    const InterfaceMethod *methods, uint32_t method_count) noexcept {
+    return table.build(methods, method_count, Traits::signatures);
+}
+
+// Shared-storage proxy: many instances can point at one InterfaceSlotTable.
+// The table is built once per concrete implementation; each proxy adds only the
+// object handle. This is the vtable-like layout:
+//
+//   proxy -> shared slot table -> adapter
+//
+// The table must outlive every proxy that references it.
+template<typename Traits>
+class SharedInterfaceProxy {
+public:
+    static constexpr size_t slot_capacity = Traits::signatures.size();
+    using Table = InterfaceSlotTable<slot_capacity>;
+
+    SharedInterfaceProxy() noexcept = default;
+
+    SharedInterfaceProxy(const Table &table, void *object) noexcept { (void)bind(table, object); }
+
+    template<size_t RegistryCapacity>
+    SharedInterfaceProxy(const InterfaceRegistry<RegistryCapacity> &registry, void *object, model::TypeId concrete_type,
+        Table &table, uint32_t version = Traits::version) noexcept {
+        (void)bind(registry, object, concrete_type, table, version);
+    }
+
+    InterfaceStatus bind(const Table &table, void *object) noexcept {
+        _table = &table;
+        _object = object;
+        _status = (object != nullptr && table.valid()) ? InterfaceStatus::ok : InterfaceStatus::invalid_table;
+        return _status;
+    }
+
+    template<size_t RegistryCapacity>
+    InterfaceStatus bind(const InterfaceRegistry<RegistryCapacity> &registry, void *object, model::TypeId concrete_type,
+        Table &table, uint32_t version = Traits::version) noexcept {
+        _table = nullptr;
+        _object = nullptr;
+        _status = make_shared_slot_table<Traits>(table, registry, concrete_type, version);
+        if (_status != InterfaceStatus::ok) return _status;
+        return bind(table, object);
+    }
+
+    InterfaceStatus bind_methods(
+        Table &table, const InterfaceMethod *methods, uint32_t method_count, void *object) noexcept {
+        _table = nullptr;
+        _object = nullptr;
+        _status = make_shared_slot_table<Traits>(table, methods, method_count);
+        if (_status != InterfaceStatus::ok) return _status;
+        return bind(table, object);
+    }
+
+    InterfaceStatus status() const noexcept { return _status; }
+    bool valid() const noexcept {
+        return _status == InterfaceStatus::ok && _object != nullptr && _table != nullptr && _table->valid();
+    }
+
+    void *object() const noexcept { return _object; }
+    InterfaceId interface_id() const noexcept { return valid() ? Traits::id : InterfaceId{}; }
+    uint32_t version() const noexcept { return valid() ? Traits::version : 0; }
+    uint32_t method_count() const noexcept { return _table != nullptr ? _table->method_count() : 0; }
+
+    InterfaceStatus verify(uint32_t slot) const noexcept {
+        return _table != nullptr && _table->bound(slot) ? InterfaceStatus::ok : InterfaceStatus::method_not_found;
+    }
+
+protected:
+    template<typename Fn>
+    Fn method(uint32_t slot) const noexcept {
+        return _table != nullptr ? _table->template method<Fn>(slot) : nullptr;
+    }
+
+    template<typename Fn, typename... Args>
+    decltype(auto) call(uint32_t slot, Args &&...args) const noexcept {
+        const Fn fn = method<Fn>(slot);
+        return fn(_object, std::forward<Args>(args)...);
+    }
+
+    template<typename Fn, typename R, typename... Args>
+    InterfaceStatus call_checked(R &out, uint32_t slot, Args &&...args) const noexcept {
+        const Fn fn = method<Fn>(slot);
+        if (fn == nullptr) return InterfaceStatus::method_not_found;
+        out = fn(_object, std::forward<Args>(args)...);
+        return InterfaceStatus::ok;
+    }
+
+private:
+    void *_object = nullptr;
+    const Table *_table = nullptr;
     InterfaceStatus _status = InterfaceStatus::interface_not_found;
 };
 

@@ -92,15 +92,15 @@ amc-dump diff old.abix new.abix --json compatibility.json
 
 `ModuleDescriptor` 是一个 metadata module 的生成静态视图。`runtime::Registry<Capacity>::register_module()` 会先校验完整 module（包括 type 引用和重复 ID），随后从调用者视角原子地完成注册。Registry 同时保留 canonical 的 `model::TypeDesc`/`TypeLayout` 视图和生成 descriptor。注册以 `(TypeID, version)` 为键：同一 version 内重复的 `TypeID` 必须具有相同的 `LayoutHash`（Boundary #1）；而更新的 version 可以携带不同 layout，作为独立 entry 共存。
 
-| API | 结果 |
-|---|---|
-| `register_module(const ModuleDescriptor&)` | `runtime::RegisterStatus`；拒绝格式错误、重复、超容量或未解析引用的 module |
-| `register_module(const ModuleDescriptor&, uint32_t version)` | 按版本注册；同一 `TypeID` 可跨版本以不同 layout 共存 |
-| `find_by_id(TypeId)` / `find_by_name(const char*)` | 生成的 `runtime::RegistryEntry`，或 `nullptr`；`find_by_id` 返回最新版本 |
-| `find_type(TypeId, uint32_t version)` | 精确匹配该 `(TypeID, version)` 的 entry，或 `nullptr` |
-| `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | module version 字符串的前导十进制整数（`"2.1"` → `2`） |
-| `type_of<T>()` | 由生成的 `TypeTraits<T>::type_id` 选中的 entry |
-| `canonical()` | 底层有界 `metadata::Registry` 视图 |
+| API                                                                      | 结果                                                                       |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `register_module(const ModuleDescriptor&)`                               | `runtime::RegisterStatus`；拒绝格式错误、重复、超容量或未解析引用的 module |
+| `register_module(const ModuleDescriptor&, uint32_t version)`             | 按版本注册；同一 `TypeID` 可跨版本以不同 layout 共存                       |
+| `find_by_id(TypeId)` / `find_by_name(const char*)`                       | 生成的 `runtime::RegistryEntry`，或 `nullptr`；`find_by_id` 返回最新版本   |
+| `find_type(TypeId, uint32_t version)`                                    | 精确匹配该 `(TypeID, version)` 的 entry，或 `nullptr`                      |
+| `module_version(const ModuleDescriptor&)` / `parse_version(const char*)` | module version 字符串的前导十进制整数（`"2.1"` → `2`）                     |
+| `type_of<T>()`                                                           | 由生成的 `TypeTraits<T>::type_id` 选中的 entry                             |
+| `canonical()`                                                            | 底层有界 `metadata::Registry` 视图                                         |
 
 `type_of<T>()` 只对生成头文件定义了 `TypeTraits<T>` 的类型可用，这是刻意设计。显式启用这些特化：
 
@@ -125,13 +125,13 @@ ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。
 
 ### 平台宏
 
-| 宏 | 值 | 说明 |
-|-------|-------|-------------|
-| `SKL_ABIX_WINDOWS` | `1` 或 `0` | Windows 平台检测 |
-| `SKL_ABIX_CALL_CDECL` | `__cdecl` 或空 | `__cdecl` 调用约定属性 |
-| `SKL_ABIX_CALL_STDCALL` | `__stdcall` 或空 | `__stdcall` 调用约定属性 |
-| `SKL_ABIX_DLL_EXPORT` | `__declspec(dllexport)` 或可见性属性 | provider 侧固定 C 模块入口（`abi_get_table`、`abix_module_query_v1`、provider handle）的导出标记。ABIX 没有需要导入的共享核心库。 |
-| `SKL_ABIX_MAGIC64` | `0xFDFDFDFDFDFDFDFDULL` | 控制块的魔数 |
+| 宏                      | 值                                   | 说明                                                                                                                              |
+| ----------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `SKL_ABIX_WINDOWS`      | `1` 或 `0`                           | Windows 平台检测                                                                                                                  |
+| `SKL_ABIX_CALL_CDECL`   | `__cdecl` 或空                       | `__cdecl` 调用约定属性                                                                                                            |
+| `SKL_ABIX_CALL_STDCALL` | `__stdcall` 或空                     | `__stdcall` 调用约定属性                                                                                                          |
+| `SKL_ABIX_DLL_EXPORT`   | `__declspec(dllexport)` 或可见性属性 | provider 侧固定 C 模块入口（`abi_get_table`、`abix_module_query_v1`、provider handle）的导出标记。ABIX 没有需要导入的共享核心库。 |
+| `SKL_ABIX_MAGIC64`      | `0xFDFDFDFDFDFDFDFDULL`              | 控制块的魔数                                                                                                                      |
 
 ## 2. `ABIX/Runtime/Type.h` — 核心类型
 
@@ -139,20 +139,20 @@ ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。
 
 ### 类型别名
 
-| 符号 | 类型 | 说明 |
-|--------|------|-------------|
-| `sig_t` | `uint64_t` | 函数签名哈希（FNV-1a 64 位） |
-| `name_hash_t` | `uint32_t` | 函数名哈希（FNV-1a 32 位） |
-| `version_t` | `uint64_t` | 版本令牌（版本字符串的 FNV-1a 哈希） |
-| `index_t` | `uint32_t` | 表中条目索引 |
+| 符号          | 类型       | 说明                                 |
+| ------------- | ---------- | ------------------------------------ |
+| `sig_t`       | `uint64_t` | 函数签名哈希（FNV-1a 64 位）         |
+| `name_hash_t` | `uint32_t` | 函数名哈希（FNV-1a 32 位）           |
+| `version_t`   | `uint64_t` | 版本令牌（版本字符串的 FNV-1a 哈希） |
+| `index_t`     | `uint32_t` | 表中条目索引                         |
 
 ### 常量
 
-| 常量 | 值 | 说明 |
-|----------|-------|-------------|
-| `SKL_ABIX_TABLE_MAGIC` | `0xAB1E7A81U` | 表魔数，用于校验 |
-| `SKL_ABIX_TABLE_FORMAT_VERSION` | `1U` | 表格式版本 |
-| `SKL_ABIX_ENTRY_HOT` | `0x1ULL` | 热点条目标志 |
+| 常量                            | 值            | 说明             |
+| ------------------------------- | ------------- | ---------------- |
+| `SKL_ABIX_TABLE_MAGIC`          | `0xAB1E7A81U` | 表魔数，用于校验 |
+| `SKL_ABIX_TABLE_FORMAT_VERSION` | `1U`          | 表格式版本       |
+| `SKL_ABIX_ENTRY_HOT`            | `0x1ULL`      | 热点条目标志     |
 
 ### `runtime::Entry` — 函数表条目
 
@@ -194,33 +194,33 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 
 ### 导出表宏
 
-| 宏 | 说明 |
-|-------|-------------|
-| `SKL_ABIX_DEFINE_TABLE(...)` | 用逗号分隔的 `SKL_ABIX_ENTRY*` 宏列表定义导出表。生成 `abi_get_table()` |
-| `SKL_ABIX_ENTRY(name, func)` | 以 `Cdecl` 调用约定和版本 `0` 注册函数 |
-| `SKL_ABIX_ENTRY_CC(name, func, cctype)` | 以指定调用约定（`Cdecl` 或 `Stdcall`）注册函数 |
-| `SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)` | 以全部参数注册函数：调用约定、版本和标志 |
-| `SKL_ABIX_VERSION("1.0")` | 从版本字符串创建版本令牌（FNV-1a 哈希） |
+| 宏                                                  | 说明                                                                    |
+| --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `SKL_ABIX_DEFINE_TABLE(...)`                        | 用逗号分隔的 `SKL_ABIX_ENTRY*` 宏列表定义导出表。生成 `abi_get_table()` |
+| `SKL_ABIX_ENTRY(name, func)`                        | 以 `Cdecl` 调用约定和版本 `0` 注册函数                                  |
+| `SKL_ABIX_ENTRY_CC(name, func, cctype)`             | 以指定调用约定（`Cdecl` 或 `Stdcall`）注册函数                          |
+| `SKL_ABIX_ENTRY_FULL(name, func, cctype, ver, flg)` | 以全部参数注册函数：调用约定、版本和标志                                |
+| `SKL_ABIX_VERSION("1.0")`                           | 从版本字符串创建版本令牌（FNV-1a 哈希）                                 |
 
 ### 调用约定选择器
 
-| 宏 | 展开为 |
-|-------|------------|
-| `SKL_ABIX_CCPICK(Cdecl)` | `::skl::abix::cc::tag::Cdecl` |
+| 宏                         | 展开为                          |
+| -------------------------- | ------------------------------- |
+| `SKL_ABIX_CCPICK(Cdecl)`   | `::skl::abix::cc::tag::Cdecl`   |
 | `SKL_ABIX_CCPICK(Stdcall)` | `::skl::abix::cc::tag::Stdcall` |
 
 ### 内存分配
 
 内部分配器，声明于 `ABIX/Util/Mem.h`（`skl::abix::mem`）：
 
-| 函数 | 说明 |
-|----------|-------------|
-| `mem::alloc(n)` | 分配 `n` 字节（Windows 上使用 `HeapAlloc`，否则使用 `malloc`） |
-| `mem::zalloc(n)` | 清零分配 |
-| `mem::alloc_array(count, elem)` | 带溢出检查的数组分配 |
-| `mem::alloc_aligned(n, align)` | 对齐分配（需与 `dealloc_aligned` 配对） |
-| `mem::dealloc(p)` | 释放 `alloc` / `zalloc` / `alloc_array` 的内存 |
-| `mem::dealloc_aligned(p)` | 释放 `alloc_aligned` 的内存 |
+| 函数                            | 说明                                                           |
+| ------------------------------- | -------------------------------------------------------------- |
+| `mem::alloc(n)`                 | 分配 `n` 字节（Windows 上使用 `HeapAlloc`，否则使用 `malloc`） |
+| `mem::zalloc(n)`                | 清零分配                                                       |
+| `mem::alloc_array(count, elem)` | 带溢出检查的数组分配                                           |
+| `mem::alloc_aligned(n, align)`  | 对齐分配（需与 `dealloc_aligned` 配对）                        |
+| `mem::dealloc(p)`               | 释放 `alloc` / `zalloc` / `alloc_array` 的内存                 |
+| `mem::dealloc_aligned(p)`       | 释放 `alloc_aligned` 的内存                                    |
 
 ## 4. `ABIX/DLL/Object.h` — DLL 模块包装器
 
@@ -228,19 +228,19 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 
 ### `dll::CallError` 枚举
 
-| 值 | 说明 |
-|-------|-------------|
-| `none` | 无错误 |
-| `not_loaded` | DLL 未加载 |
-| `not_found` | 导出表中未找到函数名 |
-| `sig_mismatch` | 签名哈希不匹配 |
-| `version_mismatch` | 版本令牌不匹配 |
-| `stale_handle` | 存在活跃句柄引用模块时无法卸载 |
-| `table_changed` | 句柄解析后表内容已变更 |
-| `invalid` | 无效句柄或损坏的闭包 |
-| `load_failed` | DLL 加载失败（文件缺失、表损坏等） |
-| `unloading` | DLL 正在卸载中（RCU 宽限期） |
-| `lock_timeout` | 未能在配置的回收超时内取得 Control 写锁（仅在 `set_reclaim_timeout_ms()` 非零时可能） |
+| 值                 | 说明                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `none`             | 无错误                                                                                |
+| `not_loaded`       | DLL 未加载                                                                            |
+| `not_found`        | 导出表中未找到函数名                                                                  |
+| `sig_mismatch`     | 签名哈希不匹配                                                                        |
+| `version_mismatch` | 版本令牌不匹配                                                                        |
+| `stale_handle`     | 存在活跃句柄引用模块时无法卸载                                                        |
+| `table_changed`    | 句柄解析后表内容已变更                                                                |
+| `invalid`          | 无效句柄或损坏的闭包                                                                  |
+| `load_failed`      | DLL 加载失败（文件缺失、表损坏等）                                                    |
+| `unloading`        | DLL 正在卸载中（RCU 宽限期）                                                          |
+| `lock_timeout`     | 未能在配置的回收超时内取得 Control 写锁（仅在 `set_reclaim_timeout_ms()` 非零时可能） |
 
 ### `last_error()`
 
@@ -252,25 +252,26 @@ inline dll::CallError &last_error() noexcept;
 
 ### `dll::Object`
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `load(path)` | `bool` | 加载 DLL/SO，解析 `abi_get_table()`，校验魔数/版本并建索引——**全程不持锁**，最后在写锁下发布 image。加载失败时**保留**原 image（与 `reload()` 一致） |
-| `unload()` | `bool` | 标记卸载 → 等待 RCU 读者 → 若 `ref_count() == 0` 则卸载；若有活跃句柄则返回 `false` 并设置 `stale_handle` |
-| `force_unload()` | `void` | 无条件卸载，忽略引用计数（绕过 RCU，调用者需保证无并发读者） |
-| `reload(path)` | `bool` | 在锁外加载新模块并建索引，原子换入，再退休旧 image（受 EBR 保护，**不是** `force_unload()` + `load(path)`） |
-| `is_loaded()` | `bool` | 模块当前是否已加载且未处于卸载中 |
-| `get_table()` | `const runtime::Table*` | 获取已校验的导出表指针 |
-| `module()` | `module_handle` | 原始操作系统模块句柄（Windows 上为 `HMODULE`，POSIX 上为 `void*`） |
-| `ref_count()` | `uint32_t` | 当前活跃 `Function` 句柄数量（共享 Control 的强引用数） |
-| `enter_read()` | `const runtime::Table*` | 进入 RCU 读侧临界区（委托至全局 `rcu::Domain`），返回已验证的导出表指针；若模块未加载或已僵尸则返回 `nullptr` 并设置 `dll::CallError::unloading` |
-| `exit_read()` | `void` | 退出 RCU 读侧临界区（委托至全局 `rcu::Domain`） |
-| `set_reclaim_timeout_ms(ms)` | `void` | 给"等待被换出 image 的宽限期"设上限；该值是**时长**，每个操作现算 deadline，0 = 无界。见"给回收等待设上限" |
-| `reclaim_timeout_ms()` | `uint64_t` | 当前配置的时长 |
-| `reclaim_outcome()` | `ReclaimOutcome` | 最近一次操作中被换出 image 的处置结果 |
+| 方法                         | 返回值                  | 说明                                                                                                                                                 |
+| ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `load(path)`                 | `bool`                  | 加载 DLL/SO，解析 `abi_get_table()`，校验魔数/版本并建索引——**全程不持锁**，最后在写锁下发布 image。加载失败时**保留**原 image（与 `reload()` 一致） |
+| `unload()`                   | `bool`                  | 标记卸载 → 等待 RCU 读者 → 若 `ref_count() == 0` 则卸载；若有活跃句柄则返回 `false` 并设置 `stale_handle`                                            |
+| `force_unload()`             | `void`                  | 无条件卸载，忽略引用计数（绕过 RCU，调用者需保证无并发读者）                                                                                         |
+| `reload(path)`               | `bool`                  | 在锁外加载新模块并建索引，原子换入，再退休旧 image（受 EBR 保护，**不是** `force_unload()` + `load(path)`）                                          |
+| `is_loaded()`                | `bool`                  | 模块当前是否已加载且未处于卸载中                                                                                                                     |
+| `get_table()`                | `const runtime::Table*` | 获取已校验的导出表指针                                                                                                                               |
+| `module()`                   | `module_handle`         | 原始操作系统模块句柄（Windows 上为 `HMODULE`，POSIX 上为 `void*`）                                                                                   |
+| `ref_count()`                | `uint32_t`              | 当前活跃 `Function` 句柄数量（共享 Control 的强引用数）                                                                                              |
+| `enter_read()`               | `const runtime::Table*` | 进入 RCU 读侧临界区（委托至全局 `rcu::Domain`），返回已验证的导出表指针；若模块未加载或已僵尸则返回 `nullptr` 并设置 `dll::CallError::unloading`     |
+| `exit_read()`                | `void`                  | 退出 RCU 读侧临界区（委托至全局 `rcu::Domain`）                                                                                                      |
+| `set_reclaim_timeout_ms(ms)` | `void`                  | 给"等待被换出 image 的宽限期"设上限；该值是**时长**，每个操作现算 deadline，0 = 无界。见"给回收等待设上限"                                           |
+| `reclaim_timeout_ms()`       | `uint64_t`              | 当前配置的时长                                                                                                                                       |
+| `reclaim_outcome()`          | `ReclaimOutcome`        | 最近一次操作中被换出 image 的处置结果                                                                                                                |
 
 **写锁覆盖范围。** `load`/`reload`/`unload` 只在**镜像交换**期间持有每 `Object` 的 Control 写锁：加载模块、建索引、等待被换出 image 的宽限期都在锁外（image 在解锁之后才退休）。这样"等待该锁"从 O(加载 + 建索引 + 宽限期) 降为 O(一次交换)。`set_reclaim_timeout_ms()` 非零时，该时长**同样约束取锁**，超时以 `CallError::lock_timeout` 上报且不改动任何状态；默认（0）与以前一样无限等待。
 
 **使用示例：**
+
 ```cpp
 dll::Object lib;
 if (lib.load("my_plugin.dll")) {
@@ -286,12 +287,12 @@ ABIX 使用全局 **`rcu::Domain`**（基于 Epoch-Based Reclamation）实现线
 
 **架构：**
 
-| 角色 | 操作 | 说明 |
-|------|------|------|
-| 读者 | `enter_read()` → `rcu::Domain::enter()` | 记录当前全局 epoch，无锁、无竞争 |
-| 读者 | `exit_read()` → `rcu::Domain::exit()` | 标记本线程为静止态（epoch=0） |
+| 角色 | 操作                                      | 说明                                                   |
+| ---- | ----------------------------------------- | ------------------------------------------------------ |
+| 读者 | `enter_read()` → `rcu::Domain::enter()`   | 记录当前全局 epoch，无锁、无竞争                       |
+| 读者 | `exit_read()` → `rcu::Domain::exit()`     | 标记本线程为静止态（epoch=0）                          |
 | 写者 | `unload()` → `retire()` + `synchronize()` | 将旧 image 推入 retired 列表 → 等待所有读者通过 → 回收 |
-| 写者 | `reload()` → `retire()` + `synchronize()` | 原子交换新旧 image，旧 image 异步回收 |
+| 写者 | `reload()` → `retire()` + `synchronize()` | 原子交换新旧 image，旧 image 异步回收                  |
 
 **设计要点：**
 
@@ -302,6 +303,7 @@ ABIX 使用全局 **`rcu::Domain`**（基于 Epoch-Based Reclamation）实现线
 - **`force_unload` 绕过宽限期**：它立即摘除并释放 image，因此调用者必须自行保证无并发读者。`unload()` 与 `reload()` **不走这条捷径**：它们把旧 image 推入 retired 列表，由域在读者通过后回收。
 
 **使用示例：**
+
 ```cpp
 // 线程 1：读者
 auto add = dll::Function<int(int, int)>(lib, "add");
@@ -315,13 +317,13 @@ lib.unload();  // retire 旧 image → synchronize → 回收
 
 宽限期保护的是**调用**：`dll::Function::operator()` 在整个调用期间持有读侧临界区，并按当前 image 复核缓存条目，因此 reload 永远不会让它调进已退休的模块。它**不**保护从模块里拷出来的裸指针——没有任何东西把那个指针绑到活着的 image 上：
 
-| 触达模块代码的方式 | 调用期间的保护 | 跨 reload 靠什么保持有效 |
-|---|---|---|
-| `dll::Function::operator()` | 读侧临界区 + 每次调用复核条目 | `dll::Function` 句柄（且只要句柄存活，`unload()` 会被拒绝） |
-| `dll::Function::raw()` | 无 | 无：reload 后必须重新解析 |
-| `Object::resolve(name)` | 无 | 无：reload 后必须重新解析 |
-| `runtime::Function`（闭包） | 无 | 无：需要调用者自己保证模块不被卸载 |
-| `InterfaceProxy::call` | 自带 **lease** 模型（`ModuleControl`、`pin`/`unpin`） | lease：只要调用者持有 lease，绑定就一直有效 |
+| 触达模块代码的方式           | 调用期间的保护                                        | 跨 reload 靠什么保持有效                                    |
+| ---------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
+| `dll::Function::operator()`  | 读侧临界区 + 每次调用复核条目                         | `dll::Function` 句柄（且只要句柄存活，`unload()` 会被拒绝） |
+| `dll::Function::raw()`       | 无                                                    | 无：reload 后必须重新解析                                   |
+| `Object::resolve(name)`      | 无                                                    | 无：reload 后必须重新解析                                   |
+| `runtime::Function`（闭包）  | 无                                                    | 无：需要调用者自己保证模块不被卸载                          |
+| `UniqueInterfaceProxy::call` | 自带 **lease** 模型（`ModuleControl`、`pin`/`unpin`） | lease：只要调用者持有 lease，绑定就一直有效                 |
 
 因此：**如果调用目标要跨越 reload，请持有句柄或 lease，而不是指针。**
 
@@ -349,19 +351,19 @@ unload() / force_unload() -> zombie （image 已摘除，稍后回收）
 
 ### 给回收等待设上限（`dll::Object`）
 
-| 方法 | 返回值 | 说明 |
-|------|--------|------|
-| `set_reclaim_timeout_ms(ms)` | `void` | 给"load/reload/unload 等待被换出 image 的宽限期"设上限。该值是**时长**：每个操作都会据此现算一个 deadline，所以配置的超时**不会**被当成绝对时间点复用。`0`（默认）= 无界 |
-| `reclaim_timeout_ms()` | `uint64_t` | 当前配置的时长 |
-| `reclaim_outcome()` | `ReclaimOutcome` | 最近一次操作中被换出 image 的处置结果 |
+| 方法                         | 返回值           | 说明                                                                                                                                                                     |
+| ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `set_reclaim_timeout_ms(ms)` | `void`           | 给"load/reload/unload 等待被换出 image 的宽限期"设上限。该值是**时长**：每个操作都会据此现算一个 deadline，所以配置的超时**不会**被当成绝对时间点复用。`0`（默认）= 无界 |
+| `reclaim_timeout_ms()`       | `uint64_t`       | 当前配置的时长                                                                                                                                                           |
+| `reclaim_outcome()`          | `ReclaimOutcome` | 最近一次操作中被换出 image 的处置结果                                                                                                                                    |
 
 `ReclaimOutcome` 描述的是**被换出的 image**，不是操作本身——一次成功换入新模块的 reload 依然算成功，即使旧 image 被延迟：
 
-| 值 | 含义 |
-|----|------|
-| `not_attempted` | 本次操作没有换出任何 image（此前未加载） |
-| `reclaimed` | 被换出的 image 已释放 |
-| `deferred_batched` | 未配置超时，且批量节奏尚未推进；由后续操作释放 |
+| 值                 | 含义                                                                |
+| ------------------ | ------------------------------------------------------------------- |
+| `not_attempted`    | 本次操作没有换出任何 image（此前未加载）                            |
+| `reclaimed`        | 被换出的 image 已释放                                               |
+| `deferred_batched` | 未配置超时，且批量节奏尚未推进；由后续操作释放                      |
 | `deferred_timeout` | 配置了超时且宽限期未能在时限内被证明；image 保持退休状态且仍 mapped |
 
 启用上限是一笔**显式取舍**（见上文"给宽限期设上限"）：此后每次操作都要求一次真实宽限期，而不是共享批量推进，因此 **~4.97×** 的交替重载成本会落在**主动启用**的 Object 上。延迟回收不是泄漏：一旦宽限期可被证明，下一次操作就会回收所有待回收 image——这正是既有的、拉取式的"稍后回收"机制。
@@ -372,23 +374,23 @@ unload() / force_unload() -> zombie （image 已摘除，稍后回收）
 
 全局 EBR（Epoch-Based Reclamation）域，为所有 `dll::Object` 实例提供线程安全的内存回收。
 
-| 方法 | 返回值 | 说明 |
-|------|--------|------|
-| `instance()` | `rcu::Domain&` | 全局单例 |
-| `enter()` | `void` | 进入读侧临界区：记录当前全局 epoch，无锁、无竞争 |
-| `exit()` | `void` | 退出读侧临界区：标记本线程为静止态（epoch=0） |
-| `retire(obj, reclaim)` | `void` | 将对象加入本地 retired 批次（**批量类**）；累积 64 个后自动发布到全局列表；由 `synchronize()` 每 `SKL_ABIX_RCU_EPOCH_BATCH` 次（默认 8）推进 epoch 时回收 |
-| `retire_eager(obj, reclaim)` | `void` | 同上，但属于**即时类**：由下一次 `synchronize_eager()` 回收。用于"越早可复用越好"的对象（如换出的索引缓冲），而不缩短批量类的延迟 |
-| `retire_token(obj, reclaim)` | `uint64_t` | 同 `retire()`，但返回该对象入队的 epoch（未能入队时为 0）。配合 `reclaimed_through()` 可回答"域是否已经释放它"，无需自己观测回调 |
-| `reclaimed_through(token, cls)` | `bool` | 该类是否已回收至 `token`，即所有在该 epoch 或更早入队的对象都已执行回收回调。每类各自单调，且只在宽限期被证明后才推进 |
-| `synchronize()` | `void` | 推进全局 epoch（每 `SKL_ABIX_RCU_EPOCH_BATCH` 次调用才实际推进），等待所有线程通过，回收**批量类**安全对象 |
-| `synchronize_eager()` | `void` | **立即**推进全局 epoch 并只回收**即时类**安全对象；批量类的延迟不受影响。无对象可回收时很便宜 |
-| `synchronize_until(deadline)` | `bool` | 请求一次宽限期，最多等待到 `Deadline`。`true` 只表示**宽限期已被证明**——仅此而已：不承诺回收扫描已运行，也不承诺任何回调已执行。`false` 表示**未被证明**（截止时间到，或推进权在别的写者手里）：不知道有任何读者已离开、水位未推进、回调未运行。它总是要求一次真实宽限期，因此启用它就放弃了批量延迟（见下） |
-| `try_collect()` | `void` | 尝试回收：若获取写锁成功，扫描并回收已通过的两类 retired 对象 |
-| `global_epoch()` | `uint64_t` | 诊断用：返回当前全局 epoch 值 |
-| `stats()` | `Stats` | 可选推进诊断的快照（见下）。未启用诊断的构建返回全零且不加锁 |
-| `reset_stats()` | `void` | 清零诊断计数器；诊断被编译掉时为空操作 |
-| `stats_enabled()` | `static constexpr bool` | 本构建是否采集诊断 |
+| 方法                            | 返回值                  | 说明                                                                                                                                                                                                                                                                                                         |
+| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `instance()`                    | `rcu::Domain&`          | 全局单例                                                                                                                                                                                                                                                                                                     |
+| `enter()`                       | `void`                  | 进入读侧临界区：记录当前全局 epoch，无锁、无竞争                                                                                                                                                                                                                                                             |
+| `exit()`                        | `void`                  | 退出读侧临界区：标记本线程为静止态（epoch=0）                                                                                                                                                                                                                                                                |
+| `retire(obj, reclaim)`          | `void`                  | 将对象加入本地 retired 批次（**批量类**）；累积 64 个后自动发布到全局列表；由 `synchronize()` 每 `SKL_ABIX_RCU_EPOCH_BATCH` 次（默认 8）推进 epoch 时回收                                                                                                                                                    |
+| `retire_eager(obj, reclaim)`    | `void`                  | 同上，但属于**即时类**：由下一次 `synchronize_eager()` 回收。用于"越早可复用越好"的对象（如换出的索引缓冲），而不缩短批量类的延迟                                                                                                                                                                            |
+| `retire_token(obj, reclaim)`    | `uint64_t`              | 同 `retire()`，但返回该对象入队的 epoch（未能入队时为 0）。配合 `reclaimed_through()` 可回答"域是否已经释放它"，无需自己观测回调                                                                                                                                                                             |
+| `reclaimed_through(token, cls)` | `bool`                  | 该类是否已回收至 `token`，即所有在该 epoch 或更早入队的对象都已执行回收回调。每类各自单调，且只在宽限期被证明后才推进                                                                                                                                                                                        |
+| `synchronize()`                 | `void`                  | 推进全局 epoch（每 `SKL_ABIX_RCU_EPOCH_BATCH` 次调用才实际推进），等待所有线程通过，回收**批量类**安全对象                                                                                                                                                                                                   |
+| `synchronize_eager()`           | `void`                  | **立即**推进全局 epoch 并只回收**即时类**安全对象；批量类的延迟不受影响。无对象可回收时很便宜                                                                                                                                                                                                                |
+| `synchronize_until(deadline)`   | `bool`                  | 请求一次宽限期，最多等待到 `Deadline`。`true` 只表示**宽限期已被证明**——仅此而已：不承诺回收扫描已运行，也不承诺任何回调已执行。`false` 表示**未被证明**（截止时间到，或推进权在别的写者手里）：不知道有任何读者已离开、水位未推进、回调未运行。它总是要求一次真实宽限期，因此启用它就放弃了批量延迟（见下） |
+| `try_collect()`                 | `void`                  | 尝试回收：若获取写锁成功，扫描并回收已通过的两类 retired 对象                                                                                                                                                                                                                                                |
+| `global_epoch()`                | `uint64_t`              | 诊断用：返回当前全局 epoch 值                                                                                                                                                                                                                                                                                |
+| `stats()`                       | `Stats`                 | 可选推进诊断的快照（见下）。未启用诊断的构建返回全零且不加锁                                                                                                                                                                                                                                                 |
+| `reset_stats()`                 | `void`                  | 清零诊断计数器；诊断被编译掉时为空操作                                                                                                                                                                                                                                                                       |
+| `stats_enabled()`               | `static constexpr bool` | 本构建是否采集诊断                                                                                                                                                                                                                                                                                           |
 
 **设计要点：**
 
@@ -437,21 +439,22 @@ auto s = skl::abix::rcu::Domain::instance().stats();
 
 这些计数器把"一个 RCU 超时数"会混为一谈的情况分开：
 
-| 字段 | 含义 |
-|---|---|
-| `advance_attempts` | 线程尝试取得推进权的次数 |
-| `advance_contentions` | 尝试时发现已有其他写者持有（`sync` 非零）的次数 |
-| `advance_retries` | `synchronize_until()` 中失败后重试的次数 |
-| `advance_timeouts` | 在截止时间放弃等待推进权的次数——**根本没轮到跑宽限期** |
-| `advance_max_wait_ns` | 等待推进权的最长观测时间（从未争用则为 0） |
-| `grace_period_timeouts` | 取得了推进权但未能证明宽限期——**读者卡住了它** |
-| `retired_backlog` | 快照时刻：已发布但尚未回收的退休节点数 |
-| `retired_oldest_age_ns` | 快照时刻：最老那个节点的等待时长 |
-| `registered_threads` | 快照时刻：**曾经**进入过读侧临界区的线程数。单调不减——线程退出后会留下 `epoch == 0` 的节点，而每次宽限期轮询都会遍历全部节点（见上文的注册表说明）。宿主线程反复创建时该看这个值 |
+| 字段                    | 含义                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `advance_attempts`      | 线程尝试取得推进权的次数                                                                                                                                                         |
+| `advance_contentions`   | 尝试时发现已有其他写者持有（`sync` 非零）的次数                                                                                                                                  |
+| `advance_retries`       | `synchronize_until()` 中失败后重试的次数                                                                                                                                         |
+| `advance_timeouts`      | 在截止时间放弃等待推进权的次数——**根本没轮到跑宽限期**                                                                                                                           |
+| `advance_max_wait_ns`   | 等待推进权的最长观测时间（从未争用则为 0）                                                                                                                                       |
+| `grace_period_timeouts` | 取得了推进权但未能证明宽限期——**读者卡住了它**                                                                                                                                   |
+| `retired_backlog`       | 快照时刻：已发布但尚未回收的退休节点数                                                                                                                                           |
+| `retired_oldest_age_ns` | 快照时刻：最老那个节点的等待时长                                                                                                                                                 |
+| `registered_threads`    | 快照时刻：**曾经**进入过读侧临界区的线程数。单调不减——线程退出后会留下 `epoch == 0` 的节点，而每次宽限期轮询都会遍历全部节点（见上文的注册表说明）。宿主线程反复创建时该看这个值 |
 
 `advance_timeouts` 与 `grace_period_timeouts` 是两种不同的失败；`deferred_batched`（正常的批量节奏）两者都不是，它由 `dll::Object` 层以 `ReclaimOutcome` 报告，不在这里。后两个字段是在写锁下从退休链表采样的**仪表值**，所以 `stats()` 是诊断端点，而非热路径调用。为何先测量、再决定是否需要可取消的 FIFO 仲裁，见 `Optimize-plan.md`（D-1）。
 
 **使用示例：**
+
 ```cpp
 rcu::Domain &domain = rcu::Domain::instance();
 
@@ -469,21 +472,21 @@ domain.synchronize();
 
 **命名空间：** `skl::abix`
 
-| 类型 / 函数 | 说明 |
-|-------------|------|
-| `LogLevel` | 枚举：`Debug`、`Info`、`Warning`、`Error` |
-| `log_sink_t` | `void (*)(LogLevel level, const char *message)` — C 回调，ABI 安全 |
-| `set_log_sink(sink)` | 设置全局日志接收器。默认：无操作（无输出）。 |
+| 类型 / 函数            | 说明                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| `LogLevel`             | 枚举：`Debug`、`Info`、`Warning`、`Error`                            |
+| `log_sink_t`           | `void (*)(LogLevel level, const char *message)` — C 回调，ABI 安全   |
+| `set_log_sink(sink)`   | 设置全局日志接收器。默认：无操作（无输出）。                         |
 | `log(level, fmt, ...)` | 内部格式化器；通过 `vsnprintf` 格式化到 1KB 缓冲区，然后调用接收器。 |
 
 **宏：**
 
-| 宏 | 生效条件 |
-|-------|----------|
-| `ABIX_LOG_DEBUG(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
-| `ABIX_LOG_INFO(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO` |
+| 宏                           | 生效条件                                                            |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `ABIX_LOG_DEBUG(fmt, ...)`   | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG`   |
+| `ABIX_LOG_INFO(fmt, ...)`    | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO`    |
 | `ABIX_LOG_WARNING(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
-| `ABIX_LOG_ERROR(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR` |
+| `ABIX_LOG_ERROR(fmt, ...)`   | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
 
 ## 5. `ABIX/DLL/Function.h` — 类型化函数句柄
 
@@ -496,17 +499,18 @@ domain.synchronize();
 - `C` — 调用约定标签（`cc::tag::Cdecl` 或 `cc::tag::Stdcall`）
 - `Sig` — 函数签名（例如 `int(int, double)`）
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `resolve(lib, name, ver)` | `void` | 按名称和可选版本解析函数 |
-| `valid()` | `bool` | 句柄是否有效且库已加载 |
-| `operator bool()` | `bool` | 同 `valid()` |
-| `index()` | `index_t` | 表中的条目索引 |
-| `handle_id()` | `uint64_t` | 不透明句柄 ID（在重载中保持稳定） |
-| `raw()` | `fn_type` | 原始函数指针。它在读侧临界区**退出之后**才交给调用者，因此只在该句柄的 image 仍是当前 image 时有效：一次 reload 即失效（请重新解析，或改用每次都复核的 `operator()`） |
-| `operator()(Args...)` | `R` | 以类型安全方式调用函数 |
+| 方法                      | 返回值     | 说明                                                                                                                                                                  |
+| ------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve(lib, name, ver)` | `void`     | 按名称和可选版本解析函数                                                                                                                                              |
+| `valid()`                 | `bool`     | 句柄是否有效且库已加载                                                                                                                                                |
+| `operator bool()`         | `bool`     | 同 `valid()`                                                                                                                                                          |
+| `index()`                 | `index_t`  | 表中的条目索引                                                                                                                                                        |
+| `handle_id()`             | `uint64_t` | 不透明句柄 ID（在重载中保持稳定）                                                                                                                                     |
+| `raw()`                   | `fn_type`  | 原始函数指针。它在读侧临界区**退出之后**才交给调用者，因此只在该句柄的 image 仍是当前 image 时有效：一次 reload 即失效（请重新解析，或改用每次都复核的 `operator()`） |
+| `operator()(Args...)`     | `R`        | 以类型安全方式调用函数                                                                                                                                                |
 
 **`operator()` 的行为：**
+
 - **快路径**：先进入读侧临界区（`rcu::Domain::enter()`），再用一次 relaxed 读确认缓存的快照——当前 image 必须是 `_index` 当初被校验的那个，且该条目仍带着解析时的名字哈希与签名；只有都满足才调用，`strcmp` 留在慢路径。
 - **慢路径**（首次调用、重载之后、或快照失效时）：复核 state，再按索引、名字哈希、签名与 `strcmp` 重新校验条目，并记录快照。
 - 所有退出路径（包括错误路径）均调用 `exit_read()` 退出临界区。
@@ -525,6 +529,7 @@ class dll::Function : public dll::FunctionCC<C, Sig> { ... };
 ```
 
 **使用示例：**
+
 ```cpp
 dll::Object lib;
 lib.load("math_dll.dll");
@@ -558,8 +563,8 @@ struct FnSig;
 
 编译期函数签名哈希生成器。`value` 成员为 `sig_t` 常量。
 
-| 成员 | 类型 | 说明 |
-|--------|------|-------------|
+| 成员    | 类型              | 说明                     |
+| ------- | ----------------- | ------------------------ |
 | `value` | `constexpr sig_t` | 函数签名唯一 FNV-1a 哈希 |
 
 ### `FnSigV<Sig, C>`
@@ -581,6 +586,7 @@ constexpr sig_t type_sig();
 返回类型 `T` 的编译期类型签名哈希。去除 cv 限定符并解析引用。
 
 **使用示例：**
+
 ```cpp
 constexpr sig_t add_sig = FnSig<int(int, int)>::value;
 constexpr sig_t mul_sig = FnSigV<double(double, double)>;
@@ -595,15 +601,15 @@ constexpr sig_t int_sig = type_sig<int>();
 
 为 ABIX 智能指针类型和 `runtime::Function` 特化：
 
-| 类型 | 哈希公式 |
-|------|-------------|
-| `dll::UniquePtr<T>` | `mix(cstr64("abix::dll::UniquePtr"), type_hash<T>)` |
-| `dll::RefPtr<T>` | `mix(cstr64("abix::dll::RefPtr"), type_hash<T>)` |
-| `dll::ViewPtr<T>` | `mix(cstr64("abix::dll::ViewPtr"), type_hash<T>)` |
-| `dll::SharedPtr<T>` | `mix(cstr64("abix::dll::SharedPtr"), type_hash<T>)` |
-| `dll::WeakPtr<T>` | `mix(cstr64("abix::dll::WeakPtr"), type_hash<T>)` |
-| `runtime::Function<R(Args...)>` | 返回类型与所有参数类型的复合哈希 |
-| 所有其他类型 | 委托给 `Utils::type_hash<T>()` |
+| 类型                            | 哈希公式                                            |
+| ------------------------------- | --------------------------------------------------- |
+| `dll::UniquePtr<T>`             | `mix(cstr64("abix::dll::UniquePtr"), type_hash<T>)` |
+| `dll::RefPtr<T>`                | `mix(cstr64("abix::dll::RefPtr"), type_hash<T>)`    |
+| `dll::ViewPtr<T>`               | `mix(cstr64("abix::dll::ViewPtr"), type_hash<T>)`   |
+| `dll::SharedPtr<T>`             | `mix(cstr64("abix::dll::SharedPtr"), type_hash<T>)` |
+| `dll::WeakPtr<T>`               | `mix(cstr64("abix::dll::WeakPtr"), type_hash<T>)`   |
+| `runtime::Function<R(Args...)>` | 返回类型与所有参数类型的复合哈希                    |
+| 所有其他类型                    | 委托给 `Utils::type_hash<T>()`                      |
 
 ### `SKL_ABIX_TYPE_TAG(T, tag)`
 
@@ -619,13 +625,13 @@ constexpr sig_t int_sig = type_sig<int>();
 
 ### `runtime::LookupResult` 枚举
 
-| 值 | 说明 |
-|-------|-------------|
-| `ok` | 找到条目且签名匹配 |
-| `not_found` | 未找到该名称的条目 |
-| `sig_mismatch` | 找到名称但签名不匹配 |
+| 值                 | 说明                 |
+| ------------------ | -------------------- |
+| `ok`               | 找到条目且签名匹配   |
+| `not_found`        | 未找到该名称的条目   |
+| `sig_mismatch`     | 找到名称但签名不匹配 |
 | `version_mismatch` | 找到名称但版本不匹配 |
-| `bad_table` | 无效或损坏的表 |
+| `bad_table`        | 无效或损坏的表       |
 
 ### `find_index()`
 
@@ -634,6 +640,7 @@ inline runtime::LookupResult find_index(const runtime::Table &t, const runtime::
 ```
 
 根据 `idx` 是否有效自动选择最优查找策略：
+
 - 若 `idx.valid()` → 使用 HashIndex 查找（`find_hash`）
 - 否则 → 使用线性扫描（`find_linear`）
 
@@ -646,6 +653,7 @@ inline runtime::LookupResult find_linear(const runtime::Table &t, const char *na
 全表线性扫描。用于小表（< 64 条目）。
 
 **搜索逻辑：**
+
 1. 校验表魔数
 2. 计算 32 位名称哈希（FNV-1a）
 3. 线性扫描：匹配名称哈希 → strcmp → 版本检查 → 签名检查
@@ -702,19 +710,20 @@ struct runtime::HashIndex {
 
 大表的运行时哈希索引。在 DLL 加载时一次性构建。
 
-| 成员 | 类型 | 说明 |
-|--------|------|-------------|
-| `slots` | `runtime::HashSlot*` | 开放寻址槽位数组（容量为 2 的幂次方） |
-| `capacity` | `uint32_t` | 槽位总数（始终为 `next_pow2(count * 2)`） |
-| `mask` | `uint32_t` | `capacity - 1`，用于快速取模 |
+| 成员       | 类型                 | 说明                                      |
+| ---------- | -------------------- | ----------------------------------------- |
+| `slots`    | `runtime::HashSlot*` | 开放寻址槽位数组（容量为 2 的幂次方）     |
+| `capacity` | `uint32_t`           | 槽位总数（始终为 `next_pow2(count * 2)`） |
+| `mask`     | `uint32_t`           | `capacity - 1`，用于快速取模              |
 
-| 方法 | 说明 |
-|--------|-------------|
-| `valid()` | 哈希索引是否已构建（slots != nullptr） |
-| `build(t)` | 从表构建哈希索引。使用线性探测插入所有条目 |
-| `destroy()` | 释放槽位数组 |
+| 方法        | 说明                                       |
+| ----------- | ------------------------------------------ |
+| `valid()`   | 哈希索引是否已构建（slots != nullptr）     |
+| `build(t)`  | 从表构建哈希索引。使用线性探测插入所有条目 |
+| `destroy()` | 释放槽位数组                               |
 
 **设计要点：**
+
 - **负载率 ~50%**：`capacity = next_pow2(count * 2)`
 - **开放寻址**：冲突时线性探测 `pos = (pos + 1) & mask`
 - **零 ABI 影响**：`runtime::HashIndex` 为纯运行时元数据；`table` 和 `entry` 结构体保持不变
@@ -722,10 +731,10 @@ struct runtime::HashIndex {
 
 ### 常量
 
-| 常量 | 值 | 说明 |
-|----------|-------|-------------|
-| `SKL_ABIX_HASH_THRESHOLD` | `64` | 少于 64 条目的表使用线性扫描；≥ 64 条目的表使用 HashIndex |
-| `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | 空哈希槽位的哨兵值 |
+| 常量                      | 值            | 说明                                                      |
+| ------------------------- | ------------- | --------------------------------------------------------- |
+| `SKL_ABIX_HASH_THRESHOLD` | `64`          | 少于 64 条目的表使用线性扫描；≥ 64 条目的表使用 HashIndex |
+| `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | 空哈希槽位的哨兵值                                        |
 
 ## 9. `ABIX/Runtime/Function.h` — 跨边界闭包
 
@@ -736,6 +745,7 @@ struct runtime::HashIndex {
 一个 8 字节（64 位）的闭包类型，用于跨 DLL 边界传递回调。类似于 `std::function`，但使用稳定的 ABI 并通过 `mem::alloc`/`mem::dealloc` 进行手动内存管理。
 
 **设计：**
+
 - `sizeof(runtime::Function<R(Args...)>)` == 8 字节（在 64 位平台上始终成立）
 - 将堆分配的 `closure_base` 指针存储为 `uint64_t` 句柄
 - 闭包包含调用/销毁/克隆函数指针
@@ -743,20 +753,21 @@ struct runtime::HashIndex {
 
 **API：**
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `runtime::Function()` | — | 默认构造函数，空闭包 |
-| `runtime::Function(F f)` | — | 从可调用对象构造（lambda、函数指针等） |
-| `runtime::Function(const&)` | — | 拷贝构造函数（通过克隆处理器深拷贝） |
-| `runtime::Function(&&)` | — | 移动构造函数 |
-| `operator=(rhs)` | `runtime::Function&` | 拷贝并交换赋值 |
-| `operator()(Args...)` | `R` | 调用存储的可调用对象 |
-| `operator bool()` | `bool` | 闭包中是否包含可调用对象 |
-| `empty()` | `bool` | 闭包是否为空 |
-| `handle()` | `uint64_t` | 原始句柄值 |
-| `swap(other)` | `void` | 交换两个闭包 |
+| 方法                        | 返回值               | 说明                                   |
+| --------------------------- | -------------------- | -------------------------------------- |
+| `runtime::Function()`       | —                    | 默认构造函数，空闭包                   |
+| `runtime::Function(F f)`    | —                    | 从可调用对象构造（lambda、函数指针等） |
+| `runtime::Function(const&)` | —                    | 拷贝构造函数（通过克隆处理器深拷贝）   |
+| `runtime::Function(&&)`     | —                    | 移动构造函数                           |
+| `operator=(rhs)`            | `runtime::Function&` | 拷贝并交换赋值                         |
+| `operator()(Args...)`       | `R`                  | 调用存储的可调用对象                   |
+| `operator bool()`           | `bool`               | 闭包中是否包含可调用对象               |
+| `empty()`                   | `bool`               | 闭包是否为空                           |
+| `handle()`                  | `uint64_t`           | 原始句柄值                             |
+| `swap(other)`               | `void`               | 交换两个闭包                           |
 
 **使用示例：**
+
 ```cpp
 int captured = 100;
 runtime::Function<void(int)> cb = [captured](int x) {
@@ -788,15 +799,15 @@ struct dll::UniqueHandle {
 
 独占所有权智能指针。析构时调用 DLL 端删除器。
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `dll::UniquePtr(p, d)` | — | 以指针和删除器函数构造 |
-| `reset(p, d)` | `void` | 释放当前并接管新所有权 |
-| `release()` | `dll::UniqueHandle<T>*` | 释放所有权但不销毁 |
-| `get()` | `T*` | 原始指针 |
-| `operator->()` | `T*` | 指针访问 |
-| `operator*()` | `T&` | 解引用 |
-| `operator bool()` | `bool` | 是否非空 |
+| 方法                   | 返回值                  | 说明                   |
+| ---------------------- | ----------------------- | ---------------------- |
+| `dll::UniquePtr(p, d)` | —                       | 以指针和删除器函数构造 |
+| `reset(p, d)`          | `void`                  | 释放当前并接管新所有权 |
+| `release()`            | `dll::UniqueHandle<T>*` | 释放所有权但不销毁     |
+| `get()`                | `T*`                    | 原始指针               |
+| `operator->()`         | `T*`                    | 指针访问               |
+| `operator*()`          | `T&`                    | 解引用                 |
+| `operator bool()`      | `bool`                  | 是否非空               |
 
 ### `dll::FnDeleter<T>`
 
@@ -814,55 +825,55 @@ struct dll::FnDeleter {
 
 非原子引用计数共享指针。单线程安全。
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `dll::RefPtr(p, d)` | — | 以指针和删除器构造 |
-| `get()` | `T*` | 原始指针 |
-| `operator->()` | `T*` | 指针访问 |
-| `operator*()` | `T&` | 解引用 |
-| `use_count()` | `uint32_t` | 当前引用计数 |
-| `view_count()` | `uint32_t` | 当前视图计数 |
-| `try_unique()` | `bool` | `use_count() == 1` 是否成立 |
-| `from_unique(uhd)` | `dll::RefPtr<D>` | 从 `dll::UniqueHandle` 静态创建 |
+| 方法                | 返回值           | 说明                            |
+| ------------------- | ---------------- | ------------------------------- |
+| `dll::RefPtr(p, d)` | —                | 以指针和删除器构造              |
+| `get()`             | `T*`             | 原始指针                        |
+| `operator->()`      | `T*`             | 指针访问                        |
+| `operator*()`       | `T&`             | 解引用                          |
+| `use_count()`       | `uint32_t`       | 当前引用计数                    |
+| `view_count()`      | `uint32_t`       | 当前视图计数                    |
+| `try_unique()`      | `bool`           | `use_count() == 1` 是否成立     |
+| `from_unique(uhd)`  | `dll::RefPtr<D>` | 从 `dll::UniqueHandle` 静态创建 |
 
 ### `dll::ViewPtr<T>`
 
 `dll::RefPtr<T>` 的非拥有观察者。不阻止资源销毁。
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `dll::ViewPtr()` | — | 默认构造函数，空 |
-| `dll::ViewPtr(const dll::RefPtr<T>&)` | — | 从 `dll::RefPtr` 构造 |
-| `alive()` | `bool` | 引用的资源是否仍然存活 |
-| `expired()` | `bool` | 资源是否已被销毁 |
-| `lock()` | `dll::RefPtr<T>` | 提升为 `dll::RefPtr`（若仍存活） |
-| `use_count()` | `uint32_t` | 底层资源的当前引用计数 |
+| 方法                                  | 返回值           | 说明                             |
+| ------------------------------------- | ---------------- | -------------------------------- |
+| `dll::ViewPtr()`                      | —                | 默认构造函数，空                 |
+| `dll::ViewPtr(const dll::RefPtr<T>&)` | —                | 从 `dll::RefPtr` 构造            |
+| `alive()`                             | `bool`           | 引用的资源是否仍然存活           |
+| `expired()`                           | `bool`           | 资源是否已被销毁                 |
+| `lock()`                              | `dll::RefPtr<T>` | 提升为 `dll::RefPtr`（若仍存活） |
+| `use_count()`                         | `uint32_t`       | 底层资源的当前引用计数           |
 
 ### `dll::SharedPtr<T>`
 
 原子引用计数共享指针。线程安全。
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `dll::SharedPtr(p, d)` | — | 以指针和删除器构造 |
-| `get()` | `T*` | 原始指针 |
-| `use_count()` | `uint32_t` | 当前强引用计数 |
-| `weak_count()` | `uint32_t` | 当前弱引用计数 |
-| `try_unique()` | `bool` | `use_count() == 1` 是否成立 |
-| `from_unique(uhd)` | `dll::SharedPtr<D>` | 从 `dll::UniqueHandle` 静态创建 |
+| 方法                   | 返回值              | 说明                            |
+| ---------------------- | ------------------- | ------------------------------- |
+| `dll::SharedPtr(p, d)` | —                   | 以指针和删除器构造              |
+| `get()`                | `T*`                | 原始指针                        |
+| `use_count()`          | `uint32_t`          | 当前强引用计数                  |
+| `weak_count()`         | `uint32_t`          | 当前弱引用计数                  |
+| `try_unique()`         | `bool`              | `use_count() == 1` 是否成立     |
+| `from_unique(uhd)`     | `dll::SharedPtr<D>` | 从 `dll::UniqueHandle` 静态创建 |
 
 ### `dll::WeakPtr<T>`
 
 `dll::SharedPtr<T>` 的非拥有观察者。不阻止资源销毁。
 
-| 方法 | 返回值 | 说明 |
-|--------|---------|-------------|
-| `dll::WeakPtr()` | — | 默认构造函数，空 |
-| `dll::WeakPtr(const dll::SharedPtr<T>&)` | — | 从 `dll::SharedPtr` 构造 |
-| `alive()` | `bool` | 引用的资源是否仍然存活 |
-| `expired()` | `bool` | 资源是否已被销毁 |
-| `lock()` | `dll::SharedPtr<T>` | 提升为 `dll::SharedPtr`（若仍存活） |
-| `use_count()` | `uint32_t` | 底层资源的当前强引用计数 |
+| 方法                                     | 返回值              | 说明                                |
+| ---------------------------------------- | ------------------- | ----------------------------------- |
+| `dll::WeakPtr()`                         | —                   | 默认构造函数，空                    |
+| `dll::WeakPtr(const dll::SharedPtr<T>&)` | —                   | 从 `dll::SharedPtr` 构造            |
+| `alive()`                                | `bool`              | 引用的资源是否仍然存活              |
+| `expired()`                              | `bool`              | 资源是否已被销毁                    |
+| `lock()`                                 | `dll::SharedPtr<T>` | 提升为 `dll::SharedPtr`（若仍存活） |
+| `use_count()`                            | `uint32_t`          | 底层资源的当前强引用计数            |
 
 ## 11. `ABIX/Bridge/Refl.h` — 动态反射集成
 
@@ -870,13 +881,13 @@ struct dll::FnDeleter {
 
 ### 类型别名
 
-| 别名 | 完整类型 | 说明 |
-|-------|-----------|-------------|
-| `DynamicAny` | `DRefl::Any` | 类型擦除的值容器 |
-| `DynamicRegistry` | `DRefl::Registry` | 全局类型注册表单例 |
-| `DynamicTypeInfo` | `DRefl::TypeInfo` | 运行时类型描述符 |
+| 别名                   | 完整类型               | 说明                          |
+| ---------------------- | ---------------------- | ----------------------------- |
+| `DynamicAny`           | `DRefl::Any`           | 类型擦除的值容器              |
+| `DynamicRegistry`      | `DRefl::Registry`      | 全局类型注册表单例            |
+| `DynamicTypeInfo`      | `DRefl::TypeInfo`      | 运行时类型描述符              |
 | `DynamicFieldAccessor` | `DRefl::FieldAccessor` | 带 getter/setter 的字段访问器 |
-| `DynamicFieldInfo` | `DRefl::FieldInfo` | 字段元数据 |
+| `DynamicFieldInfo`     | `DRefl::FieldInfo`     | 字段元数据                    |
 
 ### `make_pod_type_info<T>()`
 
@@ -924,11 +935,11 @@ inline void register_dll_table(const runtime::Table *t, const char *dll_name);
 
 ### 编译期反射辅助工具（`refl` 命名空间）
 
-| 符号 | 说明 |
-|--------|-------------|
-| `FnEntryTag<SigValue, NameHashValue>` | 将签名哈希和名称哈希配对的标签类型 |
-| `HasUniqueSigs<TypeList>` | 编译期检查：列表中所有 `FnEntryTag` 条目的签名是否唯一 |
-| `FindBySig<TypeList, TargetSig>` | 编译期搜索：查找具有匹配 `sig` 的 `FnEntryTag` 的索引 |
+| 符号                                  | 说明                                                   |
+| ------------------------------------- | ------------------------------------------------------ |
+| `FnEntryTag<SigValue, NameHashValue>` | 将签名哈希和名称哈希配对的标签类型                     |
+| `HasUniqueSigs<TypeList>`             | 编译期检查：列表中所有 `FnEntryTag` 条目的签名是否唯一 |
+| `FindBySig<TypeList, TargetSig>`      | 编译期搜索：查找具有匹配 `sig` 的 `FnEntryTag` 的索引  |
 
 ## 12. 完整使用示例
 
