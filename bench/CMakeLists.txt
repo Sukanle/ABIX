@@ -64,6 +64,12 @@ abi_add_bench(NAME "abix_lookup_cross_bench" SOURCES "ABIX/abix_lookup_cross_ben
 abi_add_bench(NAME "interface_dispatch_bench" SOURCES "ABIX/interface_dispatch_bench.cpp")
 abi_add_bench(NAME "interface_lifecycle_bench" SOURCES "ABIX/interface_lifecycle_bench.cpp")
 abi_add_bench(NAME "interface_vtable_bench" SOURCES "ABIX/interface_vtable_bench.cpp")
+# GCC can speculatively devirtualise even through a noinline opaque accessor.
+# Disable it for the native baseline so native_virtual measures a real vtable
+# dispatch rather than a vptr guard plus an inlined direct call.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(interface_vtable_bench PRIVATE -fno-devirtualize)
+endif()
 
 # --- EBR benchmarks (unity build — convenience binary) ---
 set(EBR_SOURCES "topology/topology.cpp" "workloads/workload.cpp" "workloads/workload_runner.cpp")
@@ -92,6 +98,9 @@ add_executable(bench_all ${BENCH_SRC_DIR}/bench_all.cpp ${EBR_SOURCES})
 target_include_directories(bench_all PRIVATE ${BENCH_INC_DIR})
 target_link_libraries(bench_all PRIVATE benchmark::benchmark_main fmt::fmt)
 set_target_properties(bench_all PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(bench_all PRIVATE -fno-devirtualize)
+endif()
 foreach(
     plugin
     math_dll

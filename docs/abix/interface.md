@@ -299,21 +299,24 @@ The macro roles are different: ABIX's `SKL_ABIX_INTERFACE_DECLARE` generates the
 
 ### Performance and footprint
 
-Measurements below use one method, `int32_t area() const noexcept`, a non-owning proxy, and the same box object for every mechanism. ABIX was built as `C++17`; ngcpp/proxy as `C++20`. The native virtual call goes through a `noinline` opaque base pointer so the compiler cannot devirtualise it.
+Measurements below use one method, `int32_t area() const noexcept`, a non-owning proxy, and the same box object for every mechanism. ABIX was built as `C++17`; ngcpp/proxy as `C++20`.
+
+The native virtual baseline is compiled with `-fno-devirtualize`. This matters: GCC 16 at `-O3` can speculatively devirtualise even through a `noinline` opaque accessor, emitting a vptr guard followed by an inlined `Derived::area`. That measures a guarded direct call (about 0.27 ns), not a generic vtable dispatch. The true indirect vtable path is about 0.75 ns.
 
 **Call latency** (x86-64, GCC 16.2.1, `-O3 -DNDEBUG`, Google Benchmark, ~2 s, CPU scaling enabled — compare trends, not absolute nanoseconds):
 
-| Mechanism                        | ns/call | vs native virtual |
-| -------------------------------- | ------: | ----------------: |
-| native direct call               |    0.19 |              0.7x |
-| native virtual call              |    0.26 |              1.0x |
-| ABIX direct adapter              |    0.19 |              0.7x |
-| ABIX `InterfaceRef` cached entry |    0.76 |              2.9x |
-| ABIX `UniqueInterfaceProxy`      |    0.76 |              2.9x |
-| ABIX `SharedInterfaceProxy`      |    0.76 |              2.9x |
-| ngcpp/proxy `pro::proxy`         |    0.76 |              2.9x |
+| Mechanism                                    | ns/call | vs true native virtual |
+| -------------------------------------------- | ------: | ---------------------: |
+| native direct call                           |    0.19 |                  0.25x |
+| native virtual call (true indirect)          |    0.75 |                   1.0x |
+| native virtual call (compiler devirtualised) |    0.27 |                  0.36x |
+| ABIX direct adapter                          |    0.19 |                  0.25x |
+| ABIX `InterfaceRef` cached entry             |    0.75 |                   1.0x |
+| ABIX `UniqueInterfaceProxy`                  |    0.75 |                   1.0x |
+| ABIX `SharedInterfaceProxy`                  |    0.75 |                   1.0x |
+| ngcpp/proxy `pro::proxy`                     |    0.75 |                   1.0x |
 
-The non-intrusive proxies converge at roughly the same cost in this microbenchmark: the indirect call and object-handle indirection dominate, and the extra table load in shared mode is not separately visible. This is the price of not owning the object model (registration, type erasure, cross-DLL/cross-language contracts); it is not a per-call registry lookup.
+The non-intrusive proxies match a true vtable dispatch in this microbenchmark. ABIX's unique and shared layouts and ngcpp/proxy all converge at roughly the same cost; the indirect call dominates, and the extra table load in shared mode is not separately visible. The remaining gap is to **direct/devirtualised** calls: when the compiler can prove the dynamic type, it can eliminate the dispatch entirely. ABIX/proxy cannot do that because the implementation is selected at run time (or erased at compile time). This is the price of not owning the object model (registration, type erasure, cross-DLL/cross-language contracts); it is not a per-call registry lookup.
 
 **Footprint** (64-bit; `N` = number of interface methods):
 

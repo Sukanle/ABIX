@@ -11,11 +11,13 @@
 //   native_dynamic_cast_fail<-> abix_bind_miss    (discovery fails)
 //   native_typeid           <-> abix_verify       (identity check before trust)
 //
-// The native side is called through an `ABIX_NOINLINE` accessor so the compiler
-// cannot prove the dynamic type and devirtualise the call or fold the cast.
-// The ABIX side uses the same contract declarations a real provider would:
-// `InterfaceId` and method signatures come from `interface_id` and
-// `method_signature`, never from a vtable address.
+// The native side is called through an `ABIX_NOINLINE` accessor and the target
+// is compiled with `-fno-devirtualize` on GCC. GCC can otherwise speculatively
+// devirtualise even an opaque call: it emits a vptr guard and an inlined direct
+// path, which is not a generic vtable dispatch. The ABIX side uses the same
+// contract declarations a real provider would: `InterfaceId` and method
+// signatures come from `interface_id` and `method_signature`, never from a
+// vtable address.
 // ============================================================
 #include <benchmark/benchmark.h>
 
@@ -33,17 +35,18 @@ namespace bench_interface_vtable {
 
 struct Base {
     virtual ~Base() = default;
-    virtual int32_t calc(int32_t value) const noexcept = 0;
+    virtual int32_t area() const noexcept = 0;
 };
 
 struct Derived final : Base {
-    int32_t base = 1;
-    int32_t calc(int32_t value) const noexcept override { return base + value; }
-    int32_t direct(int32_t value) const noexcept { return base + value; }
+    int32_t width = 3;
+    int32_t height = 4;
+    int32_t area() const noexcept override { return width * height; }
+    int32_t direct() const noexcept { return width * height; }
 };
 
 struct Unrelated final : Base {
-    int32_t calc(int32_t value) const noexcept override { return value; }
+    int32_t area() const noexcept override { return 0; }
 };
 
 Derived g_derived;
@@ -136,7 +139,7 @@ Fixture *fixture_for(benchmark::State &state) {
 
 void BM_InterfaceVtable_native_direct(benchmark::State &state) {
     for (auto _ : state) {
-        int32_t result = opaque_derived().direct(41);
+        int32_t result = opaque_derived().direct();
         benchmark::DoNotOptimize(result);
     }
 }
@@ -145,7 +148,7 @@ BENCHMARK(BM_InterfaceVtable_native_direct)->Name("BM_InterfaceVtable/native_dir
 void BM_InterfaceVtable_native_virtual(benchmark::State &state) {
     Base *base = opaque_base();
     for (auto _ : state) {
-        int32_t result = base->calc(41);
+        int32_t result = base->area();
         benchmark::DoNotOptimize(result);
     }
 }

@@ -298,21 +298,24 @@ int main() {
 
 ### 性能与体积
 
-以下测量使用同一个方法 `int32_t area() const noexcept`、非拥有 proxy，并对所有机制使用同一个 box 对象。ABIX 以 `C++17` 构建，ngcpp/proxy 以 `C++20` 构建；原生虚调用通过 `noinline` 的不透明基类指针进入，避免被编译器去虚化。
+以下测量使用同一个方法 `int32_t area() const noexcept`、非拥有 proxy，并对所有机制使用同一个 box 对象。ABIX 以 `C++17` 构建，ngcpp/proxy 以 `C++20` 构建。
+
+原生虚调用基线使用 `-fno-devirtualize` 编译。这点很关键：GCC 16 在 `-O3` 下即使通过 `noinline` 不透明访问器，也可能做投机去虚化，生成 vptr guard 后内联 `Derived::area`；测到的是约 0.27 ns 的带守卫直接调用，而不是通用 vtable 分派。真正的间接 vtable 路径约为 0.75 ns。
 
 **调用延迟**（x86-64，GCC 16.2.1，`-O3 -DNDEBUG`，Google Benchmark，约 2 秒，CPU scaling 开启；关注趋势而非绝对纳秒）：
 
-| 机制                         | ns/次 | 相对原生虚调用 |
-| ---------------------------- | ----: | -------------: |
-| 原生直接调用                 |  0.19 |           0.7x |
-| 原生虚调用                   |  0.26 |           1.0x |
-| ABIX 直接 adapter            |  0.19 |           0.7x |
-| ABIX `InterfaceRef` 缓存入口 |  0.76 |           2.9x |
-| ABIX `UniqueInterfaceProxy`  |  0.76 |           2.9x |
-| ABIX `SharedInterfaceProxy`  |  0.76 |           2.9x |
-| ngcpp/proxy `pro::proxy`     |  0.76 |           2.9x |
+| 机制                                   | ns/次 | 相对真实原生虚调用 |
+| -------------------------------------- | ----: | -----------------: |
+| 原生直接调用                           |  0.19 |              0.25x |
+| 原生虚调用（真实间接）                 |  0.75 |               1.0x |
+| 原生虚调用（编译器去虚化）             |  0.27 |              0.36x |
+| ABIX 直接 adapter                      |  0.19 |              0.25x |
+| ABIX `InterfaceRef` 缓存入口           |  0.75 |               1.0x |
+| ABIX `UniqueInterfaceProxy`            |  0.75 |               1.0x |
+| ABIX `SharedInterfaceProxy`            |  0.75 |               1.0x |
+| ngcpp/proxy `pro::proxy`               |  0.75 |               1.0x |
 
-在这个微基准里，几种非侵入式 proxy 的成本基本重合：主导因素是间接调用和对象句柄；shared 模式多出的一次表加载没有单独显现。这是不接管对象模型（注册、类型擦除、跨 DLL/跨语言契约）的代价，而不是每次调用都查 registry。
+在这个微基准里，非侵入式 proxy 与真实 vtable 分派基本同速。ABIX 的 unique/shared 布局与 ngcpp/proxy 都收敛在相同成本；主导因素是间接调用，shared 模式多出的一次表加载没有单独显现。剩下的差距来自**直接/去虚化**调用：编译器能证明动态类型时可以完全消除分派。ABIX/proxy 无法做到这一点，因为实现是运行期选择（或在编译期被擦除）。这是不接管对象模型（注册、类型擦除、跨 DLL/跨语言契约）的代价，而不是每次调用都查 registry。
 
 **体积**（64 位；`N` = 接口方法数）：
 
