@@ -55,6 +55,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <utility>
+
 #include "ABIX/Interface/Ref.h"
 
 namespace skl::abix::poly {
@@ -125,7 +127,7 @@ protected:
     template<typename Fn, typename... Args>
     decltype(auto) call(uint32_t slot, Args &&...args) const noexcept {
         const Fn fn = _ref.template method<Fn>(slot);
-        return fn(_ref.object(), static_cast<Args &&>(args)...);
+        return fn(_ref.object(), std::forward<Args>(args)...);
     }
 
     // Call a slot's adapter with an explicit status: an unbound slot reports
@@ -135,7 +137,7 @@ protected:
     InterfaceStatus call_checked(R &out, uint32_t slot, Args &&...args) const noexcept {
         const Fn fn = _ref.template method<Fn>(slot);
         if (fn == nullptr) return InterfaceStatus::method_not_found;
-        out = fn(_ref.object(), static_cast<Args &&>(args)...);
+        out = fn(_ref.object(), std::forward<Args>(args)...);
         return InterfaceStatus::ok;
     }
 
