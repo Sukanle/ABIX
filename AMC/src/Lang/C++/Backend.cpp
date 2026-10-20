@@ -122,16 +122,20 @@ int backend(const char *input, const char *output) {
         "#include <stddef.h>\n"
         "#include <stdint.h>\n"
         "#include <string.h>\n");
-    // The interface contract constants below name `InterfaceId`, so pull in the
-    // interface layer only when the module actually declares interfaces; the
-    // proxy API is added only when a proxy class is actually generated.
+    // The interface contract constants and typed signature table below name
+    // `InterfaceId` / `mics::utils::array`, so pull in those headers only when the
+    // module actually declares interfaces; the proxy API is added only when a
+    // proxy class is actually generated.
     bool any_interface_proxy = false;
     for (const auto &record : m.interfaces)
         if (interface_has_handle_methods(m, record)) {
             any_interface_proxy = true;
             break;
         }
-    if (!m.interfaces.empty()) o.print("#include <ABIX/Interface/Contract.h>\n");
+    if (!m.interfaces.empty()) {
+        o.print("#include <mics/utils/array.h>\n");
+        o.print("#include <ABIX/Interface/Contract.h>\n");
+    }
     if (any_interface_proxy) o.print("#include <ABIX/Interface/Proxy.h>\n");
     o.print(
         "namespace amc_generated {{\n"
@@ -277,10 +281,12 @@ int backend(const char *input, const char *output) {
 
     // Interface contracts (`[[interface]]` / `[[implements]]`): a named, versioned
     // contract, not a private vtable. For each contract the projection emits its
-    // identity, version, slot enum and adapter typedefs, plus a `Traits` struct and
-    // (when every method takes the object handle first) a proxy class derived from
-    // `InterfaceProxy<Traits>` — so a consumer can bind, verify and call through a
-    // header-declared interface without touching the provider's layout.
+    // identity, version, adapter typedefs and a `Traits` struct with a typed
+    // zero-based slot table (`Traits::slots.<method>`) plus the expected
+    // signatures. When every method takes the object handle first it also emits
+    // a proxy class derived from `InterfaceProxy<Traits>` — so a consumer can
+    // bind, verify and call through a header-declared interface without touching
+    // the provider's layout.
     for (const auto &record : m.interfaces) {
         const std::string name = cpp_name(record.name);
         // Methods addressed by slot, so a non-contiguous table is still emitted
@@ -291,16 +297,10 @@ int backend(const char *input, const char *output) {
             if (method.slot >= by_slot.size()) by_slot.resize(method.slot + 1, nullptr);
             by_slot[method.slot] = &method;
         }
-        const uint32_t slots = static_cast<uint32_t>(by_slot.size());
-
         o.print("\n// Interface contract `{}` (version {}).\n", record.name, record.version);
         o.print("inline constexpr ::skl::abix::poly::InterfaceId k{}Interface{{{}, {}}};\n", name,
             hex_u64(record.id.lo), hex_u64(record.id.hi));
         o.print("inline constexpr uint32_t k{}Version = {};\n", name, record.version);
-        o.print("enum class {}Slot : uint32_t {{\n", name);
-        for (const auto *method : by_slot)
-            if (method != nullptr) o.print("    {} = {},\n", cpp_name(method->name), method->slot);
-        o.print("}};\n");
         for (const auto *method : by_slot) {
             if (method == nullptr) continue;
             std::string params;
@@ -312,24 +312,39 @@ int backend(const char *input, const char *output) {
                 params);
         }
 
-        // Traits: the interface difference a proxy needs.
+        // Traits: the contract facts a proxy needs. Signatures double as the slot
+        // capacity, so a sparse table keeps a zero hash for every unbound slot.
         o.print("struct {}Traits {{\n", name);
-        o.print("    static constexpr ::skl::abix::poly::InterfaceId id = k{}Interface;\n", name);
-        o.print("    static constexpr uint32_t version = k{}Version;\n", name);
-        o.print("    static constexpr size_t slots = {};\n", slots);
-        for (const auto *method : by_slot)
-            if (method != nullptr)
-                o.print("    static constexpr uint32_t {}_slot = {};\n", cpp_name(method->name), method->slot);
-        o.print("    static constexpr ::skl::abix::poly::InterfaceMethodHash signatures[{}] = {{\n",
-            slots == 0 ? 1 : slots);
-        for (const auto *method : by_slot) {
-            if (method == nullptr) {
-                o.print("        {{{}, {}}},\n", "0ULL", "0ULL");
-                continue;
+        if (by_slot.empty()) {
+            o.print(
+                "    static constexpr ::skl::mics::utils::array<::skl::abix::poly::InterfaceMethodHash, 0> "
+                "signatures = {{}};\n");
+        } else {
+            o.print("    static constexpr ::skl::mics::utils::array signatures = {{\n");
+            for (const auto *method : by_slot) {
+                if (method == nullptr)
+                    o.print("        ::skl::abix::poly::InterfaceMethodHash{{0ULL, 0ULL}},\n");
+                else
+                    o.print("        ::skl::abix::poly::InterfaceMethodHash{{{}, {}}},\n",
+                        hex_u64(method->signature.lo), hex_u64(method->signature.hi));
             }
-            o.print("        {{{}, {}}},\n", hex_u64(method->signature.lo), hex_u64(method->signature.hi));
+            o.print("    }};\n");
         }
-        o.print("    }};\n}};\n");
+        o.print("    static constexpr uint32_t version = k{}Version;\n", name);
+        o.print("    static constexpr ::skl::abix::poly::InterfaceId id = k{}Interface;\n", name);
+        o.print("    struct alignas(8) Slots {{\n");
+        for (size_t slot = 0; slot < by_slot.size(); ++slot) {
+            const auto *method = by_slot[slot];
+            if (method != nullptr)
+                o.print("        uint32_t {};\n", cpp_name(method->name));
+            else
+                o.print("        uint32_t reserved_slot_{};\n", slot);
+        }
+        o.print("    }};\n");
+        o.print(
+            "    alignas(8) static constexpr Slots slots = "
+            "::skl::mics::utils::make_iota<Slots, signatures.size(), 0>();\n");
+        o.print("}};\n");
 
         if (!interface_has_handle_methods(m, record)) {
             o.print("// No proxy class: a method does not take the object handle as its first parameter.\n");
@@ -356,11 +371,13 @@ int backend(const char *input, const char *output) {
                 forward += arg;
             }
             if (forward.empty())
-                o.print("    {} {}({}) const noexcept {{ return this->template call<{}_{}_fn>({}Traits::{}_slot); }}\n",
+                o.print(
+                    "    {} {}({}) const noexcept {{ return this->template call<{}_{}_fn>({}Traits::slots.{}); }}\n",
                     ret, mname, decl, name, mname, name, mname);
             else
                 o.print(
-                    "    {} {}({}) const noexcept {{ return this->template call<{}_{}_fn>({}Traits::{}_slot, {}); }}\n",
+                    "    {} {}({}) const noexcept {{ return this->template "
+                    "call<{}_{}_fn>({}Traits::slots.{}, {}); }}\n",
                     ret, mname, decl, name, mname, name, mname, forward);
         }
         o.print("}};\n");

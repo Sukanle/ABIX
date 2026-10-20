@@ -224,20 +224,22 @@ int counter_area(const void *self) { return static_cast<const Counter *>(self)->
 struct TestShapeTraits {
     static constexpr InterfaceId id{0x71, 0x00};
     static constexpr uint32_t version = 1;
-    static constexpr size_t slots = 1;
-    static constexpr uint32_t area_slot = 0;
-    static constexpr InterfaceMethodHash signatures[] = {
+    static constexpr skl::mics::utils::array<InterfaceMethodHash, 1> signatures = {
         {0x1111, 0x2222}
     };
+    struct alignas(8) Slots {
+        uint32_t area;
+    };
+    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
 };
 class TestShape : public InterfaceProxy<TestShapeTraits> {
     using Base = InterfaceProxy<TestShapeTraits>;
 
 public:
     using Base::Base;
-    int area() const noexcept { return this->template call<int (*)(const void *)>(TestShapeTraits::area_slot); }
+    int area() const noexcept { return this->template call<int (*)(const void *)>(TestShapeTraits::slots.area); }
     InterfaceStatus area(int &out) const noexcept {
-        return this->template call_checked<int (*)(const void *)>(out, TestShapeTraits::area_slot);
+        return this->template call_checked<int (*)(const void *)>(out, TestShapeTraits::slots.area);
     }
 };
 
@@ -292,12 +294,14 @@ TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter 
 TEST_CASE("version helper macros pack and extract a semantic version") {
     constexpr unsigned int version = SKL_ABIX_VERSION_NUMBER(1, 2, 3);
     STATIC_REQUIRE(version == 10'200'003U);
+    uint32_t major, minor, patch;
     SKL_ABIX_VERSION_EXTRACT(version, major, minor, patch);
     REQUIRE(major == 1);
     REQUIRE(minor == 2);
     REQUIRE(patch == 3);
 
     constexpr unsigned int largest = SKL_ABIX_VERSION_NUMBER(99, 99, 99'999);
+    uint32_t largest_major, largest_minor, largest_patch;
     SKL_ABIX_VERSION_EXTRACT(largest, largest_major, largest_minor, largest_patch);
     REQUIRE(largest_major == 99);
     REQUIRE(largest_minor == 99);

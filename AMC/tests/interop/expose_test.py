@@ -293,7 +293,8 @@ def main() -> int:
                 '#include "shapes.hpp"\n'
                 '#include "shapes_iface.hpp"\n'
                 'int main() {\n'
-                '    static_assert(amc_generated::ShapeTraits::slots == 1);\n'
+                '    static_assert(amc_generated::ShapeTraits::slots.shape_area == 0);\n'
+                '    static_assert(amc_generated::ShapeTraits::signatures.size() == 1);\n'
                 '    return amc_generated::ShapeTraits::version == 1 ? 0 : 1;\n'
                 '}\n')
             proxy_bin = os.path.join(work, exe_name("shapes_proxy"))

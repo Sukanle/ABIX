@@ -21,21 +21,31 @@
  * no compiler vtable is used. `InterfaceProxy<Traits>` holds the shared
  * machinery (binding, status, object access, cached calls); a per-interface
  * class adds only its methods, and `Traits` supplies the contract's identity,
- * version, slot count and (optionally) the expected method signatures.
+ * version, expected method signatures and typed slot table.
  *
+ *   constexpr auto i32 = model::canonical_type_id("prim:i32");
  *   struct ShapeTraits {
- *       static constexpr InterfaceId id{0x91, 0x00};   // computed by AMC
+ *       static constexpr mics::utils::array signatures = {
+ *             method_signature("area", i32, mics::utils::array{}),
+ *             ...
+ *        };
  *       static constexpr uint32_t version = 1;
- *       static constexpr size_t slots = 1;             // slot capacity
- *       static constexpr uint32_t area_slot = 0;
+ *       static constexpr InterfaceId id = interface_id("Shape", version, signatures);
+ *       alignas(8) struct Slots {
+ *             uint32_t area;
+ *             ...
+ *        };
+ *       // Slots are zero-based.
+ *       alignas(8) static constexpr Slots slots =
+ *           mics::utils::make_iota<Slots, signatures.size(), 0>();
  *   };
  *   class Shape : public InterfaceProxy<ShapeTraits> {
  *       using Base = InterfaceProxy<ShapeTraits>;
  *   public:
  *       using Base::Base;
- *       int32_t area() const noexcept { return call<ShapeTraits::area_fn>(ShapeTraits::area_slot); }
+ *       int32_t area() const noexcept { return this->template call<int(*)(const void*)>(ShapeTraits::slots.area); }
  *       InterfaceStatus area(int32_t& out) const noexcept {
- *           return call_checked<ShapeTraits::area_fn>(out, ShapeTraits::area_slot);
+ *           return this->template call_checked<int(*)(const void*)>(out, ShapeTraits::slots.area);
  *       }
  *   };
  */
@@ -45,29 +55,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <type_traits>
-#include <utility>
-
 #include "ABIX/Interface/Ref.h"
 
 namespace skl::abix::poly {
 
-// `Traits::signatures` is optional: when present, `bind()` verifies every slot's
-// recorded method signature against it before the proxy becomes valid.
-template<typename Traits, typename = void>
-struct has_method_signatures : std::false_type {};
-template<typename Traits>
-struct has_method_signatures<Traits, std::void_t<decltype(Traits::signatures)>> : std::true_type {};
-
 // Shared, interface-agnostic proxy machinery. Traits must provide:
-//   static constexpr InterfaceId id;      // the contract identity
-//   static constexpr uint32_t version;    // the contract version
-//   static constexpr size_t slots;        // slot capacity (>= highest slot + 1)
-// and may provide:
-//   static constexpr InterfaceMethodHash signatures[slots];  // expected per slot
+//   static constexpr InterfaceId id;                  // the contract identity
+//   static constexpr uint32_t version;                // the contract version
+//   static constexpr mics::utils::array signatures;   // expected per slot
+// and a typed `Slots` table (`Traits::slots.<method>`) whose fields name the
+// slots used by the proxy's methods. `signatures.size()` is the slot capacity:
+// one signature is required for every slot, including sparse zero placeholders.
 template<typename Traits>
 class InterfaceProxy {
 public:
+    static constexpr size_t slot_capacity = Traits::signatures.size();
+
     InterfaceProxy() noexcept = default;
 
     // Bind through an in-process registry. The status is retained; use
@@ -102,14 +105,12 @@ public:
     uint32_t version() const noexcept { return _ref.version(); }
     uint32_t method_count() const noexcept { return _ref.method_count(); }
 
-    // Verify one slot against the contract's expected signature (when Traits
-    // provides one); without a declared signature this only checks that the slot
-    // is bound.
+    // Verify one slot against the contract's expected signature. A zero hash in
+    // `Traits::signatures` means "do not check this slot"; an out-of-range slot
+    // reports `method_not_found`.
     InterfaceStatus verify(uint32_t slot) const noexcept {
-        if constexpr (has_method_signatures<Traits>::value)
-            return slot < Traits::slots ? _ref.verify(slot, Traits::signatures[slot])
-                                        : InterfaceStatus::method_not_found;
-        return _ref.verify(slot, InterfaceMethodHash{});
+        if (slot >= slot_capacity) return InterfaceStatus::method_not_found;
+        return _ref.verify(slot, Traits::signatures[slot]);
     }
 
 protected:
@@ -143,17 +144,15 @@ private:
     // hash means "do not check this slot".
     InterfaceStatus finish() noexcept {
         if (_status != InterfaceStatus::ok) return _status;
-        if constexpr (has_method_signatures<Traits>::value) {
-            for (uint32_t slot = 0; slot < Traits::slots; ++slot) {
-                if (Traits::signatures[slot] == InterfaceMethodHash{}) continue;
-                const InterfaceStatus status = _ref.verify(slot, Traits::signatures[slot]);
-                if (status != InterfaceStatus::ok) return _status = status;
-            }
+        for (uint32_t slot = 0; slot < slot_capacity; ++slot) {
+            if (Traits::signatures[slot] == InterfaceMethodHash{}) continue;
+            const InterfaceStatus status = _ref.verify(slot, Traits::signatures[slot]);
+            if (status != InterfaceStatus::ok) return _status = status;
         }
         return _status;
     }
 
-    InterfaceRef<Traits::slots> _ref;
+    InterfaceRef<slot_capacity> _ref;
     InterfaceStatus _status = InterfaceStatus::interface_not_found;
 };
 

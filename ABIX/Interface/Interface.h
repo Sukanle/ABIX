@@ -25,6 +25,7 @@
 
 #include "ABIX/Interface/Contract.h"         // IWYU pragma: keep
 #include "ABIX/Interface/Discovery.h"        // IWYU pragma: keep
+#include "ABIX/Interface/Declaration.h"      // IWYU pragma: keep
 #include "ABIX/Interface/Lease.h"            // IWYU pragma: keep
 #include "ABIX/Interface/Module.h"           // IWYU pragma: keep
 #include "ABIX/Interface/ModuleRegistry.h"   // IWYU pragma: keep
@@ -32,6 +33,5 @@
 #include "ABIX/Interface/Proxy.h"            // IWYU pragma: keep
 #include "ABIX/Interface/Ref.h"              // IWYU pragma: keep
 #include "ABIX/Interface/Registry.h"         // IWYU pragma: keep
-#include "ABIX/Interface/Version.h"          // IWYU pragma: keep
 
 #endif   // SKL_ABIX_INTERFACE_H

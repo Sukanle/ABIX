@@ -114,16 +114,21 @@ def main() -> int:
               (result.stderr.strip() if result else "skipped (no artifact)")[:2000])
 
         # 3b. The same artifact projects to a C++ header. The interface contract
-        #     must surface its identity, version, slot enum and adapter typedefs,
-        #     so a consumer can declare `IVectorMath` without a private vtable.
+        #     must surface its identity, version, typed slot table and adapter
+        #     typedefs, so a consumer can declare `IVectorMath` without a private
+        #     vtable.
         cpp_header = os.path.join(work, "amc_generated.hpp")
         result = run([amc, "generate", artifact, "-l", "cpp", "-o", cpp_header]) if os.path.isfile(artifact) else None
         if result is not None and result.returncode == 0 and os.path.isfile(cpp_header):
             header = open(cpp_header, encoding="utf-8").read()
             check("kIVectorMathInterface" in header and "kIVectorMathVersion" in header,
                   "amc generate -l cpp emitted the interface identity")
-            check("enum class IVectorMathSlot" in header and "demo_add = 0" in header and "demo_scale = 1" in header,
-                  "amc generate -l cpp emitted the interface slot enum")
+            check("struct alignas(8) Slots" in header and "uint32_t demo_add;" in header
+                  and "uint32_t demo_scale;" in header,
+                  "amc generate -l cpp emitted the typed slot table")
+            check("alignas(8) static constexpr Slots slots" in header
+                  and "static constexpr ::skl::mics::utils::array signatures" in header,
+                  "amc generate -l cpp emitted the signature array and zero-based slot table")
             check("IVectorMath_demo_scale_fn" in header and "(*)(const struct DemoVec2*, double)" in header,
                   "amc generate -l cpp emitted the interface method typedefs")
         else:
