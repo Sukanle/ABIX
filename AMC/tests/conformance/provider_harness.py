@@ -129,6 +129,27 @@ class ProviderConformance:
             f"{os.path.basename(provider)} DESCRIBE agrees with the manifest",
         )
 
+    def test_protocol(self, artifact: str) -> None:
+        lang = self.case.language
+        provider = os.path.join(os.path.dirname(self.amc), exe_name(f"amc-{lang}"))
+        if not os.path.isfile(provider):
+            self.info(f"{provider} not found: skipping EVENT/RESULT protocol check")
+            return
+        output = os.path.join(self.work, "protocol.out")
+        ipc_input = (
+            '{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}\n'
+            '{"schema":"abix.plugin/1","id":2,"type":"PROJECT","input":"' + artifact.replace("\\", "/")
+            + '","output":"' + output.replace("\\", "/") + '"}\n'
+            '{"schema":"abix.plugin/1","id":3,"type":"DONE"}\n'
+        )
+        result = subprocess.run([provider, "--ipc"], input=ipc_input,
+                                capture_output=True, text=True)
+        self.check(result.returncode == 0
+                   and '"type":"EVENT"' in result.stdout
+                   and '"type":"RESULT"' in result.stdout
+                   and '"status":"ok"' in result.stdout,
+                   f"{os.path.basename(provider)} emits EVENT before a successful RESULT")
+
     def test_build_and_query(self) -> str:
         case = self.case
         build = os.path.join(self.work, "build")
@@ -204,6 +225,7 @@ class ProviderConformance:
         artifact = self.test_build_and_query()
         if os.path.isfile(artifact):
             self.test_generate(artifact)
+            self.test_protocol(artifact)
         if self.case.determinism:
             self.test_determinism()
         return self.finish()

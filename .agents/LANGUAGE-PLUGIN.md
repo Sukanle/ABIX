@@ -74,6 +74,10 @@ At build time the manifest is copied next to `amc` as
 2. `amc-providers.toml` next to the `amc` executable;
 3. `AMC_DEFAULT_PROVIDERS_FILE`, compiled in for source-tree development.
 
+`cmake --install` places `amc`, the language providers and
+`amc-providers.toml` in the same `bin` directory, so the compiled-in source-tree
+fallback is not needed after installation.
+
 `protocol = "jsonl-v1"` entries require an `executable`; `protocol = "direct"`
 entries are built-in backends (currently the Aue/Lua contract writer). The
 `executable` field also drives `amc-<language>` resolution, so a provider can

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(AbiCrossDllTests LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -410,6 +412,15 @@ if(AMC_BUILD)
             amc-core-test
             amc-e2e-test
             PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        # Install the driver, language providers and the manifest together: the
+        # manifest is resolved next to `amc`, so a split install would make
+        # `--list-languages` fail at run time.
+        install(
+            TARGETS amc amc-cpp amc-rust amc-zig amc-dump amc-mcp
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/AMC/providers.toml
+                DESTINATION ${CMAKE_INSTALL_BINDIR}
+                RENAME amc-providers.toml)
         # SKL_ABIX_KEEP_TEST_ARTIFACTS: run every suite with KEEP_ARTIFACTS=1 so
         # its temporary directory is retained and printed for inspection.
         if(SKL_ABIX_KEEP_TEST_ARTIFACTS AND BUILD_TESTING)

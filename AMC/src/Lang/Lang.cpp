@@ -416,6 +416,21 @@ void emit_result(
     emit(message);
 }
 
+void emit_event(long long id, const char *phase, const std::string &capability) {
+    amc::Json event = amc::Json::object();
+    event.set("kind", "progress");
+    event.set("phase", phase);
+    event.set("capability", capability);
+    event.set("message", fmt::format("{} {}", capability, phase));
+
+    amc::Json message = amc::Json::object();
+    message.set("schema", "abix.plugin/1");
+    message.set("id", amc::Json(id));
+    message.set("type", "EVENT");
+    message.set("event", std::move(event));
+    emit(message);
+}
+
 int run_capability(const Provider &provider, const std::string &name, const char *input, const char *output,
     std::string &diagnostics) {
     for (const auto &candidate : provider.capabilities) {
@@ -489,6 +504,7 @@ int ipc(const Provider &provider) {
             const std::string input = input_node->as_string();
             const std::string output = output_node->as_string();
 
+            emit_event(id, "started", capability);
             std::string diagnostics;
             const int result = run_capability(provider, capability, input.c_str(), output.c_str(), diagnostics);
             if (result < 0) {
@@ -501,6 +517,7 @@ int ipc(const Provider &provider) {
                     fmt::format("capability `{}` failed with status {}", capability, result), diagnostics);
                 return result;
             }
+            emit_event(id, "finished", capability);
             emit_result(id, capability, output, diagnostics);
             continue;
         }
@@ -518,6 +535,7 @@ int ipc(const Provider &provider) {
             const std::string input = input_node->as_string();
             const std::string output = output_node->as_string();
 
+            emit_event(id, "started", "backend");
             std::string diagnostics;
             const int result = run_capability(provider, "backend", input.c_str(), output.c_str(), diagnostics);
             if (result < 0) {
@@ -530,6 +548,7 @@ int ipc(const Provider &provider) {
                     fmt::format("backend projection failed with status {}", result), diagnostics);
                 return result;
             }
+            emit_event(id, "finished", "backend");
             emit_result(id, "backend", output, diagnostics);
             continue;
         }

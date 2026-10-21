@@ -155,13 +155,13 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 - **功能** —— 完整跨语言闭环：构建原生 C-ABI 动态库（`demo_lib.cpp`），`amc build` → `.abix`，`amc generate -l rust` 与 `-l zig`，然后编译并**运行** Rust 与 Zig 消费端， 它们链接原生库并经生成的绑定调用。
 - **目的** —— 证明 `.abix` 是可复用的 IR，且投影是可用的原生绑定，而非普通文本。
-- **预期现象** —— `interop: 13 passed, 0 failed`，消费端打印 `interop ok: ...` / `zig interop ok`。缺少 `rustc`/`clang++` 或平台不支持时打印 `[SKIP]`。
+- **预期现象** —— `interop: 16 passed, 0 failed`，消费端打印 `cpp interop ok` / `interop ok: ...` / `zig interop ok`。缺少 `rustc`/`clang++` 或平台不支持时打印 `[SKIP]`。
 
 ### G. Rust provider 一致性（`amc-rust-test`）
 
 - **功能** —— Rust 前端（源码级 `#[repr(C)]` / `extern "C"` 提取）与后端（ABIX → Rust `repr(C)` 投影）：广告的 JSONL 协议、产物生成、投影编译，以及**确定性**（相同输入 → 字节一致产物）。
 - **目的** —— 语言插件必须可复现且自洽。
-- **预期现象** —— `17 passed, 0 failed`。
+- **预期现象** —— `18 passed, 0 failed`。
 
 ### H. cmdly interop（`amc-cmdly-interop-test`）
 

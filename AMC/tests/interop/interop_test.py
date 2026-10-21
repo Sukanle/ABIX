@@ -44,6 +44,8 @@ def main() -> int:
         return 2
 
     bin_dir = os.path.abspath(argv[0])
+    source_root = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.abspath(
+        os.path.join(SCRIPT_DIR, "..", "..", ".."))
     amc = os.path.join(bin_dir, exe_name("amc"))
 
     cxx = os.environ.get("CXX") or shutil.which("clang++") or shutil.which("c++")
@@ -158,6 +160,28 @@ def main() -> int:
                   (result.stderr.strip() + result.stdout.strip())[:2000])
         else:
             check(False, "Rust consumer ran the native library", "consumer was not built")
+
+        # 5b. The same artifact also projects to C++ and compiles against the
+        #     generated header. This makes the interop suite exercise all three
+        #     consumers against the same native library.
+        cpp_consumer_src = os.path.join(SCRIPT_DIR, "cpp_consumer.cpp")
+        cpp_consumer = os.path.join(work, exe_name("cpp_consumer"))
+        result = run([cxx, "-std=c++17", "-O2", cpp_consumer_src,
+                      "-I", work, "-I", source_root, "-L", work, "-linterop_demo",
+                      "-o", cpp_consumer])
+        check(result.returncode == 0, "C++ consumer compiled against the projection",
+              result.stderr.strip()[:2000])
+
+        if os.path.isfile(cpp_consumer):
+            env = dict(os.environ)
+            if load_env:
+                env[load_env] = work + os.pathsep + env.get(load_env, "")
+            result = run([cpp_consumer], env=env)
+            check(result.returncode == 0 and "cpp interop ok" in result.stdout,
+                  "C++ consumer ran the native library",
+                  (result.stderr.strip() + result.stdout.strip())[:2000])
+        else:
+            check(False, "C++ consumer ran the native library", "consumer was not built")
 
         # 6-8. The same artifact drives a second language backend (Zig),
         #      validating that `.abix` is a reusable IR rather than a

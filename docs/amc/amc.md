@@ -190,7 +190,8 @@ The list and descriptions come from `AMC/providers.toml`, copied next to the
 built `amc` as `amc-providers.toml`. `AMC_PROVIDERS_FILE` overrides the
 manifest path. Each entry declares its language, executable, roles, protocol
 and optional feature set; `AMC_DEFAULT_PROVIDERS_FILE` is the source-tree
-fallback compiled into the driver.
+fallback compiled into the driver. `cmake --install` keeps `amc`, the providers
+and the manifest together in the install `bin` directory.
 
 Every `amc-<language>` executable is a standalone provider; `amc` dispatches to
 the one named by the manifest, the `.abic.toml` `language` field, or `-l` for

@@ -155,13 +155,13 @@ A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AM
 
 - **Functionality** — the full cross-language loop: build a native C-ABI shared library (`demo_lib.cpp`), `amc build` → `.abix`, `amc generate -l rust` and `-l zig`, then compile and **run** a Rust consumer and a Zig consumer that link the native library and call it through the generated bindings.
 - **Purpose** — the proof that `.abix` is a reusable IR and that the projections are usable native bindings, not just text.
-- **Expected result** — `interop: 13 passed, 0 failed`, with consumers printing `interop ok: ...` / `zig interop ok`. It prints `[SKIP]` if `rustc`/`clang++` are missing or the platform is unsupported.
+- **Expected result** — `interop: 16 passed, 0 failed`, with consumers printing `cpp interop ok` / `interop ok: ...` / `zig interop ok`. It prints `[SKIP]` if `rustc`/`clang++` are missing or the platform is unsupported.
 
 ### G. Rust provider conformance (`amc-rust-test`)
 
 - **Functionality** — the Rust frontend (source-level `#[repr(C)]` / `extern "C"` extraction) and backend (ABIX → Rust `repr(C)` projection): advertised JSONL protocol, artifact production, projection compilation, and **determinism** (identical inputs → byte-identical artifacts).
 - **Purpose** — a language plugin must be reproducible and self-consistent.
-- **Expected result** — `17 passed, 0 failed`.
+- **Expected result** — `18 passed, 0 failed`.
 
 ### H. cmdly interop (`amc-cmdly-interop-test`)
 
