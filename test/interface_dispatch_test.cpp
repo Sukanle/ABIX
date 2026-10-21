@@ -409,6 +409,40 @@ TEST_CASE("storage-first declaration macro selects the requested proxy layout") 
     static_assert(sizeof(BothStorage) > sizeof(SharedBothStorage), "both generates distinct proxy layouts");
 }
 
+#define STATIC_SHAPE_METHODS(X)       \
+    X(value, int32_t, member_i32, {}) \
+    X(plain, int32_t, member_i32, {})
+
+SKL_ABIX_INTERFACE_DECLARE(UNIQUE, StaticShape, STATIC_SHAPE_METHODS, 1);
+
+namespace {
+
+struct StaticProvider {
+    static int32_t value() noexcept { return 7; }
+    static int32_t plain() { return 8; }
+};
+
+constexpr TypeId static_provider_id{0x41, 0x42};
+
+}   // namespace
+
+TEST_CASE("static member functions can be adapted to an interface entry") {
+    const InterfaceMethod methods[] = {
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(StaticShapeTraits, value, &StaticProvider::value),
+        SKL_ABIX_INTERFACE_MEMBER_ENTRY(StaticShapeTraits, plain, &StaticProvider::plain),
+    };
+
+    InterfaceRegistry<4> registry;
+    REQUIRE(registry.add({StaticShapeTraits::id, static_provider_id, methods, 2, StaticShapeTraits::version, 0})
+            == InterfaceStatus::ok);
+
+    int object = 0;   // static members ignore the handle, but binding still needs an object
+    StaticShape shape(registry, &object, static_provider_id);
+    REQUIRE(shape.valid());
+    REQUIRE(shape.value() == 7);
+    REQUIRE(shape.plain() == 8);
+}
+
 TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter lists") {
     constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
     constexpr auto v = skl::abix::model::canonical_type_id("prim:void");

@@ -1680,6 +1680,15 @@ int32_t invoke(const void *self, int32_t width, int32_t height);
 规则与限制：
 
 - 支持 `const` / 非 `const` 成员函数，以及它们的 `noexcept` 版本。实现使用单一 `noexcept(Noex)` 特化，避免 Clang 把 `const` 与 `const noexcept` 判成歧义偏特化，因此不需要移除成员上的 `noexcept`。
+- 除实例成员外，也支持静态成员函数。静态成员没有隐式对象，生成的 adapter 会接收接口句柄但忽略它：
+
+  ```cpp
+  struct StaticBox { static int32_t area() noexcept; };
+  SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, area, &StaticBox::area)
+  ```
+
+  如果静态函数本身首参就是对象句柄，请直接使用 `interface_entry(&StaticBox::area)`。
+
 - 非 `const` 成员函数会从 `const void*` 句柄内部 `const_cast` 回 `T*`；`const` 成员函数保持 `const T*`。
 - 适配器固定使用 `const void*` 首参，正好匹配 `SKL_ABIX_INTERFACE_DECLARE` 生成的 proxy。若手写 proxy 的首参是 `void*`，请手写 wrapper。
 - 不处理 `volatile`、引用限定成员（`&` / `&&`）以及重载。重载需要显式成员指针转换，并把整个表达式用括号包住：

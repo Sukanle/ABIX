@@ -110,11 +110,12 @@
  *   };
  *
  * `member_adapter<Member>::invoke` takes the const object handle first and
- * forwards the member's own parameters. It supports const/non-const and
- * noexcept members; the exception specification is a single `bool Noex`
- * parameter so Clang does not see `const` and `const noexcept` as ambiguous
- * partial specializations. Volatile, ref-qualified and overloaded members need
- * an explicit member-pointer expression or a hand-written wrapper.
+ * forwards the member's own parameters. It supports const/non-const, noexcept
+ * and static members; a static member ignores the handle. The exception
+ * specification is a single `bool Noex` parameter so Clang does not see `const`
+ * and `const noexcept` as ambiguous partial specializations. Volatile,
+ * ref-qualified and overloaded members need an explicit member-pointer
+ * expression or a hand-written wrapper.
  */
 #ifndef SKL_ABIX_INTERFACE_DECLARATION_H
 #define SKL_ABIX_INTERFACE_DECLARATION_H
@@ -156,6 +157,21 @@ struct member_adapter<Member> {
     }
 };
 
+// Static member functions (and ordinary function pointers) have no implicit
+// object. The interface adapter still accepts the object handle for a uniform
+// calling convention, then ignores it and forwards the contract parameters.
+// If the function itself already expects the handle, use interface_entry()
+// directly instead of this adapter.
+template<typename R, typename... Args, bool Noex, R (*Member)(Args...) noexcept(Noex)>
+struct member_adapter<Member> {
+    using function_type = R (*)(const void *, Args...);
+
+    static R invoke(const void *self, Args... args) {
+        (void)self;
+        return Member(std::forward<Args>(args)...);
+    }
+};
+
 }   // namespace skl::abix::poly
 
 // Build one InterfaceMethod entry from an existing member function. `slot_name`
@@ -169,7 +185,7 @@ struct member_adapter<Member> {
 // For overloaded members, pass an explicit cast expression. The expression may
 // need surrounding parentheses when its type contains top-level commas.
 #define SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot_name, member)                              \
-    {Traits::signatures[Traits::slots.slot_name],                                               \
+    InterfaceMethod{Traits::signatures[Traits::slots.slot_name],                                \
         ::skl::abix::poly::interface_entry(&::skl::abix::poly::member_adapter<member>::invoke), \
         Traits::slots.slot_name, 0}
 
