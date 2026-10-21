@@ -22,7 +22,7 @@
 
 #include <llvm/ADT/APFloat.h>
 
-#include <fmt/format.h>
+#include <fmt/base.h>
 
 #include <cctype>
 #include <filesystem>
