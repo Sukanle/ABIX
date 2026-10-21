@@ -190,32 +190,33 @@ struct member_adapter<Member> {
         ::skl::abix::poly::interface_entry(&::skl::abix::poly::member_adapter<member>::invoke), \
         Traits::slots.slot_name, 0}
 
-/* Build a named InterfaceMethod table from a member-entry list. Each list entry
- * invokes its argument with the arguments MEMBER_ENTRY expects:
+/* Build a named InterfaceMethod table from a member-entry list. The first
+ * argument names the interface, so `Shape` produces `ShapeMethods`. Each list
+ * entry invokes its argument with the arguments MEMBER_ENTRY expects:
  *
  *   #define BOX_METHODS(X)                   \
  *       X(ShapeTraits, area, &Box::area)     \
  *       X(ShapeTraits, resize, &Box::resize)
  *
- *   SKL_ABIX_INTERFACE_MEMBER_TABLE(boxMethods, BOX_METHODS);
+ *   SKL_ABIX_INTERFACE_MEMBER_TABLE(Shape, BOX_METHODS);
  *
  * The table is a `mics::utils::array<InterfaceMethod, N>` with static storage
  * duration, so its `data()` / `size()` can feed an InterfaceImplementation.
  */
 #define SKL_ABIX_INTERFACE_MEMBER_ENTRY_ITEM(...) SKL_ABIX_INTERFACE_MEMBER_ENTRY(__VA_ARGS__),
-#define SKL_ABIX_INTERFACE_MEMBER_TABLE(name, list) \
-    const auto name = skl::mics::utils::array{list(SKL_ABIX_INTERFACE_MEMBER_ENTRY_ITEM)};
+#define SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list) \
+    const auto interface##Methods = skl::mics::utils::array{list(SKL_ABIX_INTERFACE_MEMBER_ENTRY_ITEM)};
 
-// Build one InterfaceImplementation record from a member table. The arguments
-// are token prefixes: `traits` names `traits##Traits`, `type` names
-// `type##Type` (a model::TypeId) and `methods` names `methods##Methods`:
+// Build one InterfaceImplementation record from a member table. `interface`
+// names `interface##Traits` and `interface##Methods`; `type` is the concrete
+// type's model::TypeId expression:
 //
-//   registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, Box, box, 0));
+//   registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, box_id, 0));
 //
 // `flags` is the reserved InterfaceImplementation field.
-#define SKL_ABIX_INTERFACE_IMPLEMENTATION(traits, type, methods, flags)                        \
-    {traits##Traits::id, type##Type, std::data(methods##Methods), std::size(methods##Methods), \
-        traits##Traits::version, flags}
+#define SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)                               \
+    {interface##Traits::id, type, std::data(interface##Methods), std::size(interface##Methods), \
+        interface##Traits::version, flags}
 
 // Pack a semantic version into one unsigned integer:
 //   major * 10'000'000 + minor * 100'000 + patch

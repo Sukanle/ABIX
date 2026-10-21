@@ -1678,16 +1678,16 @@ const int32_t resized = shape.resize(800, 600);   // Box::resize()
     X(ShapeTraits, area, &Box::area)     \
     X(ShapeTraits, resize, &Box::resize)
 
-SKL_ABIX_INTERFACE_MEMBER_TABLE(boxMethods, BOX_METHODS);
+SKL_ABIX_INTERFACE_MEMBER_TABLE(Shape, BOX_METHODS);
 
-constexpr TypeId BoxType = box_id;
-registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, Box, box, 0));
+registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, box_id, 0));
 ```
 
-`SKL_ABIX_INTERFACE_MEMBER_TABLE(name, list)` 把列表展开为具名的
+`SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` 把列表展开为具名的
+`interface##Methods`（此处为 `ShapeMethods`），类型是
 `mics::utils::array<InterfaceMethod, N>`。`SKL_ABIX_INTERFACE_IMPLEMENTATION`
-接收 token 前缀并拼接 `Traits`、`Type` 和 `Methods`，因此示例实际读取的是
-`ShapeTraits::id`、`BoxType`、`boxMethods` 和 `ShapeTraits::version`。
+组合 `interface##Traits`、该表和具体类型的 `TypeId` 表达式，因此示例实际读取的是
+`ShapeTraits::id`、`box_id`、`ShapeMethods` 和 `ShapeTraits::version`。
 
 生成的适配器函数形状是：
 
@@ -1876,8 +1876,8 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 | `SKL_ABIX_INTERFACE_SLOTS(list)`                            | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()`                                             |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式                                                            |
 | `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | 生成一条 `InterfaceMethod`，用 `member_adapter<member>::invoke` 适配现有成员函数                               |
-| `SKL_ABIX_INTERFACE_MEMBER_TABLE(name, list)`               | 由一组 `MEMBER_ENTRY` 条目生成具名的 `mics::utils::array<InterfaceMethod, N>`                                  |
-| `SKL_ABIX_INTERFACE_IMPLEMENTATION(traits, type, methods, flags)` | 由 `traits##Traits`、`type##Type`、`methods##Methods` 和 `flags` 生成 `InterfaceImplementation` 初始化器 |
+| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | 由一组 `MEMBER_ENTRY` 条目生成具名的 `interface##Methods`（`mics::utils::array<InterfaceMethod, N>`）          |
+| `SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)` | 由 `interface##Traits`、`interface##Methods`、类型 ID 和 flags 生成 `InterfaceImplementation` 初始化器        |
 | `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前         |
 | `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | 生成继承 `UniqueInterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前                 |
 | `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | 生成继承 `SharedInterfaceProxy<typeTraits>` 的 `Shared##type` 代理类；`...` 作为类型属性放在 `Shared##type` 前 |

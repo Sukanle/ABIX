@@ -309,21 +309,17 @@ SKL_ABIX_INTERFACE_DECLARE_BOTH(MemberShape, MEMBER_SHAPE_METHODS, 1);
 
 namespace {
 
-// The implementation sugar appends `Type` to the concrete type token.
-constexpr TypeId MemberBoxType = member_box_id;
-
 #define MEMBER_SHAPE_ENTRY_LIST(X)               \
     X(MemberShapeTraits, area, &MemberBox::area) \
     X(MemberShapeTraits, resize, &MemberBox::resize)
 
-SKL_ABIX_INTERFACE_MEMBER_TABLE(memberShapeMethods, MEMBER_SHAPE_ENTRY_LIST);
+SKL_ABIX_INTERFACE_MEMBER_TABLE(MemberShape, MEMBER_SHAPE_ENTRY_LIST);
 
 }   // namespace
 
 TEST_CASE("member table and implementation sugar build registry records") {
     InterfaceRegistry<4> registry;
-    REQUIRE(
-        registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(MemberShape, MemberBox, memberShape, 0)) == InterfaceStatus::ok);
+    REQUIRE(registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(MemberShape, member_box_id, 0)) == InterfaceStatus::ok);
 
     MemberBox box{3, 4};
     MemberShape shape(registry, &box, member_box_id);
