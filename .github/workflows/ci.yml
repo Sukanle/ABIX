@@ -1,5 +1,11 @@
 name: CI
 
+# Cross-platform build and test gate.
+#
+# Linux, macOS and Windows each build the Release tree, run the full CTest
+# suite, verify the language-provider manifest and install the driver next to
+# `amc-providers.toml`. The `CI status` job is the single required check: it
+# fails unless every platform job passed.
 on:
   push:
     branches:
@@ -55,10 +61,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build pkg-config binutils \
+            ninja-build pkg-config binutils python3 \
             clang llvm llvm-dev libclang-dev libclang-cpp-dev \
-            libfmt-dev libtomlplusplus-dev catch2 libbenchmark-dev liblua5.4-dev \
-            python3
+            libfmt-dev libtomlplusplus-dev catch2 libbenchmark-dev liblua5.4-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -68,8 +73,11 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
-      - name: Generate hotcache DLL source
-        run: python3 tools/gen_hotcache_dll.py
+      - name: Verify toolchains
+        run: |
+          python3 --version
+          rustc --version
+          zig version
 
       - name: Configure
         run: |
@@ -84,7 +92,7 @@ jobs:
       - name: Build
         run: cmake --build build/Release --parallel 2
 
-      - name: Verify required build outputs
+      - name: Verify build outputs and test registration
         run: |
           test -x build/Release/bin/amc
           test -x build/Release/bin/amc-cpp
@@ -97,7 +105,7 @@ jobs:
           ctest --test-dir build/Release -N | grep -q amc-example-test
 
       - name: Test
-        run: ctest --test-dir build/Release --output-on-failure
+        run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
       - name: Smoke language manifest
         run: |
@@ -154,8 +162,11 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
-      - name: Generate hotcache DLL source
-        run: python3 tools/gen_hotcache_dll.py
+      - name: Verify toolchains
+        run: |
+          python3 --version
+          rustc --version
+          zig version
 
       - name: Configure
         run: |
@@ -170,7 +181,7 @@ jobs:
       - name: Build
         run: cmake --build build/Release --parallel 2
 
-      - name: Verify required build outputs
+      - name: Verify build outputs and test registration
         run: |
           test -x build/Release/bin/amc
           test -x build/Release/bin/amc-cpp
@@ -183,7 +194,7 @@ jobs:
           ctest --test-dir build/Release -N | grep -q amc-example-test
 
       - name: Test
-        run: ctest --test-dir build/Release --output-on-failure
+        run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
       - name: Smoke language manifest
         run: |
@@ -246,9 +257,12 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
-      - name: Generate hotcache DLL source
+      - name: Verify toolchains
         shell: msys2 {0}
-        run: python tools/gen_hotcache_dll.py
+        run: |
+          python --version
+          rustc --version
+          zig version
 
       - name: Configure
         shell: msys2 {0}
@@ -264,7 +278,7 @@ jobs:
         shell: msys2 {0}
         run: cmake --build build/Release --parallel 2
 
-      - name: Verify required build outputs
+      - name: Verify build outputs and test registration
         shell: msys2 {0}
         run: |
           test -f build/Release/bin/amc.exe
@@ -279,7 +293,7 @@ jobs:
 
       - name: Test
         shell: msys2 {0}
-        run: ctest --test-dir build/Release --output-on-failure
+        run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
       - name: Smoke language manifest
         shell: msys2 {0}
