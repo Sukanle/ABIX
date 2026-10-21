@@ -14,9 +14,11 @@ namespace amc {
 // `contract`    — the published/frozen `.abix` (what consumers compiled against)
 // `implementation` — metadata regenerated from the current sources
 //
-// Two modules are consistent only when their type sets, layouts, field sets
-// and function signatures are identical.  Additions are reported as drift
-// too, because they widen the ABI surface and must be an explicit decision.
+// Two modules are consistent only when their type sets, layouts, field sets,
+// function signatures and optional interaction contracts are identical.
+// Additions are reported as drift too, because they widen the ABI surface and
+// must be an explicit decision. Ownership and error-boundary differences are
+// reported as contract drift without being folded into layout compatibility.
 enum class ChangeKind {
     type_added,
     type_removed,
@@ -29,6 +31,9 @@ enum class ChangeKind {
     function_removed,
     function_signature_changed,
     function_parameter_changed,
+    calling_convention_changed,
+    ownership_changed,
+    error_boundary_changed,
 };
 
 const char *change_kind_name(ChangeKind kind);

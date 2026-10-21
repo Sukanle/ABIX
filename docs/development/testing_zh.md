@@ -109,7 +109,8 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
     - Metadata Region；
     - 实例化缓存；
     - 字符串/JSON 辅助；
-    - 二进制读取器（ELF/Mach-O/PE 节区与 CodeView build id）。
+    - 二进制读取器（ELF/Mach-O/PE 节区与 CodeView build id）；
+    - 真实世界兼容性矩阵（字段插入/删除、字段类型变化、调用约定变化、ownership 不匹配）。
 - **目的** —— 让格式/校验核心独立于 CLI 与任何宿主工具链而保持正确。
 - **预期现象** —— `amc-core-test: all checks passed`。
 

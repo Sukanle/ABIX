@@ -103,6 +103,8 @@ amc verify contract.abix implementation.abix --format diagnostics
 
 `--format diagnostics` 输出 `file:line:column: error: ABI <kind> ...`（使用契约的 Source Origin），供编辑器/CI 使用。
 
+verify 也会报告调用约定、ownership 契约与 error boundary 漂移（`calling_convention_changed`、`ownership_changed`、`error_boundary_changed`）。这些是契约层变化：不进入 `TypeID`/`LayoutHash`，ownership/error 差异也不会被折叠进 layout 兼容性分类。
+
 ### `amc target`
 
 打印产物（或二进制内嵌）记录的目标平台，或对期望目标做校验——是运行期 reader 校验的静态 / CI 侧对应入口。

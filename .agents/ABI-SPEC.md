@@ -188,9 +188,11 @@ Rules:
   contract without one is rejected rather than assumed safe.
 - A module without ownership records is fully valid.
 
-Because it is optional and additive, ownership differences are not (yet) part of
-the compatibility classification; they are reported through the contract query,
-not folded into a single "ABI compatible" answer.
+Because it is optional and additive, ownership differences are not part of the
+compatibility classification; `amc verify` reports them as separate
+`ownership_changed` drift and never folds them into a single "ABI compatible"
+answer. Error-boundary differences are reported the same way as
+`error_boundary_changed`.
 
 ### 9.1 ABIX-STD
 

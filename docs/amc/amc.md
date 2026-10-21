@@ -143,6 +143,8 @@ amc verify contract.abix implementation.abix --format diagnostics
 
 `--format diagnostics` emits `file:line:column: error: ABI <kind> ...` lines using the contract's Source Origin, for editors and CI annotations.
 
+Verification also reports calling-convention, ownership-contract and error-boundary drift (`calling_convention_changed`, `ownership_changed`, `error_boundary_changed`). These are contract-level changes: they never enter `TypeID`/`LayoutHash`, and ownership/error differences are not folded into the layout compatibility classification.
+
 ### `amc target`
 
 Prints the target platform recorded in an artifact (or embedded in a binary), or verifies it against an expected target — the static, CI-side counterpart to the runtime reader verification.

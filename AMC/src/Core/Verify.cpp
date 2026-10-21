@@ -92,6 +92,10 @@ void compare_type(const Type &contract, const Type &implementation, const FieldM
 }
 
 void compare_function(const Function &contract, const Function &match, VerifyResult &result) {
+    if (contract.calling_convention != match.calling_convention) {
+        add_change(result, ChangeKind::calling_convention_changed, match.name, match.name,
+            fmt::format("calling convention {} -> {}", contract.calling_convention, match.calling_convention));
+    }
     if (!(contract.signature == match.signature)) {
         add_change(result, ChangeKind::function_signature_changed,
             match.owner_type == Hash128{} ? std::string{} : match.name, match.name,
@@ -113,6 +117,128 @@ void compare_function(const Function &contract, const Function &match, VerifyRes
     }
 }
 
+std::string function_key(const Function &function) {
+    return function.name + "#" + hash_string(function.signature) + "#" + hash_string(function.owner_type);
+}
+
+const char *ownership_mode_name(OwnershipMode mode) {
+    switch (mode) {
+        case OwnershipMode::unspecified: return "unspecified";
+        case OwnershipMode::borrowed:    return "borrowed";
+        case OwnershipMode::owned:       return "owned";
+        case OwnershipMode::copy:        return "copy";
+    }
+    return "unknown";
+}
+
+const char *status_source_name(StatusSource source) {
+    switch (source) {
+        case StatusSource::return_value: return "return_value";
+        case StatusSource::parameter:    return "parameter";
+        case StatusSource::return_field: return "return_field";
+    }
+    return "unknown";
+}
+
+struct InteractionEntry {
+    std::string function;
+    const OwnershipContract *contract = nullptr;
+};
+
+bool ownership_key(
+    const AbiModule &module, const OwnershipContract &contract, std::string &key, std::string &function) {
+    if (contract.target == OwnershipTarget::return_value) {
+        if (contract.target_index >= module.functions.size()) return false;
+        function = module.functions[contract.target_index].name;
+        key = function_key(module.functions[contract.target_index]) + ":return";
+        return true;
+    }
+    uint32_t base = 0;
+    for (const auto &candidate : module.functions) {
+        const uint32_t count = static_cast<uint32_t>(candidate.parameters.size());
+        if (contract.target_index < base + count) {
+            function = candidate.name;
+            key = function_key(candidate) + ":param:" + std::to_string(contract.target_index - base);
+            return true;
+        }
+        base += count;
+    }
+    return false;
+}
+
+std::map<std::string, InteractionEntry> index_ownership(const AbiModule &module) {
+    std::map<std::string, InteractionEntry> entries;
+    for (const auto &contract : module.contracts) {
+        std::string key;
+        std::string function;
+        if (!ownership_key(module, contract, key, function)) continue;
+        entries[key] = InteractionEntry{std::move(function), &contract};
+    }
+    return entries;
+}
+
+struct ErrorEntry {
+    std::string function;
+    const ErrorContract *contract = nullptr;
+};
+
+std::map<std::string, ErrorEntry> index_errors(const AbiModule &module) {
+    std::map<std::string, ErrorEntry> entries;
+    for (const auto &contract : module.errors) {
+        if (contract.function_index >= module.functions.size()) continue;
+        const auto &function = module.functions[contract.function_index];
+        entries[function_key(function) + ":error"] = ErrorEntry{function.name, &contract};
+    }
+    return entries;
+}
+
+void compare_contracts(const AbiModule &contract, const AbiModule &implementation, VerifyResult &result) {
+    const auto contract_ownership = index_ownership(contract);
+    const auto implementation_ownership = index_ownership(implementation);
+    for (const auto &[key, entry] : contract_ownership) {
+        const auto found = implementation_ownership.find(key);
+        if (found == implementation_ownership.end()) {
+            add_change(result, ChangeKind::ownership_changed, {}, entry.function, "ownership contract removed");
+            continue;
+        }
+        const auto &before = *entry.contract;
+        const auto &after = *found->second.contract;
+        if (before.mode != after.mode || !(before.release == after.release) || before.flags != after.flags) {
+            add_change(result, ChangeKind::ownership_changed, {}, entry.function,
+                fmt::format("mode {} -> {}, release {} -> {}", ownership_mode_name(before.mode),
+                    ownership_mode_name(after.mode), hash_string(before.release), hash_string(after.release)));
+        }
+    }
+    for (const auto &[key, entry] : implementation_ownership)
+        if (contract_ownership.find(key) == contract_ownership.end())
+            add_change(result, ChangeKind::ownership_changed, {}, entry.function, "ownership contract added");
+
+    const auto contract_errors = index_errors(contract);
+    const auto implementation_errors = index_errors(implementation);
+    for (const auto &[key, entry] : contract_errors) {
+        const auto found = implementation_errors.find(key);
+        if (found == implementation_errors.end()) {
+            add_change(result, ChangeKind::error_boundary_changed, {}, entry.function, "error boundary removed");
+            continue;
+        }
+        const auto &before = *entry.contract;
+        const auto &after = *found->second.contract;
+        if (before.status_source != after.status_source
+            || before.status_parameter != after.status_parameter
+            || before.success_value != after.success_value
+            || before.value_parameter != after.value_parameter
+            || before.flags != after.flags) {
+            add_change(result, ChangeKind::error_boundary_changed, {}, entry.function,
+                fmt::format("status {} -> {}, success {} -> {}, value parameter {} -> {}",
+                    status_source_name(before.status_source), status_source_name(after.status_source),
+                    before.success_value, after.success_value, before.value_parameter, after.value_parameter));
+        }
+    }
+    for (const auto &[key, entry] : implementation_errors)
+        if (contract_errors.find(key) == contract_errors.end())
+            add_change(result, ChangeKind::error_boundary_changed, {}, entry.function, "error boundary added");
+}
+
 }   // namespace
 
 const char *change_kind_name(ChangeKind kind) {
@@ -128,6 +254,9 @@ const char *change_kind_name(ChangeKind kind) {
         case ChangeKind::function_removed:           return "function_removed";
         case ChangeKind::function_signature_changed: return "function_signature_changed";
         case ChangeKind::function_parameter_changed: return "function_parameter_changed";
+        case ChangeKind::calling_convention_changed: return "calling_convention_changed";
+        case ChangeKind::ownership_changed:          return "ownership_changed";
+        case ChangeKind::error_boundary_changed:     return "error_boundary_changed";
     }
     return "unknown";
 }
@@ -202,6 +331,8 @@ bool verify_modules(
         compare_function_set(contract_it == contract_functions.end() ? empty : contract_it->second,
             implementation_it == implementation_functions.end() ? empty : implementation_it->second, entry.second);
     }
+
+    compare_contracts(contract, implementation, result);
 
     return true;
 }

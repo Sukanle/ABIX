@@ -644,6 +644,156 @@ int main() {
         check(none.empty() && !missing.empty(), "adapter without a mapping reports an error");
     }
 
+    // --- real-world ABI compatibility matrix -----------------------------
+    {
+        const amc::Hash128 i32 = amc::hash_text("i32", 0x54595045);
+        const amc::Hash128 i64 = amc::hash_text("i64", 0x54595045);
+        const auto primitive = [](const char *name, amc::Hash128 id, uint32_t size) {
+            amc::Type type;
+            type.name = name;
+            type.kind = amc::TypeKind::primitive;
+            type.id = id;
+            type.size = size;
+            type.align = size;
+            type.layout_hash = amc::hash_text(std::string(name) + "-layout", 9);
+            return type;
+        };
+        const auto widget = [&](uint32_t size, uint32_t align,
+                                std::vector<std::tuple<std::string, amc::Hash128, uint32_t>> fields) {
+            amc::AbiModule module;
+            module.package_name = "matrix";
+            module.types.push_back(make_type("Widget", size, align));
+            module.types[0].layout_hash = amc::hash_text("Widget", 0x4c41594f);
+            module.types.push_back(primitive("i32", i32, 4));
+            module.types.push_back(primitive("i64", i64, 8));
+            for (const auto &[name, type_id, offset] : fields) {
+                amc::Field field;
+                field.owner_type = module.types[0].id;
+                field.name = name;
+                field.type_id = type_id;
+                field.offset = offset;
+                module.fields.push_back(std::move(field));
+            }
+            module.types[0].field_begin = 0;
+            module.types[0].field_count = static_cast<uint32_t>(module.fields.size());
+            return module;
+        };
+        const auto has_change = [](const amc::VerifyResult &result, amc::ChangeKind kind) {
+            for (const auto &change : result.changes)
+                if (change.kind == kind) return true;
+            return false;
+        };
+        const auto has_compatibility = [](const amc::AbiModule &report, amc::CompatibilityKind kind) {
+            for (const auto &record : report.compatibility)
+                if (record.kind == kind) return true;
+            return false;
+        };
+
+        const amc::AbiModule base = widget(8, 4,
+            {
+                {"x", i32, 0},
+                {"y", i32, 4}
+        });
+        const amc::AbiModule inserted = widget(16, 8,
+            {
+                {       "x", i32, 0},
+                {"inserted", i32, 4},
+                {       "y", i32, 8}
+        });
+        const amc::AbiModule removed = widget(4, 4,
+            {
+                {"x", i32, 0}
+        });
+        const amc::AbiModule retyped = widget(16, 8,
+            {
+                {"x", i64, 0},
+                {"y", i32, 8}
+        });
+
+        amc::VerifyResult verify;
+        amc::AbiModule compatibility;
+        std::string error;
+
+        check(amc::verify_modules(base, inserted, verify, error), "matrix field insertion verify");
+        check(!verify.consistent
+                  && has_change(verify, amc::ChangeKind::layout_changed)
+                  && has_change(verify, amc::ChangeKind::field_added),
+            "field insertion is layout drift with field_added");
+        check(amc::build_compatibility(base, inserted, compatibility, error), "matrix field insertion compatibility");
+        check(has_compatibility(compatibility, amc::CompatibilityKind::map_compatible),
+            "field insertion is map_compatible");
+
+        check(amc::verify_modules(base, removed, verify, error), "matrix field deletion verify");
+        check(!verify.consistent
+                  && has_change(verify, amc::ChangeKind::layout_changed)
+                  && has_change(verify, amc::ChangeKind::field_removed),
+            "field deletion is layout drift with field_removed");
+        check(amc::build_compatibility(base, removed, compatibility, error), "matrix field deletion compatibility");
+        check(has_compatibility(compatibility, amc::CompatibilityKind::map_compatible),
+            "field deletion is map_compatible");
+
+        check(amc::verify_modules(base, retyped, verify, error), "matrix field type change verify");
+        check(!verify.consistent
+                  && has_change(verify, amc::ChangeKind::layout_changed)
+                  && has_change(verify, amc::ChangeKind::field_type_changed),
+            "field type change is layout drift with field_type_changed");
+        check(amc::build_compatibility(base, retyped, compatibility, error), "matrix field type change compatibility");
+        check(has_compatibility(compatibility, amc::CompatibilityKind::map_compatible),
+            "integer field widening is map_compatible");
+
+        amc::AbiModule cc_before = base;
+        amc::AbiModule cc_after = base;
+        amc::Function get;
+        get.name = "widget_get";
+        get.return_type = i32;
+        get.signature = amc::hash_text("widget_get", 0x5349474e41545552ULL);
+        get.calling_convention = 1;
+        cc_before.functions.push_back(get);
+        cc_after.functions.push_back(get);
+        cc_after.functions[0].calling_convention = 2;
+        check(amc::verify_modules(cc_before, cc_after, verify, error), "matrix calling convention verify");
+        check(!verify.consistent && has_change(verify, amc::ChangeKind::calling_convention_changed),
+            "calling convention change is reported as drift");
+
+        amc::AbiModule owned_before = base;
+        amc::AbiModule owned_after = base;
+        amc::Function use;
+        use.name = "widget_use";
+        use.return_type = i32;
+        use.signature = amc::hash_text("widget_use", 0x5349474e41545552ULL);
+        use.parameters.push_back({"value", i32, 0});
+        amc::Function destroy;
+        destroy.name = "widget_destroy";
+        destroy.return_type = i32;
+        destroy.signature = amc::hash_text("widget_destroy", 0x5349474e41545552ULL);
+        for (amc::AbiModule *module : {&owned_before, &owned_after}) {
+            module->functions.push_back(use);
+            module->functions.push_back(destroy);
+        }
+        amc::OwnershipContract ownership;
+        ownership.target = amc::OwnershipTarget::parameter;
+        ownership.target_index = 0;
+        ownership.mode = amc::OwnershipMode::borrowed;
+        owned_before.contracts.push_back(ownership);
+        ownership.mode = amc::OwnershipMode::owned;
+        ownership.release = destroy.signature;
+        owned_after.contracts.push_back(ownership);
+        check(amc::verify_modules(owned_before, owned_after, verify, error), "matrix ownership verify");
+        check(!verify.consistent && has_change(verify, amc::ChangeKind::ownership_changed),
+            "ownership mode mismatch is reported as contract drift");
+
+        amc::ErrorContract error_boundary;
+        error_boundary.function_index = 0;
+        error_boundary.status_source = amc::StatusSource::return_value;
+        error_boundary.success_value = 0;
+        owned_before.errors.push_back(error_boundary);
+        error_boundary.success_value = 1;
+        owned_after.errors.push_back(error_boundary);
+        check(amc::verify_modules(owned_before, owned_after, verify, error), "matrix error boundary verify");
+        check(!verify.consistent && has_change(verify, amc::ChangeKind::error_boundary_changed),
+            "error boundary mismatch is reported as contract drift");
+    }
+
     // --- region -> runtime projection ------------------------------------
     {
         amc::AbiModule m;

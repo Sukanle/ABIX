@@ -109,7 +109,8 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
     - the Metadata Region;
     - the instantiation cache;
     - the string/JSON helpers;
-    - the binary reader (ELF/Mach-O/PE sections and the CodeView build id).
+    - the binary reader (ELF/Mach-O/PE sections and the CodeView build id);
+    - the real-world compatibility matrix (field insertion/deletion, field type change, calling-convention change, ownership mismatch).
 - **Purpose** — keep the format/verification core correct independently of the CLI and of any host toolchain.
 - **Expected result** — `amc-core-test: all checks passed`.
 
