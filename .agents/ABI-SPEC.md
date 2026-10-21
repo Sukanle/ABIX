@@ -811,3 +811,29 @@ that entry only; no mangled name is decoded and no interface meaning is inferred
 from a symbol. A consumer validates the manifest (version, bounds, non-zero ids,
 duplicate slot rejection) before registering anything; a malformed or unknown
 manifest fails clearly rather than being guessed at.
+
+## 20. 0.2.0 Cross-language Freeze
+
+This section records the rules frozen for the ABIX 0.2.0 cross-language stage. It narrows implementation scope; it does not change any identity or compatibility rule above.
+
+The released 0.2.0 direction is **C++ frontend → ABIX IR → Rust/Zig backend**. The Rust source frontend remains experimental and is not part of the 0.2.0 compatibility gate. The language-provider manifest and `abix.plugin/1` JSONL protocol are toolchain contracts, not `.abix` ABI semantics; they may evolve independently of the artifact format version.
+
+Frozen ABI rules:
+
+- `TypeID`, `LayoutHash`, Canonical Layout Encoding v1, calling convention, symbol identity and compatibility classification keep the rules in §4–§12.
+- Ownership (§9), error boundary (§9.1), target description (§10) and Interface contract (§19) remain optional, additive extension data; they never feed `TypeID`, `LayoutHash` or `ABIHash`.
+- A concrete template instantiation is the only template ABI entity. Template primaries are metadata for dependency closure; ABIX does not define or unify C++ templates, Rust generics or Zig `comptime` (§18).
+- A target backend may emit concrete types for every instantiation. It may emit a generic target-language form only when the frontend can prove that the target layout is parameter-independent and matches the recorded concrete ABI; otherwise it must emit concrete types.
+- Lifetimes are recorded as ownership/borrowing contracts, not as ABI identity. A missing or unknown lifetime contract must be projected conservatively as an unsafe/raw API, never as a safe reference with an invented lifetime.
+- Bit-field bit offset, width, underlying type and target endianness are layout facts. A projection may expose a record containing bit-fields as opaque storage plus generated accessors; this is a projection choice, not an ABI change.
+- A provider may not silently drop an unsupported construct. It must report a structured diagnostic and either reject the entity or mark it opaque according to an explicit contract.
+
+Frozen non-goals for 0.2.0:
+
+- a universal generic system or cross-language template unification;
+- a runtime borrow checker or enforced cross-language lifetime analysis;
+- native bit-field syntax in Rust/Zig;
+- a second ABI model or a language-specific object model in the core IR;
+- reverse projection from Rust/Zig back into C++.
+
+Changing a frozen identity, compatibility rule or optional-contract meaning requires the same process as any ABI semantic change: update this specification, `ARCHITECTURE.md`, and the regression tests, and provide an explicit compatibility note. Adding a new optional extension kind or provider feature remains additive under §15 and §17.
