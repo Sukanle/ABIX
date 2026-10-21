@@ -156,6 +156,23 @@ abi_add_dll(reload_dll_a)
 abi_add_dll(reload_dll_b)
 abi_add_dll(edge_dll)
 abi_add_dll(edge_stdcall_dll)
+
+# `hotcache_dll.cpp` is generated (and gitignored), so a plain CMake configure
+# must be able to produce it without the tools/run_build.py wrapper.
+set(SKL_ABIX_HOTCACHE_SOURCE ${SKL_ABIX_SRC_DIR}/dlls/hotcache_dll.cpp)
+if(NOT EXISTS ${SKL_ABIX_HOTCACHE_SOURCE})
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(NOT Python3_Interpreter_FOUND)
+        message(FATAL_ERROR "dlls/hotcache_dll.cpp is missing and Python 3 is required to generate it")
+    endif()
+    add_custom_command(
+        OUTPUT ${SKL_ABIX_HOTCACHE_SOURCE}
+        COMMAND ${Python3_EXECUTABLE} ${SKL_ABIX_SRC_DIR}/tools/gen_hotcache_dll.py
+        DEPENDS ${SKL_ABIX_SRC_DIR}/tools/gen_hotcache_dll.py
+        COMMENT "Generating dlls/hotcache_dll.cpp")
+    set_source_files_properties(${SKL_ABIX_HOTCACHE_SOURCE} PROPERTIES GENERATED TRUE)
+endif()
+
 abi_add_dll(hotcache_dll)
 abi_add_dll(closed_dll)
 abi_add_dll(closed_dll_v2)

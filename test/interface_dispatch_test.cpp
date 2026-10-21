@@ -224,9 +224,7 @@ int counter_area(const void *self) { return static_cast<const Counter *>(self)->
 struct TestShapeTraits {
     static constexpr InterfaceId id{0x71, 0x00};
     static constexpr uint32_t version = 1;
-    static constexpr skl::mics::utils::array<InterfaceMethodHash, 1> signatures = {
-        {0x1111, 0x2222}
-    };
+    static constexpr skl::mics::utils::array<InterfaceMethodHash, 1> signatures = {{{0x1111, 0x2222}}};
     struct alignas(8) Slots {
         uint32_t area;
     };
