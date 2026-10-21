@@ -256,7 +256,7 @@ std::string message_type(const amc::Json &message) {
 }
 
 void emit(const amc::Json &message) {
-    fmt::print("{}\n", message.dump());
+    fmt::println("{}", message.dump());
     std::fflush(stdout);
 }
 
