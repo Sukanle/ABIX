@@ -68,6 +68,9 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
+      - name: Generate hotcache DLL source
+        run: python3 tools/gen_hotcache_dll.py
+
       - name: Configure
         run: |
           LLVM_PREFIX="$(llvm-config --prefix)"
@@ -151,6 +154,9 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
+      - name: Generate hotcache DLL source
+        run: python3 tools/gen_hotcache_dll.py
+
       - name: Configure
         run: |
           PREFIXES="$(brew --prefix llvm);$(brew --prefix fmt);$(brew --prefix tomlplusplus);$(brew --prefix catch2);$(brew --prefix google-benchmark);$(brew --prefix lua)"
@@ -223,6 +229,7 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-clang-tools-extra
             mingw-w64-ucrt-x86_64-fmt
             mingw-w64-ucrt-x86_64-tomlplusplus
             mingw-w64-ucrt-x86_64-catch
@@ -238,6 +245,10 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+
+      - name: Generate hotcache DLL source
+        shell: msys2 {0}
+        run: python tools/gen_hotcache_dll.py
 
       - name: Configure
         shell: msys2 {0}
