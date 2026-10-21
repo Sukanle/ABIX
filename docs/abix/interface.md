@@ -1680,6 +1680,24 @@ const int32_t area = shape.area();                 // Box::area()
 const int32_t resized = shape.resize(800, 600);   // Box::resize()
 ```
 
+The table and the registration record also have shorter spellings:
+
+```cpp
+#define BOX_METHODS(X)                   \
+    X(ShapeTraits, area, &Box::area)     \
+    X(ShapeTraits, resize, &Box::resize)
+
+SKL_ABIX_INTERFACE_MEMBER_TABLE(boxMethods, BOX_METHODS);
+
+constexpr TypeId BoxType = box_id;
+registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, Box, box, 0));
+```
+
+`SKL_ABIX_INTERFACE_MEMBER_TABLE(name, list)` expands the list into a named
+`mics::utils::array<InterfaceMethod, N>`. `SKL_ABIX_INTERFACE_IMPLEMENTATION`
+takes token prefixes and appends `Traits`, `Type` and `Methods`, so the example
+reads `ShapeTraits::id`, `BoxType`, `boxMethods` and `ShapeTraits::version`.
+
 The generated adapter has the shape:
 
 ```cpp
@@ -1867,6 +1885,8 @@ These are normally not used directly, but they explain expansion errors:
 | `SKL_ABIX_INTERFACE_SLOTS(list)`                            | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | Emits the direct-return and `InterfaceStatus` checked overloads                                                     |
 | `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`     |
+| `SKL_ABIX_INTERFACE_MEMBER_TABLE(name, list)`               | Emits a named `mics::utils::array<InterfaceMethod, N>` from a list of `MEMBER_ENTRY` entries                        |
+| `SKL_ABIX_INTERFACE_IMPLEMENTATION(traits, type, methods, flags)` | Emits an `InterfaceImplementation` initializer from `traits##Traits`, `type##Type`, `methods##Methods` and `flags` |
 | `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
 | `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                    |
 | `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | Emits the `SharedInterfaceProxy<typeTraits>`-derived `Shared##type` proxy; `...` is placed before `Shared##type`    |

@@ -120,6 +120,7 @@
 #ifndef SKL_ABIX_INTERFACE_DECLARATION_H
 #define SKL_ABIX_INTERFACE_DECLARATION_H
 
+#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -188,6 +189,33 @@ struct member_adapter<Member> {
     InterfaceMethod{Traits::signatures[Traits::slots.slot_name],                                \
         ::skl::abix::poly::interface_entry(&::skl::abix::poly::member_adapter<member>::invoke), \
         Traits::slots.slot_name, 0}
+
+/* Build a named InterfaceMethod table from a member-entry list. Each list entry
+ * invokes its argument with the arguments MEMBER_ENTRY expects:
+ *
+ *   #define BOX_METHODS(X)                   \
+ *       X(ShapeTraits, area, &Box::area)     \
+ *       X(ShapeTraits, resize, &Box::resize)
+ *
+ *   SKL_ABIX_INTERFACE_MEMBER_TABLE(boxMethods, BOX_METHODS);
+ *
+ * The table is a `mics::utils::array<InterfaceMethod, N>` with static storage
+ * duration, so its `data()` / `size()` can feed an InterfaceImplementation.
+ */
+#define SKL_ABIX_INTERFACE_MEMBER_ENTRY_ITEM(...) SKL_ABIX_INTERFACE_MEMBER_ENTRY(__VA_ARGS__),
+#define SKL_ABIX_INTERFACE_MEMBER_TABLE(name, list) \
+    const auto name = skl::mics::utils::array{list(SKL_ABIX_INTERFACE_MEMBER_ENTRY_ITEM)};
+
+// Build one InterfaceImplementation record from a member table. The arguments
+// are token prefixes: `traits` names `traits##Traits`, `type` names
+// `type##Type` (a model::TypeId) and `methods` names `methods##Methods`:
+//
+//   registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, Box, box, 0));
+//
+// `flags` is the reserved InterfaceImplementation field.
+#define SKL_ABIX_INTERFACE_IMPLEMENTATION(traits, type, methods, flags)                        \
+    {traits##Traits::id, type##Type, std::data(methods##Methods), std::size(methods##Methods), \
+        traits##Traits::version, flags}
 
 // Pack a semantic version into one unsigned integer:
 //   major * 10'000'000 + minor * 100'000 + patch
