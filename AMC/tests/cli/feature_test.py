@@ -192,6 +192,7 @@ def main() -> int:
         bad_project = (
             '{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}\n'
             '{"schema":"abix.plugin/1","id":2,"type":"PROJECT","input":"/missing/demo.abix","output":"/tmp/demo"}\n'
+            '{"schema":"abix.plugin/1","id":3,"type":"DONE"}\n'
         )
         proc = run([bin_path("amc-rust"), "--ipc"], input=bad_project)
         if '"code":"PLUGIN-CAPABILITY-FAILED"' in proc.stdout and '"diagnostics"' in proc.stdout:

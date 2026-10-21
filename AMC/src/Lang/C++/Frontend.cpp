@@ -247,6 +247,7 @@ public:
         , adapts(a)
         , adaptations(out) {}
     bool VisitRecordDecl(clang::RecordDecl *d) {
+        if (amc::lang::cancellation_requested()) return false;
         auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(d);
         if (!cxx
             || d->isImplicit()
@@ -258,14 +259,17 @@ public:
         return true;
     }
     bool VisitEnumDecl(clang::EnumDecl *d) {
+        if (amc::lang::cancellation_requested()) return false;
         if (d->isCompleteDefinition() && selected(d)) add_enum(d);
         return true;
     }
     bool VisitTypedefNameDecl(clang::TypedefNameDecl *d) {
+        if (amc::lang::cancellation_requested()) return false;
         if (selected(d)) add_alias(d);
         return true;
     }
     bool VisitDecl(clang::Decl *d) {
+        if (amc::lang::cancellation_requested()) return false;
         if (auto *fn = llvm::dyn_cast<clang::FunctionDecl>(d))
             if (selected(fn)) add_function(fn);
         return true;
@@ -807,6 +811,7 @@ public:
         , adapts(a)
         , adaptations(out) {}
     void HandleTranslationUnit(clang::ASTContext &c) override {
+        if (amc::lang::cancellation_requested()) return;
         Extractor x(c, wanted, module, adapts, adaptations);
         x.TraverseDecl(c.getTranslationUnitDecl());
     }
@@ -1361,6 +1366,7 @@ bool expose_thunks(amc::AbiModule &module, const amc::lang::Config &config, std:
 }   // namespace
 
 int run_frontend(const char *config_path, const char *output_path) {
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     amc::lang::Config c;
     std::string e;
     if (!amc::lang::config_load(config_path, "cpp", c, e)) {
@@ -1470,10 +1476,12 @@ int run_frontend(const char *config_path, const char *output_path) {
         fmt::print(stderr, "clang analysis failed\n");
         return EXIT_FAILURE;
     }
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     if (!expose_thunks(module, c, adaptations, base, e)) {
         fmt::print(stderr, "{}\n", e);
         return EXIT_FAILURE;
     }
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     if (!amc::write_abix(module, output_path, e)) {
         fmt::print(stderr, "{}\n", e);
         return EXIT_FAILURE;

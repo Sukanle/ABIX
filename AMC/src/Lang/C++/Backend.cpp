@@ -107,12 +107,14 @@ static bool interface_has_handle_methods(const amc::AbiModule &m, const amc::Int
 }
 
 int backend(const char *input, const char *output) {
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     amc::AbiModule m;
     std::string e;
     if (!amc::read_abix(input, m, e)) {
         fmt::print(stderr, "{}\n", e);
         return 1;
     }
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     auto o = fmt::output_file(output);
     o.print("#pragma once\n");
     o.print(AMC_GENERATED_FILE_WARNING("//"));
@@ -166,6 +168,7 @@ int backend(const char *input, const char *output) {
         "template <typename T> struct TypeTraits;\n");
 
     for (const auto &type : m.types) {
+        if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
         const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
         o.print("struct {} {{\n", id);
         o.print("    static constexpr TypeId type_id {{{}, {}}};\n", hex_u64(type.id.lo), hex_u64(type.id.hi));

@@ -422,6 +422,7 @@ std::string generate_projection(const amc::AbiModule &module) {
     o.print("pub const ABIX_LIBRARY_NAME = {};\n", zig_string(module.package_name));
 
     for (const auto &type : module.types) {
+        if (amc::lang::cancellation_requested()) return {};
         o.print("\n");
         emit_type(o, projector, type);
     }
@@ -433,15 +434,19 @@ std::string generate_projection(const amc::AbiModule &module) {
 }
 
 int backend(const char *input, const char *output) {
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     amc::AbiModule module;
     std::string error;
     if (!amc::read_abix(input, module, error)) {
         fmt::print(stderr, "{}\n", error);
         return 1;
     }
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     try {
+        const std::string projection = generate_projection(module);
+        if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
         auto file = fmt::output_file(output);
-        file.print("{}", generate_projection(module));
+        file.print("{}", projection);
     } catch (const std::exception &e) {
         fmt::print(stderr, "cannot write {}: {}\n", output, e.what());
         return 1;

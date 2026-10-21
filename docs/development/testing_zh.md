@@ -164,6 +164,8 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 - **目的** —— 语言插件必须可复现且自洽。
 - **预期现象** —— `18 passed, 0 failed`。
 
+协议另有独立的协作式取消测试（`amc-cancellation-test`）：测试 provider 轮询取消令牌，收到运行中 `PROJECT` 的 `CANCEL` 后必须在 driver 发送 `DONE` 前返回最终 `CANCELLED`。
+
 ### H. cmdly interop（`amc-cmdly-interop-test`）
 
 - **功能** —— 一个真实 C++ 库（`cmdly`）经 ABIX 门面 + Rust 消费端；以非平凡类型跑通 expose → thunk → manifest → registry → binding 闭环。

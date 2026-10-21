@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -93,6 +94,27 @@ struct Config {
     std::vector<AdaptDecl> adaptations;            // [[adapt]] native↔ABIX-STD parameter mappings
     std::vector<ExposeDecl> exposed;               // [[expose]] automatic capability generation
 };
+
+// A capability returns this value when it observed a cooperative cancellation
+// request. It is not an ordinary failure: the IPC layer reports CANCELLED.
+constexpr int kCapabilityCancelled = 130;
+
+// Cooperative cancellation for one provider capability. The token is owned by
+// the IPC session and is valid for the duration of the capability call.
+class CancellationToken {
+public:
+    void request() noexcept { _requested.store(true, std::memory_order_relaxed); }
+    bool requested() const noexcept { return _requested.load(std::memory_order_relaxed); }
+
+private:
+    std::atomic<bool> _requested{false};
+};
+
+// The token for the capability currently running on this provider process, or
+// nullptr when no capability is active. Capability implementations can poll
+// `cancellation_requested()` at safe points.
+CancellationToken *current_cancellation() noexcept;
+bool cancellation_requested() noexcept;
 
 // A capability the provider exposes (e.g. "frontend", "backend").
 struct Capability {

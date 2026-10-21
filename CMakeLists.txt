@@ -314,6 +314,12 @@ if(AMC_BUILD)
         target_include_directories(amc-zig PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-zig PRIVATE amc-core amc-lang fmt::fmt)
 
+        # Test-only provider for the cooperative-cancellation IPC test. Its
+        # backend polls the cancellation token instead of sleeping to completion.
+        add_executable(amc-cancel-test-provider AMC/tests/providers/cancellation/cancellation_provider.cpp)
+        target_include_directories(amc-cancel-test-provider PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_link_libraries(amc-cancel-test-provider PRIVATE amc-lang fmt::fmt)
+
         add_executable(
             amc
             AMC/main.cpp
@@ -386,6 +392,10 @@ if(AMC_BUILD)
             add_test(NAME amc-rust-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/rust/conformance_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME amc-cancellation-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/cancellation/cancellation_test.py
+                             ${CMAKE_BINARY_DIR}/bin)
+            set_tests_properties(amc-cancellation-test PROPERTIES TIMEOUT 20)
             add_test(NAME amc-interop-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/interop_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
@@ -407,6 +417,7 @@ if(AMC_BUILD)
             amc-cpp
             amc-rust
             amc-zig
+            amc-cancel-test-provider
             amc-dump
             amc-mcp
             amc-core-test

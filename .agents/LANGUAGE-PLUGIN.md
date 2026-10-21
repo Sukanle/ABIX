@@ -124,13 +124,24 @@ same `id` before the final `RESULT`; the driver ignores unknown event kinds.
 {"schema":"abix.plugin/1","id":5,"type":"CANCELLED","target":4,"status":"cancelled"}
 ```
 
-A provider acknowledges `CANCEL` when it is idle. A capability call is
-synchronous, so a provider that is already inside `ANALYZE`/`PROJECT` may finish
-instead of observing the cancel. The driver applies `AMC_PROVIDER_TIMEOUT_MS`
-(disabled when unset) to every response wait: on timeout it sends `CANCEL` as a
-best effort, terminates the provider process and reports a provider error. This
-keeps the protocol deterministic and prevents a stuck provider from hanging the
-toolchain.
+A provider acknowledges `CANCEL` when it is idle. While a capability is running,
+the provider session handles `CANCEL` on the IPC thread, sets the active request's
+cooperative cancellation token and replies with `status: "requested"`. The
+capability can poll the token at safe points:
+
+```cpp
+if (amc::lang::cancellation_requested())
+    return amc::lang::kCapabilityCancelled;
+```
+
+A capability that returns `kCapabilityCancelled` produces a final `CANCELLED`
+message for its request instead of `RESULT`. A capability that does not poll the
+token may finish normally after the request was acknowledged; the driver still
+applies `AMC_PROVIDER_TIMEOUT_MS` (disabled when unset) to every response wait.
+On timeout it sends `CANCEL` as a best effort, terminates the provider process and
+reports a provider error. This keeps the protocol deterministic and prevents a
+stuck provider from hanging the toolchain while allowing well-behaved providers
+to stop early.
 
 Capability stderr is captured and attached to the `ERROR` / `RESULT`
 `diagnostics` array as `{"severity":"error"|"warning","message":...}`. The driver
@@ -149,7 +160,7 @@ Message summary:
 | `ANALYZE` / `RESULT` | driver → provider / provider → driver | frontend extraction |
 | `PROJECT` / `RESULT` | driver → provider / provider → driver | backend projection |
 | `EVENT` | provider → driver | optional progress or diagnostic event |
-| `CANCEL` / `CANCELLED` | driver → provider / provider → driver | best-effort cancellation |
+| `CANCEL` / `CANCELLED` | driver → provider / provider → driver | cooperative cancellation and acknowledgement |
 | `ERROR` | provider → driver | structured `abix.error/1` failure |
 | `DONE` / `DONE` | driver → provider / provider → driver | orderly shutdown |
 

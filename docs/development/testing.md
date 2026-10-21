@@ -164,6 +164,8 @@ A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AM
 - **Purpose** — a language plugin must be reproducible and self-consistent.
 - **Expected result** — `18 passed, 0 failed`.
 
+The protocol also has a dedicated cooperative-cancellation test (`amc-cancellation-test`): a test provider polls the cancellation token, receives `CANCEL` for a running `PROJECT`, and must return a final `CANCELLED` before the driver sends `DONE`.
+
 ### H. cmdly interop (`amc-cmdly-interop-test`)
 
 - **Functionality** — a real C++ library (`cmdly`) over the ABIX facade, with a Rust consumer; exercises a non-trivial type through the expose → thunk → manifest → registry → binding loop.

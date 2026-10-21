@@ -884,6 +884,7 @@ private:
 }   // namespace
 
 int run_frontend(const char *config_path, const char *output_path) {
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     amc::lang::Config config;
     std::string error;
     if (!amc::lang::config_load(config_path, "rust", config, error)) {
@@ -896,6 +897,7 @@ int run_frontend(const char *config_path, const char *output_path) {
     std::vector<RawFunction> functions;
     std::unordered_map<std::string, bool> seen_items;
     for (const auto &file : config.files) {
+        if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
         std::filesystem::path path = file;
         if (path.is_relative()) path = base / path;
         std::ifstream input(path);
@@ -918,6 +920,7 @@ int run_frontend(const char *config_path, const char *output_path) {
 
     Builder builder(std::move(items), std::move(functions));
     amc::AbiModule module = builder.build(config.symbols);
+    if (amc::lang::cancellation_requested()) return amc::lang::kCapabilityCancelled;
     if (!builder.ok()) {
         fmt::print(stderr, "{}\n", builder.error());
         return EXIT_FAILURE;

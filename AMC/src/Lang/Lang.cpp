@@ -1,8 +1,13 @@
 #include "AMC/Lang/Lang.h"
 
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include <fmt/format.h>
 #include <toml++/toml.h>
@@ -24,6 +29,17 @@
 #endif
 
 namespace amc::lang {
+
+namespace {
+std::atomic<CancellationToken *> g_current_cancellation{nullptr};
+}
+
+CancellationToken *current_cancellation() noexcept { return g_current_cancellation.load(std::memory_order_relaxed); }
+
+bool cancellation_requested() noexcept {
+    const CancellationToken *token = current_cancellation();
+    return token != nullptr && token->requested();
+}
 
 bool config_load(const std::string &path, const std::string &expected_language, Config &c, std::string &e) {
     try {
@@ -431,6 +447,17 @@ void emit_event(long long id, const char *phase, const std::string &capability) 
     emit(message);
 }
 
+void emit_cancelled(long long id, long long target, const char *status, const std::string &diagnostics = {}) {
+    amc::Json message = amc::Json::object();
+    message.set("schema", "abix.plugin/1");
+    message.set("id", amc::Json(id));
+    message.set("type", "CANCELLED");
+    message.set("status", status);
+    message.set("target", amc::Json(target));
+    if (!diagnostics.empty()) message.set("diagnostics", diagnostics_json(diagnostics, "warning"));
+    emit(message);
+}
+
 int run_capability(const Provider &provider, const std::string &name, const char *input, const char *output,
     std::string &diagnostics) {
     for (const auto &candidate : provider.capabilities) {
@@ -440,23 +467,136 @@ int run_capability(const Provider &provider, const std::string &name, const char
     return -1;
 }
 
+struct InputState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::deque<std::string> lines;
+    bool eof = false;
+};
+
+struct Work {
+    long long id = -1;
+    std::string capability;
+    std::string input;
+    std::string output;
+    CancellationToken token;
+    std::atomic<bool> done{false};
+    int result = 2;
+    std::string diagnostics;
+    std::thread worker;
+};
+
+bool has_capability(const Provider &provider, const std::string &name) {
+    for (const auto &candidate : provider.capabilities)
+        if (candidate.name == name) return true;
+    return false;
+}
+
 }   // namespace
 
 int ipc(const Provider &provider) {
-    std::string line;
+    auto input_state = std::make_shared<InputState>();
+    std::thread reader([input_state] {
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            {
+                std::lock_guard<std::mutex> lock(input_state->mutex);
+                input_state->lines.push_back(std::move(line));
+            }
+            input_state->changed.notify_all();
+        }
+        {
+            std::lock_guard<std::mutex> lock(input_state->mutex);
+            input_state->eof = true;
+        }
+        input_state->changed.notify_all();
+    });
+    reader.detach();
+
     bool initialized = false;
-    while (std::getline(std::cin, line)) {
+    std::unique_ptr<Work> work;
+
+    const auto finish_work = [&] {
+        if (!work) return;
+        if (work->worker.joinable()) work->worker.join();
+        if (work->result == kCapabilityCancelled) {
+            emit_cancelled(work->id, work->id, "cancelled", work->diagnostics);
+        } else if (work->result < 0) {
+            emit_error(work->id, "PLUGIN-UNKNOWN-CAPABILITY", "protocol",
+                fmt::format("capability `{}` is not advertised by {}", work->capability, provider.language));
+        } else if (work->result != 0) {
+            emit_error(work->id, "PLUGIN-CAPABILITY-FAILED", "provider",
+                fmt::format("capability `{}` failed with status {}", work->capability, work->result),
+                work->diagnostics);
+        } else {
+            emit_event(work->id, "finished", work->capability);
+            emit_result(work->id, work->capability, work->output, work->diagnostics);
+        }
+        work.reset();
+    };
+
+    const auto stop_work = [&] {
+        if (!work) return;
+        work->token.request();
+        finish_work();
+    };
+
+    const auto start_work = [&](long long id, std::string capability, std::string input, std::string output) {
+        work = std::make_unique<Work>();
+        work->id = id;
+        work->capability = std::move(capability);
+        work->input = std::move(input);
+        work->output = std::move(output);
+        emit_event(id, "started", work->capability);
+
+        Work *raw = work.get();
+        raw->worker = std::thread([&provider, input_state, raw] {
+            g_current_cancellation.store(&raw->token, std::memory_order_relaxed);
+            raw->result =
+                run_capability(provider, raw->capability, raw->input.c_str(), raw->output.c_str(), raw->diagnostics);
+            g_current_cancellation.store(nullptr, std::memory_order_relaxed);
+            raw->done.store(true, std::memory_order_release);
+            input_state->changed.notify_all();
+        });
+    };
+
+    for (;;) {
+        if (work && work->done.load(std::memory_order_acquire)) {
+            finish_work();
+            continue;
+        }
+
+        std::string line;
+        {
+            std::unique_lock<std::mutex> lock(input_state->mutex);
+            input_state->changed.wait(
+                lock, [&] { return !input_state->lines.empty() || input_state->eof || (work && work->done.load()); });
+            if (work && work->done.load()) {
+                lock.unlock();
+                finish_work();
+                continue;
+            }
+            if (input_state->lines.empty()) {
+                lock.unlock();
+                stop_work();
+                return 2;
+            }
+            line = std::move(input_state->lines.front());
+            input_state->lines.pop_front();
+        }
         if (line.empty()) continue;
 
         amc::Json message;
         std::string parse_error;
         if (!amc::parse_json(line, message, parse_error)) {
             emit_error(-1, "PLUGIN-INVALID-JSON", "protocol", "invalid JSON: " + parse_error);
+            stop_work();
             return 2;
         }
         const long long id = message_id(message);
         if (const auto *schema = message.find("schema"); schema != nullptr && schema->as_string() != "abix.plugin/1") {
             emit_error(id, "PLUGIN-SCHEMA", "protocol", "unsupported schema: " + schema->as_string());
+            stop_work();
             return 2;
         }
 
@@ -466,6 +606,7 @@ int ipc(const Provider &provider) {
             std::string protocol_error;
             if (!parse_protocol(message, legacy, protocol_error)) {
                 emit_error(id, "PLUGIN-PROTOCOL-MISMATCH", "protocol", protocol_error);
+                stop_work();
                 return 2;
             }
             initialized = true;
@@ -475,6 +616,7 @@ int ipc(const Provider &provider) {
         if (type == "QUERY_CAPABILITIES") {
             if (!initialized) {
                 emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "QUERY_CAPABILITIES before INIT/HELLO");
+                stop_work();
                 return 2;
             }
             emit_capabilities(provider, id);
@@ -483,95 +625,70 @@ int ipc(const Provider &provider) {
         if (type == "DESCRIBE") {
             if (!initialized) {
                 emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "DESCRIBE before INIT/HELLO");
+                stop_work();
                 return 2;
             }
             emit_describe(provider, id);
             continue;
         }
-        if (type == "ANALYZE") {
+        if (type == "ANALYZE" || type == "PROJECT") {
             if (!initialized) {
-                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "ANALYZE before INIT/HELLO");
+                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", type + " before INIT/HELLO");
+                stop_work();
                 return 2;
             }
-            const auto *capability_node = message.find("capability");
+            if (work) {
+                emit_error(id, "PLUGIN-BUSY", "protocol", "a capability request is already running");
+                continue;
+            }
             const auto *input_node = message.find("input");
             const auto *output_node = message.find("output");
-            if (capability_node == nullptr || input_node == nullptr || output_node == nullptr) {
-                emit_error(id, "PLUGIN-BAD-REQUEST", "protocol", "ANALYZE requires capability, input and output");
+            const auto *capability_node = message.find("capability");
+            if (input_node == nullptr || output_node == nullptr || (type == "ANALYZE" && capability_node == nullptr)) {
+                emit_error(id, "PLUGIN-BAD-REQUEST", "protocol",
+                    type == "ANALYZE" ? "ANALYZE requires capability, input and output"
+                                      : "PROJECT requires input and output");
+                stop_work();
                 return 2;
             }
-            const std::string capability = capability_node->as_string();
-            const std::string input = input_node->as_string();
-            const std::string output = output_node->as_string();
-
-            emit_event(id, "started", capability);
-            std::string diagnostics;
-            const int result = run_capability(provider, capability, input.c_str(), output.c_str(), diagnostics);
-            if (result < 0) {
+            const std::string capability = type == "PROJECT" ? "backend" : capability_node->as_string();
+            if (!has_capability(provider, capability)) {
                 emit_error(id, "PLUGIN-UNKNOWN-CAPABILITY", "protocol",
                     fmt::format("capability `{}` is not advertised by {}", capability, provider.language));
+                stop_work();
                 return 2;
             }
-            if (result != 0) {
-                emit_error(id, "PLUGIN-CAPABILITY-FAILED", "provider",
-                    fmt::format("capability `{}` failed with status {}", capability, result), diagnostics);
-                return result;
-            }
-            emit_event(id, "finished", capability);
-            emit_result(id, capability, output, diagnostics);
-            continue;
-        }
-        if (type == "PROJECT") {
-            if (!initialized) {
-                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "PROJECT before INIT/HELLO");
-                return 2;
-            }
-            const auto *input_node = message.find("input");
-            const auto *output_node = message.find("output");
-            if (input_node == nullptr || output_node == nullptr) {
-                emit_error(id, "PLUGIN-BAD-REQUEST", "protocol", "PROJECT requires input and output");
-                return 2;
-            }
-            const std::string input = input_node->as_string();
-            const std::string output = output_node->as_string();
-
-            emit_event(id, "started", "backend");
-            std::string diagnostics;
-            const int result = run_capability(provider, "backend", input.c_str(), output.c_str(), diagnostics);
-            if (result < 0) {
-                emit_error(id, "PLUGIN-UNKNOWN-CAPABILITY", "protocol",
-                    fmt::format("{} does not advertise a backend capability", provider.language));
-                return 2;
-            }
-            if (result != 0) {
-                emit_error(id, "PLUGIN-CAPABILITY-FAILED", "provider",
-                    fmt::format("backend projection failed with status {}", result), diagnostics);
-                return result;
-            }
-            emit_event(id, "finished", "backend");
-            emit_result(id, "backend", output, diagnostics);
+            start_work(id, capability, input_node->as_string(), output_node->as_string());
             continue;
         }
         if (type == "CANCEL") {
             if (!initialized) {
                 emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "CANCEL before INIT/HELLO");
+                stop_work();
                 return 2;
             }
             const auto *target = message.find("target");
             if (target == nullptr) {
                 emit_error(id, "PLUGIN-BAD-REQUEST", "protocol", "CANCEL requires target");
+                stop_work();
                 return 2;
             }
-            amc::Json cancelled = amc::Json::object();
-            cancelled.set("schema", "abix.plugin/1");
-            cancelled.set("id", amc::Json(id));
-            cancelled.set("type", "CANCELLED");
-            cancelled.set("status", "cancelled");
-            cancelled.set("target", amc::Json(static_cast<long long>(target->as_number(-1))));
-            emit(cancelled);
+            const long long target_id = static_cast<long long>(target->as_number(-1));
+            if (work) {
+                if (target_id != work->id) {
+                    emit_error(id, "PLUGIN-CANCEL-TARGET", "protocol",
+                        fmt::format("CANCEL target {} does not match running request {}", target_id, work->id));
+                    continue;
+                }
+                work->token.request();
+                emit_cancelled(id, target_id, "requested");
+            } else {
+                emit_cancelled(id, target_id, "cancelled");
+            }
             continue;
         }
         if (type == "DONE") {
+            finish_work();
             amc::Json done = amc::Json::object();
             done.set("schema", "abix.plugin/1");
             done.set("id", amc::Json(id));
@@ -581,9 +698,9 @@ int ipc(const Provider &provider) {
         }
 
         emit_error(id, "PLUGIN-UNSUPPORTED-MESSAGE", "protocol", "unsupported message type: " + type);
+        stop_work();
         return 2;
     }
-    return 2;
 }
 
 }   // namespace amc::lang
