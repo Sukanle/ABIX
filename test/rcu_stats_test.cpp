@@ -112,11 +112,11 @@ TEST_CASE("47.advance_diagnostics", "[rcu][stats]") {
         // With the advancement held for a whole grace period, every other writer
         // can only retry until its deadline: that is precisely the starvation
         // signal these counters exist to detect.
-        constexpr int kWriters = 4;
+        constexpr int kWriters = 8;
         std::vector<std::thread> writers;
         writers.reserve(kWriters);
         for (int i = 0; i < kWriters; ++i)
-            writers.emplace_back([&dom] { (void)dom.synchronize_until(Deadline::after_ms(20)); });
+            writers.emplace_back([&dom] { (void)dom.synchronize_until(Deadline::after_ms(100)); });
         for (auto &w : writers)
             w.join();
 

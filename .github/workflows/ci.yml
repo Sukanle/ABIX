@@ -1,0 +1,307 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - devel
+      - devel-alpha
+      - devel-beta
+      - devel-linux
+      - devel-macos
+      - devel-windows
+      - main
+      - "v0.2.x"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - devel
+      - devel-alpha
+      - devel-beta
+      - devel-linux
+      - devel-macos
+      - devel-windows
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: "1"
+  ZIG_VERSION: "0.17.0"
+
+jobs:
+  linux:
+    name: Linux (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules over HTTPS
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config binutils \
+            clang llvm llvm-dev libclang-dev libclang-cpp-dev \
+            libfmt-dev libtomlplusplus-dev catch2 libbenchmark-dev liblua5.4-dev \
+            python3
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Configure
+        run: |
+          LLVM_PREFIX="$(llvm-config --prefix)"
+          cmake -S . -B build/Release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$LLVM_PREFIX" \
+            -DAMC_BUILD=ON \
+            -DBUILD_TESTING=ON \
+            -DBUILD_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build build/Release --parallel 2
+
+      - name: Verify required build outputs
+        run: |
+          test -x build/Release/bin/amc
+          test -x build/Release/bin/amc-cpp
+          test -x build/Release/bin/amc-rust
+          test -x build/Release/bin/amc-zig
+          test -x build/Release/bin/amc-core-test
+          test -x build/Release/bin/test_all
+          ctest --test-dir build/Release -N | grep -q amc-feature-test
+          ctest --test-dir build/Release -N | grep -q amc-cancellation-test
+          ctest --test-dir build/Release -N | grep -q amc-example-test
+
+      - name: Test
+        run: ctest --test-dir build/Release --output-on-failure
+
+      - name: Smoke language manifest
+        run: |
+          ./build/Release/bin/amc --list-languages | tee languages.txt
+          grep -qx cpp languages.txt
+          grep -qx rust languages.txt
+          grep -qx zig languages.txt
+          ./build/Release/bin/amc --describe-language rust
+          ./build/Release/bin/amc --describe-language zig
+
+      - name: Install and smoke the installed layout
+        run: |
+          cmake --install build/Release --prefix "$RUNNER_TEMP/abix-install"
+          "$RUNNER_TEMP/abix-install/bin/amc" --list-languages | tee installed-languages.txt
+          grep -qx cpp installed-languages.txt
+          grep -qx rust installed-languages.txt
+          grep -qx zig installed-languages.txt
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-test-logs
+          path: |
+            build/Release/Testing/Temporary/LastTest.log
+            build/Release/Testing/Temporary/LastTestsFailed.log
+            build/Release/**/*.log
+          if-no-files-found: ignore
+
+  macos:
+    name: macOS (Apple Silicon)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules over HTTPS
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive
+
+      - name: Install dependencies
+        run: |
+          brew install llvm fmt tomlplusplus catch2 google-benchmark lua
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Configure
+        run: |
+          PREFIXES="$(brew --prefix llvm);$(brew --prefix fmt);$(brew --prefix tomlplusplus);$(brew --prefix catch2);$(brew --prefix google-benchmark);$(brew --prefix lua)"
+          cmake -S . -B build/Release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PREFIXES" \
+            -DAMC_BUILD=ON \
+            -DBUILD_TESTING=ON \
+            -DBUILD_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build build/Release --parallel 2
+
+      - name: Verify required build outputs
+        run: |
+          test -x build/Release/bin/amc
+          test -x build/Release/bin/amc-cpp
+          test -x build/Release/bin/amc-rust
+          test -x build/Release/bin/amc-zig
+          test -x build/Release/bin/amc-core-test
+          test -x build/Release/bin/test_all
+          ctest --test-dir build/Release -N | grep -q amc-feature-test
+          ctest --test-dir build/Release -N | grep -q amc-cancellation-test
+          ctest --test-dir build/Release -N | grep -q amc-example-test
+
+      - name: Test
+        run: ctest --test-dir build/Release --output-on-failure
+
+      - name: Smoke language manifest
+        run: |
+          ./build/Release/bin/amc --list-languages | tee languages.txt
+          grep -qx cpp languages.txt
+          grep -qx rust languages.txt
+          grep -qx zig languages.txt
+          ./build/Release/bin/amc --describe-language rust
+          ./build/Release/bin/amc --describe-language zig
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-logs
+          path: |
+            build/Release/Testing/Temporary/LastTest.log
+            build/Release/Testing/Temporary/LastTestsFailed.log
+            build/Release/**/*.log
+          if-no-files-found: ignore
+
+  windows:
+    name: Windows (MSYS2 UCRT64)
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch submodules over HTTPS
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-fmt
+            mingw-w64-ucrt-x86_64-tomlplusplus
+            mingw-w64-ucrt-x86_64-catch
+            mingw-w64-ucrt-x86_64-benchmark
+            mingw-w64-ucrt-x86_64-lua54
+            mingw-w64-ucrt-x86_64-rust
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          export CMAKE_PREFIX_PATH="$(cygpath -m "$MINGW_PREFIX")"
+          cmake -S . -B build/Release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DAMC_BUILD=ON \
+            -DBUILD_TESTING=ON \
+            -DBUILD_BENCHMARKS=ON
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build/Release --parallel 2
+
+      - name: Verify required build outputs
+        shell: msys2 {0}
+        run: |
+          test -f build/Release/bin/amc.exe
+          test -f build/Release/bin/amc-cpp.exe
+          test -f build/Release/bin/amc-rust.exe
+          test -f build/Release/bin/amc-zig.exe
+          test -f build/Release/bin/amc-core-test.exe
+          test -f build/Release/bin/test_all.exe
+          ctest --test-dir build/Release -N | grep -q amc-feature-test
+          ctest --test-dir build/Release -N | grep -q amc-cancellation-test
+          ctest --test-dir build/Release -N | grep -q amc-example-test
+
+      - name: Test
+        shell: msys2 {0}
+        run: ctest --test-dir build/Release --output-on-failure
+
+      - name: Smoke language manifest
+        shell: msys2 {0}
+        run: |
+          ./build/Release/bin/amc.exe --list-languages | tee languages.txt
+          grep -qx cpp languages.txt
+          grep -qx rust languages.txt
+          grep -qx zig languages.txt
+          ./build/Release/bin/amc.exe --describe-language rust
+          ./build/Release/bin/amc.exe --describe-language zig
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-logs
+          path: |
+            build/Release/Testing/Temporary/LastTest.log
+            build/Release/Testing/Temporary/LastTestsFailed.log
+            build/Release/**/*.log
+          if-no-files-found: ignore
+
+  ci-status:
+    name: CI status
+    if: always()
+    needs:
+      - linux
+      - macos
+      - windows
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every platform job
+        run: |
+          test "${{ needs.linux.result }}" = "success"
+          test "${{ needs.macos.result }}" = "success"
+          test "${{ needs.windows.result }}" = "success"

@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <a href="https://github.com/Sukanle/ABIX/actions/workflows/ci.yml"><img src="https://github.com/Sukanle/ABIX/actions/workflows/ci.yml/badge.svg?branch=devel" alt="CI"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-4C8C4A.svg" alt="Platforms: Linux | macOS | Windows">

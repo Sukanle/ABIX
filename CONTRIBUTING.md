@@ -184,6 +184,38 @@ resolve the platform differences there; promote to `devel-beta` once Alpha
 passes, and to `devel` only when every available platform is green. `devel` then
 promotes to `main` / releases.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs the same build and test contract on Linux,
+macOS and Windows:
+
+- **Linux (Ubuntu 24.04)** — system LLVM/Clang, fmt, toml++, Catch2, Google
+  Benchmark and Lua 5.4; Rust and Zig are installed explicitly.
+- **macOS** — Homebrew `llvm`, fmt, toml++, Catch2, Google Benchmark and
+  Lua; the keg root is passed through `CMAKE_PREFIX_PATH`.
+- **Windows (MSYS2 UCRT64)** — GCC or Clang, LLVM, fmt, toml++, Catch2, Google
+  Benchmark, Lua 5.4 and Rust from the UCRT64 repository; Zig is installed by
+  the setup action.
+
+Each platform job builds the release tree, verifies that `amc`, the providers,
+`amc-core-test` and `test_all` exist, runs `ctest`, checks
+`amc --list-languages` / `--describe-language`, and uploads test logs on failure.
+The Linux job additionally installs to a temporary prefix and re-runs the
+installed `amc` so the manifest-next-to-driver layout is covered.
+
+The `CI status` job is the required check: it fails unless all three platform
+jobs pass. Do not merge by relying on a skipped optional-toolchain test during a
+release gate; Rust and Zig are installed in CI so the interop and example tests
+must actually run.
+
+A local equivalent is:
+
+```bash
+cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
+cmake --build build/Release --parallel
+ctest --test-dir build/Release --output-on-failure
+```
+
 ## Guidelines
 
 - Keep the build green: run `ctest` before opening a pull request.
