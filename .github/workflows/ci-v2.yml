@@ -36,8 +36,10 @@ env:
   ZIG_VERSION: "0.17.0"
   LLVM_VERSION: "22"
   FMT_VERSION: "11.2.0"
+  BENCHMARK_VERSION: "1.10.0"
   WINDOWS_LLVM_VERSION: "23.1.3-1"
   WINDOWS_FMT_VERSION: "12.2.0-1"
+  WINDOWS_BENCHMARK_VERSION: "1.10.0-1"
 
 jobs:
   linux:
@@ -60,7 +62,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build pkg-config binutils python3 \
-            libtomlplusplus-dev catch2 libbenchmark-dev liblua5.4-dev
+            libtomlplusplus-dev catch2 liblua5.4-dev
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
           . /etc/os-release
           echo "deb http://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-${LLVM_VERSION} main" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null
@@ -79,6 +81,16 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/fmt"
           cmake --build fmt-build --target install --parallel 2
 
+      - name: Build pinned Google Benchmark
+        run: |
+          curl -fsSL -o benchmark.tar.gz "https://github.com/google/benchmark/archive/refs/tags/v${BENCHMARK_VERSION}.tar.gz"
+          tar xzf benchmark.tar.gz
+          cmake -S "benchmark-${BENCHMARK_VERSION}" -B benchmark-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBENCHMARK_ENABLE_TESTING=OFF -DBENCHMARK_ENABLE_GTEST_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/benchmark"
+          cmake --build benchmark-build --target install --parallel 2
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -95,7 +107,7 @@ jobs:
           LLVM_PREFIX="/usr/lib/llvm-${LLVM_VERSION}"
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$LLVM_PREFIX;$RUNNER_TEMP/fmt" \
+            -DCMAKE_PREFIX_PATH="$LLVM_PREFIX;$RUNNER_TEMP/fmt;$RUNNER_TEMP/benchmark" \
             -DAMC_BUILD=ON \
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=ON
@@ -163,7 +175,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install "llvm@${LLVM_VERSION}" cmake tomlplusplus catch2 google-benchmark lua
+          brew install "llvm@${LLVM_VERSION}" cmake tomlplusplus catch2 lua
 
       - name: Build pinned fmt
         run: |
@@ -174,6 +186,16 @@ jobs:
             -DFMT_TEST=OFF -DFMT_DOC=OFF \
             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/fmt"
           cmake --build fmt-build --target install --parallel 2
+
+      - name: Build pinned Google Benchmark
+        run: |
+          curl -fsSL -o benchmark.tar.gz "https://github.com/google/benchmark/archive/refs/tags/v${BENCHMARK_VERSION}.tar.gz"
+          tar xzf benchmark.tar.gz
+          cmake -S "benchmark-${BENCHMARK_VERSION}" -B benchmark-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBENCHMARK_ENABLE_TESTING=OFF -DBENCHMARK_ENABLE_GTEST_TESTS=OFF \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/benchmark"
+          cmake --build benchmark-build --target install --parallel 2
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -188,7 +210,7 @@ jobs:
 
       - name: Configure
         run: |
-          PREFIXES="$(brew --prefix "llvm@${LLVM_VERSION}");$RUNNER_TEMP/fmt;$(brew --prefix tomlplusplus);$(brew --prefix catch2);$(brew --prefix google-benchmark);$(brew --prefix lua)"
+          PREFIXES="$(brew --prefix "llvm@${LLVM_VERSION}");$RUNNER_TEMP/fmt;$RUNNER_TEMP/benchmark;$(brew --prefix tomlplusplus);$(brew --prefix catch2);$(brew --prefix lua)"
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$PREFIXES" \
@@ -262,7 +284,7 @@ jobs:
             mingw-w64-ucrt-x86_64-fmt=${{ env.WINDOWS_FMT_VERSION }}
             mingw-w64-ucrt-x86_64-tomlplusplus
             mingw-w64-ucrt-x86_64-catch
-            mingw-w64-ucrt-x86_64-benchmark
+            mingw-w64-ucrt-x86_64-benchmark=${{ env.WINDOWS_BENCHMARK_VERSION }}
             mingw-w64-ucrt-x86_64-lua54
             mingw-w64-ucrt-x86_64-rust
             mingw-w64-ucrt-x86_64-cmake
