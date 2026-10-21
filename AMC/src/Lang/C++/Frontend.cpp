@@ -24,12 +24,46 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <set>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace amc::lang::cpp {
 namespace {
+
+// Clang renamed/reshaped a few AST accessors between LLVM 18 and 22. Keep the
+// frontend buildable across the supported range instead of pinning one LLVM.
+template<typename Context>
+auto canonical_tag_type(Context &ctx, const clang::TagDecl *decl, int) -> decltype(ctx.getCanonicalTagType(decl)) {
+    return ctx.getCanonicalTagType(decl);
+}
+
+template<typename Context>
+auto canonical_tag_type(Context &ctx, const clang::TagDecl *decl, long) -> decltype(ctx.getTagDeclType(decl)) {
+    return ctx.getTagDeclType(decl);
+}
+
+template<typename Context>
+auto bit_width_value(const clang::FieldDecl *field, const Context &ctx, int) -> decltype(field->getBitWidthValue()) {
+    (void)ctx;
+    return field->getBitWidthValue();
+}
+
+template<typename Context>
+auto bit_width_value(const clang::FieldDecl *field, const Context &ctx, long)
+    -> decltype(field->getBitWidthValue(ctx)) {
+    return field->getBitWidthValue(ctx);
+}
+
 // Stable, language-independent name for a floating-point format. Two float
 // types only share an identity when they share an actual IEEE/format semantic
 // (e.g. x87 80-bit must never merge with binary128, and a target where
@@ -519,7 +553,7 @@ private:
     void add_record(clang::CXXRecordDecl *d, const std::string &forced_name = std::string()) {
         const auto record_name = forced_name.empty() ? name(d) : forced_name;
         if (ids.count(record_name) != 0) return;
-        if (d->isDependentContext() || ctx.getCanonicalTagType(d)->isDependentType()) return;
+        if (d->isDependentContext() || canonical_tag_type(ctx, d, 0)->isDependentType()) return;
         if (!d->isCompleteDefinition()) return;
         add_namespaces(d);
         amc::Type t;
@@ -528,7 +562,7 @@ private:
         if (d->getDescribedClassTemplate()) t.flags |= amc::type_template_primary;
         t.id = amc::hash_text(t.name, 0x54595045);
         auto &l = ctx.getASTRecordLayout(d);
-        auto qt = ctx.getCanonicalTagType(d);
+        auto qt = canonical_tag_type(ctx, d, 0);
         t.size = uint32_t(ctx.getTypeSize(qt) / 8);
         t.align = uint32_t(ctx.getTypeAlign(qt) / 8);
         t.field_begin = uint32_t(module.fields.size());
@@ -573,7 +607,7 @@ private:
             if (f->isBitField()) {
                 x.flags |= amc::field_bitfield;
                 x.flags |= uint32_t(bit_offset % 8) << amc::field_bit_offset_shift;
-                x.flags |= f->getBitWidthValue() << amc::field_bit_width_shift;
+                x.flags |= bit_width_value(f, ctx, 0) << amc::field_bit_width_shift;
             }
             module.fields.push_back(x);
         }

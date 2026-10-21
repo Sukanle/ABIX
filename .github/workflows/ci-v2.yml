@@ -55,7 +55,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ninja-build pkg-config binutils \
+            cmake ninja-build pkg-config binutils \
             clang llvm llvm-dev libclang-dev libclang-cpp-dev \
             libfmt-dev libtomlplusplus-dev catch2 libbenchmark-dev liblua5.4-dev \
             python3
