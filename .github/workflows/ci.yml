@@ -97,7 +97,7 @@ jobs:
           ctest --test-dir build/Release -N | grep -q amc-example-test
 
       - name: Test
-        run: ctest --test-dir build/Release --output-on-failure
+        run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
       - name: Smoke language manifest
         run: |
@@ -183,7 +183,7 @@ jobs:
           ctest --test-dir build/Release -N | grep -q amc-example-test
 
       - name: Test
-        run: ctest --test-dir build/Release --output-on-failure
+        run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
       - name: Smoke language manifest
         run: |
@@ -279,7 +279,7 @@ jobs:
 
       - name: Test
         shell: msys2 {0}
-        run: ctest --test-dir build/Release --output-on-failure
+        run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
       - name: Smoke language manifest
         shell: msys2 {0}
