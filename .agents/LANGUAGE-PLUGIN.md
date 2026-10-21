@@ -43,6 +43,129 @@ language-specific information in the model — the same artifact that drives the
 Rust backend drives the Zig backend, and both consumers link the same native
 library. There is no Zig frontend yet.
 
+## 2.1 Provider manifest
+
+`AMC/providers.toml` is the source of truth for `amc --list-languages` and
+`amc --describe-language`. A provider entry declares its language, executable,
+roles, protocol and optional feature set; `amc` does not keep a second
+hard-coded language table.
+
+```toml
+version = 1
+
+[[provider]]
+language = "rust"
+executable = "amc-rust"
+roles = ["frontend", "backend"]
+protocol = "jsonl-v1"
+features = ["templates", "interfaces", "ownership", "error", "target"]
+
+[[provider]]
+language = "lua"
+roles = ["backend"]
+protocol = "direct"
+contract = "aue"
+```
+
+At build time the manifest is copied next to `amc` as
+`amc-providers.toml`. At run time `amc` resolves it in this order:
+
+1. `AMC_PROVIDERS_FILE`;
+2. `amc-providers.toml` next to the `amc` executable;
+3. `AMC_DEFAULT_PROVIDERS_FILE`, compiled in for source-tree development.
+
+`protocol = "jsonl-v1"` entries require an `executable`; `protocol = "direct"`
+entries are built-in backends (currently the Aue/Lua contract writer). The
+`executable` field also drives `amc-<language>` resolution, so a provider can
+move without changing the driver.
+
+## 2.2 Producer/consumer protocol
+
+The provider process speaks newline-delimited JSON over stdin/stdout. stderr is
+for human diagnostics only. Every message carries `schema` and `id`; a request
+receives exactly one final `RESULT` or `ERROR`, with optional `EVENT` progress
+messages in between.
+
+```json
+{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}
+{"schema":"abix.plugin/1","id":1,"type":"READY","protocol":{"major":1,"minor":0},"language":"cpp","roles":["frontend","backend"],"ir":{"min":4,"max":4}}
+{"schema":"abix.plugin/1","id":2,"type":"QUERY_CAPABILITIES"}
+{"schema":"abix.plugin/1","id":2,"type":"CAPABILITIES","language":"cpp","capabilities":["frontend","backend"]}
+{"schema":"abix.plugin/1","id":3,"type":"ANALYZE","capability":"frontend","input":"demo.abic.toml","output":"demo.abix"}
+{"schema":"abix.plugin/1","id":3,"type":"RESULT","status":"ok","artifacts":[{"kind":"abix","path":"demo.abix"}]}
+{"schema":"abix.plugin/1","id":4,"type":"DONE"}
+```
+
+`DESCRIBE` returns the provider's own manifest-shaped description, which
+`amc --describe-language` can use to verify `AMC/providers.toml`. The legacy
+`{"type":"INIT","protocol":1}` handshake remains accepted during the transition,
+but new providers should send `HELLO` with an object `protocol`.
+
+`ANALYZE` carries a frontend extraction request (`capability`, `input`,
+`output`). `PROJECT` carries a backend projection request (`input`, `output`);
+the driver sends `PROJECT` for a backend capability and only accepts a provider
+that advertises `backend`. Both may emit any number of `EVENT` messages with the
+same `id` before the final `RESULT`; the driver ignores unknown event kinds.
+
+```json
+{"schema":"abix.plugin/1","id":3,"type":"EVENT","event":{"kind":"progress","message":"parsing","current":1,"total":4}}
+{"schema":"abix.plugin/1","id":4,"type":"PROJECT","input":"demo.abix","output":"gen"}
+{"schema":"abix.plugin/1","id":4,"type":"RESULT","status":"ok","artifacts":[{"kind":"source","path":"gen/amc_generated.rs"}],"diagnostics":[]}
+```
+
+`CANCEL` requests cancellation of an earlier request:
+
+```json
+{"schema":"abix.plugin/1","id":5,"type":"CANCEL","target":4}
+{"schema":"abix.plugin/1","id":5,"type":"CANCELLED","target":4,"status":"cancelled"}
+```
+
+A provider acknowledges `CANCEL` when it is idle. A capability call is
+synchronous, so a provider that is already inside `ANALYZE`/`PROJECT` may finish
+instead of observing the cancel. The driver applies `AMC_PROVIDER_TIMEOUT_MS`
+(disabled when unset) to every response wait: on timeout it sends `CANCEL` as a
+best effort, terminates the provider process and reports a provider error. This
+keeps the protocol deterministic and prevents a stuck provider from hanging the
+toolchain.
+
+Capability stderr is captured and attached to the `ERROR` / `RESULT`
+`diagnostics` array as `{"severity":"error"|"warning","message":...}`. The driver
+includes the first diagnostic in the human-readable error text. A provider must
+still use the JSON `ERROR` envelope for protocol-level failures; stderr is for
+capability diagnostics, not control flow.
+
+Message summary:
+
+| Message | Direction | Purpose |
+| --- | --- | --- |
+| `HELLO` / `READY` | driver → provider / provider → driver | protocol and capability negotiation |
+| `INIT` | driver → provider | legacy numeric-protocol handshake |
+| `QUERY_CAPABILITIES` / `CAPABILITIES` | driver → provider / provider → driver | capability discovery |
+| `DESCRIBE` / `DESCRIBE_RESULT` | driver → provider / provider → driver | manifest-shaped provider description |
+| `ANALYZE` / `RESULT` | driver → provider / provider → driver | frontend extraction |
+| `PROJECT` / `RESULT` | driver → provider / provider → driver | backend projection |
+| `EVENT` | provider → driver | optional progress or diagnostic event |
+| `CANCEL` / `CANCELLED` | driver → provider / provider → driver | best-effort cancellation |
+| `ERROR` | provider → driver | structured `abix.error/1` failure |
+| `DONE` / `DONE` | driver → provider / provider → driver | orderly shutdown |
+
+Version rules:
+
+- `protocol.major` must match `1`; an unsupported major is a fatal
+  `PLUGIN-PROTOCOL-MISMATCH`.
+- `protocol.minor` may add optional fields; unknown optional fields are ignored.
+- An unsupported message type returns `PLUGIN-UNSUPPORTED-MESSAGE`.
+- A malformed line returns `PLUGIN-INVALID-JSON` and terminates the session.
+- A capability failure returns `PLUGIN-CAPABILITY-FAILED` with the provider's
+  diagnostic, not a generic driver error.
+- The same inputs, target, options and provider version must produce
+  byte-identical artifacts and projections.
+
+The `.abix` artifact remains the payload of `ANALYZE` for frontend extraction and
+of `PROJECT` for backend projection; the JSONL envelope only carries control,
+correlation and diagnostics. This keeps the language-independent IR stable while
+provider internals remain free to change.
+
 ## 3. Responsibilities
 
 A plugin **should**:

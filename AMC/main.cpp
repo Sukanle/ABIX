@@ -57,32 +57,35 @@ int main(int argc, char **argv) {
         return 2;
     }
     const std::string command = args[1];
-    const fs::path provider = fs::absolute(fs::path(args[0])).parent_path() / "amc-cpp";
+    const fs::path executable_dir = fs::absolute(fs::path(args[0])).parent_path();
+    const fs::path provider = executable_dir / "amc-cpp";
 
     if (command == "--list-languages") {
-        fmt::print("cpp\nlua\nrust\nzig\n");
+        ProviderManifest manifest;
+        std::string manifest_error;
+        if (!load_provider_manifest(executable_dir, manifest, manifest_error))
+            return fail(amc::ErrorCategory::config, "provider_manifest", manifest_error);
+        for (const auto &entry : manifest.providers)
+            fmt::print("{}\n", entry.language);
         return 0;
     }
     if (command == "--describe-language") {
         if (arg_count != 3) return usage_error("--describe-language requires a language");
+        ProviderManifest manifest;
+        std::string manifest_error;
+        if (!load_provider_manifest(executable_dir, manifest, manifest_error))
+            return fail(amc::ErrorCategory::config, "provider_manifest", manifest_error);
         const std::string language = args[2];
-        if (language == "cpp") {
-            fmt::print("cpp frontend backend protocol=jsonl-v1\n");
+        if (const auto *entry = find_provider_manifest(manifest, language)) {
+            fmt::print("{}\n", describe_provider(*entry));
             return 0;
         }
-        if (language == "lua") {
-            fmt::print("lua backend protocol=direct contract=aue\n");
-            return 0;
+        std::string supported;
+        for (const auto &entry : manifest.providers) {
+            if (!supported.empty()) supported += ", ";
+            supported += entry.language;
         }
-        if (language == "rust") {
-            fmt::print("rust frontend backend protocol=jsonl-v1\n");
-            return 0;
-        }
-        if (language == "zig") {
-            fmt::print("zig backend protocol=jsonl-v1\n");
-            return 0;
-        }
-        return usage_error("--describe-language supports cpp, lua, rust and zig");
+        return usage_error("--describe-language expects one of: " + supported);
     }
 
     if (command == "context") return cmd_context(args, arg_count);

@@ -2,9 +2,26 @@
 
 #include <cstdio>
 #include <iostream>
+#include <string>
 
 #include <fmt/format.h>
 #include <toml++/toml.h>
+
+#include "AMC/Core/Json.h"
+
+#if defined(_WIN32)
+#  include <io.h>
+#  define AMC_DUP _dup
+#  define AMC_DUP2 _dup2
+#  define AMC_FILENO _fileno
+#  define AMC_CLOSE _close
+#else
+#  include <unistd.h>
+#  define AMC_DUP dup
+#  define AMC_DUP2 dup2
+#  define AMC_FILENO fileno
+#  define AMC_CLOSE close
+#endif
 
 namespace amc::lang {
 
@@ -207,40 +224,345 @@ int run_provider(int argc, char **argv, const Provider &provider) {
     return 2;
 }
 
-int ipc(const Provider &provider) {
-    std::string capability_names;
-    for (const auto &capability : provider.capabilities) {
-        if (!capability_names.empty()) capability_names += ",";
-        capability_names += "\"" + capability.name + "\"";
+namespace {
+
+constexpr int kProtocolMajor = 1;
+constexpr int kProtocolMinor = 0;
+
+long long message_id(const amc::Json &message) {
+    const auto *id = message.find("id");
+    return id != nullptr ? static_cast<long long>(id->as_number(-1)) : -1;
+}
+
+std::string message_type(const amc::Json &message) {
+    const auto *type = message.find("type");
+    return type != nullptr ? type->as_string() : std::string{};
+}
+
+void emit(const amc::Json &message) {
+    fmt::println("{}", message.dump());
+    std::fflush(stdout);
+}
+
+amc::Json diagnostics_json(const std::string &text, const char *severity) {
+    amc::Json diagnostics = amc::Json::array();
+    if (text.empty()) return diagnostics;
+    amc::Json entry = amc::Json::object();
+    entry.set("severity", severity);
+    entry.set("message", text);
+    diagnostics.push_back(std::move(entry));
+    return diagnostics;
+}
+
+void emit_error(long long id, const char *code, const char *category, const std::string &message,
+    const std::string &diagnostics = {}) {
+    amc::Json error = amc::Json::object();
+    error.set("schema", "abix.error/1");
+    error.set("code", code);
+    error.set("category", category);
+    error.set("message", message);
+    error.set("retryable", false);
+
+    amc::Json envelope = amc::Json::object();
+    envelope.set("schema", "abix.plugin/1");
+    envelope.set("id", amc::Json(id));
+    envelope.set("type", "ERROR");
+    envelope.set("error", std::move(error));
+    if (!diagnostics.empty()) envelope.set("diagnostics", diagnostics_json(diagnostics, "error"));
+    emit(envelope);
+}
+
+bool parse_protocol(const amc::Json &message, bool &legacy, std::string &error) {
+    const auto *protocol = message.find("protocol");
+    if (protocol == nullptr) {
+        error = "missing `protocol`";
+        return false;
     }
-    std::string line, capability, input, output;
+    if (protocol->is_object()) {
+        const auto *major = protocol->find("major");
+        if (major == nullptr || static_cast<int>(major->as_number(0)) != kProtocolMajor) {
+            error = fmt::format("unsupported protocol major (expected {})", kProtocolMajor);
+            return false;
+        }
+        legacy = false;
+        return true;
+    }
+    if (static_cast<int>(protocol->as_number(0)) != kProtocolMajor) {
+        error = fmt::format("unsupported protocol (expected {})", kProtocolMajor);
+        return false;
+    }
+    legacy = true;
+    return true;
+}
+
+amc::Json roles_json(const Provider &provider) {
+    amc::Json roles = amc::Json::array();
+    for (const auto &capability : provider.capabilities)
+        roles.push_back(capability.name);
+    return roles;
+}
+
+amc::Json features_json(const Provider &provider) {
+    amc::Json features = amc::Json::array();
+    for (const auto &feature : provider.features)
+        features.push_back(feature);
+    return features;
+}
+
+amc::Json ir_json(const Provider &provider) {
+    amc::Json ir = amc::Json::object();
+    ir.set("min", amc::Json(provider.ir_min));
+    ir.set("max", amc::Json(provider.ir_max));
+    return ir;
+}
+
+void emit_ready(const Provider &provider, long long id, bool legacy) {
+    amc::Json message = amc::Json::object();
+    message.set("schema", "abix.plugin/1");
+    message.set("id", amc::Json(id));
+    message.set("type", "READY");
+    if (legacy) {
+        message.set("protocol", amc::Json(kProtocolMajor));
+    } else {
+        amc::Json protocol = amc::Json::object();
+        protocol.set("major", amc::Json(kProtocolMajor));
+        protocol.set("minor", amc::Json(kProtocolMinor));
+        message.set("protocol", std::move(protocol));
+    }
+    message.set("language", provider.language);
+    message.set("roles", roles_json(provider));
+    message.set("provider_version", provider.version);
+    message.set("ir", ir_json(provider));
+    message.set("features", features_json(provider));
+    emit(message);
+}
+
+void emit_capabilities(const Provider &provider, long long id) {
+    amc::Json message = amc::Json::object();
+    message.set("schema", "abix.plugin/1");
+    message.set("id", amc::Json(id));
+    message.set("type", "CAPABILITIES");
+    message.set("language", provider.language);
+    message.set("capabilities", roles_json(provider));
+    message.set("roles", roles_json(provider));
+    message.set("provider_version", provider.version);
+    message.set("ir", ir_json(provider));
+    message.set("features", features_json(provider));
+    emit(message);
+}
+
+void emit_describe(const Provider &provider, long long id) {
+    amc::Json info = amc::Json::object();
+    info.set("language", provider.language);
+    info.set("roles", roles_json(provider));
+    info.set("protocol", "jsonl-v1");
+    info.set("provider_version", provider.version);
+    info.set("ir", ir_json(provider));
+    info.set("features", features_json(provider));
+
+    amc::Json message = amc::Json::object();
+    message.set("schema", "abix.plugin/1");
+    message.set("id", amc::Json(id));
+    message.set("type", "DESCRIBE_RESULT");
+    message.set("provider", std::move(info));
+    emit(message);
+}
+
+int run_capturing_stderr(
+    int (*run)(const char *, const char *), const char *input, const char *output, std::string &diagnostics) {
+    std::fflush(stderr);
+    FILE *capture = std::tmpfile();
+    if (capture == nullptr) return run(input, output);
+
+    const int saved = AMC_DUP(AMC_FILENO(stderr));
+    if (saved < 0 || AMC_DUP2(AMC_FILENO(capture), AMC_FILENO(stderr)) < 0) {
+        if (saved >= 0) AMC_CLOSE(saved);
+        std::fclose(capture);
+        return run(input, output);
+    }
+
+    const int status = run(input, output);
+    std::fflush(stderr);
+    AMC_DUP2(saved, AMC_FILENO(stderr));
+    AMC_CLOSE(saved);
+
+    std::rewind(capture);
+    char buffer[4'096];
+    size_t count = 0;
+    while ((count = std::fread(buffer, 1, sizeof(buffer), capture)) > 0)
+        diagnostics.append(buffer, count);
+    std::fclose(capture);
+    if (!diagnostics.empty()) std::fwrite(diagnostics.data(), 1, diagnostics.size(), stderr);
+    return status;
+}
+
+void emit_result(
+    long long id, const std::string &capability, const std::string &output, const std::string &diagnostics = {}) {
+    amc::Json artifact = amc::Json::object();
+    artifact.set("kind", capability == "frontend" ? "abix" : "source");
+    artifact.set("path", output);
+
+    amc::Json artifacts = amc::Json::array();
+    artifacts.push_back(std::move(artifact));
+
+    amc::Json message = amc::Json::object();
+    message.set("schema", "abix.plugin/1");
+    message.set("id", amc::Json(id));
+    message.set("type", "RESULT");
+    message.set("status", "ok");
+    message.set("capability", capability);
+    message.set("artifacts", std::move(artifacts));
+    message.set("diagnostics", diagnostics_json(diagnostics, "warning"));
+    emit(message);
+}
+
+int run_capability(const Provider &provider, const std::string &name, const char *input, const char *output,
+    std::string &diagnostics) {
+    for (const auto &candidate : provider.capabilities) {
+        if (candidate.name != name) continue;
+        return run_capturing_stderr(candidate.run, input, output, diagnostics);
+    }
+    return -1;
+}
+
+}   // namespace
+
+int ipc(const Provider &provider) {
+    std::string line;
     bool initialized = false;
     while (std::getline(std::cin, line)) {
-        if (line.find(R"("type":"INIT")") != std::string::npos) {
-            initialized = line.find(R"("protocol":1)") != std::string::npos;
-            fmt::println(R"({{"type":"READY","protocol":1}})");
-            std::fflush(stdout);
-        } else if (line.find(R"("type":"QUERY_CAPABILITIES")") != std::string::npos) {
-            if (!initialized) return 2;
-            fmt::println(R"({{"type":"CAPABILITIES","language":"{}","capabilities":[{}]}})", provider.language,
-                capability_names);
-            std::fflush(stdout);
-        } else if (line.find(R"("type":"ANALYZE")") != std::string::npos) {
-            capability = json_value(line, "capability");
-            input = json_value(line, "input");
-            output = json_value(line, "output");
-            int result = 2;
-            for (const auto &candidate : provider.capabilities) {
-                if (candidate.name != capability) continue;
-                result = candidate.run(input.c_str(), output.c_str());
-                break;
+        if (line.empty()) continue;
+
+        amc::Json message;
+        std::string parse_error;
+        if (!amc::parse_json(line, message, parse_error)) {
+            emit_error(-1, "PLUGIN-INVALID-JSON", "protocol", "invalid JSON: " + parse_error);
+            return 2;
+        }
+        const long long id = message_id(message);
+        if (const auto *schema = message.find("schema"); schema != nullptr && schema->as_string() != "abix.plugin/1") {
+            emit_error(id, "PLUGIN-SCHEMA", "protocol", "unsupported schema: " + schema->as_string());
+            return 2;
+        }
+
+        const std::string type = message_type(message);
+        if (type == "INIT" || type == "HELLO") {
+            bool legacy = false;
+            std::string protocol_error;
+            if (!parse_protocol(message, legacy, protocol_error)) {
+                emit_error(id, "PLUGIN-PROTOCOL-MISMATCH", "protocol", protocol_error);
+                return 2;
             }
-            if (result == 0) fmt::println(R"({{"type":"ABI_MODULE","path":"{}"}})", output);
-            fmt::println(R"({{"type":"ANALYZE_RESULT","status":{}}})", result);
-            std::fflush(stdout);
-            if (result != 0) return result;
-        } else if (line.find(R"("type":"DONE")") != std::string::npos)
+            initialized = true;
+            emit_ready(provider, id, legacy);
+            continue;
+        }
+        if (type == "QUERY_CAPABILITIES") {
+            if (!initialized) {
+                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "QUERY_CAPABILITIES before INIT/HELLO");
+                return 2;
+            }
+            emit_capabilities(provider, id);
+            continue;
+        }
+        if (type == "DESCRIBE") {
+            if (!initialized) {
+                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "DESCRIBE before INIT/HELLO");
+                return 2;
+            }
+            emit_describe(provider, id);
+            continue;
+        }
+        if (type == "ANALYZE") {
+            if (!initialized) {
+                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "ANALYZE before INIT/HELLO");
+                return 2;
+            }
+            const auto *capability_node = message.find("capability");
+            const auto *input_node = message.find("input");
+            const auto *output_node = message.find("output");
+            if (capability_node == nullptr || input_node == nullptr || output_node == nullptr) {
+                emit_error(id, "PLUGIN-BAD-REQUEST", "protocol", "ANALYZE requires capability, input and output");
+                return 2;
+            }
+            const std::string capability = capability_node->as_string();
+            const std::string input = input_node->as_string();
+            const std::string output = output_node->as_string();
+
+            std::string diagnostics;
+            const int result = run_capability(provider, capability, input.c_str(), output.c_str(), diagnostics);
+            if (result < 0) {
+                emit_error(id, "PLUGIN-UNKNOWN-CAPABILITY", "protocol",
+                    fmt::format("capability `{}` is not advertised by {}", capability, provider.language));
+                return 2;
+            }
+            if (result != 0) {
+                emit_error(id, "PLUGIN-CAPABILITY-FAILED", "provider",
+                    fmt::format("capability `{}` failed with status {}", capability, result), diagnostics);
+                return result;
+            }
+            emit_result(id, capability, output, diagnostics);
+            continue;
+        }
+        if (type == "PROJECT") {
+            if (!initialized) {
+                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "PROJECT before INIT/HELLO");
+                return 2;
+            }
+            const auto *input_node = message.find("input");
+            const auto *output_node = message.find("output");
+            if (input_node == nullptr || output_node == nullptr) {
+                emit_error(id, "PLUGIN-BAD-REQUEST", "protocol", "PROJECT requires input and output");
+                return 2;
+            }
+            const std::string input = input_node->as_string();
+            const std::string output = output_node->as_string();
+
+            std::string diagnostics;
+            const int result = run_capability(provider, "backend", input.c_str(), output.c_str(), diagnostics);
+            if (result < 0) {
+                emit_error(id, "PLUGIN-UNKNOWN-CAPABILITY", "protocol",
+                    fmt::format("{} does not advertise a backend capability", provider.language));
+                return 2;
+            }
+            if (result != 0) {
+                emit_error(id, "PLUGIN-CAPABILITY-FAILED", "provider",
+                    fmt::format("backend projection failed with status {}", result), diagnostics);
+                return result;
+            }
+            emit_result(id, "backend", output, diagnostics);
+            continue;
+        }
+        if (type == "CANCEL") {
+            if (!initialized) {
+                emit_error(id, "PLUGIN-NOT-INITIALIZED", "protocol", "CANCEL before INIT/HELLO");
+                return 2;
+            }
+            const auto *target = message.find("target");
+            if (target == nullptr) {
+                emit_error(id, "PLUGIN-BAD-REQUEST", "protocol", "CANCEL requires target");
+                return 2;
+            }
+            amc::Json cancelled = amc::Json::object();
+            cancelled.set("schema", "abix.plugin/1");
+            cancelled.set("id", amc::Json(id));
+            cancelled.set("type", "CANCELLED");
+            cancelled.set("status", "cancelled");
+            cancelled.set("target", amc::Json(static_cast<long long>(target->as_number(-1))));
+            emit(cancelled);
+            continue;
+        }
+        if (type == "DONE") {
+            amc::Json done = amc::Json::object();
+            done.set("schema", "abix.plugin/1");
+            done.set("id", amc::Json(id));
+            done.set("type", "DONE");
+            emit(done);
             return 0;
+        }
+
+        emit_error(id, "PLUGIN-UNSUPPORTED-MESSAGE", "protocol", "unsupported message type: " + type);
+        return 2;
     }
     return 2;
 }

@@ -18,6 +18,7 @@ case (fixtures + expected ABI facts), not copying this file.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, Tuple
@@ -66,6 +67,10 @@ def keep_artifacts() -> bool:
     return os.environ.get("KEEP_ARTIFACTS", "") == "1"
 
 
+def exe_name(base: str) -> str:
+    return base + ".exe" if sys.platform == "win32" else base
+
+
 class ProviderConformance:
     """Drives one `ProviderCase` and scores each step PASS/FAIL."""
 
@@ -104,6 +109,25 @@ class ProviderConformance:
         listed = self.run([self.amc, "--list-languages"])
         self.check(lang in listed.stdout.split(),
                    f"amc --list-languages advertises {lang}")
+
+        provider = os.path.join(os.path.dirname(self.amc), exe_name(f"amc-{lang}"))
+        if not os.path.isfile(provider):
+            self.info(f"{provider} not found: skipping provider DESCRIBE consistency")
+            return
+        ipc_input = (
+            '{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}\n'
+            '{"schema":"abix.plugin/1","id":2,"type":"DESCRIBE"}\n'
+            '{"schema":"abix.plugin/1","id":3,"type":"DONE"}\n'
+        )
+        described = subprocess.run([provider, "--ipc"], input=ipc_input,
+                                   capture_output=True, text=True)
+        self.check(
+            described.returncode == 0
+            and '"type":"DESCRIBE_RESULT"' in described.stdout
+            and f'"language":"{lang}"' in described.stdout
+            and '"protocol":"jsonl-v1"' in described.stdout,
+            f"{os.path.basename(provider)} DESCRIBE agrees with the manifest",
+        )
 
     def test_build_and_query(self) -> str:
         case = self.case

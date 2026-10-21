@@ -6,6 +6,8 @@ int main(int argc, char **argv) {
         {
           {"backend", amc::lang::zig::backend},
           },
+        "0.2.0",
+        {"target"},
     };
     return amc::lang::run_provider(argc, argv, provider);
 }

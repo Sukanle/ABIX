@@ -17,6 +17,8 @@ int main(int argc, char **argv) {
           {"frontend", amc::lang::cpp::run_frontend},
           {"backend", amc::lang::cpp::backend},
           },
+        "0.2.0",
+        {"templates", "interfaces"},
     };
     return amc::lang::run_provider(argc, argv, provider);
 }

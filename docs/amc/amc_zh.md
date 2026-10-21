@@ -146,7 +146,11 @@ amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
 amc --describe-language zig       # zig backend protocol=jsonl-v1
 ```
 
-每个 `amc-<language>` 可执行文件都是独立 provider；`amc` 依据 `.abic.toml` 的 `language` 字段（或 `generate` / `frontend` 的 `-l`）选择对应 provider。新增语言只是一个独立的 provider 进程，不改变 ABIX IR——见 [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md)。
+语言列表与描述来自 `AMC/providers.toml`，构建时复制为 `amc` 旁边的 `amc-providers.toml`。`AMC_PROVIDERS_FILE` 可覆盖 manifest 路径；每个条目声明语言、可执行文件、角色、协议和可选 feature 集。`AMC_DEFAULT_PROVIDERS_FILE` 是编译进 driver 的源码树回退路径。
+
+每个 `amc-<language>` 可执行文件都是独立 provider；`amc` 依据 manifest、`.abic.toml` 的 `language` 字段或 `generate` / `frontend` 的 `-l` 选择对应 provider。新增语言只是一个独立的 provider 进程，不改变 ABIX IR——见 [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md)。
+
+provider 使用 `abix.plugin/1` JSONL 协议：`HELLO`/`READY`、`QUERY_CAPABILITIES`、`DESCRIBE`、用于 frontend 提取的 `ANALYZE`，以及用于 backend 投影的 `PROJECT`。driver 会关联 `id`、校验能力广告、把 capability stderr 采集为 `diagnostics`，并支持 `CANCEL` 与 `AMC_PROVIDER_TIMEOUT_MS`（未设置时禁用）来处理卡住的 provider。
 
 ### metadata
 

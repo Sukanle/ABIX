@@ -325,9 +325,17 @@ if(AMC_BUILD)
             AMC/src/CLI/Diff.cpp
             AMC/src/CLI/Generate.cpp
             AMC/src/CLI/Build.cpp
-            AMC/src/CLI/Cache.cpp)
+            AMC/src/CLI/Cache.cpp
+            AMC/src/CLI/Providers.cpp)
         target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_compile_definitions(
+            amc PRIVATE AMC_DEFAULT_PROVIDERS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/AMC/providers.toml")
         target_link_libraries(amc PRIVATE amc-core tomlplusplus::tomlplusplus)
+        # `amc --list-languages` / `--describe-language` read this manifest. Keep
+        # the source-tree copy next to the built executable so CTest and manual
+        # runs use the same file; an installed layout can place it beside `amc`.
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/AMC/providers.toml
+                       ${CMAKE_BINARY_DIR}/bin/amc-providers.toml COPYONLY)
         add_executable(amc-dump AMC/src/Tool/Dump/Dump.cpp AMC/src/Tool/Dump/Json.cpp AMC/src/Tool/Dump/Text.cpp)
         target_include_directories(amc-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
         target_link_libraries(amc-dump PRIVATE amc-core)

@@ -142,14 +142,14 @@ A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AM
 
 | Aspect                  | Checks                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Front/back separation   | `--list-languages` (cpp/lua/rust/zig); `--describe-language` (`cpp`/`rust` = frontend+backend, `zig` = backend, all `protocol=jsonl-v1`); `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** handshake |
+| Front/back separation   | `--list-languages`/`--describe-language` from `AMC/providers.toml` (cpp/lua/rust/zig); `AMC_PROVIDERS_FILE` override; `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** and `abix.plugin/1` envelope |
 | Code parsing            | `amc build` parses **C++** (`amc-cpp`) and **Rust** (`amc-rust`, a built-in frontend — no `rustc` needed) into `.abix`                                                                                    |
 | IR generation           | `validate`, `inspect`, `query --layout`, `context --format json`                                                                                                                                          |
 | Native language binding | one `.abix` → `generate -l cpp\|zig\|rust\|lua`; the **C++** and **Rust** bindings are compiled                                                                                                           |
 | IR reuse                | the same `.abix` drives all four backends                                                                                                                                                                 |
 
 - **Purpose** — a single, fast, toolchain-light assertion of the AMC value proposition: one IR, many languages, clean front/back split.
-- **Expected result** — `AMC feature set: 19 passed, 0 failed, 0 skipped` (the Rust compile check is `[SKIP]`ped when `rustc` is absent, so `skipped` may be 1).
+- **Expected result** — `AMC feature set: 26 passed, 0 failed, 0 skipped` (the Rust compile check is `[SKIP]`ped when `rustc` is absent, so `skipped` may be 1).
 
 ### F. Rust/Zig interop (`amc-interop-test`)
 
@@ -161,7 +161,7 @@ A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AM
 
 - **Functionality** — the Rust frontend (source-level `#[repr(C)]` / `extern "C"` extraction) and backend (ABIX → Rust `repr(C)` projection): advertised JSONL protocol, artifact production, projection compilation, and **determinism** (identical inputs → byte-identical artifacts).
 - **Purpose** — a language plugin must be reproducible and self-consistent.
-- **Expected result** — `16 passed, 0 failed`.
+- **Expected result** — `17 passed, 0 failed`.
 
 ### H. cmdly interop (`amc-cmdly-interop-test`)
 

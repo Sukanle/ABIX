@@ -142,14 +142,14 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 | 方面         | 检查                                                                                                                                                                                                 |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 前后端分离   | `--list-languages`（cpp/lua/rust/zig）；`--describe-language`（`cpp`/`rust`=frontend+backend，`zig`=backend，均 `protocol=jsonl-v1`）；`amc-cpp`/`amc-rust` 的 `--ipc` **READY + CAPABILITIES** 握手 |
+| 前后端分离   | `--list-languages`/`--describe-language` 由 `AMC/providers.toml` 驱动（cpp/lua/rust/zig）；`AMC_PROVIDERS_FILE` 覆盖；`amc-cpp`/`amc-rust` 的 `--ipc` **READY + CAPABILITIES** 与 `abix.plugin/1` envelope |
 | 代码解析     | `amc build` 解析 **C++**（`amc-cpp`）与 **Rust**（`amc-rust`，内置前端，无需 `rustc`）→ `.abix`                                                                                                      |
 | 生成 IR      | `validate`、`inspect`、`query --layout`、`context --format json`                                                                                                                                     |
 | 原生语言绑定 | 同一 `.abix` → `generate -l cpp\|zig\|rust\|lua`；并**编译** C++ 与 **Rust** 绑定                                                                                                                    |
 | 复用 IR      | 同一 `.abix` 驱动全部四个后端                                                                                                                                                                        |
 
 - **目的** —— 用一次快速、轻工具链的断言覆盖 AMC 的价值主张：一份 IR、多种语言、干净的前后端分离。
-- **预期现象** —— `AMC feature set: 19 passed, 0 failed, 0 skipped`（无 `rustc` 时 Rust 编译检查会 `[SKIP]`，此时 `skipped` 可能为 1）。
+- **预期现象** —— `AMC feature set: 26 passed, 0 failed, 0 skipped`（无 `rustc` 时 Rust 编译检查会 `[SKIP]`，此时 `skipped` 可能为 1）。
 
 ### F. Rust/Zig interop（`amc-interop-test`）
 
@@ -161,7 +161,7 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 - **功能** —— Rust 前端（源码级 `#[repr(C)]` / `extern "C"` 提取）与后端（ABIX → Rust `repr(C)` 投影）：广告的 JSONL 协议、产物生成、投影编译，以及**确定性**（相同输入 → 字节一致产物）。
 - **目的** —— 语言插件必须可复现且自洽。
-- **预期现象** —— `16 passed, 0 failed`。
+- **预期现象** —— `17 passed, 0 failed`。
 
 ### H. cmdly interop（`amc-cmdly-interop-test`）
 

@@ -1,9 +1,14 @@
 #include "AMC/CLI/CLI.h"
 
+#include <chrono>
+#include <cstdlib>
 #include <exception>
+#include <string>
 
 #include <fmt/format.h>
 #include <fmt/os.h>
+
+#include "AMC/Core/Json.h"
 
 #if defined(_WIN32)
 #  ifndef NOMINMAX
@@ -14,6 +19,8 @@
 #  endif
 #  include <windows.h>
 #else
+#  include <csignal>
+#  include <poll.h>
 #  include <sys/wait.h>
 #  include <unistd.h>
 #endif
@@ -156,6 +163,13 @@ bool parse_exports(const toml::table &table, std::vector<ExportSpec> &exports, s
 
 fs::path provider_executable(const fs::path &base_provider, const std::string &language) {
     if (language.empty() || language == "cpp") return base_provider;
+    ProviderManifest manifest;
+    std::string manifest_error;
+    if (load_provider_manifest(base_provider.parent_path(), manifest, manifest_error)) {
+        if (const auto *entry = find_provider_manifest(manifest, language);
+            entry != nullptr && !entry->executable.empty())
+            return base_provider.parent_path() / entry->executable;
+    }
     return base_provider.parent_path() / ("amc-" + language);
 }
 
@@ -173,6 +187,7 @@ struct ProviderProcess {
     int request_write = -1;
     int response_read = -1;
 #endif
+    std::string read_buffer;
 };
 
 #if defined(_WIN32)
@@ -220,12 +235,6 @@ bool provider_write(const ProviderProcess &proc, const std::string &line) {
         && written == line.size();
 }
 
-long provider_read(const ProviderProcess &proc, char *buffer, size_t size) {
-    DWORD count = 0;
-    if (ReadFile(proc.response_read, buffer, static_cast<DWORD>(size), &count, nullptr) == 0) return 0;
-    return static_cast<long>(count);
-}
-
 int provider_wait(ProviderProcess &proc) {
     if (proc.request_write != nullptr) CloseHandle(proc.request_write);
     if (proc.response_read != nullptr) CloseHandle(proc.response_read);
@@ -270,10 +279,6 @@ bool provider_write(const ProviderProcess &proc, const std::string &line) {
     return write(proc.request_write, line.data(), line.size()) == static_cast<ssize_t>(line.size());
 }
 
-long provider_read(const ProviderProcess &proc, char *buffer, size_t size) {
-    return static_cast<long>(read(proc.response_read, buffer, size));
-}
-
 int provider_wait(ProviderProcess &proc) {
     if (proc.request_write >= 0) close(proc.request_write);
     if (proc.response_read >= 0) close(proc.response_read);
@@ -283,44 +288,265 @@ int provider_wait(ProviderProcess &proc) {
 }
 #endif
 
+int provider_timeout_ms() {
+    const char *value = std::getenv("AMC_PROVIDER_TIMEOUT_MS");
+    if (value == nullptr || *value == '\0') return 0;
+    char *end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || parsed <= 0) return 0;
+    return parsed > 24L * 60L * 60L * 1'000L ? 24 * 60 * 60 * 1'000 : static_cast<int>(parsed);
+}
+
+void provider_terminate(ProviderProcess &proc) {
+#if defined(_WIN32)
+    if (proc.process != nullptr) TerminateProcess(proc.process, 124);
+#else
+    if (proc.pid > 0) kill(proc.pid, SIGKILL);
+#endif
+}
+
+bool provider_send(const ProviderProcess &proc, const amc::Json &message) {
+    return provider_write(proc, message.dump() + "\n");
+}
+
+bool provider_read_some(
+    ProviderProcess &proc, char *buffer, size_t size, int timeout_ms, long &count, std::string &error) {
+#if defined(_WIN32)
+    const auto deadline = timeout_ms > 0 ? std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms)
+                                         : std::chrono::steady_clock::time_point::max();
+    for (;;) {
+        DWORD available = 0;
+        if (PeekNamedPipe(proc.response_read, nullptr, 0, nullptr, &available, nullptr) == 0) {
+            error = "provider pipe closed";
+            return false;
+        }
+        if (available > 0) {
+            DWORD read_count = 0;
+            if (ReadFile(proc.response_read, buffer, static_cast<DWORD>(size), &read_count, nullptr) == 0) {
+                error = "provider read failed";
+                return false;
+            }
+            count = static_cast<long>(read_count);
+            return true;
+        }
+        if (WaitForSingleObject(proc.process, 0) == WAIT_OBJECT_0) {
+            count = 0;
+            return true;
+        }
+        if (timeout_ms > 0 && std::chrono::steady_clock::now() >= deadline) {
+            error = fmt::format("provider timeout after {} ms", timeout_ms);
+            return false;
+        }
+        Sleep(5);
+    }
+#else
+    struct pollfd descriptor{proc.response_read, POLLIN, 0};
+    const int ready = poll(&descriptor, 1, timeout_ms > 0 ? timeout_ms : -1);
+    if (ready == 0) {
+        error = fmt::format("provider timeout after {} ms", timeout_ms);
+        return false;
+    }
+    if (ready < 0) {
+        error = "provider read failed";
+        return false;
+    }
+    count = static_cast<long>(read(proc.response_read, buffer, size));
+    return true;
+#endif
+}
+
+bool provider_read_line(ProviderProcess &proc, std::string &line, std::string &error, int timeout_ms) {
+    const auto deadline = timeout_ms > 0 ? std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms)
+                                         : std::chrono::steady_clock::time_point::max();
+    for (;;) {
+        const auto newline = proc.read_buffer.find('\n');
+        if (newline != std::string::npos) {
+            line.assign(proc.read_buffer, 0, newline);
+            proc.read_buffer.erase(0, newline + 1);
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            return true;
+        }
+        int remaining = 0;
+        if (timeout_ms > 0) {
+            const auto left =
+                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+            remaining = left.count() > 0 ? static_cast<int>(left.count()) : 0;
+            if (remaining == 0) {
+                error = fmt::format("provider timeout after {} ms", timeout_ms);
+                return false;
+            }
+        }
+        char buffer[4'096] = {};
+        long count = 0;
+        if (!provider_read_some(proc, buffer, sizeof(buffer), remaining, count, error)) return false;
+        if (count <= 0) {
+            error = "provider closed the response stream";
+            return false;
+        }
+        proc.read_buffer.append(buffer, static_cast<size_t>(count));
+    }
+}
+
+std::string provider_error_text(const amc::Json &message) {
+    std::string text = "provider reported an error";
+    const auto *error = message.find("error");
+    if (error == nullptr) return text;
+    const auto *code = error->find("code");
+    const auto *detail = error->find("message");
+    text.clear();
+    if (code != nullptr) text += code->as_string();
+    if (detail != nullptr) {
+        if (!text.empty()) text += ": ";
+        text += detail->as_string();
+    }
+    if (const auto *diagnostics = message.find("diagnostics"); diagnostics != nullptr && diagnostics->is_array()) {
+        for (const auto &entry : diagnostics->items()) {
+            const auto *diagnostic = entry.find("message");
+            if (diagnostic == nullptr || diagnostic->as_string().empty()) continue;
+            text += ": " + diagnostic->as_string();
+            break;
+        }
+    }
+    return text.empty() ? "provider reported an error" : text;
+}
+
+bool provider_wait_response(ProviderProcess &proc, long long id, const std::string &expected, amc::Json &response,
+    std::string &error, int timeout_ms) {
+    for (;;) {
+        std::string line;
+        if (!provider_read_line(proc, line, error, timeout_ms)) {
+            if (error.rfind("provider timeout", 0) == 0) {
+                amc::Json cancel = amc::Json::object();
+                cancel.set("schema", "abix.plugin/1");
+                cancel.set("id", amc::Json(id));
+                cancel.set("type", "CANCEL");
+                cancel.set("target", amc::Json(id));
+                (void)provider_send(proc, cancel);
+                provider_terminate(proc);
+            }
+            return false;
+        }
+        if (line.empty()) continue;
+
+        std::string parse_error;
+        if (!amc::parse_json(line, response, parse_error)) {
+            error = "invalid provider response: " + parse_error;
+            return false;
+        }
+        if (const auto *schema = response.find("schema"); schema != nullptr && schema->as_string() != "abix.plugin/1") {
+            error = "provider response has unsupported schema: " + schema->as_string();
+            return false;
+        }
+        const auto *id_node = response.find("id");
+        const long long response_id = id_node != nullptr ? static_cast<long long>(id_node->as_number(-1)) : -1;
+        if (response_id != id) {
+            error = fmt::format("provider response id mismatch (expected {}, got {})", id, response_id);
+            return false;
+        }
+        const auto *type_node = response.find("type");
+        const std::string type = type_node != nullptr ? type_node->as_string() : std::string{};
+        if (type == "EVENT") continue;
+        if (type == "ERROR") {
+            error = provider_error_text(response);
+            return false;
+        }
+        if (type != expected) {
+            error = fmt::format("provider response type mismatch (expected {}, got {})", expected, type);
+            return false;
+        }
+        return true;
+    }
+}
+
+bool provider_protocol_compatible(const amc::Json &message) {
+    const auto *protocol = message.find("protocol");
+    if (protocol == nullptr) return false;
+    if (protocol->is_object()) {
+        const auto *major = protocol->find("major");
+        return major != nullptr && static_cast<int>(major->as_number(0)) == 1;
+    }
+    return static_cast<int>(protocol->as_number(0)) == 1;
+}
+
 }   // namespace
 
 bool dispatch_provider(const fs::path &provider, const char *capability, const fs::path &input, const fs::path &output,
     std::string &error) {
     ProviderProcess child;
     if (!provider_spawn(provider, child, error)) return false;
-    const auto send = [&](const std::string &message) { return provider_write(child, message + "\n"); };
-    const auto request = std::string("{\"type\":\"ANALYZE\",\"capability\":")
-                       + json_quote(capability)
-                       + ",\"input\":"
-                       + json_quote(input.string())
-                       + ",\"output\":"
-                       + json_quote(output.string())
-                       + "}";
-    bool ok = send("{\"type\":\"INIT\",\"protocol\":1}") && send("{\"type\":\"QUERY_CAPABILITIES\"}");
-    char buffer[4'096] = {};
-    const long response_size = provider_read(child, buffer, sizeof(buffer) - 1);
-    if (response_size <= 0) ok = false;
-    if (ok) ok = send(request) && send("{\"type\":\"DONE\"}");
-    std::string responses;
-    if (ok) {
-        long result_size = 0;
-        while ((result_size = provider_read(child, buffer, sizeof(buffer))) > 0)
-            responses.append(buffer, static_cast<size_t>(result_size));
-        ok = responses.find("\"type\":\"ABI_MODULE\"") != std::string::npos
-          && responses.find("\"status\":0") != std::string::npos;
-    }
-    const int exit_code = provider_wait(child);
-    if (!ok) {
-        error = "provider reported failure";
-        if (!responses.empty()) {
-            if (responses.size() > 240) responses.resize(240);
-            error += ": " + responses;
-        } else {
-            error += " (exit " + fmt::to_string(exit_code) + ")";
+    const int timeout_ms = provider_timeout_ms();
+
+    const auto fail_and_wait = [&](std::string message) {
+        error = std::move(message);
+        provider_wait(child);
+        return false;
+    };
+
+    amc::Json hello = amc::Json::object();
+    hello.set("schema", "abix.plugin/1");
+    hello.set("id", amc::Json(1));
+    hello.set("type", "HELLO");
+    amc::Json protocol = amc::Json::object();
+    protocol.set("major", amc::Json(1));
+    protocol.set("minor", amc::Json(0));
+    hello.set("protocol", std::move(protocol));
+    if (!provider_send(child, hello)) return fail_and_wait("cannot send provider HELLO");
+
+    amc::Json ready;
+    if (!provider_wait_response(child, 1, "READY", ready, error, timeout_ms)) return fail_and_wait(error);
+    if (!provider_protocol_compatible(ready)) return fail_and_wait("provider READY reported an incompatible protocol");
+
+    amc::Json query = amc::Json::object();
+    query.set("schema", "abix.plugin/1");
+    query.set("id", amc::Json(2));
+    query.set("type", "QUERY_CAPABILITIES");
+    if (!provider_send(child, query)) return fail_and_wait("cannot send QUERY_CAPABILITIES");
+
+    amc::Json capabilities;
+    if (!provider_wait_response(child, 2, "CAPABILITIES", capabilities, error, timeout_ms)) return fail_and_wait(error);
+
+    bool advertised = false;
+    if (const auto *entries = capabilities.find("capabilities"); entries != nullptr && entries->is_array()) {
+        for (const auto &entry : entries->items()) {
+            if (entry.as_string() == capability) {
+                advertised = true;
+                break;
+            }
         }
     }
-    return ok && exit_code == 0;
+    if (!advertised) return fail_and_wait(fmt::format("provider does not advertise capability `{}`", capability));
+
+    const bool project = std::string(capability) == "backend";
+    amc::Json work = amc::Json::object();
+    work.set("schema", "abix.plugin/1");
+    work.set("id", amc::Json(3));
+    work.set("type", project ? "PROJECT" : "ANALYZE");
+    if (!project) work.set("capability", capability);
+    work.set("input", input.string());
+    work.set("output", output.string());
+    if (!provider_send(child, work)) return fail_and_wait(project ? "cannot send PROJECT" : "cannot send ANALYZE");
+
+    amc::Json result;
+    if (!provider_wait_response(child, 3, "RESULT", result, error, timeout_ms)) return fail_and_wait(error);
+    const auto *status = result.find("status");
+    if (status == nullptr || status->as_string() != "ok")
+        return fail_and_wait("provider RESULT did not report status=ok");
+
+    amc::Json done = amc::Json::object();
+    done.set("schema", "abix.plugin/1");
+    done.set("id", amc::Json(4));
+    done.set("type", "DONE");
+    if (!provider_send(child, done)) return fail_and_wait("cannot send DONE");
+
+    amc::Json done_response;
+    if (!provider_wait_response(child, 4, "DONE", done_response, error, timeout_ms)) return fail_and_wait(error);
+
+    const int exit_code = provider_wait(child);
+    if (exit_code != 0) {
+        error = fmt::format("provider exited with status {}", exit_code);
+        return false;
+    }
+    return true;
 }
 
 int generate(

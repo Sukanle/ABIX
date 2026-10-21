@@ -1,6 +1,7 @@
 #ifndef AMC_CLI_H
 #define AMC_CLI_H
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -41,6 +42,31 @@ struct ExportSpec {
     fs::path output;
     std::vector<std::string> symbols;
 };
+
+// One entry of `AMC/providers.toml`. `roles` contains `frontend` and/or
+// `backend`; `protocol` is `jsonl-v1` for provider processes and `direct` for
+// built-in backends such as the Aue/Lua contract writer.
+struct ProviderManifestEntry {
+    std::string language;
+    std::string executable;
+    std::vector<std::string> roles;
+    std::string protocol;
+    std::string contract;
+    std::vector<std::string> features;
+};
+
+struct ProviderManifest {
+    uint32_t version = 1;
+    std::vector<ProviderManifestEntry> providers;
+};
+
+// Load the provider manifest next to the `amc` executable, falling back to
+// `AMC_DEFAULT_PROVIDERS_FILE` for source-tree runs. `AMC_PROVIDERS_FILE`
+// overrides both. The manifest is the source of truth for
+// `--list-languages` and `--describe-language`.
+bool load_provider_manifest(const fs::path &executable_dir, ProviderManifest &manifest, std::string &error);
+const ProviderManifestEntry *find_provider_manifest(const ProviderManifest &manifest, const std::string &language);
+std::string describe_provider(const ProviderManifestEntry &provider);
 
 bool parse_exports(const toml::table &table, std::vector<ExportSpec> &exports, std::string &error);
 // Apply the `[target]` table to the module and recompute every LayoutHash with

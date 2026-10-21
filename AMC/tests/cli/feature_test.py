@@ -118,6 +118,87 @@ def main() -> int:
             else:
                 report.fail(f"{provider} --ipc handshake", proc.stdout + proc.stderr)
 
+        # The manifest, not a hard-coded table, is the discovery source.
+        manifest = work / "providers.toml"
+        manifest.write_text(
+            'version = 1\n\n'
+            '[[provider]]\n'
+            'language = "demo"\n'
+            'roles = ["backend"]\n'
+            'protocol = "direct"\n'
+            'contract = "demo"\n',
+            encoding="utf-8",
+        )
+        manifest_env = dict(os.environ)
+        manifest_env["AMC_PROVIDERS_FILE"] = str(manifest)
+        listed = run([str(amc), "--list-languages"], env=manifest_env)
+        if listed.returncode == 0 and listed.stdout.split() == ["demo"]:
+            report.ok("amc --list-languages follows AMC_PROVIDERS_FILE")
+        else:
+            report.fail("amc --list-languages follows AMC_PROVIDERS_FILE", listed.stdout + listed.stderr)
+        described = run([str(amc), "--describe-language", "demo"], env=manifest_env)
+        if described.returncode == 0 and "demo backend protocol=direct contract=demo" in described.stdout:
+            report.ok("amc --describe-language follows AMC_PROVIDERS_FILE")
+        else:
+            report.fail("amc --describe-language follows AMC_PROVIDERS_FILE", described.stdout + described.stderr)
+        unknown = run([str(amc), "--describe-language", "missing"], env=manifest_env)
+        if unknown.returncode != 0 and "one of: demo" in unknown.stderr:
+            report.ok("amc --describe-language reports the manifest languages on an unknown language")
+        else:
+            report.fail("amc --describe-language unknown-language diagnostic", unknown.stderr)
+
+        # New envelope: schema + id + object protocol; legacy INIT above stays valid.
+        new_ipc = (
+            '{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}\n'
+            '{"schema":"abix.plugin/1","id":2,"type":"QUERY_CAPABILITIES"}\n'
+            '{"schema":"abix.plugin/1","id":3,"type":"DESCRIBE"}\n'
+            '{"schema":"abix.plugin/1","id":4,"type":"DONE"}\n'
+        )
+        proc = run([bin_path("amc-cpp"), "--ipc"], input=new_ipc)
+        if all(
+            token in proc.stdout
+            for token in (
+                '"schema":"abix.plugin/1"',
+                '"id":1,"type":"READY"',
+                '"protocol":{"major":1',
+                '"type":"CAPABILITIES"',
+                '"type":"DESCRIBE_RESULT"',
+            )
+        ):
+            report.ok("amc-cpp --ipc speaks the abix.plugin/1 envelope")
+        else:
+            report.fail("amc-cpp --ipc speaks the abix.plugin/1 envelope", proc.stdout + proc.stderr)
+
+        proc = run(
+            [bin_path("amc-cpp"), "--ipc"],
+            input='{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":2,"minor":0}}\n',
+        )
+        if proc.returncode != 0 and '"code":"PLUGIN-PROTOCOL-MISMATCH"' in proc.stdout:
+            report.ok("amc-cpp --ipc rejects an unsupported protocol major")
+        else:
+            report.fail("amc-cpp --ipc rejects an unsupported protocol major", proc.stdout + proc.stderr)
+
+        cancel_ipc = (
+            '{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}\n'
+            '{"schema":"abix.plugin/1","id":2,"type":"CANCEL","target":9}\n'
+            '{"schema":"abix.plugin/1","id":3,"type":"DONE"}\n'
+        )
+        proc = run([bin_path("amc-cpp"), "--ipc"], input=cancel_ipc)
+        if '"type":"CANCELLED"' in proc.stdout and '"target":9' in proc.stdout:
+            report.ok("amc-cpp --ipc acknowledges CANCEL when idle")
+        else:
+            report.fail("amc-cpp --ipc acknowledges CANCEL when idle", proc.stdout + proc.stderr)
+
+        bad_project = (
+            '{"schema":"abix.plugin/1","id":1,"type":"HELLO","protocol":{"major":1,"minor":0}}\n'
+            '{"schema":"abix.plugin/1","id":2,"type":"PROJECT","input":"/missing/demo.abix","output":"/tmp/demo"}\n'
+        )
+        proc = run([bin_path("amc-rust"), "--ipc"], input=bad_project)
+        if '"code":"PLUGIN-CAPABILITY-FAILED"' in proc.stdout and '"diagnostics"' in proc.stdout:
+            report.ok("amc-rust --ipc reports capability diagnostics")
+        else:
+            report.fail("amc-rust --ipc reports capability diagnostics", proc.stdout + proc.stderr)
+
         # --- B. code parsing -> .abix ------------------------------------
         artifacts: dict[str, Path] = {}
         for name in ("amc_test", "rust_demo"):

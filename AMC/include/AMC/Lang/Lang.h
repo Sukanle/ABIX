@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 // Language-provider infrastructure shared by every `amc-<language>` executable.
@@ -101,8 +102,21 @@ struct Capability {
 
 // Language-agnostic description of an `amc-<language>` executable.
 struct Provider {
+    Provider(std::string language_, std::vector<Capability> capabilities_, std::string version_ = "0.2.0",
+        std::vector<std::string> features_ = {}, uint32_t ir_min_ = 4, uint32_t ir_max_ = 4)
+        : language(std::move(language_))
+        , capabilities(std::move(capabilities_))
+        , version(std::move(version_))
+        , features(std::move(features_))
+        , ir_min(ir_min_)
+        , ir_max(ir_max_) {}
+
     std::string language;
     std::vector<Capability> capabilities;
+    std::string version;
+    std::vector<std::string> features;
+    uint32_t ir_min = 4;
+    uint32_t ir_max = 4;
 };
 
 // Parse the `[[import]]` section of a `.abic.toml`. `expected_language` must

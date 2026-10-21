@@ -186,7 +186,23 @@ amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
 amc --describe-language zig       # zig backend protocol=jsonl-v1
 ```
 
-Every `amc-<language>` executable is a standalone provider; `amc` dispatches to the one named by the `.abic.toml` `language` field (or by `-l` for `generate` / `frontend`). A new language is a separate provider process and does not change ABIX IR — see [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md).
+The list and descriptions come from `AMC/providers.toml`, copied next to the
+built `amc` as `amc-providers.toml`. `AMC_PROVIDERS_FILE` overrides the
+manifest path. Each entry declares its language, executable, roles, protocol
+and optional feature set; `AMC_DEFAULT_PROVIDERS_FILE` is the source-tree
+fallback compiled into the driver.
+
+Every `amc-<language>` executable is a standalone provider; `amc` dispatches to
+the one named by the manifest, the `.abic.toml` `language` field, or `-l` for
+`generate` / `frontend`. A new language is a separate provider process and does
+not change ABIX IR — see [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md).
+
+Providers speak the `abix.plugin/1` JSONL protocol: `HELLO`/`READY`,
+`QUERY_CAPABILITIES`, `DESCRIBE`, `ANALYZE` for frontend extraction and
+`PROJECT` for backend projection. The driver correlates `id`s, validates the
+advertised capability, captures capability stderr into `diagnostics`, and
+supports `CANCEL` plus `AMC_PROVIDER_TIMEOUT_MS` (disabled when unset) for a
+stuck provider.
 
 ### `amc adapter`
 
