@@ -25,6 +25,7 @@
     - [H. cmdly interop（`amc-cmdly-interop-test`）](#h-cmdly-interopamc-cmdly-interop-test)
     - [I. expose interop（`amc-expose-interop-test`）](#i-expose-interopamc-expose-interop-test)
     - [J. CMake 集成（`amc-cmake-integration-test`）](#j-cmake-集成amc-cmake-integration-test)
+    - [K. 独立跨语言示例（`amc-example-test`）](#k-独立跨语言示例amc-example-test)
 - [手动功能走查与生成文件](#手动功能走查与生成文件)
 - [原生绑定（Rust）走查](#原生绑定rust走查)
 - [保留临时产物](#保留临时产物)
@@ -183,6 +184,12 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 - **功能** —— 经 CMake（真实消费工程）驱动 `amc build`，验证 CLI 契约与生成产物。
 - **目的** —— 工具链与用户真正使用的构建系统集成。
 - **预期现象** —— `PASS`，或带原因的 `[SKIP]`。
+
+### K. 独立跨语言示例（`amc-example-test`）
+
+- **功能** —— 运行 `example/cross_language/run_example.py`：构建一个原生 C++ 库，执行 `amc build`，生成 C++/Rust/Zig 投影，并让三个消费者链接同一个库运行。
+- **目的** —— 保证可复制示例独立可用，不依赖更大的 interop fixture。
+- **预期现象** —— `cpp example ok`、`rust example ok`、`zig example ok`，缺少可选消费端工具链时 `[SKIP]`。
 
 ## 手动功能走查与生成文件
 

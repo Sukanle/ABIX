@@ -25,6 +25,7 @@ This document is the complete test flow: how to build and run the suites, what e
     - [H. cmdly interop (`amc-cmdly-interop-test`)](#h-cmdly-interop-amc-cmdly-interop-test)
     - [I. expose interop (`amc-expose-interop-test`)](#i-expose-interop-amc-expose-interop-test)
     - [J. CMake integration (`amc-cmake-integration-test`)](#j-cmake-integration-amc-cmake-integration-test)
+    - [K. Standalone cross-language example (`amc-example-test`)](#k-standalone-cross-language-example-amc-example-test)
 - [Manual feature walkthrough and generated files](#manual-feature-walkthrough-and-generated-files)
 - [Native binding (Rust) walkthrough](#native-binding-rust-walkthrough)
 - [Keeping the temporary artifacts](#keeping-the-temporary-artifacts)
@@ -183,6 +184,12 @@ The protocol also has a dedicated cooperative-cancellation test (`amc-cancellati
 - **Functionality** — `amc build` driven through CMake (a real consumer project), the CLI contract and the generated artifacts.
 - **Purpose** — the toolchain integrates with the build system users actually use.
 - **Expected result** — `PASS`, or `[SKIP]` with a reason.
+
+### K. Standalone cross-language example (`amc-example-test`)
+
+- **Functionality** — runs `example/cross_language/run_example.py`: builds one native C++ library, runs `amc build`, generates C++/Rust/Zig projections, compiles and runs all three consumers against the same library.
+- **Purpose** — keep the copyable example working without depending on the larger interop fixture.
+- **Expected result** — `cpp example ok`, `rust example ok`, `zig example ok`, or `[SKIP]` when an optional consumer toolchain is absent.
 
 ## Manual feature walkthrough and generated files
 

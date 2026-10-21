@@ -396,6 +396,10 @@ if(AMC_BUILD)
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/cancellation/cancellation_test.py
                              ${CMAKE_BINARY_DIR}/bin)
             set_tests_properties(amc-cancellation-test PROPERTIES TIMEOUT 20)
+            add_test(NAME amc-example-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/example/cross_language/run_example.py
+                             --amc ${CMAKE_BINARY_DIR}/bin/amc --cxx ${CMAKE_CXX_COMPILER} --skip-missing)
+            set_tests_properties(amc-example-test PROPERTIES TIMEOUT 120)
             add_test(NAME amc-interop-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/interop_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})

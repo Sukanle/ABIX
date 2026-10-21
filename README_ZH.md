@@ -144,6 +144,8 @@ LayoutHash
 Result: incompatible
 ```
 
+可直接运行、可复制的 C++ → ABIX → Rust/Zig 工程见 [`example/cross_language/`](example/cross_language/)。它构建一个原生库，并让 C++、Rust、Zig 三个消费者使用同一份 `.abix` 运行。
+
 ---
 
 ## 原生执行，而不是 VM

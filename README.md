@@ -144,6 +144,8 @@ LayoutHash
 Result: incompatible
 ```
 
+For a runnable, copyable C++ → ABIX → Rust/Zig project, see [`example/cross_language/`](example/cross_language/). It builds one native library and runs C++, Rust and Zig consumers against the same `.abix` artifact.
+
 ---
 
 ## Native, Not a VM
