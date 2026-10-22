@@ -34,7 +34,14 @@ static void BM_EBR_RWPhase(benchmark::State &state) {
     domain.synchronize();
 }
 BENCHMARK(BM_EBR_RWPhase)
-    ->Args({1})->Args({2})->Args({4})->Args({8})
-    ->Threads(2)->Threads(4)->Threads(8)->Threads(16)->Threads(32);
+    ->Args({1})
+    ->Args({2})
+    ->Args({4})
+    ->Args({8})
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(8)
+    ->Threads(16)
+    ->Threads(32);
 
-#endif // SKL_ABIX_DEVELOPMENT
+#endif   // SKL_ABIX_DEVELOPMENT

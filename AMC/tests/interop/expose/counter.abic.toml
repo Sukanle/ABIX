@@ -1,0 +1,22 @@
+[package]
+name = "counter_expose"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["counter.hpp"]
+symbols = ["Counter"]
+
+# Expose a class as callable capabilities. The frontend generates the C thunks
+# and records them, so no adapter is written by hand.
+[[expose]]
+type = "Counter"
+methods = ["get", "add"]
+constructor = ["int"]
+
+[thunks]
+output = "abix_thunks.cpp"
+
+[[export]]
+output = "counter_expose.abix"

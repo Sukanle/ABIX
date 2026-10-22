@@ -40,8 +40,7 @@
 
 </details>
 
-> 本文档定义 ABIX 官方量化指标、公式和报告方法。这是**定义**文档；
-> 实际测量数据见 [`benchmark.md`](../benchmark/benchmark_zh.md) 和 [`troi.md`](troi_zh.md)。
+> 本文档定义 ABIX 官方量化指标、公式和报告方法。这是**定义**文档；实际测量数据见 [`benchmark.md`](../benchmark/benchmark_zh.md) 和 [`troi.md`](troi_zh.md)。
 
 ---
 
@@ -97,7 +96,7 @@ ABIX
 
 并非所有指标都在同一项目成熟度下可用。
 
-### 第一层：当前可测量（ABIX 1.0+）
+### 第一层：当前可测量（ABIX 0.1.0+）
 
 | 指标 | 类别 |
 |------|------|
@@ -432,7 +431,7 @@ O_type = 56 B/type
 O_binary = 1.17%
 ```
 
-Debug/Release/RelWithDebInfo 开销详情见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
+Debug/Release/RelWithDebInfo 开销详情见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
 
 ---
 
@@ -593,4 +592,4 @@ AI 效率
 | [`metrics.md`](metrics.md) | **本文档。** 定义、公式、方法。 |
 | [`benchmark.md`](../benchmark/benchmark_zh.md) | 特定硬件上的实际测量数据。 |
 | [`troi.md`](troi_zh.md) | AI 工作流 TROI / token 效率深度分析。 |
-| [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |
+| [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |

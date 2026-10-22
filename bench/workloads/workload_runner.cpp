@@ -1,7 +1,8 @@
 #include "workload_runner.hpp"
 #include "workload.hpp"
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
+#include "bench_fmt.hpp"
 #include <benchmark/benchmark.h>
 #include <string>
 #include <vector>
@@ -56,7 +57,7 @@ static void register_range_select(const std::string &name, const std::vector<int
 #endif
 
 static void BM_EBR_EnterExit(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     for (auto _ : state) {
         domain.enter();
         domain.exit();
@@ -64,12 +65,12 @@ static void BM_EBR_EnterExit(benchmark::State &state) {
 }
 
 static void BM_EBR_ProtectedLoad(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     int payload = 42;
     void *ptr = &payload;
     for (auto _ : state) {
         domain.enter();
-        void *p = skl::abix::atomic::load_acquire(&ptr);
+        void *p = skl::abix::util::load_acquire(&ptr);
         benchmark::DoNotOptimize(p);
         domain.exit();
     }
@@ -77,7 +78,7 @@ static void BM_EBR_ProtectedLoad(benchmark::State &state) {
 
 #ifdef SKL_ABIX_DEVELOPMENT
 static void BM_EBR_ReaderPhase(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     for (auto _ : state) {
         domain.enter();
         domain.exit();
@@ -85,7 +86,7 @@ static void BM_EBR_ReaderPhase(benchmark::State &state) {
 }
 
 static void BM_EBR_Retire(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     int batch = state.range(0);
     for (auto _ : state) {
         for (int i = 0; i < batch; ++i) {
@@ -99,7 +100,7 @@ static void BM_EBR_Retire(benchmark::State &state) {
 #endif
 
 static void BM_EBR_SyncPhase(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     domain.synchronize();
     for (auto _ : state) {
         domain.synchronize();
@@ -109,7 +110,7 @@ static void BM_EBR_SyncPhase(benchmark::State &state) {
 
 #ifdef SKL_ABIX_DEVELOPMENT
 static void BM_EBR_GracePhase(benchmark::State &state) {
-    auto &domain = skl::abix::rcu_domain::instance();
+    auto &domain = skl::abix::rcu::Domain::instance();
     int retire_count = state.range(0);
     domain.synchronize();
     for (auto _ : state) {
@@ -124,7 +125,7 @@ static void BM_EBR_GracePhase(benchmark::State &state) {
 }
 #endif
 
-static uint64_t execute_schedule(const WorkloadSchedule &schedule, skl::abix::rcu_domain &domain, bool is_writer) {
+static uint64_t execute_schedule(const WorkloadSchedule &schedule, skl::abix::rcu::Domain &domain, bool is_writer) {
     uint64_t ops = 0;
     for (size_t i = 0; i < schedule.size; ++i) {
         switch (schedule.data[i]) {
@@ -178,7 +179,7 @@ static void register_workload_profile(const std::string &group_name, const Workl
 
         auto *bm = benchmark::RegisterBenchmark(full.c_str(),
             [schedule, writer_repeats, reader_repeats, thread_ops, synthetic_mixed](benchmark::State &state) {
-                auto &domain = skl::abix::rcu_domain::instance();
+                auto &domain = skl::abix::rcu::Domain::instance();
 
                 // Synthetic mixed: all threads execute the full schedule.
                 // Role-based: only thread 0 (writer) does Retire/Sync.
@@ -257,7 +258,7 @@ static void register_threshold_sweep(const std::string &group_name, const Worklo
 
             auto *bm = benchmark::RegisterBenchmark(
                 full.c_str(), [schedule, repeats, thread_ops, threshold](benchmark::State &state) {
-                    auto &domain = skl::abix::rcu_domain::instance();
+                    auto &domain = skl::abix::rcu::Domain::instance();
                     uint64_t retired_since_sync = 0;
 
                     domain.synchronize();
@@ -343,15 +344,15 @@ void verify_workload_profiles(const CpuTopology &topo) {
         WriteHeavy,
     };
 
-    std::fprintf(stderr,
+    fmt::print(stderr,
         "\n==========================================================\n"
         " Synthetic Mixed — All Threads Execute Full Schedule\n"
         " Total ops should be IDENTICAL across all thread counts.\n"
         "==========================================================\n");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "Workload", "T", "TotalOps", "Reads", "Retires", "Syncs");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "--------", "--", "--------", "-----", "-------", "-----");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "Workload", "T", "TotalOps", "Reads",
+        "Retires", "Syncs");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "--------", "--", "--------", "-----",
+        "-------", "-----");
 
     bool synthetic_ok = true;
     for (const auto &profile : profiles) {
@@ -385,25 +386,26 @@ void verify_workload_profiles(const CpuTopology &topo) {
             bool match = (total == ref_total) && (reads == ref_reads) && (ret == ref_retires) && (syn == ref_syncs);
             if (!match) synthetic_ok = false;
 
-            std::fprintf(stderr, " %-15s %-4u  %-12llu  %-12llu  %-12llu  %-12llu", profile.name, tc,
-                (unsigned long long)total, (unsigned long long)reads, (unsigned long long)ret, (unsigned long long)syn);
-            if (!match) std::fprintf(stderr, "  ← MISMATCH");
-            std::fprintf(stderr, "\n");
+            fmt::print(
+                stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}", profile.name, tc, total, reads, ret, syn);
+            if (!match) fmt::print(stderr, "  ← MISMATCH");
+            fmt::print(stderr, "\n");
         }
     }
-    std::fprintf(stderr, synthetic_ok ? "\n ✓ All counts match — synthetic mixed is truly fixed-work.\n"
-                                      : "\n ⚠  MISMATCH detected — synthetic mixed is NOT fixed-work.\n");
+    fmt::print(stderr, "{}",
+        synthetic_ok ? "\n ✓ All counts match — synthetic mixed is truly fixed-work.\n"
+                     : "\n ⚠  MISMATCH detected — synthetic mixed is NOT fixed-work.\n");
 
-    std::fprintf(stderr,
+    fmt::print(stderr,
         "\n==========================================================\n"
         " Role-Based — Only Thread 0 (Writer) Does Retire/Sync\n"
         " Total ops will differ: readers skip Retire/Sync.\n"
         " This models real-world RCU/EBR usage.\n"
         "==========================================================\n");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "Workload", "T", "TotalOps", "Reads", "Retires", "Syncs");
-    std::fprintf(
-        stderr, " %-15s %-4s  %-12s  %-12s  %-12s  %-12s\n", "--------", "--", "--------", "-----", "-------", "-----");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "Workload", "T", "TotalOps", "Reads",
+        "Retires", "Syncs");
+    fmt::print(stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}\n", "--------", "--", "--------", "-----",
+        "-------", "-----");
 
     for (const auto &profile : profiles) {
         auto schedule = profile.generate_schedule();
@@ -444,13 +446,13 @@ void verify_workload_profiles(const CpuTopology &topo) {
 
             bool match = (total == ref_total) && (reads == ref_reads) && (ret == ref_retires) && (syn == ref_syncs);
 
-            std::fprintf(stderr, " %-15s %-4u  %-12llu  %-12llu  %-12llu  %-12llu", profile.name, tc,
-                (unsigned long long)total, (unsigned long long)reads, (unsigned long long)ret, (unsigned long long)syn);
-            if (!match) std::fprintf(stderr, "  ← MISMATCH with 1T");
-            std::fprintf(stderr, "\n");
+            fmt::print(
+                stderr, " {:<15} {:<4}  {:<12}  {:<12}  {:<12}  {:<12}", profile.name, tc, total, reads, ret, syn);
+            if (!match) fmt::print(stderr, "  ← MISMATCH with 1T");
+            fmt::print(stderr, "\n");
         }
     }
-    fprintf(stderr,
+    fmt::print(stderr,
         "\n ⚠  Role-based: Retire/Sync counts decrease as T increases.\n"
         "    This is EXPECTED behavior — it's a different workload.\n"
         "    Synthetic mixed is the correct choice for fixed-work scaling.\n\n");

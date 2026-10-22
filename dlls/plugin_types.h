@@ -13,8 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "abix/abix.hpp"   // IWYU pragma: keep
-#include "abix/refl.h"     // IWYU pragma: keep
+#include "ABIX/ABIX.h"   // IWYU pragma: keep
 
 // ---- resource_dll ----
 struct Config;

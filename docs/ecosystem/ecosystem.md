@@ -31,9 +31,7 @@ graph TD
     C --> D[Developer & Runtime Applications]
 ```
 
-Each layer can be adopted independently. A package manager can consume
-ABIX metadata without running the full AMC toolchain; an IDE plugin can
-use the ABI model without the runtime.
+Each layer can be adopted independently. A package manager can consume ABIX metadata without running the full AMC toolchain; an IDE plugin can use the ABI model without the runtime.
 
 ## Scope
 
@@ -61,17 +59,14 @@ graph LR
 
 ```mermaid
 graph LR
-    A[Library Update] --> B[ABIX Diff] --> C[Compatibility Check] --> D[Migration / Rebuild]
+    A[Library Update] --> B[ABIX Diff] --> C[Compat Check] --> D[Migration / Rebuild]
 ```
 
-ABIX does not replace existing tools. It provides a common ABI
-representation that build systems, package managers, and binding
-generators can consume.
+ABIX does not replace existing tools. It provides a common ABI representation that build systems, package managers, and binding generators can consume.
 
 ## Application and Platform Developers
 
-Applications with large native dependency or plugin ecosystems use ABIX
-to make binary compatibility explicit:
+Applications with large native dependency or plugin ecosystems use ABIX to make binary compatibility explicit:
 
 * SDK integration
 * native plugin systems
@@ -80,14 +75,11 @@ to make binary compatibility explicit:
 * compatibility validation
 * release and upgrade workflows
 
-An existing package manager continues to manage package versions and
-artifacts. ABIX adds ABI metadata: what each artifact exposes, who can
-load it, and whether two versions are compatible.
+An existing package manager continues to manage package versions and artifacts. ABIX adds ABI metadata: what each artifact exposes, who can load it, and whether two versions are compatible.
 
 ## Enterprise
 
-Large native software systems benefit from treating ABI information as a
-first-class engineering artifact:
+Large native software systems benefit from treating ABI information as a first-class engineering artifact:
 
 ```mermaid
 graph LR
@@ -112,14 +104,9 @@ graph LR
     A[LLM] --> B[Agent] --> C[AMC / MCP] --> D[ABIX] --> E[Native Software State]
 ```
 
-ABIX provides structured, machine-verifiable ABI information. AMC
-provides deterministic operations (inspection, comparison, generation,
-verification).
+ABIX provides structured, machine-verifiable ABI information. AMC provides deterministic operations (inspection, comparison, generation, verification).
 
-Modern AI systems already understand many ABI concepts. ABIX does not
-teach ABI to LLMs. It provides a standardized external representation of
-concrete native binary state, so AI systems can reason over verifiable
-facts rather than inferred guesses.
+Modern AI systems already understand many ABI concepts. ABIX does not teach ABI to LLMs. It provides a standardized external representation of concrete native binary state, so AI systems can reason over verifiable facts rather than inferred guesses.
 
 ## Robotics
 
@@ -130,11 +117,9 @@ graph LR
     A[VLA / Policy] --> B[Controller] --> C[Robot Runtime] --> D[Simulation / Hardware]
 ```
 
-ABIX describes the binary interfaces between these components. AMC
-provides inspection, compatibility checking, loading, and verification.
+ABIX describes the binary interfaces between these components. AMC provides inspection, compatibility checking, loading, and verification.
 
-Robotics projects are application demonstrations, not core specification
-requirements.
+Robotics projects are application demonstrations, not core specification requirements.
 
 ## Existing Ecosystems
 
@@ -149,8 +134,7 @@ ABIX complements existing infrastructure:
 | IDE tooling     | clangd, language servers        |
 | AI protocols    | MCP and other tool interfaces   |
 
-ABIX provides a common native ABI representation that these systems
-consume.
+ABIX provides a common native ABI representation that these systems consume.
 
 ## Open Ecosystem
 
@@ -163,9 +147,7 @@ ABIX serves a broad audience:
 * language communities
 * research projects
 
-Application-specific integrations can be developed independently. Different
-ecosystems build on the same ABI foundation without shared infrastructure
-dependencies.
+Application-specific integrations can be developed independently. Different ecosystems build on the same ABI foundation without shared infrastructure dependencies.
 
 ---
 

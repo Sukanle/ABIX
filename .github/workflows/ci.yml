@@ -318,6 +318,23 @@ jobs:
         shell: msys2 {0}
         run: cmake --build build/Release --parallel 2
 
+      - name: Build cross-toolchain DLL variants
+        shell: msys2 {0}
+        run: python tools/build_variants.py --build-type Release --with-msvc
+
+      - name: Verify cross-toolchain variants
+        shell: msys2 {0}
+        run: |
+          ls -R build/Release/bin/variants || true
+          for tag in tool_x tool_y; do
+            test -f "build/Release/bin/variants/$tag/version_dll/version_dll.dll" \
+              || { echo "missing GCC/Clang variant: $tag"; exit 1; }
+          done
+          for dll in version_dll resource_dll interface_dll owner_dll; do
+            test -f "build/Release/bin/variants/msvc_x64/$dll/$dll.dll" \
+              || { echo "missing MSVC variant: $dll"; exit 1; }
+          done
+
       - name: Verify required build outputs
         shell: msys2 {0}
         run: |

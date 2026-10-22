@@ -1,0 +1,46 @@
+[package]
+name = "shapes"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["native/shapes.hpp"]
+symbols = [
+    "ShapeVec",
+    "shape_add",
+    "shape_create",
+    "shape_destroy",
+    "shape_scale",
+    "shape_div",
+    "shape_live_count",
+]
+
+# The library owns ShapeVec handles; the consumer must call the same release
+# entry point rather than freeing foreign memory.
+[[owned]]
+type = "ShapeVec"
+create = "shape_create"
+destroy = "shape_destroy"
+
+[[contract]]
+function = "shape_create"
+returns = "owned"
+release = "shape_destroy"
+
+[[contract]]
+function = "shape_scale"
+params = ["borrowed"]
+
+[[contract]]
+function = "shape_destroy"
+params = ["owned"]
+
+# shape_div returns a status and writes the value through parameter 2.
+[[error]]
+function = "shape_div"
+success = 0
+value = 2
+
+[[export]]
+output = "shapes.abix"

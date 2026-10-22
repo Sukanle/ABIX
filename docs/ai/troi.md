@@ -21,24 +21,17 @@
 
 </details>
 
-> TROI is a documentation concept for talking about the token efficiency of
-> AI-agent workflows that consume structured ABI knowledge through AMC/MCP.
-> Every number in this document is an illustrative example, not a measurement.
-> Capabilities that do not exist yet are marked as planned or proposed.
+> TROI is a documentation concept for talking about the token efficiency of AI-agent workflows that consume structured ABI knowledge through AMC/MCP. Every number in this document is an illustrative example, not a measurement. Capabilities that do not exist yet are marked as planned or proposed.
 
 ## Definition
 
-TROI, Token Return on Investment, measures AI-agent work accomplished per
-token when structured ABI knowledge is available through AMC/MCP, relative to
-a traditional AI development flow.
+TROI, Token Return on Investment, measures AI-agent work accomplished per token when structured ABI knowledge is available through AMC/MCP, relative to a traditional AI development flow.
 
-In one sentence: TROI measures how much AI-agent work can be accomplished per
-token when structured ABI knowledge is available through AMC.
+In one sentence: TROI measures how much AI-agent work can be accomplished per token when structured ABI knowledge is available through AMC.
 
 ## Why: the agent information-acquisition cost
 
-In a traditional flow, an agent that needs an ABI fact has to rediscover it
-from source, and pay for that rediscovery on every iteration:
+In a traditional flow, an agent that needs an ABI fact has to rediscover it from source, and pay for that rediscovery on every iteration:
 
 ```mermaid
 graph LR
@@ -53,8 +46,7 @@ graph LR
     H -->|no| I[Done]
 ```
 
-Each pass through the loop spends input tokens (headers read again), output
-tokens (reasoning over them), tool calls, and build/test iterations.
+Each pass through the loop spends input tokens (headers read again), output tokens (reasoning over them), tool calls, and build/test iterations.
 
 With AMC + MCP, the agent asks for the fact directly:
 
@@ -77,21 +69,13 @@ graph TD
     D --> E[Verify]
 ```
 
-The core thesis: AMC converts agent reasoning cost into machine-queryable ABI
-facts. That matters more than merely using fewer tokens. The agent stops
-spending its context window and tool budget on rediscovering information the
-toolchain already knows, and spends them on the task instead.
+The core thesis: AMC converts agent reasoning cost into machine-queryable ABI facts. That matters more than merely using fewer tokens. The agent stops spending its context window and tool budget on rediscovering information the toolchain already knows, and spends them on the task instead.
 
-The current `amc-mcp` catalogue covers the query and comparison tools
-(`abix.resolve_type`, `abix.get_layout`, `abix.compare_abi`, and friends; see
-[MCP.md](MCP.md)). Impact-analysis tools such as `find_affected`,
-`find_implementations` and `explain_break` are planned, not implemented (see
-[Status](#status)).
+The current `amc-mcp` catalogue covers the query and comparison tools (`abix.resolve_type`, `abix.get_layout`, `abix.compare_abi`, and friends; see [MCP.md](MCP.md)). Impact-analysis tools such as `find_affected`, `find_implementations` and `explain_break` are planned, not implemented (see [Status](#status)).
 
 ## Formula
 
-The general form compares the total cost of completing the same task under
-two workflows:
+The general form compares the total cost of completing the same task under two workflows:
 
 $$
 TROI = \frac{C_{traditional}}{C_{amc+mcp}} \\
@@ -110,8 +94,7 @@ $$
 
 > The weights `alpha`, `beta`, `gamma`, `delta` are deployment-specific.
 
-The first version uses tokens only, which is equivalent to setting
-`beta = gamma = delta = 0`:
+The first version uses tokens only, which is equivalent to setting `beta = gamma = delta = 0`:
 
 $$
 TROI_{token} = \frac{Tokens_{traditional}}{Tokens_{amc}}
@@ -128,8 +111,7 @@ Worked example (illustrative, not a measurement):
 | Total tokens | 100k | 20k |
 | TROI_token | 1.0x | 5.0x |
 
-This reads as: "AMC achieved a 5.0x token ROI for this task", or equivalently
-"AMC reduced agent token consumption by 80%".
+This reads as: "AMC achieved a 5.0x token ROI for this task", or equivalently "AMC reduced agent token consumption by 80%".
 
 ## Token Compression Ratio (TCR)
 
@@ -137,11 +119,7 @@ $$
 TCR = \frac{Traditional Tokens}{AMC Tokens}
 $$
 
-TCR states the same idea as compression: how much smaller the token footprint
-of a task becomes when the agent reads ABI metadata instead of source. In the
-first phase, TCR and TROI_token are numerically equal. The two names exist
-because they frame the same ratio differently: TCR as compression, TROI as
-return.
+TCR states the same idea as compression: how much smaller the token footprint of a task becomes when the agent reads ABI metadata instead of source. In the first phase, TCR and TROI_token are numerically equal. The two names exist because they frame the same ratio differently: TCR as compression, TROI as return.
 
 A more attractive future definition is:
 
@@ -149,9 +127,7 @@ $$
 TROI = \frac{Useful Work}{Token Cost}
 $$
 
-but it is hard to standardize: "useful work" requires task success criteria,
-grading, and normalization across repositories. Phase 1 therefore deliberately
-keeps TROI simple and token-based.
+but it is hard to standardize: "useful work" requires task success criteria, grading, and normalization across repositories. Phase 1 therefore deliberately keeps TROI simple and token-based.
 
 ## Metric family: the Agent Efficiency Benchmark
 
@@ -170,8 +146,7 @@ graph TD
 - **SROI**: task success rate return.
 - **LROI**: latency return.
 
-TROI is the headline metric because it is the most communicable: one ratio,
-no price list, no timing noise.
+TROI is the headline metric because it is the most communicable: one ratio, no price list, no timing noise.
 
 ## What TROI is not
 
@@ -181,9 +156,7 @@ TROI is not:
 - monetary ROI,
 - a measure of model intelligence.
 
-An 80% token reduction does not imply an 80% development-cost reduction.
-Tokens are one cost dimension; tool calls, latency, builds, and task success
-move independently. Illustrative divergence for a single task:
+An 80% token reduction does not imply an 80% development-cost reduction. Tokens are one cost dimension; tool calls, latency, builds, and task success move independently. Illustrative divergence for a single task:
 
 | Dimension | Change (illustrative) |
 |---|---:|
@@ -194,12 +167,9 @@ move independently. Illustrative divergence for a single task:
 
 ## Status
 
-- Today, [`tools/abix_token_cost.py`](../../tools/abix_token_cost.py) produces a
-  TCR-style estimate for a single module (see below).
-- The full Agent Efficiency Benchmark (composite cost `C`, multi-task suites,
-  success-rate tracking) is **planned, not implemented**.
-- There is no `amc agent benchmark` command today; the CLI shown below is a
-  proposal.
+- Today, [`tools/abix_token_cost.py`](../../tools/abix_token_cost.py) produces a TCR-style estimate for a single module (see below).
+- The full Agent Efficiency Benchmark (composite cost `C`, multi-task suites, success-rate tracking) is **planned, not implemented**.
+- There is no `amc agent benchmark` command today; the CLI shown below is a proposal.
 
 ## Current measurement: abix_token_cost.py
 
@@ -212,8 +182,7 @@ move independently. Illustrative divergence for a single task:
 tools/abix_token_cost.py --abix module.abix --source a.hpp [b.hpp ...]
 ```
 
-It reports `source_tokens`, `metadata_tokens`, and their ratio
-`source_over_metadata` (illustrative output):
+It reports `source_tokens`, `metadata_tokens`, and their ratio `source_over_metadata` (illustrative output):
 
 ```json
 {
@@ -225,13 +194,9 @@ It reports `source_tokens`, `metadata_tokens`, and their ratio
 
 Stated limits:
 
-- token counts come from a simple lexical tokenizer (identifier/number runs
-  plus single punctuation characters): a reproducible proxy, not a model
-  tokenizer;
+- token counts come from a simple lexical tokenizer (identifier/number runs plus single punctuation characters): a reproducible proxy, not a model tokenizer;
 - the comparison covers a single module;
-- the source view omits transitive includes, the C++ standard library, and the
-  implementations an agent often needs to inspect, while the metadata view is
-  dense and complete.
+- the source view omits transitive includes, the C++ standard library, and the implementations an agent often needs to inspect, while the metadata view is dense and complete.
 
 Treat the ratio as the phase-1 TCR indicator, not a benchmark.
 
@@ -291,6 +256,4 @@ graph LR
     G --> H[TROI]
 ```
 
-ABIX lowers the cost of machines understanding the native binary interface;
-AMC + MCP further lower the cost of AI agents understanding native codebases.
-TROI is the metric that makes that claim discussable.
+ABIX lowers the cost of machines understanding the native binary interface; AMC + MCP further lower the cost of AI agents understanding native codebases. TROI is the metric that makes that claim discussable.

@@ -6,9 +6,11 @@ description: Define consistent Git commit message conventions for the project. U
 # Git Commit Style
 
 ## Objective
+
 Keep Git history readable, searchable, and consistent across all contributors and AI assistants.
 
 ## Global Constraints
+
 Apply these constraints while using this skill.
 
 1. Follow the established commit conventions; do not introduce alternative styles.
@@ -18,11 +20,13 @@ Apply these constraints while using this skill.
 ## Commit Message Format
 
 Full format:
+
 ```
 <type>(<scope>): <short description> — <detailed body>
 ```
 
 Simplified format for trivial changes:
+
 ```
 <type>(<scope>): <short description>
 ```
@@ -31,14 +35,14 @@ Simplified format for trivial changes:
 
 Use lowercase English types, compatible with Conventional Commits.
 
-| Type | Meaning | Example |
-|------|---------|---------|
-| `feat` | New feature | `feat: ScriptCardPainter dynamic layout engine` |
-| `refactor` | Code refactoring (no bug fix, no feature) | `refactor: ElaMultiComboBox Fluent UI` |
-| `fix` | Bug fix | `fix(ElaAppBar): fix WM_GETMINMAXINFO DPI multi-screen scaling error` |
-| `docs` | Documentation changes | `docs: project docs + Memory Bank + Agent Skills` |
-| `chore` | Miscellaneous (build, tooling, deps) | `chore(ElaWidgetTools): remove redundant Q_SIGNAL and virtual modifiers` |
-| `revert` | Revert a previous commit | Generated automatically by `git revert` |
+| Type       | Meaning                                   | Example                                                                  |
+| ---------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| `feat`     | New feature                               | `feat: ScriptCardPainter dynamic layout engine`                          |
+| `refactor` | Code refactoring (no bug fix, no feature) | `refactor: ElaMultiComboBox Fluent UI`                                   |
+| `fix`      | Bug fix                                   | `fix(ElaAppBar): fix WM_GETMINMAXINFO DPI multi-screen scaling error`    |
+| `docs`     | Documentation changes                     | `docs: project docs + Memory Bank + Agent Skills`                        |
+| `chore`    | Miscellaneous (build, tooling, deps)      | `chore(ElaWidgetTools): remove redundant Q_SIGNAL and virtual modifiers` |
+| `revert`   | Revert a previous commit                  | Generated automatically by `git revert`                                  |
 
 ## Scope (optional)
 
@@ -101,4 +105,4 @@ fix(ElaAppBar): fix WM_GETMINMAXINFO DPI multi-screen scaling error
 
 ---
 
-*This specification is derived from the project’s recent commit history and applies to all contributors and AI coding assistants.*
+_This specification is derived from the project’s recent commit history and applies to all contributors and AI coding assistants._

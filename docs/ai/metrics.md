@@ -40,9 +40,7 @@
 
 </details>
 
-> This document defines the official ABIX quantitative metrics, their formulas,
-> and how to report them. It is the **definition** document; actual measurements
-> live in [`benchmark.md`](../benchmark/benchmark.md) and [`troi.md`](troi.md).
+> This document defines the official ABIX quantitative metrics, their formulas, and how to report them. It is the **definition** document; actual measurements live in [`benchmark.md`](../benchmark/benchmark.md) and [`troi.md`](troi.md).
 
 ---
 
@@ -50,17 +48,11 @@
 
 ABIX metrics follow three rules:
 
-1. **No composite score.** Each metric is a standalone, reproducible number.
-   ABIX does not publish a weighted "ABIX Score" because different metrics
-   measure different dimensions and cannot be meaningfully added.
+1. **No composite score.** Each metric is a standalone, reproducible number. ABIX does not publish a weighted "ABIX Score" because different metrics measure different dimensions and cannot be meaningfully added.
 
-2. **Before/After, not absolute.** Every metric compares a baseline (without
-   ABIX) against an ABIX-enabled workflow. Absolute numbers without context are
-   not meaningful.
+2. **Before/After, not absolute.** Every metric compares a baseline (without ABIX) against an ABIX-enabled workflow. Absolute numbers without context are not meaningful.
 
-3. **Reproducible protocol.** Every reported number must specify: hardware,
-   compiler, project, dataset, task definition, sample size, and statistical
-   method (mean, median, P95).
+3. **Reproducible protocol.** Every reported number must specify: hardware, compiler, project, dataset, task definition, sample size, and statistical method (mean, median, P95).
 
 ---
 
@@ -104,7 +96,7 @@ Speedup
 
 Not all metrics are available at the same project maturity.
 
-### Tier 1: Measurable now (ABIX 1.0+)
+### Tier 1: Measurable now (ABIX 0.1.0+)
 
 | Metric | Category |
 |--------|----------|
@@ -138,9 +130,7 @@ Not all metrics are available at the same project maturity.
 | Payback Period | Business |
 | ABI Risk Reduction | Business |
 
-Tier 3 metrics must be computed by the adopting organization using their own
-historical data. ABIX provides the formulas and measurement methodology, not
-the absolute numbers.
+Tier 3 metrics must be computed by the adopting organization using their own historical data. ABIX provides the formulas and measurement methodology, not the absolute numbers.
 
 ---
 
@@ -148,12 +138,9 @@ the absolute numbers.
 
 ### TROI
 
-**Definition:** Token Return on Investment — AI-agent work accomplished per
-token when structured ABI knowledge is available through AMC/MCP, relative to a
-traditional flow.
+**Definition:** Token Return on Investment — AI-agent work accomplished per token when structured ABI knowledge is available through AMC/MCP, relative to a traditional flow.
 
-See [`troi.md`](troi.md) for the full definition, formula, and measurement
-method.
+See [`troi.md`](troi.md) for the full definition, formula, and measurement method.
 
 ### Token Reduction Ratio (TRR)
 
@@ -176,8 +163,7 @@ ABIX     = 20k tokens
 TRR      = 80%
 ```
 
-**Relation to TROI:** TRR answers "how many fewer tokens"; TROI answers "how
-much more work those savings enable." Both should be reported.
+**Relation to TROI:** TRR answers "how many fewer tokens"; TROI answers "how much more work those savings enable." Both should be reported.
 
 ---
 
@@ -185,8 +171,7 @@ much more work those savings enable." Both should be reported.
 
 ### ABI Coverage
 
-**Definition:** The proportion of public ABI entities that ABIX successfully
-describes.
+**Definition:** The proportion of public ABI entities that ABIX successfully describes.
 
 $$
 C_{\text{ABI}} = \frac{N_{\text{covered}}}{N_{\text{public}}} \times 100\%
@@ -205,13 +190,11 @@ $$
 C_ABI = 96%
 ```
 
-**Tools:** `amc dump`, `amc inspect`, `amc metadata --from-elf`, compiler
-frontend.
+**Tools:** `amc dump`, `amc inspect`, `amc metadata --from-elf`, compiler frontend.
 
 ### Breaking Change Detection Rate
 
-**Definition:** The proportion of actual ABI breaking changes that ABIX
-correctly identifies.
+**Definition:** The proportion of actual ABI breaking changes that ABIX correctly identifies.
 
 $$
 \text{BDR} = \frac{N_{\text{detected}}}{N_{\text{actual breaking}}}
@@ -234,8 +217,7 @@ BDR = 97%
 
 ### Unsafe Acceptance Rate
 
-**Definition:** The proportion of incompatible ABI changes that ABIX
-incorrectly accepts as compatible. This is the most critical safety metric.
+**Definition:** The proportion of incompatible ABI changes that ABIX incorrectly accepts as compatible. This is the most critical safety metric.
 
 $$
 \text{UAR} = \frac{N_{\text{incompatible accepted}}}{N_{\text{actual incompatible}}} \times 100\%
@@ -256,15 +238,11 @@ $$
 UAR = 0.0%
 ```
 
-**Why this matters more than accuracy:** ABIX's primary risk is not false
-positives (safe changes flagged as breaking) but **false negatives** (breaking
-changes accepted as safe). Enterprise customers care about: "Will you tell me
-this DLL is safe when it will actually crash?"
+**Why this matters more than accuracy:** ABIX's primary risk is not false positives (safe changes flagged as breaking) but **false negatives** (breaking changes accepted as safe). Enterprise customers care about: "Will you tell me this DLL is safe when it will actually crash?"
 
 ### ABI Escape Rate
 
-**Definition:** The proportion of ABI incidents discovered after reaching
-production.
+**Definition:** The proportion of ABI incidents discovered after reaching production.
 
 $$
 \text{AER} = \frac{N_{\text{post-release}}}{N_{\text{all incidents}}} \times 100\%
@@ -289,13 +267,11 @@ After ABIX:
 Reduction: 67%
 ```
 
-This metric aligns with DORA's change fail rate and deployment rework rate
-indicators for software delivery stability.
+This metric aligns with DORA's change fail rate and deployment rework rate indicators for software delivery stability.
 
 ### ABI Detection Latency
 
-**Definition:** Time between when an ABI change is introduced and when ABIX
-detects it.
+**Definition:** Time between when an ABI change is introduced and when ABIX detects it.
 
 $$
 \text{DL}_{\text{ABI}} = t_{\text{detected}} - t_{\text{introduced}}
@@ -323,8 +299,7 @@ Speedup = 2160×
 
 ### Impact Recall and Precision
 
-**Definition:** Accuracy of ABIX's impact analysis when a breaking change is
-detected.
+**Definition:** Accuracy of ABIX's impact analysis when a breaking change is detected.
 
 **Impact Recall (IR):**
 
@@ -350,8 +325,7 @@ IR = 3/4 = 75%
 IP = 3/3 = 100%
 ```
 
-These metrics are intended for future enterprise-grade ABI Impact Analysis
-benchmarks.
+These metrics are intended for future enterprise-grade ABI Impact Analysis benchmarks.
 
 ---
 
@@ -373,8 +347,7 @@ ABIX inspection:        30 ms
 IS = 16.7×
 ```
 
-Applies to: `amc inspect`, `amc query`, `amc metadata --from-elf`, Metadata
-Region mmap, `.abix` parsing.
+Applies to: `amc inspect`, `amc query`, `amc metadata --from-elf`, Metadata Region mmap, `.abix` parsing.
 
 ### Integration Effort Reduction
 
@@ -400,8 +373,7 @@ C++ → Rust binding:
 
 ### Binary Reuse Rate
 
-**Definition:** Proportion of builds that can reuse an existing binary instead
-of recompiling.
+**Definition:** Proportion of builds that can reuse an existing binary instead of recompiling.
 
 $$
 \text{BRR} = \frac{N_{\text{reused}}}{N_{\text{eligible builds}}} \times 100\%
@@ -419,8 +391,7 @@ Relevant for ABIX Package Manager / Binary Registry scenarios.
 
 ### Migration Automation Rate
 
-**Definition:** Proportion of ABI breaking changes that can be automatically
-migrated via adapter generation.
+**Definition:** Proportion of ABI breaking changes that can be automatically migrated via adapter generation.
 
 $$
 \text{MAR} = \frac{N_{\text{automatically migrated}}}{N_{\text{migratable}}} \times 100\%
@@ -460,8 +431,7 @@ O_type = 56 B/type
 O_binary = 1.17%
 ```
 
-See [`metadata_modes.md`](../abix/metadata_modes.md) for Debug/Release/RelWithDebInfo
-overhead details.
+See [`metadata_modes.md`](../ABIX/metadata_modes.md) for Debug/Release/RelWithDebInfo overhead details.
 
 ---
 
@@ -469,15 +439,13 @@ overhead details.
 
 ### Verified Task Success Rate
 
-**Definition:** Proportion of tasks completed AND verified through
-ABI/build/test checks.
+**Definition:** Proportion of tasks completed AND verified through ABI/build/test checks.
 
 $$
 \text{VTSR} = \frac{N_{\text{verified successful}}}{N_{\text{tasks}}} \times 100\%
 $$
 
-**Critical constraint:** "Agent says done" does NOT count as success. Success
-requires:
+**Critical constraint:** "Agent says done" does NOT count as success. Success requires:
 
 ```text
 ABIX verification  ✓
@@ -520,8 +488,7 @@ Automation Rate = 65%
 
 ## Business Evaluation
 
-All Tier 3 metrics must be computed by the adopting organization using their
-own data. ABIX provides the formulas only.
+All Tier 3 metrics must be computed by the adopting organization using their own data. ABIX provides the formulas only.
 
 ### Annual Cost Avoidance
 
@@ -542,8 +509,7 @@ $$
 \text{ROI} = \frac{B_{\text{annual}} - C_{\text{annual}}}{C_{\text{annual}}} \times 100\%
 $$
 
-$C_{\text{annual}}$ includes: adoption, engineering integration, training,
-infrastructure, maintenance, enterprise support.
+$C_{\text{annual}}$ includes: adoption, engineering integration, training, infrastructure, maintenance, enterprise support.
 
 ### Payback Period
 
@@ -583,8 +549,7 @@ ARR = 85%
 
 ## ABIX Performance Profile
 
-Instead of a composite score, ABIX publishes a **performance profile** — a set
-of客观 numbers that together describe the system's value:
+Instead of a composite score, ABIX publishes a **performance profile** — a set of客观 numbers that together describe the system's value:
 
 ```text
 ABIX Performance Profile
@@ -616,8 +581,7 @@ AI efficiency
     TROI                     5.6×
 ```
 
-All numbers come from reproducible benchmarks on explicitly documented
-hardware and datasets.
+All numbers come from reproducible benchmarks on explicitly documented hardware and datasets.
 
 ---
 
@@ -628,4 +592,4 @@ hardware and datasets.
 | [`metrics.md`](metrics.md) | **This document.** Definitions, formulas, methodology. |
 | [`benchmark.md`](../benchmark/benchmark.md) | Actual measurements on specific hardware. |
 | [`troi.md`](troi.md) | Deep dive into TROI / token-efficiency for AI workflows. |
-| [`metadata_modes.md`](../abix/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |
+| [`metadata_modes.md`](../ABIX/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |

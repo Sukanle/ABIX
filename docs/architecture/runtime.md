@@ -20,8 +20,7 @@
 
 </details>
 
-The ABIX runtime consumes ABI metadata and keeps the execution path native. It
-does not interpret compatible calls.
+The ABIX runtime consumes ABI metadata and keeps the execution path native. It does not interpret compatible calls.
 
 ## Responsibilities
 
@@ -30,21 +29,15 @@ graph LR
     A[discover] --> B[verify] --> C[identify] --> D[bind] --> E[adapt] --> F["native call"]
 ```
 
-The runtime may participate in all of these, but after binding, a compatible
-call goes through the native ABI with no per-call ABI machinery.
+The runtime may participate in all of these, but after binding, a compatible call goes through the native ABI with no per-call ABI machinery.
 
 ## Registry
 
-`RuntimeRegistry` holds the ABI facts for all loaded modules and validates them
-at load time:
+`runtime::Registry` holds the ABI facts for all loaded modules and validates them at load time:
 
 * canonical `TypeDesc` / `TypeLayout` records are the one ABI truth;
-* a shared `TypeID` must carry the same `LayoutHash` within one module version
-  (compatible duplicates are deduplicated; conflicts are rejected), while a
-  newer version may carry a different layout as a separate entry;
-* lookups are by `TypeID` (`find_by_id` for the newest version,
-  `find_type(id, version)` for a pinned one, `type_of<T>()`); name lookup is
-  intentionally diagnostic-only and returns `nullptr` in the compact build.
+* a shared `TypeID` must carry the same `LayoutHash` within one module version (compatible duplicates are deduplicated; conflicts are rejected), while a newer version may carry a different layout as a separate entry;
+* lookups are by `TypeID` (`find_by_id` for the newest version, `find_type(id, version)` for a pinned one, `type_of<T>()`); name lookup is intentionally diagnostic-only and returns `nullptr` in the compact build.
 
 ## Three metadata modes
 
@@ -54,18 +47,14 @@ graph TD
     B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
 ```
 
-* The toolchain emits the Region into the `.abix.metadata` section of a
-  generated header; an offline tool can scan a binary without loading it.
-* `MaterializedModule` projects a Region back into a pointer-rich
-  `ModuleDescriptor`, so a registry can be driven entirely by the metadata
-  image — no compile-time descriptor arrays required.
+* The toolchain emits the Region into the `.abix.metadata` section of a generated header; an offline tool can scan a binary without loading it.
+* `MaterializedModule` projects a Region back into a pointer-rich `ModuleDescriptor`, so a registry can be driven entirely by the metadata image — no compile-time descriptor arrays required.
 
-See [`metadata_modes.md`](../abix/metadata_modes.md) for the design.
+See [`metadata_modes.md`](../ABIX/metadata_modes.md) for the design.
 
 ## DLL function table
 
-The stable public call ABI is the DLL export table: a flat, versioned table of
-function entries. Metadata is an additional, explicit layer on top of it.
+The stable public call ABI is the DLL export table: a flat, versioned table of function entries. Metadata is an additional, explicit layer on top of it.
 
 ## DLL Loading Sequence
 
@@ -84,37 +73,32 @@ sequenceDiagram
     Loader-->>App: loaded module
 ```
 
-The loader locates the ABIX Metadata Region embedded in the binary, materializes
-it into a `ModuleDescriptor`, and registers it in the `RuntimeRegistry`. After
-this point all type lookups are resolved from the registry, not re-parsed from
-the section.
+The loader locates the ABIX Metadata Region embedded in the binary, materializes it into a `ModuleDescriptor`, and registers it in the `runtime::Registry`. After this point all type lookups are resolved from the registry, not re-parsed from the section.
 
 ## Function Invocation Sequence
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant dll_func
+    participant dll::Function
     participant FunctionTable
     participant NativeFunction
 
-    User->>dll_func: operator()(args...)
-    dll_func->>FunctionTable: read function pointer
-    FunctionTable-->>dll_func: function pointer
-    dll_func->>NativeFunction: direct call(args...)
+    User->>dll::Function: operator()(args...)
+    dll::Function->>FunctionTable: read function pointer
+    FunctionTable-->>dll::Function: function pointer
+    dll::Function->>NativeFunction: direct call(args...)
     NativeFunction-->>User: result
 ```
 
-After binding, the call goes through a plain native function pointer. There is
-no per-call type lookup, argument marshalling, or dynamic dispatch — the runtime
-is not involved in the hot path.
+After binding, the call goes through a plain native function pointer. There is no per-call type lookup, argument marshalling, or dynamic dispatch — the runtime is not involved in the hot path.
 
 ## Quick Start
 
 ### DLL Side (Provider)
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double a, double b) { return a * b; }
@@ -128,34 +112,30 @@ SKL_ABIX_DEFINE_TABLE(
 ### Host Side (Consumer)
 
 ```cpp
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 using namespace skl::abix;
 
-dll_object lib;
+dll::Object lib;
 lib.load("math_dll.dll");
 
-auto add = dll_func<int(int, int)>(lib, "add");
+auto add = dll::Function<int(int, int)>(lib, "add");
 if (add.valid()) {
     int result = add(2, 3);  // 5
 }
 
-auto mul = dll_func<double(double, double)>(lib, "multiply");
+auto mul = dll::Function<double(double, double)>(lib, "multiply");
 if (mul.valid()) {
     double result = mul(1.5, 4.0);  // 6.0
 }
 ```
 
-See [`api.md`](../abix/api.md) for the runtime API.
+See [`api.md`](../ABIX/api.md) for the runtime API.
 
 ## API reference
 
-The full runtime API — `entry`, `table`, `dll_object`, `call_error`, smart
-pointers for DLL resources, logging, RCU timeout policies, typed function
-handles and signature hashing — is documented in
-[`api.md`](../abix/api.md).
+The full runtime API — `entry`, `table`, `dll::Object`, `dll::CallError`, smart pointers for DLL resources, logging, RCU timeout policies, typed function handles and signature hashing — is documented in [`api.md`](../ABIX/api.md).
 
 ## Performance
 
-Runtime binding and metadata projection happen at initialization. Boundary
-overhead and lookup benchmarks are documented in [`benchmark.md`](../benchmark/benchmark.md).
+Runtime binding and metadata projection happen at initialization. Boundary overhead and lookup benchmarks are documented in [`benchmark.md`](../benchmark/benchmark.md).

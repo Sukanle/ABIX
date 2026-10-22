@@ -40,11 +40,15 @@
 #   ABIX_FMT_FOUND        TRUE if fmtlib was found.
 #   ABIX_tomlplusplus_FOUND TRUE if toml++ was found.
 #
-#   LLVM_DIR              Path to LLVMConfig.cmake directory detected by
-#                           find_package(CONFIG); set via -DLLVM_DIR=... to
-#                           override automatic search.
-#   Clang_DIR             Path to ClangConfig.cmake directory (set alongside
-#                           LLVM_DIR; configure manually if needed).
+#   LLVM_DIR              Path to the LLVMConfig.cmake directory reported by
+#                           find_package(CONFIG).  The cache entry is cleared
+#                           and re-detected on every configure run, so to point
+#                           the search at a non-standard install pass
+#                           -DCMAKE_PREFIX_PATH=<prefix> or -DLLVM_ROOT=<prefix>
+#                           (e.g. a keg-only Homebrew LLVM), not -DLLVM_DIR.
+#   Clang_DIR             Path to the ClangConfig.cmake directory, likewise
+#                           re-detected each run; override with
+#                           CMAKE_PREFIX_PATH / -DClang_ROOT instead.
 # ---------------------------------------------------------------------------
 
 include_guard(GLOBAL)
@@ -102,11 +106,14 @@ macro(abix_find_dependencies)
                         "(install the full LLVM package including libclang-cpp)")
       elseif(_abix_llvm_req GREATER -1)
         message(FATAL_ERROR "LLVM / Clang not found — required by the project configuration.  "
-                            "Install LLVM via Homebrew, or set LLVM_DIR / Clang_DIR on the command line.")
+                            "Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 LLVM package, or "
+                            "point CMake at it with -DCMAKE_PREFIX_PATH=<prefix> "
+                            "(Homebrew keg-only: $(brew --prefix llvm)).")
       else()
         message(STATUS "LLVM / Clang not found — AMC (ABI Metadata Compiler) "
-                        "will not be built.  Install LLVM via Homebrew, or set "
-                        "LLVM_DIR / Clang_DIR on the command line.")
+                        "will not be built.  Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 "
+                        "LLVM package, or point CMake at it with -DCMAKE_PREFIX_PATH=<prefix> "
+                        "(Homebrew keg-only: $(brew --prefix llvm)).")
       endif()
     endif()
   endif()
@@ -158,9 +165,9 @@ macro(abix_find_dependencies)
       set(ABIX_tomlplusplus_FOUND FALSE)
       if(_abix_toml_req GREATER -1)
         message(FATAL_ERROR "toml++ not found — required by the project configuration.  "
-                            "Install: brew install tomlplusplus")
+                            "Install: brew install tomlplusplus, or vcpkg install tomlplusplus")
       else()
-        message(STATUS "toml++ not found — install via: brew install tomlplusplus")
+        message(STATUS "toml++ not found — install via: brew install tomlplusplus, or vcpkg install tomlplusplus")
       endif()
     endif()
   endif()

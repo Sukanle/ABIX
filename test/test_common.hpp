@@ -11,87 +11,26 @@
 #include <type_traits>
 #include <mutex>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
+#include "dlls/plugin_path.h"
 #include "dlls/plugin_types.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 
-#if defined(SKL_ABIX_WINDOWS)
-#  include <winnt.h>
-#  include <windef.h>
-#  include <stringapiset.h>
-#elif defined(SKL_ABIX_APPLE)
-#  include <mach-o/dyld.h>
-#else
-#  include <unistd.h>
-#  include <errno.h>
-#endif
-
-std::string getExecutablePath() {
-#ifdef SKL_ABIX_WINDOWS
-    DWORD max_size = 128;
-    while (true) {
-        std::vector<TCHAR> buffer(max_size);
-        DWORD len = GetModuleFileName(nullptr, buffer.data(), max_size);
-        if (len == 0) return "";
-        if (len < max_size) {
-#  ifdef UNICODE
-            std::vector<char> utf8(len);
-            int len = WideCharToMultiByte(CP_UTF8, 0, buffer.data(), len, nullptr, 0, nullptr, nullptr);
-            WideCharToMultiByte(CP_UTF8, 0, buffer.data(), len, utf8.data(), len, nullptr, nullptr);
-            return std::string(utf8.data());
-#  else
-            return std::string(buffer.data());
-#  endif
-        }
-        if (max_size > std::numeric_limits<DWORD>::max() / 2) return "";
-        max_size *= 2;
-    }
-#elif defined(SKL_ABIX_APPLE)
-    uint32_t max_size = 0;
-    _NSGetExecutablePath(nullptr, &max_size);
-    if (max_size == 0) return "";
-    std::vector<char> buffer(max_size);
-    _NSGetExecutablePath(buffer.data(), &max_size);
-    return std::string(buffer.data());
-#else
-    size_t size = 256;
-    while (true) {
-        std::vector<char> buffer(size);
-        ssize_t len = readlink("/proc/self/exe", buffer.data(), size);
-        if (len == -1) {
-            if (errno == ENAMETOOLONG) {
-                if (size > std::numeric_limits<size_t>::max() / 2) return "";
-                size *= 2;
-                continue;
-            }
-            return "";
-        }
-        return std::string(buffer.data(), static_cast<size_t>(len));
-    }
-#endif
-}
-
-std::string dll_path(const char *name) {
-    auto exepath = getExecutablePath();
-    auto exedir = exepath.substr(0, exepath.find_last_of(SKL_ABIX_PATHSEPARATOR));
-    return exedir + SKL_ABIX_PATHSEPARATOR + std::string(name) + SKL_ABIX_DLL_SUFFIX;
-}
-
 namespace {
 struct LogSinkInitializer {
     LogSinkInitializer() {
-        skl::abix::set_log_sink([](skl::abix::LogLevel level, const char *msg) {
+        skl::abix::util::set_log_sink([](skl::abix::util::LogLevel level, const char *msg) {
             static std::mutex log_mutex;
             std::lock_guard<std::mutex> lock(log_mutex);
             const char *level_str = "UNKNOWN";
             switch (level) {
-                case skl::abix::LogLevel::Debug:   level_str = "DEBUG"; break;
-                case skl::abix::LogLevel::Info:    level_str = "INFO"; break;
-                case skl::abix::LogLevel::Warning: level_str = "WARNING"; break;
-                case skl::abix::LogLevel::Error:   level_str = "ERROR"; break;
+                case skl::abix::util::LogLevel::Debug:   level_str = "DEBUG"; break;
+                case skl::abix::util::LogLevel::Info:    level_str = "INFO"; break;
+                case skl::abix::util::LogLevel::Warning: level_str = "WARNING"; break;
+                case skl::abix::util::LogLevel::Error:   level_str = "ERROR"; break;
             }
             std::fprintf(stderr, "[ABIX_%s] %s\n", level_str, msg);
         });

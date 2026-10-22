@@ -122,14 +122,14 @@ strip 后，`amc metadata --from-elf` 仍然工作，因为它读取的是 metad
 
 ## 自动化测试
 
-项目包含一个测试脚本，在宿主平台上覆盖完整流程（ELF 使用 readelf/objdump，Mach-O 使用 otool）：
+项目包含一个测试套件，在宿主平台上覆盖完整流程（ELF 使用 readelf/objdump，Mach-O 使用 otool）：
 
 ```bash
-python3 tools/test_amc_elf-pe.py           # 运行并自动清理
-python3 tools/test_amc_elf-pe.py --keep    # 保留临时文件供检查
+python3 tools/run_test.py --elf-pe           # 运行并自动清理
+python3 tools/run_test.py --elf-pe --keep    # 保留临时文件供检查
 ```
 
-脚本运行 9 个阶段：
+该套件运行 9 个阶段：
 
 1. `amc build` — 生成 `.abix` + `.abix.meta`
 2. `amc generate` — 生成带 section 属性的 C++ 头文件
@@ -145,12 +145,12 @@ python3 tools/test_amc_elf-pe.py --keep    # 保留临时文件供检查
 
 - **Linux / ELF**：ELF64 小端序（x86_64 / aarch64），thin 镜像。
 - **macOS / Mach-O**：64 位小端序 Mach-O（arm64），thin 镜像。
-- **Windows / PE**：已规划，尚未实现。
+- **Windows / PE**：`.abix` / `.abix.n` 节区；读取与发射均已实现——见 [pe-inspection_zh.md](pe-inspection_zh.md)。
 
 ## 限制
 
 - **字节序**：目前 ELF 与 Mach-O **仅支持小端序**。大端支持暂时不实现，待未来出现明确的网络 / RPC 需求时再补充。
 - **macOS 硬件**：支持 Apple Silicon（arm64）。**暂不支持 Intel Mac（x86_64 macOS）**——没有对应设备用于验证，因此在具备测试设备前不在支持范围内。
 - **Mach-O 镜像**必须为 thin（单一架构）；暂不解析 universal / fat 二进制。
-- **跨平台目标**：Windows（PE）、macOS（Mach-O）、Linux（ELF）。PE/COFF 解析已规划但尚未实现。
+- **跨平台目标**：Windows（PE）、macOS（Mach-O）、Linux（ELF）。PE/COFF 的解析与发射均已实现；见 [pe-inspection_zh.md](pe-inspection_zh.md)。
 - `.abix.names` 包含 `const char*` 指针；实际字符串在 `.rodata` / `__TEXT,__cstring` 中。使用 `strings <binary> | grep -i amc` 查找。

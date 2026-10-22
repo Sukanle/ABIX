@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 #include "plugin_types.h"
 #include <string.h>
 
@@ -46,8 +46,6 @@ using socket_t = int;
 #  define CLOSE_SOCKET(s) close(s)
 static void init_winsock() {}
 #endif
-
-using namespace skl::abix;
 
 struct Resource {
     int id;
@@ -96,8 +94,8 @@ extern "C" void destroy_config(Config *c) {
 extern "C" int get_config_alive() { return s_config_alive; }
 extern "C" int config_area(Config *c) { return c ? c->width * c->height : -1; }
 
-ref_dll_ptr<Config> create_shared_config(int w, int h) {
-    return ref_dll_ptr<Config>(create_config(w, h), destroy_config);
+skl::abix::dll::RefPtr<Config> create_shared_config(int w, int h) {
+    return skl::abix::dll::RefPtr<Config>(create_config(w, h), destroy_config);
 }
 
 struct Socket {
@@ -124,7 +122,7 @@ extern "C" char *strdup_copy(const char *src, int *out_len) {
         return nullptr;
     }
     size_t n = strlen(src);
-    char *buf = static_cast<char *>(abi_alloc(n + 1));
+    char *buf = static_cast<char *>(skl::abix::mem::alloc(n + 1));
     if (!buf) {
         if (out_len) *out_len = 0;
         return nullptr;
@@ -133,7 +131,7 @@ extern "C" char *strdup_copy(const char *src, int *out_len) {
     if (out_len) *out_len = static_cast<int>(n);
     return buf;
 }
-extern "C" void string_destroy(char *s) { abi_free(s); }
+extern "C" void string_destroy(char *s) { skl::abix::mem::dealloc(s); }
 
 extern "C" Socket *socket_open(const char *host, int port) {
     (void)host;

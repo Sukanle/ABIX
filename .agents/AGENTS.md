@@ -85,12 +85,19 @@ genuine ABI concept. Language-specific behaviour belongs in a
 ## 2. Repository Orientation
 
 ```text
-abix/    ABI model + runtime (header-only registry, descriptors, adapter)
-amc/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
+ABIX/    header-only ABI model + runtime, organised by layer:
+         Model/ (abi.h, Bootstrap.h, Map.h, Compat.h),
+         Metadata/ (Registry.h, Descriptor.h),
+         Runtime/ (Registry.h, Type.h, TypeSig.h, Search.h, Function.h),
+         DLL/ (Object.h, Function.h, FnSig.h, Export.h, *Ptr.h),
+         RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
+         Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h),
+         Binary/ (BinaryImage.h + ELF/MachO/PE adapters — capability layer)
+AMC/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
-aue/     experimental Lua boundary layer + differential conformance
+Aue/     experimental Lua boundary layer + differential conformance
 tools/   helper scripts (MCP demo, token cost, LLDB command, ELF test)
 docs/    specification and design
 ```
@@ -99,17 +106,72 @@ docs/    specification and design
 
 | Subsystem | Location | Responsibility |
 |-----------|----------|----------------|
-| ABI model | `abix/` | `TypeDescriptor`, `FieldDescriptor`, `RuntimeRegistry`, `TypeTraits`, adapter dispatch |
-| ELF/Mach-O reader | `amc/core/amc_elf.h` | Minimal ELF64 + Mach-O section reader (`is_binary`, `find_binary_section`, `read_binary_sections`) |
-| Metadata Region | `amc/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
-| ABI adapter | `amc/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
-| Symbol store | `amc/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
-| MCP server | `amc/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
-| LLDB plugin | `amc/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
-| Versioned registry | `abix/runtime_registry.h` | `RuntimeRegistry::register_module(module, version)` — same TypeID across versions |
+| ABI model | `ABIX/Model/` | `model::TypeDesc`, `model::TypeLayout`, `model::Field`, `model::Target`, `model::Compat` |
+| Metadata projection | `ABIX/Metadata/` | `metadata::Registry`, `metadata::TypeDescriptor`, `metadata::ModuleDescriptor` |
+| ABI runtime | `ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
+| DLL binding | `ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
+| Adapter dispatch | `ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
+| Binary reader | `ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by `AMC/core/` | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
+| Metadata Region | `AMC/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
+| ABI adapter | `AMC/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
+| Symbol store | `AMC/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
+| MCP server | `AMC/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
+| LLDB plugin | `AMC/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
+| Versioned registry | `ABIX/Runtime/Registry.h` | `runtime::Registry::register_module(module, version)` — same TypeID across versions |
 
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
 your change.
+
+### Branch model and cross-platform workflow
+
+Golden rule: **a change reaches `devel` only when it works on every supported
+platform.** Platform differences in C++ are easy to get subtly wrong — the
+linker, the CRT, dynamic-library loading (ELF / Mach-O / PE), symbol visibility
+and calling conventions all differ. Once such a difference lands in `devel`, it
+blocks promoting `devel` to `main` and cutting a release, so keep the divergence
+in the platform branches and gate promotion through staged test branches.
+
+Platform support today: **Linux, macOS and Windows**. On Windows the project
+builds with the MSYS2 UCRT64 toolchain (GCC or Clang). `devel` and release refs
+must be reproducible on every supported platform.
+
+| Branch | Role |
+|--------|------|
+| `main` | latest stable; only moves forward from a fully verified `devel` |
+| `vX.Y.x` | a frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
+| `devel` | unified integration branch; only changes that pass on **all** available platforms land here |
+| `devel-beta` | promotion stage: a `devel-alpha` that passed its platform tests merges here for the next/broader test round |
+| `devel-alpha` | integration/test stage: completed platform work merges here first and is tested on the platforms it supports |
+| `devel-linux` | Linux development line |
+| `devel-macos` | macOS development line |
+| `devel-windows` | Windows development line |
+
+Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**
+
+1. Develop on your platform branch (`devel-linux` / `devel-macos` /
+   `devel-windows`).
+2. When a unit is complete, merge it into `devel-alpha` and resolve platform
+   differences **there**; run the tests on the platforms Alpha supports. Do not
+   leave `#ifdef`-style divergence to rot in a platform branch.
+3. Once `devel-alpha` passes, merge it into `devel-beta` for the next, broader
+   test round.
+4. Only when **every available platform passes** on `devel-beta` is it merged
+   into `devel`. A platform-specific fix that cannot build elsewhere stays in its
+   platform branch, never in `devel`.
+5. `main` and `vX.Y.x` receive only `devel`/release merges that pass every
+   available platform. Never tag or branch a release before it is verified
+   consistent across platforms.
+
+Agent rules:
+
+- When you touch build files, the linker, dynamic-library loading, CRT/allocator
+  boundaries, symbol visibility, or any `_WIN32` / `__APPLE__` path, state in
+  the change which platforms you verified.
+- Never push platform-specific work directly to `devel`, `devel-beta` or `main`;
+  push it to a platform branch, promote it through `devel-alpha` → `devel-beta`
+  → `devel`.
+- Do not move `main`, create a release branch, or create a version tag unless
+  explicitly asked; release operations require full platform consistency.
 
 ---
 
@@ -209,6 +271,27 @@ speculative infrastructure; new dependencies without justification.
 Do not introduce a new abstraction merely because an existing one is
 inconvenient.
 
+### 6.1 Dependencies and output formatting
+
+`ABIX/` is the library, not a facility: it stays free of third-party formatting
+dependencies. Do not include or link **fmt** in `ABIX/` — the ABI model and runtime
+keep their existing, dependency-free output and diagnostics (`ABIX/Util/Log.h` is the
+reference implementation: a variadic logger built on the C library).
+
+Everything else in the repository is a facility and **may** use **fmt** for output
+formatting: `AMC/`, `test/`, `bench/`, `Aue/` and `tools/`. Within a facility, fmt is
+the formatter to use — `fmt::print` / `fmt::format` / `fmt::format_to_n` instead of the
+`printf` family — and new output should stay on it rather than mixing two styles.
+`bench/` already does, through `bench/bench_fmt.hpp`.
+
+"ABIX itself" means the `ABIX/` headers and the runtime target, not every target whose
+name starts with `abix`: the `libabix-*` static libraries are facilities (their sources
+live under `AMC/src/Core/`), so they keep using fmt.
+
+`fmt` is an established project dependency (see `cmake/AbixDependencies.cmake`), so
+linking it into a facility target is not a new dependency — `bench/` requires it
+(`find_package(fmt REQUIRED)`).
+
 ---
 
 ## 7. Error Handling
@@ -222,7 +305,7 @@ CLI tools report failures through the unified `abix.error/1` envelope
 
 ---
 
-## 8. ABI Compatibility
+## 8. ABI Compat
 
 Never assume source-level compatibility implies ABI compatibility. When changing
 layout, field order/type, alignment, size, calling convention, parameter/return
@@ -262,6 +345,13 @@ Additional CMake options (see `CMakeLists.txt`):
 | `-DSKL_ABIX_BUILD_DLL_VARIANTS=ON` | ON | Build cross-toolchain DLL variants |
 | `-DAMC_BUILD=ON` | ON | Build AMC toolchain (requires Clang/LLVM) |
 
+On macOS with Homebrew, `llvm` is keg-only: pass
+`-DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"` (the keg **root**, not `.../lib`)
+or the AMC tools are silently skipped. Do not export `LDFLAGS`/`CPPFLAGS` at an
+unversioned LLVM prefix — CMake caches them into the linker flags on first
+configure and the stale path then reaches every link. See
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#locating-llvm-macos--homebrew).
+
 ### Test & Run
 
 ```bash
@@ -279,8 +369,8 @@ For AMC changes, also exercise the CLI manually. For ABI changes, verify
 generation, serialization, deserialization, comparison, compatibility and
 runtime behaviour.
 
-`amc/tests/amc_integration_test.py` is the CLI integration suite;
-`amc/tests/core_test.cpp` holds core assertions; `test/` uses Catch2.
+`AMC/tests/cli/integration_test.py` is the CLI integration suite;
+`AMC/tests/unit/core_test.cpp` holds core assertions; `test/` uses Catch2.
 
 Do not claim a test passed unless it was actually run.
 
@@ -292,6 +382,17 @@ Update documentation when a change modifies public ABI semantics, public APIs,
 the `.abix` format, compatibility rules, AMC behaviour, plugin interfaces or
 architectural boundaries. Update the appropriate document; do not duplicate
 detailed implementation documentation in `AGENTS.md`.
+
+### 10.1 Documentation style
+
+**One line per paragraph.** Write each prose paragraph as a single line; do not hard-wrap at a column limit. A soft line break inside a paragraph renders inconsistently across Markdown engines (a wrapped line that happens to start with `>`, `-`, `#`, a digit plus `.`, or `---` silently becomes a quote, list item, heading, ordered item or thematic break instead of continuing the sentence), and every reflow makes a later diff touch lines that did not change. The rule is about paragraph prose only: tables, code blocks, list items and headings keep their own line breaks.
+
+**Chinese punctuation.** Chinese text uses full-width punctuation (`，` `。` `：` `；` `！` `？` `、`), with exactly two exceptions:
+
+* parentheses stay half-width: `(...)`, not `（...）`;
+* quotation uses corner brackets: `「...」`, not `“...”` and not `"..."`.
+
+Mixed Chinese/English text follows this for its Chinese parts; technical tokens (identifiers, paths, flags, numbers with units) keep their ASCII form. The same rule applies to `docs/**`, `.agents/**` and the Chinese chapters of any paired document.
 
 ---
 
@@ -307,7 +408,7 @@ regenerate. When generated output changes, verify it is reproducible
 
 Do not optimize from intuition when changing binding, registry lookup,
 synchronization, metadata lookup, call paths or type mapping. Prefer benchmarks
-(see `bench/`, `aue/abix-bench`, `tools/abix_token_cost.py`). A performance
+(see `bench/`, `Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
 optimization must not silently change ABI semantics.
 
 ---

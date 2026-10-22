@@ -19,9 +19,7 @@
 
 ## Open Infrastructure
 
-ABIX and AMC remain open infrastructure for native software ecosystems.
-Long-term development depends on both technical contributions and
-sustainable project resources.
+ABIX and AMC remain open infrastructure for native software ecosystems. Long-term development depends on both technical contributions and sustainable project resources.
 
 ## Community Support
 
@@ -34,8 +32,7 @@ Community members and organizations support development through:
 * hardware or infrastructure support
 * ecosystem integrations
 
-Sponsorship funds long-term maintenance, cross-platform testing,
-documentation, infrastructure, and continued development.
+Sponsorship funds long-term maintenance, cross-platform testing, documentation, infrastructure, and continued development.
 
 ## Enterprise Participation
 
@@ -48,17 +45,13 @@ Companies participate in the ABIX ecosystem as:
 * research collaborators
 * providers or consumers of application-layer tooling
 
-Enterprise participation does not require the ABIX core specification to
-be controlled by a single organization.
+Enterprise participation does not require the ABIX core specification to be controlled by a single organization.
 
 ## Optional Commercial Services
 
-As adoption grows, maintainers or ecosystem participants may provide
-optional commercial services: integration, support, hosted infrastructure,
-governance tooling, or enterprise automation.
+As adoption grows, maintainers or ecosystem participants may provide optional commercial services: integration, support, hosted infrastructure, governance tooling, or enterprise automation.
 
-These services complement the open-source project. They do not make the
-core ABI technology inaccessible.
+These services complement the open-source project. They do not make the core ABI technology inaccessible.
 
 ## Independence
 
@@ -74,14 +67,11 @@ flowchart TD
     B --> C
 ```
 
-Organizations adopt ABIX without requiring a specific vendor, hosted
-service, or commercial product.
+Organizations adopt ABIX without requiring a specific vendor, hosted service, or commercial product.
 
 ## Long-Term Goal
 
-Build a sustainable ecosystem around a common native ABI foundation. The
-project remains valuable regardless of changes in commercial services, AI
-technologies, package managers, or application frameworks.
+Build a sustainable ecosystem around a common native ABI foundation. The project remains valuable regardless of changes in commercial services, AI technologies, package managers, or application frameworks.
 
 ---
 

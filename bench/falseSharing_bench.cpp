@@ -19,35 +19,48 @@
 #include <atomic>
 #include <memory>
 
-#include "abix/abix.hpp"
+#include "ABIX/ABIX.h"
 
 #if defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/thread_policy.h>
-#include <pthread.h>
+#  include <mach/mach.h>
+#  include <mach/thread_policy.h>
+#  include <pthread.h>
 #elif defined(__linux__)
-#include <pthread.h>
+#  include <pthread.h>
+#elif defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
 #endif
 
 #ifndef SET_THREAD_AFFINITY
-#define SET_THREAD_AFFINITY
+#  define SET_THREAD_AFFINITY
 inline bool set_thread_affinity(int cpu_id) {
-#if defined(__APPLE__)
+#  if defined(__APPLE__)
     thread_affinity_policy_data_t policy = {cpu_id};
     thread_port_t thread = pthread_mach_thread_np(pthread_self());
-    kern_return_t kr = thread_policy_set(thread, THREAD_AFFINITY_POLICY,
-                                         (thread_policy_t)&policy,
-                                         THREAD_AFFINITY_POLICY_COUNT);
+    kern_return_t kr =
+        thread_policy_set(thread, THREAD_AFFINITY_POLICY, (thread_policy_t)&policy, THREAD_AFFINITY_POLICY_COUNT);
     return kr == KERN_SUCCESS;
-#elif defined(__linux__)
+#  elif defined(__linux__)
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(cpu_id, &cpuset);
     return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0;
-#else
+#  elif defined(_WIN32)
+    // Pin the thread to one logical CPU. Without this the writer-only experiment
+    // runs unpinned and the false-sharing signal does not appear on Windows.
+    const unsigned bits = sizeof(DWORD_PTR) * 8;
+    DWORD_PTR mask = DWORD_PTR{1} << (static_cast<unsigned>(cpu_id) % bits);
+    return SetThreadAffinityMask(GetCurrentThread(), mask) != 0;
+#  else
     (void)cpu_id;
     return false;
-#endif
+#  endif
 }
 #endif
 
@@ -82,8 +95,7 @@ static void BM_FalseSharing_WritePacked(benchmark::State &state) {
         benchmark::ClobberMemory();
     }
 }
-BENCHMARK(BM_FalseSharing_WritePacked)
-    ->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
+BENCHMARK(BM_FalseSharing_WritePacked)->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
 
 static void BM_FalseSharing_WriteAligned(benchmark::State &state) {
     int tid = state.thread_index();
@@ -100,8 +112,7 @@ static void BM_FalseSharing_WriteAligned(benchmark::State &state) {
         benchmark::ClobberMemory();
     }
 }
-BENCHMARK(BM_FalseSharing_WriteAligned)
-    ->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
+BENCHMARK(BM_FalseSharing_WriteAligned)->Threads(1)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
 
 // ============================================================
 // EBR-pattern: N threads write own slot + 1 thread reads all.
@@ -132,8 +143,7 @@ static void BM_FalseSharing_EBRPatternPacked(benchmark::State &state) {
         }
     }
 }
-BENCHMARK(BM_FalseSharing_EBRPatternPacked)
-    ->Threads(2)->Threads(4)->Threads(8)->Threads(16);
+BENCHMARK(BM_FalseSharing_EBRPatternPacked)->Threads(2)->Threads(4)->Threads(8)->Threads(16);
 
 static void BM_FalseSharing_EBRPatternAligned(benchmark::State &state) {
     int tid = state.thread_index();
@@ -160,5 +170,4 @@ static void BM_FalseSharing_EBRPatternAligned(benchmark::State &state) {
         }
     }
 }
-BENCHMARK(BM_FalseSharing_EBRPatternAligned)
-    ->Threads(2)->Threads(4)->Threads(8)->Threads(16);
+BENCHMARK(BM_FalseSharing_EBRPatternAligned)->Threads(2)->Threads(4)->Threads(8)->Threads(16);

@@ -11,20 +11,20 @@
 - [定位](#定位)
 - [全景图](#全景图)
 - [直接 ABI 竞品](#直接-abi-竞品)
-  - [libabigail](#1-libabigail)
-  - [ABI Compliance Checker](#2-abi-compliance-checker)
+    - [libabigail](#1-libabigail)
+    - [ABI Compliance Checker](#2-abi-compliance-checker)
 - [包管理 / 构建系统](#包管理--构建系统)
-  - [Conan](#3-conan)
-  - [vcpkg](#4-vcpkg)
+    - [Conan](#3-conan)
+    - [vcpkg](#4-vcpkg)
 - [组件模型](#组件模型)
-  - [COM](#5-com)
-  - [WebAssembly Component Model](#6-webassembly-component-model)
+    - [COM](#5-com)
+    - [WebAssembly Component Model](#6-webassembly-component-model)
 - [FFI / 绑定生成器](#ffi--绑定生成器)
-  - [bindgen / SWIG](#7-bindgen--swig)
+    - [bindgen / SWIG](#7-bindgen--swig)
 - [RPC / 序列化](#rpc--序列化)
-  - [gRPC / Protobuf / FlatBuffers](#8-grpc--protobuf--flatbuffers)
+    - [gRPC / Protobuf / FlatBuffers](#8-grpc--protobuf--flatbuffers)
 - [构建系统](#构建系统)
-  - [CMake / Bazel](#9-cmake--bazel)
+    - [CMake / Bazel](#9-cmake--bazel)
 - [竞品定位总览](#竞品定位总览)
 - [战略推论](#战略推论)
 - [ABIX 差异化](#abix-差异化)
@@ -46,30 +46,30 @@ graph TD
     A[Binary / ABI World] --> B[ABI Analysis]
     A --> C[Component Model]
     A --> D[Package/Build]
-    
+
     B --> B1[libabigail]
     B --> B2[abi-compliance-checker]
-    
+
     C --> C1[COM / Wasm CM]
-    
+
     D --> D1[Conan / vcpkg]
     D --> D2[CMake / Bazel]
-    
+
     B1 --> E[FFI / Binding]
     B2 --> E
     C1 --> E
     D1 --> E
     D2 --> E
-    
+
     E --> E1[bindgen / SWIG]
-    
+
     B1 --> F[Runtime Plugin]
     C1 --> F
     D1 --> F
-    
+
     E1 --> G[ABIX / AMC]
     F --> G
-    
+
     G --> G1[LSP]
     G --> G2[Agent]
     G --> G3[Robotics]
@@ -162,14 +162,14 @@ Microsoft COM 定义了一个 binary standard：组件通过标准化 interface 
 
 这说明"原生二进制组件 + 标准接口"本身并不是全新思想。ABIX 必须明确回答：**为什么不是 COM？**
 
-| 方面              | COM                     | ABIX                          |
-|-------------------|-------------------------|-------------------------------|
-| 平台              | Windows-oriented        | cross-platform                |
-| 模型              | Object Model            | ABI metadata                  |
-| 身份              | Interface / IID         | existing C/C++ ABI            |
-| 生命周期          | Reference Counting      | compiler/platform/runtime aware |
-| 运行时            | predefined runtime model | arbitrary native binaries     |
-| 交互              | component interaction   | static metadata + introspection |
+| 方面     | COM                      | ABIX                            |
+| -------- | ------------------------ | ------------------------------- |
+| 平台     | Windows-oriented         | cross-platform                  |
+| 模型     | Object Model             | ABI metadata                    |
+| 身份     | Interface / IID          | existing C/C++ ABI              |
+| 生命周期 | Reference Counting       | compiler/platform/runtime aware |
+| 运行时   | predefined runtime model | arbitrary native binaries       |
+| 交互     | component interaction    | static metadata + introspection |
 
 COM 定义一种组件模型。ABIX 描述现有原生 ABI 的通用语义层。这两者差别非常大。
 
@@ -259,18 +259,18 @@ graph LR
 
 ## 竞品定位总览
 
-| 方案                     | 主要描述对象                          | 重点                                                 |
+| 方案                   | 主要描述对象                    | 重点                                               |
 | ---------------------- | ------------------------------- | -------------------------------------------------- |
-| libabigail             | 已有 native binary ABI            | 分析 / Diff                                          |
-| ABI Compliance Checker | ABI dump / library              | 兼容性                                               |
-| Conan                  | package / binary                | 依赖 / 构建                                           |
-| vcpkg                  | package / build configuration   | 依赖 / 缓存 / ABI hash                                |
+| libabigail             | 已有 native binary ABI          | 分析 / Diff                                        |
+| ABI Compliance Checker | ABI dump / library              | 兼容性                                             |
+| Conan                  | package / binary                | 依赖 / 构建                                        |
+| vcpkg                  | package / build configuration   | 依赖 / 缓存 / ABI hash                             |
 | COM                    | binary component                | Component Object Model                             |
-| Wasm Component Model   | portable component              | 跨语言组件                                            |
+| Wasm Component Model   | portable component              | 跨语言组件                                         |
 | bindgen                | C/C++ source                    | FFI generation                                     |
-| SWIG                   | C/C++ source                    | 多语言绑定                                            |
-| Protobuf/gRPC          | wire / service schema           | RPC / 序列化                                         |
-| CMake/Bazel            | build system                    | 构建图 / 可复现性                                      |
+| SWIG                   | C/C++ source                    | 多语言绑定                                         |
+| Protobuf/gRPC          | wire / service schema           | RPC / 序列化                                       |
+| CMake/Bazel            | build system                    | 构建图 / 可复现性                                  |
 | **ABIX**               | **native ABI state / metadata** | **ABI IR / contract / verification / composition** |
 
 ABIX 最值得守住的领地：
@@ -280,11 +280,11 @@ graph TD
     A[ABIX] --> B[Describe]
     A --> C[Verify]
     A --> D[Compose]
-    
+
     B --> E[ABI IR]
     C --> F[ABI Diff]
     D --> G[Runtime]
-    
+
     E --> H[AMC]
     F --> H
     G --> H
@@ -368,12 +368,12 @@ Agent 不是独立聊天机器人，而是把上述 ABIX Applications 自动编�
 
 ### 四个可见作品
 
-| 作品              | 证明能力                                        |
-|-----------------|-----------------------------------------------|
-| `amc-abi-ci`    | ABI / binary / compiler / tooling               |
-| `amc-bind`      | C++ / Rust / FFI / code generation              |
-| `amc-robotics`  | dynamic library / runtime / AI / robotics       |
-| `amc-agent`     | AI Agent / MCP / structured context / verification |
+| 作品           | 证明能力                                           |
+| -------------- | -------------------------------------------------- |
+| `amc-abi-ci`   | ABI / binary / compiler / tooling                  |
+| `amc-bind`     | C++ / Rust / FFI / code generation                 |
+| `amc-robotics` | dynamic library / runtime / AI / robotics          |
+| `amc-agent`    | AI Agent / MCP / structured context / verification |
 
 四个作品共享同一个底座：
 
@@ -419,21 +419,21 @@ ABIXML = libabigail 的 XML 表示
 
 ## 参考链接
 
-| 工具 | 链接 |
-|------|------|
-| libabigail | https://sourceware.org/libabigail/manual/libabigail-overview.html |
-| ABI Compliance Checker | https://lvc.github.io/abi-compliance-checker/ |
-| Conan | https://docs.conan.io/2/introduction.html |
-| vcpkg binary caching | https://learn.microsoft.com/en-us/vcpkg/consume/binary-caching-overview |
-| COM | https://learn.microsoft.com/en-us/windows/win32/com/the-component-object-model |
-| Wasm Component Model | https://github.com/WebAssembly/component-model/blob/main/design/high-level/Goals.md |
-| bindgen | https://rust-lang.github.io/rust-bindgen/ |
-| Protobuf | https://protobuf.dev/overview/ |
-| gRPC | https://grpc.io/docs/what-is-grpc/introduction/ |
-| CMake File API | https://cmake.org/cmake/help/latest/manual/cmake-file-api.7.html |
-| Bazel Remote Cache | https://bazel.build/remote/caching |
-| Qt QPluginLoader | https://doc.qt.io/qt-6/qpluginloader.html |
+| 工具                   | 链接                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| libabigail             | https://sourceware.org/libabigail/manual/libabigail-overview.html                   |
+| ABI Compliance Checker | https://lvc.github.io/abi-compliance-checker/                                       |
+| Conan                  | https://docs.conan.io/2/introduction.html                                           |
+| vcpkg binary caching   | https://learn.microsoft.com/en-us/vcpkg/consume/binary-caching-overview             |
+| COM                    | https://learn.microsoft.com/en-us/windows/win32/com/the-component-object-model      |
+| Wasm Component Model   | https://github.com/WebAssembly/component-model/blob/main/design/high-level/Goals.md |
+| bindgen                | https://rust-lang.github.io/rust-bindgen/                                           |
+| Protobuf               | https://protobuf.dev/overview/                                                      |
+| gRPC                   | https://grpc.io/docs/what-is-grpc/introduction/                                     |
+| CMake File API         | https://cmake.org/cmake/help/latest/manual/cmake-file-api.7.html                    |
+| Bazel Remote Cache     | https://bazel.build/remote/caching                                                  |
+| Qt QPluginLoader       | https://doc.qt.io/qt-6/qpluginloader.html                                           |
 
 ---
 
-*另见：[AI 理论](../ai/ai_zh.md)、[TROI 指标](../ai/troi_zh.md)、[MCP 工具](../ai/MCP_zh.md)。*
+_另见：[AI 理论](../ai/ai_zh.md)、[TROI 指标](../ai/troi_zh.md)、[MCP 工具](../ai/MCP_zh.md)。_

@@ -20,12 +20,13 @@
 
 </details>
 
-本文用一个小的 C++ ABI 走完 ABIX 的核心流程：构建、inspect、query、diff、verify、
-generate。
+本文用一个小的 C++ ABI 走完 ABIX 的核心流程：构建、inspect、query、diff、verify、 generate。
 
 > ABIX 仍在积极开发中；以下命令与当前 CLI 一致。
 
 ## 1. 依赖
+
+> **平台支持：** 支持 Linux、macOS 与 Windows；Windows 上使用 MSYS2 UCRT64 工具链（GCC 或 Clang）。见 [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64)。
 
 * C++17 或更高
 * CMake 3.20+
@@ -49,6 +50,7 @@ cmake --build build/Release --parallel
 |------|------|
 | `amc` | ABI 工具链 driver（build/inspect/query/verify/generate/metadata/publish/fetch） |
 | `amc-cpp` | C++ 前端/后端 provider（JSON-lines IPC） |
+| `amc-rust` | Rust 前端/后端 provider（JSON-lines IPC）；不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | 面向 AI Agent 的 MCP server |
 | `abix-conformance` | Aue L0/L1 差分运行器（有 Lua 时构建） |
@@ -92,7 +94,7 @@ int add(int a, int b);
 # -> build/build/math_api.abix.meta
 ```
 
-完整配置见 [`abic_zh.md`](../abix/abic_zh.md)。
+完整配置见 [`abic_zh.md`](../ABIX/abic_zh.md)。
 
 ## 4. 查看与查询
 
@@ -149,7 +151,7 @@ python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
 
 ## 下一步
 
-* [`abix_zh.md`](../abix/abix_zh.md) — `.abix` artifact 格式
+* [`abix_zh.md`](../ABIX/abix_zh.md) — `.abix` artifact 格式
 * [`compatibility_zh.md`](../architecture/compatibility_zh.md) — ABI 身份与兼容性
-* [`amc_zh.md`](../amc/amc_zh.md) — AMC 工具链
+* [`amc_zh.md`](../AMC/amc_zh.md) — AMC 工具链
 * [`architecture_zh.md`](../architecture/architecture_zh.md) — 整体架构

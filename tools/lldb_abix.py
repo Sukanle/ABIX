@@ -30,19 +30,29 @@ import lldb
 _PRIMITIVE = {}
 for _name, _size, _kind in (
     ("bool", 1, "uint"),
-    ("char", 1, "int"), ("signed char", 1, "int"), ("unsigned char", 1, "uint"),
-    ("short", 2, "int"), ("unsigned short", 2, "uint"),
-    ("int", 4, "int"), ("unsigned int", 4, "uint"), ("unsigned", 4, "uint"),
-    ("long", 8, "int"), ("unsigned long", 8, "uint"),
-    ("long long", 8, "int"), ("unsigned long long", 8, "uint"),
-    ("float", 4, "float"), ("double", 8, "float"),
+    ("char", 1, "int"),
+    ("signed char", 1, "int"),
+    ("unsigned char", 1, "uint"),
+    ("short", 2, "int"),
+    ("unsigned short", 2, "uint"),
+    ("int", 4, "int"),
+    ("unsigned int", 4, "uint"),
+    ("unsigned", 4, "uint"),
+    ("long", 8, "int"),
+    ("unsigned long", 8, "uint"),
+    ("long long", 8, "int"),
+    ("unsigned long long", 8, "uint"),
+    ("float", 4, "float"),
+    ("double", 8, "float"),
 ):
     _PRIMITIVE[_name] = (_size, _kind)
 
 
 def _decode(kind, raw):
-    table = {"int": {1: "b", 2: "h", 4: "i", 8: "q"},
-             "uint": {1: "B", 2: "H", 4: "I", 8: "Q"}}
+    table = {
+        "int": {1: "b", 2: "h", 4: "i", 8: "q"},
+        "uint": {1: "B", 2: "H", 4: "I", 8: "Q"},
+    }
     if kind in table and len(raw) in table[kind]:
         return str(struct.unpack("<" + table[kind][len(raw)], raw)[0])
     if kind == "float" and len(raw) in (4, 8):
@@ -104,7 +114,9 @@ def abix(debugger, command, result, internal_dict=None):
         proc = _run(["metadata", "--from-elf", binary, "--format", "json"])
         if proc.returncode != 0:
             result.SetStatus(lldb.eReturnStatusFailure)
-            result.AppendMessage(proc.stderr.strip() or "abix: no embedded metadata region")
+            result.AppendMessage(
+                proc.stderr.strip() or "abix: no embedded metadata region"
+            )
             return
         _emit_json(result, json.loads(proc.stdout))
         return
@@ -129,9 +141,14 @@ def abix(debugger, command, result, internal_dict=None):
     if sub == "check" and len(argv) >= 3:
         name, other = argv[1], argv[2]
         proc = _query(binary, ["--compatible", other])
-        changes = [change for change in json.loads(proc.stdout).get("changes", [])
-                   if change.get("type") == name]
-        _emit_json(result, {"type": name, "compatible": not changes, "changes": changes})
+        changes = [
+            change
+            for change in json.loads(proc.stdout).get("changes", [])
+            if change.get("type") == name
+        ]
+        _emit_json(
+            result, {"type": name, "compatible": not changes, "changes": changes}
+        )
         if changes:
             result.SetStatus(lldb.eReturnStatusFailure)
         return
@@ -144,14 +161,19 @@ def abix(debugger, command, result, internal_dict=None):
             # image). Fall back to the plan's chain: BuildID -> symbol server ->
             # debug `.abix` (which carries the optional Source Origin section).
             fetched = _run(["fetch", binary])
-            path = fetched.stdout.strip().splitlines()[-1] if fetched.returncode == 0 else ""
+            path = (
+                fetched.stdout.strip().splitlines()[-1]
+                if fetched.returncode == 0
+                else ""
+            )
             if path.endswith(".abix"):
                 source = _source_of(path, name)
         if source is None:
             result.SetStatus(lldb.eReturnStatusFailure)
             result.AppendMessage(
                 "abix: no source origin for '" + name + "' "
-                "(embedded region is source-free; publish the debug .abix to the symbol server)")
+                "(embedded region is source-free; publish the debug .abix to the symbol server)"
+            )
             return
         result.AppendMessage(f"{source['file']}:{source['line']}:{source['column']}")
         return
@@ -164,7 +186,8 @@ def abix(debugger, command, result, internal_dict=None):
     result.AppendMessage(
         "usage: abix info | type <name> | function <name> | "
         "verify <other> | check <name> <other> | source <name> | "
-        "cast <address-expression> <type>")
+        "cast <address-expression> <type>"
+    )
 
 
 def _cast(debugger, result, expression, type_name):
@@ -204,7 +227,9 @@ def _cast(debugger, result, expression, type_name):
     data = process.ReadMemory(address, size, error)
     if data is None or not error.Success():
         result.SetStatus(lldb.eReturnStatusFailure)
-        result.AppendMessage("abix cast: cannot read %d bytes at 0x%x" % (size, address))
+        result.AppendMessage(
+            "abix cast: cannot read %d bytes at 0x%x" % (size, address)
+        )
         return
 
     lines = ["abix cast: %s @ 0x%x (%d bytes)" % (layout.get("name"), address, size)]
@@ -215,13 +240,17 @@ def _cast(debugger, result, expression, type_name):
         offset = field.get("offset", 0)
         encoding = _field_encoding(field.get("type_name", ""))
         if encoding is None:
-            lines.append("  +%-3d %-10s %-10s <opaque>" %
-                         (offset, field.get("name"), field.get("type_name")))
+            lines.append(
+                "  +%-3d %-10s %-10s <opaque>"
+                % (offset, field.get("name"), field.get("type_name"))
+            )
             continue
         width, kind = encoding
-        raw = data[offset:offset + width]
-        lines.append("  +%-3d %-10s %-10s %s" %
-                     (offset, field.get("name"), field.get("type_name"), _decode(kind, raw)))
+        raw = data[offset : offset + width]
+        lines.append(
+            "  +%-3d %-10s %-10s %s"
+            % (offset, field.get("name"), field.get("type_name"), _decode(kind, raw))
+        )
     result.AppendMessage("\n".join(lines))
 
 

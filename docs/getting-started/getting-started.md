@@ -20,12 +20,13 @@
 
 </details>
 
-This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI,
-and shows the core operations: inspect, query, diff, verify and generate.
+This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI, and shows the core operations: inspect, query, diff, verify and generate.
 
 > ABIX is under active development; commands shown here match the current CLI.
 
 ## 1. Requirements
+
+> **Platform support:** Linux, macOS and Windows are supported; Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang). See [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64).
 
 * C++17 or later
 * CMake 3.20+
@@ -34,7 +35,7 @@ and shows the core operations: inspect, query, diff, verify and generate.
 
 Optional but used by parts of the toolchain and tests:
 
-* Lua 5.4 — builds the experimental Aue boundary layer (`aue/`)
+* Lua 5.4 — builds the experimental Aue boundary layer (`Aue/`)
 * `readelf`, `strip`, `lldb`, `clang++` — used by integration tests
 
 ## 2. Build
@@ -52,6 +53,7 @@ Artifacts land in `build/bin`, including:
 |------|---------|
 | `amc` | ABI toolchain driver (build / inspect / query / verify / generate / metadata / publish / fetch) |
 | `amc-cpp` | C++ frontend/backend provider (JSON-lines IPC) |
+| `amc-rust` | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools to AI agents |
 | `abix-conformance` | Aue L0/L1 differential runner (when Lua is present) |
@@ -97,7 +99,7 @@ Build the metadata:
 # -> build/build/math_api.abix.meta
 ```
 
-See [`abic.md`](../abix/abic.md) for the full configuration reference.
+See [`abic.md`](../ABIX/abic.md) for the full configuration reference.
 
 ## 4. Inspect and query
 
@@ -115,9 +117,7 @@ See [`abic.md`](../abix/abic.md) for the full configuration reference.
 ./build/Release/bin/amc context build/build/math_api.abix --format llm
 ```
 
-Every consumer also accepts a compiled binary: the generated C++ header embeds
-the ABI as an `.abix.metadata` section, so `amc inspect libfoo.so` works without
-the sidecar `.abix`:
+Every consumer also accepts a compiled binary: the generated C++ header embeds the ABI as an `.abix.metadata` section, so `amc inspect libfoo.so` works without the sidecar `.abix`:
 
 ```bash
 ./build/Release/bin/amc query libfoo.so --type math::Point --layout
@@ -139,13 +139,12 @@ the sidecar `.abix`:
 ./build/Release/bin/amc verify v1.abix v2.abix --format diagnostics
 ```
 
-`amc verify` treats any difference — including added types or functions — as
-drift, because widening the ABI surface must be an explicit decision.
+`amc verify` treats any difference — including added types or functions — as drift, because widening the ABI surface must be an explicit decision.
 
 ## 6. Generate
 
 ```bash
-# native C++17 projection (descriptors for RuntimeRegistry)
+# native C++17 projection (descriptors for runtime::Registry)
 ./build/Release/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
 
 # Aue (Lua) boundary contract
@@ -182,9 +181,9 @@ See [`MCP.md`](../ai/MCP.md) for the tool catalogue.
 
 ## Next steps
 
-* [`abix.md`](../abix/abix.md) — the `.abix` artifact format
+* [`abix.md`](../ABIX/abix.md) — the `.abix` artifact format
 * [`compatibility.md`](../architecture/compatibility.md) — ABI identity and compatibility
-* [`amc.md`](../amc/amc.md) — the AMC toolchain
+* [`amc.md`](../AMC/amc.md) — the AMC toolchain
 * [`architecture.md`](../architecture/architecture.md) — how the pieces fit together
 * [`design-notes.md`](../development/design-notes.md) — design principles and history
 * [`bootstrap.md`](bootstrap.md) — bootstrap model and milestones

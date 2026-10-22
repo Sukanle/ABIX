@@ -1,32 +1,33 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "abix/hash.h"
+#include "ABIX/Util/Hash.h"
 
-TEST_CASE("canonical hash values carry algorithm and domain") {
-    constexpr uint8_t input[] = {'F', 'o', 'o'};
-    constexpr auto type = skl::abix::hash::fnv1a(
-        input, sizeof(input), skl::abix::hash::Domain::type_identity);
-    constexpr auto layout = skl::abix::hash::fnv1a(
-        input, sizeof(input), skl::abix::hash::Domain::layout_identity);
+TEST_CASE("canonical hash is deterministic, domain separated and endian neutral") {
+    constexpr char input[] = "Foo";
+    constexpr auto type = skl::abix::util::canonical_hash(input, 3, 0x54595045ULL);
+    constexpr auto layout = skl::abix::util::canonical_hash(input, 3, 0x4C41594F55545F31ULL);
+    constexpr auto again = skl::abix::util::canonical_hash(input, 3, 0x54595045ULL);
 
-    STATIC_REQUIRE(type.descriptor.algorithm ==
-                   skl::abix::hash::Algorithm::fnv1a_dual_lane_reference);
-    STATIC_REQUIRE(type.descriptor.digest_bits == 128);
-    REQUIRE(!skl::abix::hash::same_value(type, layout));
-    REQUIRE(skl::abix::hash::runtime_key(type.digest) != 0);
+    STATIC_REQUIRE(type.lo == 0x9E4865E33F33EF18ULL);
+    STATIC_REQUIRE(type.hi == 0xF5973B85E61B6073ULL);
+    STATIC_REQUIRE(type == again);
+    REQUIRE(type != layout);
 }
 
-TEST_CASE("hash value set supports algorithm negotiation") {
-    constexpr uint8_t input[] = {'F', 'o', 'o'};
-    const auto fnv = skl::abix::hash::fnv1a(
-        input, sizeof(input), skl::abix::hash::Domain::type_identity);
-    auto alternate = fnv;
-    alternate.descriptor.algorithm = skl::abix::hash::Algorithm::blake3;
-    alternate.descriptor.digest_bits = 128;
+TEST_CASE("structural digests encode integers big-endian") {
+    using skl::abix::util::canonical_hash_begin;
+    using skl::abix::util::canonical_hash_byte;
+    using skl::abix::util::canonical_hash_u32_be;
+    using skl::abix::util::canonical_hash_u64_be;
 
-    skl::abix::hash::ValueSet<2> values;
-    REQUIRE(values.add(fnv));
-    REQUIRE(values.add(alternate));
-    REQUIRE(values.size() == 2);
-    REQUIRE(values.find(alternate.descriptor) != nullptr);
+    auto state = canonical_hash_begin(0x1234);
+    state = canonical_hash_u32_be(state, 0x01020304U);
+    state = canonical_hash_u64_be(state, 0x0102030405060708ULL);
+
+    auto bytes = canonical_hash_begin(0x1234);
+    for (uint8_t byte : {1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8})
+        bytes = canonical_hash_byte(bytes, byte);
+
+    REQUIRE(state.lo == bytes.lo);
+    REQUIRE(state.hi == bytes.hi);
 }

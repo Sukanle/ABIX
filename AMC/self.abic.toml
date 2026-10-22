@@ -1,0 +1,28 @@
+[package]
+name = "amc_core"
+version = "1"
+
+[[import]]
+language = "cpp"
+flags = [
+  "-std=c++17",
+  "-I", "include",
+]
+files = ["self_types.cpp"]
+symbols = [
+  "amc::Hash128",
+  "amc::Type",
+  "amc::Field",
+  "amc::Parameter",
+  "amc::Function",
+  "amc::Symbol",
+  "amc::HashRecord",
+  "amc::HashDescriptor",
+  "amc::CompatibilityRecord",
+  "amc::MapOperation",
+  "amc::MapRecord",
+  "amc::AbiModule"
+]
+
+[[export]]
+output = "build/amc_core.abix"

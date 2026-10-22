@@ -1,4 +1,4 @@
-# ABI Identity & Compatibility
+# ABI Identity & Compat
 
 <p align="center">
   <a href="compatibility_zh.md">中文</a> · English
@@ -10,14 +10,13 @@
 
 - [Four identities](#four-identities)
 - [ABI diff flow](#abi-diff-flow)
-- [Compatibility kinds](#compatibility-kinds)
+- [Compat kinds](#compatibility-kinds)
 - [Load-time cross-module validation](#load-time-cross-module-validation)
 - [Source origin](#source-origin)
 
 </details>
 
-ABIX separates identities that are often conflated. Keeping them distinct makes
-"is this the same type?" and "can I safely use this binary?" precise questions.
+ABIX separates identities that are often conflated. Keeping them distinct makes "is this the same type?" and "can I safely use this binary?" precise questions.
 
 ## Four identities
 
@@ -35,19 +34,14 @@ graph LR
     A[Binary] --> B[BuildID] --> C[".abix"] --> D[MetadataID] --> E[TypeID] --> F[LayoutHash]
 ```
 
-* `TypeID` is name-independent: two modules may spell the same type differently
-  and still share a TypeID. Names are diagnostic only.
-* `LayoutHash` covers size, alignment and field offsets/types — the part that
-  actually decides whether a call is safe.
-* `BuildID` comes from the ELF `.note.gnu.build-id` (or is injected); it indexes
-  the symbol server.
-* `MetadataID` is a hash over the metadata region content (desc + hash + names)
-  and detects tampering.
+* `TypeID` is name-independent: two modules may spell the same type differently and still share a TypeID. Names are diagnostic only.
+* `LayoutHash` covers size, alignment and field offsets/types — the part that actually decides whether a call is safe.
+* `BuildID` comes from the ELF `.note.gnu.build-id` (or is injected); it indexes the symbol server.
+* `MetadataID` is a hash over the metadata region content (desc + hash + names) and detects tampering.
 
 ## ABI diff flow
 
-When comparing two ABIX artifacts, the tool loads both, queries each type and
-layout, and produces a per-type compatibility report:
+When comparing two ABIX artifacts, the tool loads both, queries each type and layout, and produces a per-type compatibility report:
 
 ```mermaid
 sequenceDiagram
@@ -69,7 +63,7 @@ sequenceDiagram
 
 The diff result classifies each type into one of the compatibility kinds below.
 
-## Compatibility kinds
+## Compat kinds
 
 `amc compatibility` and `amc query --compatible` classify each type:
 
@@ -80,14 +74,11 @@ The diff result classifies each type into one of the compatibility kinds below.
 | `map_compatible` | layout differs but a mapping exists |
 | `incompatible` | no safe use without an adapter |
 
-`amc verify` is stricter: **any** difference — including *added* types or
-functions — counts as drift, because widening the ABI surface must be an
-explicit decision.
+`amc verify` is stricter: **any** difference — including *added* types or functions — counts as drift, because widening the ABI surface must be an explicit decision.
 
 ## Load-time cross-module validation
 
-When a `RuntimeRegistry` registers modules, the same TypeID must resolve to the
-same LayoutHash:
+When a `runtime::Registry` registers modules, the same TypeID must resolve to the same LayoutHash:
 
 ```mermaid
 graph TD
@@ -96,11 +87,8 @@ graph TD
     B -->|no| D["layout_conflict (ABI conflict)"]
 ```
 
-Compatible duplicates are shared; conflicting layouts are rejected. This is the
-runtime implementation of the ABI boundary.
+Compatible duplicates are shared; conflicting layouts are rejected. This is the runtime implementation of the ABI boundary.
 
 ## Source origin
 
-For go-to-definition, `.abix` may carry an optional, debug-only `sources`
-section mapping `TypeID → file:line:column`. It is **excluded from `abi_hash`**
-— declaration sites are diagnostic, not ABI identity.
+For go-to-definition, `.abix` may carry an optional, debug-only `sources` section mapping `TypeID → file:line:column`. It is **excluded from `abi_hash`** — declaration sites are diagnostic, not ABI identity.

@@ -21,9 +21,7 @@
 
 </details>
 
-> TROI 是一个文档概念，用于讨论 AI Agent 在通过 AMC/MCP 获得结构化 ABI
-> 知识时，每个 token 能完成多少工作。本文中的所有数字都是说明性示例，
-> 不是实测结果。尚未实现的能力均标注为"规划中"或"提案"。
+> TROI 是一个文档概念，用于讨论 AI Agent 在通过 AMC/MCP 获得结构化 ABI 知识时，每个 token 能完成多少工作。本文中的所有数字都是说明性示例，不是实测结果。尚未实现的能力均标注为"规划中"或"提案"。
 
 ## 定义
 
@@ -83,7 +81,9 @@ graph TD
 $$
 TROI = \frac{C_{traditional}}{C_{amc+mcp}} \\
 $$
+
 其中 C 可以是综合 Agent 成本:
+
 $$
 C = \alpha T + \beta N + \gamma L + \delta B
 $$
@@ -120,15 +120,13 @@ $$
 TCR = \frac{Traditional Tokens}{AMC Tokens}
 $$
 
-`TCR` 用压缩的视角陈述同一个想法:当 `Agent` 阅读 `ABI metadata` 而不是源码时，任务的 `token` 足迹缩小了多少。在第一阶段，`TCR` 与 `TROI token` 在数值上相等；保留两个名字是因为它们以不同方式框定同一个比值: `TCR` 是压缩，`TROI` 是回报。<br>
-未来更具吸引力的定义是:
+`TCR` 用压缩的视角陈述同一个想法:当 `Agent` 阅读 `ABI metadata` 而不是源码时，任务的 `token` 足迹缩小了多少。在第一阶段，`TCR` 与 `TROI token` 在数值上相等；保留两个名字是因为它们以不同方式框定同一个比值: `TCR` 是压缩，`TROI` 是回报。<br> 未来更具吸引力的定义是:
 
 $$
 TROI = \frac{Useful Work}{Token Cost}
 $$
 
-但它难以标准化:"有用工作"需要任务成功判据、评分方式以及跨仓库的归一化。<br>
-因此第一阶段刻意保持 `TROI` 简单、只基于 `token`。
+但它难以标准化:"有用工作"需要任务成功判据、评分方式以及跨仓库的归一化。<br> 因此第一阶段刻意保持 `TROI` 简单、只基于 `token`。
 
 ## 指标家族: `Agent Efficiency Benchmark`
 

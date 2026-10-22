@@ -13,10 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "abix/abix.hpp"    // IWYU pragma: keep
+#include "ABIX/ABIX.h"      // IWYU pragma: keep
 #include "plugin_types.h"   // IWYU pragma: keep
-
-using namespace skl::abix;
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double x, double y) { return x * y; }
@@ -89,8 +87,8 @@ extern "C" int calc_config_history(CalcConfig *cfg, int idx) {
     return (cfg && idx >= 0 && idx < cfg->history_len) ? cfg->history[idx] : -1;
 }
 
-ref_dll_ptr<CalcConfig> create_shared_calc_config(double factor, const char *mode) {
-    return ref_dll_ptr<CalcConfig>(create_calc_config(factor, mode), destroy_calc_config);
+skl::abix::dll::RefPtr<CalcConfig> create_shared_calc_config(double factor, const char *mode) {
+    return skl::abix::dll::RefPtr<CalcConfig>(create_calc_config(factor, mode), destroy_calc_config);
 }
 
 struct SharedCounter {
@@ -122,8 +120,8 @@ extern "C" int shared_counter_decrement(SharedCounter *sc) {
     return --sc->count;
 }
 
-shared_dll_ptr<SharedCounter> create_shared_shared_counter(int init) {
-    return shared_dll_ptr<SharedCounter>(create_shared_counter(init), destroy_shared_counter);
+skl::abix::dll::SharedPtr<SharedCounter> create_shared_shared_counter(int init) {
+    return skl::abix::dll::SharedPtr<SharedCounter>(create_shared_counter(init), destroy_shared_counter);
 }
 
 // clang-format off
@@ -151,6 +149,6 @@ SKL_ABIX_DEFINE_TABLE(
     SKL_ABIX_ENTRY("shared_counter_value", shared_counter_value),
     SKL_ABIX_ENTRY("shared_counter_increment", shared_counter_increment),
     SKL_ABIX_ENTRY("shared_counter_decrement", shared_counter_decrement),
-    SKL_ABIX_ENTRY("create_shared_shared_counter", create_shared_shared_counter), 
+    SKL_ABIX_ENTRY("create_shared_shared_counter", create_shared_shared_counter),
 )
 // clang-format on

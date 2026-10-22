@@ -1,0 +1,44 @@
+[package]
+name = "shapes"
+version = "1.0"
+
+[[import]]
+language = "cpp"
+flags = ["-std=c++17"]
+files = ["shapes.hpp"]
+symbols = ["Square", "Circle", "shape_area"]
+
+[thunks]
+output = "shapes_thunks.cpp"
+
+# Auto-generate the C-ABI method thunks: abix_Square_area(Square*),
+# abix_Circle_area(Circle*).
+[[expose]]
+type = "Square"
+methods = ["area"]
+constructor = ["int"]
+
+[[expose]]
+type = "Circle"
+methods = ["area"]
+constructor = ["int"]
+
+# A named interface contract: name + version + ordered methods (slot order).
+[[interface]]
+name = "Shape"
+version = 1
+methods = ["shape_area"]
+
+# Bind each concrete type to the contract by pointing a slot at its thunk.
+[[implements]]
+interface = "Shape"
+type = "Square"
+methods = ["abix_Square_area"]
+
+[[implements]]
+interface = "Shape"
+type = "Circle"
+methods = ["abix_Circle_area"]
+
+[[export]]
+output = "shapes.abix"

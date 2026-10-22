@@ -15,15 +15,14 @@
 
 </details>
 
-ABIX 1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公开 ABI，并用该描述构建与
-校验后续版本。
+ABIX 0.1.0 对自身公开 ABI 是自举的：用自己的模型描述自己的公开 ABI，并用该描述构建与校验后续版本。
 
 ```mermaid
 graph TD
-    A["ABIX 1.0"] --> B["描述自身"]
+    A["ABIX 0.1.0"] --> B["描述自身"]
     B --> C["校验 / 绑定"]
     C --> D["构建下一个 ABI"]
-    D --> E["ABIX 1.x"]
+    D --> E["ABIX 0.1.x"]
     E --> F["描述自身"]
 ```
 
@@ -66,23 +65,20 @@ sequenceDiagram
     Stage1-->>Stage0: self-hosted toolchain
 ```
 
-Stage 0 是初始的手工构建 loader；Stage 1 是工具链自身构建出的第一个版本。
-此后每个新版本都由其前驱描述和校验。
+Stage 0 是初始的手工构建 loader；Stage 1 是工具链自身构建出的第一个版本。此后每个新版本都由其前驱描述和校验。
 
 ## Bootstrap artifact
 
 ABIX 用自己的配置描述自身 core IR 并校验结果：
 
-* `abix/self/abix_self.abic.toml` — ABIX 运行时的公开类型
-* `amc/self.abic.toml` — AMC core IR
-* `abix/self_types.cpp`、`amc/self_types.cpp` — 被描述的输入
+* `ABIX/self.abic.toml` — ABIX 运行时的公开类型
+* `AMC/self.abic.toml` — AMC core IR
+* `src/self_types.cpp`、`AMC/self_types.cpp` — 被描述的输入
 
-集成测试会构建这些 artifact、校验、生成原生投影，并编译一个使用
-`RuntimeRegistry::type_of<T>()` 的消费者，证明 bootstrap 闭环完好。
+集成测试会构建这些 artifact、校验、生成原生投影，并编译一个使用 `runtime::Registry::type_of<T>()` 的消费者，证明 bootstrap 闭环完好。
 
 ## 为什么重要
 
-自举表明模型足以描述实现它的系统。它也让项目拥有一个稳定契约可供演进，
-而不是一个随内部实现变化而变化的隐式 ABI。
+自举表明模型足以描述实现它的系统。它也让项目拥有一个稳定契约可供演进，而不是一个随内部实现变化而变化的隐式 ABI。
 
 自举模型、阶段与里程碑历史见 [`bootstrap_zh.md`](bootstrap_zh.md)。

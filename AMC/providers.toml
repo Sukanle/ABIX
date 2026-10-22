@@ -1,0 +1,40 @@
+# AMC language-provider manifest.
+#
+# This file is the single source for `amc --list-languages` and
+# `amc --describe-language`. A provider entry describes a language role, not a
+# hard-coded executable name; `amc` resolves the provider next to itself as
+# `amc-<language>` unless `executable` says otherwise.
+#
+# `protocol = "jsonl-v1"` providers speak the JSONL producer/consumer protocol
+# documented in `.agents/LANGUAGE-PLUGIN.md`. `protocol = "direct"` providers are
+# built into the toolchain (the Aue/Lua backend) and do not have a provider
+# process.
+
+version = 1
+
+[[provider]]
+language = "cpp"
+executable = "amc-cpp"
+roles = ["frontend", "backend"]
+protocol = "jsonl-v1"
+features = ["templates", "interfaces"]
+
+[[provider]]
+language = "lua"
+roles = ["backend"]
+protocol = "direct"
+contract = "aue"
+
+[[provider]]
+language = "rust"
+executable = "amc-rust"
+roles = ["frontend", "backend"]
+protocol = "jsonl-v1"
+features = ["ownership", "error", "target"]
+
+[[provider]]
+language = "zig"
+executable = "amc-zig"
+roles = ["backend"]
+protocol = "jsonl-v1"
+features = ["target"]
