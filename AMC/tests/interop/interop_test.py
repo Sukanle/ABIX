@@ -115,6 +115,16 @@ def main() -> int:
               "amc generate -l rust produced amc_generated.rs",
               (result.stderr.strip() if result else "skipped (no artifact)")[:2000])
 
+        if os.path.isfile(generated):
+            generated_text = open(generated, encoding="utf-8").read()
+            check("demo_div_result" in generated_text and "pub struct DemoDivError(pub" in generated_text,
+                  "Rust projection emits the error-boundary Result and an FFI-safe error newtype")
+            check("demo_div_unknown_result" in generated_text
+                  and "pub struct DemoDivUnknownError(pub" in generated_text,
+                  "Rust projection keeps an FFI-safe newtype for an unknown-status error boundary")
+            check("demo_add_result" not in generated_text,
+                  "Rust projection does not invent a Result wrapper for a function without an error contract")
+
         # 3b. The same artifact projects to a C++ header. The interface contract
         #     must surface its identity, version, typed slot table and adapter
         #     typedefs, so a consumer can declare `IVectorMath` without a private

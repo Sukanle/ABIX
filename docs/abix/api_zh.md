@@ -248,7 +248,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 inline dll::CallError &last_error() noexcept;
 ```
 
-返回线程局部最近错误码的引用。线程安全（每个线程拥有独立的错误状态）。
+返回线程局部最近错误码的引用。每个线程拥有独立的错误状态；由于该函数定义在 header 中，每个 DSO 也可能持有自己的副本，因此不要把 `last_error()` 当作跨模块错误通道。需要跨模块传递错误时，使用显式的返回值/`[[error]]` 契约，而不是读取另一个模块的 `last_error()`。
 
 ### `dll::Object`
 

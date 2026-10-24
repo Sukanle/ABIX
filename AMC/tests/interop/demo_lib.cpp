@@ -52,6 +52,14 @@ DEMO_API int32_t demo_div(int32_t a, int32_t b, int32_t *out) {
     }
 }
 
+DEMO_API int32_t demo_div_unknown(int32_t a, int32_t b, int32_t *out) {
+    if (!out) return 2;
+    *out = b == 0 ? 0 : a / b;
+    // Deliberately outside the known status set: the generated Rust wrapper
+    // must keep 99 as an unknown error code rather than losing it.
+    return 99;
+}
+
 DEMO_API int32_t demo_live_count() { return g_live; }
 
 // ABIX-STD borrowed span (M3): the library keeps the backing array alive and

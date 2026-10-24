@@ -47,6 +47,10 @@ DEMO_API int32_t demo_vec2_destroy(struct DemoVec2 *v);
 // Error boundary: 0 on success, a non-zero error code on failure.
 DEMO_API int32_t demo_div(int32_t a, int32_t b, int32_t *out);
 
+// Error boundary with an unknown status: the Rust projection must preserve the
+// numeric code instead of collapsing it into a known enum variant.
+DEMO_API int32_t demo_div_unknown(int32_t a, int32_t b, int32_t *out);
+
 // Number of live handles currently owned by the library. A test aid that makes
 // the destruction contract observable across the boundary.
 DEMO_API int32_t demo_live_count();

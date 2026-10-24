@@ -38,15 +38,20 @@ struct ModuleInterface {
 
 enum class ModuleStatus : uint32_t {
     ok = 0,
-    already_registered,            // the same control is already registered
-    invalid_manifest,              // structural or version error in the manifest
-    invalid_state,                 // the control is not in the loading state
-    capacity_exceeded,             // no free module slot
-    interface_capacity_exceeded,   // no room for the module's interfaces
-    duplicate_interface,           // the manifest declares the same id+version twice
-    not_registered,                // unregistering an unknown instance
-    busy,                          // unload refused: leases are still active
+    already_registered = 1,            // the same control is already registered
+    invalid_manifest = 2,              // structural or version error in the manifest
+    invalid_state = 3,                 // the control is not in the loading state
+    capacity_exceeded = 4,             // no free module slot
+    interface_capacity_exceeded = 5,   // no room for the module's interfaces
+    duplicate_interface = 6,           // the manifest declares the same id+version twice
+    not_registered = 7,                // unregistering an unknown instance
+    busy = 8,                          // unload refused: leases are still active
 };
+
+static_assert(
+    static_cast<uint32_t>(ModuleStatus::ok) == 0, "ModuleStatus values are a diagnostics compatibility surface");
+static_assert(
+    static_cast<uint32_t>(ModuleStatus::busy) == 8, "ModuleStatus values are a diagnostics compatibility surface");
 
 constexpr const char *to_string(ModuleStatus status) noexcept {
     switch (status) {

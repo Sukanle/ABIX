@@ -81,4 +81,5 @@ The Zig consumer links the same native library as the C++ and Rust consumers; it
 - The exported surface still has to be representable in the native ABI; internal Zig types and allocators stay inside the module.
 - The recorded ABI is target-specific; build the Zig consumer for the same target and C ABI as the provider.
 - `[*c]` pointers keep C pointer semantics, while `extern struct` and `comptime` checks pin the layout.
+- Error boundaries are not projected to Zig error sets / error unions yet; the current output keeps the plain status/payload parameters.
 - No Zig-specific concept is added to ABIX IR; the projection is derived only from the artifact.

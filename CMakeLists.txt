@@ -409,6 +409,10 @@ if(AMC_BUILD)
             add_test(NAME amc-rust-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/rust/conformance_test.py
                              ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME amc-rust-panic-test
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/panic_test.py
+                             ${CMAKE_BINARY_DIR}/bin)
+            set_tests_properties(amc-rust-panic-test PROPERTIES TIMEOUT 120)
             add_test(NAME amc-cancellation-test
                      COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/cancellation/cancellation_test.py
                              ${CMAKE_BINARY_DIR}/bin)
@@ -460,7 +464,7 @@ if(AMC_BUILD)
             if(AMC_PYTHON_EXECUTABLE)
                 list(APPEND _abix_keep_tests
                      amc-integration-test amc-feature-test amc-cmake-integration-test amc-rust-test
-                     amc-interop-test amc-cmdly-interop-test amc-expose-interop-test)
+                     amc-rust-panic-test amc-interop-test amc-cmdly-interop-test amc-expose-interop-test)
             endif()
             set_tests_properties(${_abix_keep_tests} PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
             message(STATUS "Test artifacts are retained: each suite prints its working directory (KEEP_ARTIFACTS=1)")

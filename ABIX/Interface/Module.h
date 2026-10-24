@@ -96,13 +96,18 @@ using ModuleQueryFn = const ModuleManifest *(*)(void);
 
 enum class ManifestStatus : uint32_t {
     ok = 0,
-    null_manifest,
-    unsupported_version,   // manifest_version is not known
-    invalid_interface,     // an entry has no id, or a bad method table
-    invalid_binding,       // a bound method has no adapter entry, or duplicate slot
-    too_many_interfaces,
-    too_many_methods,
+    null_manifest = 1,
+    unsupported_version = 2,   // manifest_version is not known
+    invalid_interface = 3,     // an entry has no id, or a bad method table
+    invalid_binding = 4,       // a bound method has no adapter entry, or duplicate slot
+    too_many_interfaces = 5,
+    too_many_methods = 6,
 };
+
+static_assert(
+    static_cast<uint32_t>(ManifestStatus::ok) == 0, "ManifestStatus values are a diagnostics compatibility surface");
+static_assert(static_cast<uint32_t>(ManifestStatus::too_many_methods) == 6,
+    "ManifestStatus values are a diagnostics compatibility surface");
 
 constexpr const char *to_string(ManifestStatus status) noexcept {
     switch (status) {

@@ -56,8 +56,35 @@ enum class CallError : uint8_t {
     // another operation. Only reported when a timeout is configured.
     lock_timeout = 10,
 };
+
+// Stable spelling for diagnostics and logs. Keep this in sync with the enum;
+// the numeric values above are a host-side compatibility surface and must not
+// be renumbered.
+constexpr const char *to_string(CallError error) noexcept {
+    switch (error) {
+        case CallError::none:             return "none";
+        case CallError::not_loaded:       return "not_loaded";
+        case CallError::not_found:        return "not_found";
+        case CallError::sig_mismatch:     return "sig_mismatch";
+        case CallError::version_mismatch: return "version_mismatch";
+        case CallError::stale_handle:     return "stale_handle";
+        case CallError::table_changed:    return "table_changed";
+        case CallError::invalid:          return "invalid";
+        case CallError::load_failed:      return "load_failed";
+        case CallError::unloading:        return "unloading";
+        case CallError::lock_timeout:     return "lock_timeout";
+    }
+    return "unknown";
+}
+
+static_assert(static_cast<uint8_t>(CallError::none) == 0, "CallError values are a stable host-side surface");
+static_assert(static_cast<uint8_t>(CallError::lock_timeout) == 10, "CallError values are a stable host-side surface");
+
+// Per-thread, per-DSO host diagnostic state. This is deliberately not a
+// cross-module error channel: callers must not read another module's
+// last_error(), and an inline header definition can produce one copy per DSO.
 inline CallError &last_error() noexcept {
-    static CallError e = CallError::none;
+    static thread_local CallError e = CallError::none;
     return e;
 }
 

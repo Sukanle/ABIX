@@ -244,21 +244,26 @@ constexpr InterfaceMethodHash method_signature(
 
 enum class InterfaceStatus : uint32_t {
     ok = 0,
-    invalid_table,
-    duplicate_implementation,
-    capacity_exceeded,
+    invalid_table = 1,
+    duplicate_implementation = 2,
+    capacity_exceeded = 3,
     // No implementation for (concrete_type, interface_id) at all.
-    interface_not_found,
+    interface_not_found = 4,
     // An implementation exists, but not for the requested version.
-    version_mismatch,
+    version_mismatch = 5,
     // The requested slot is not bound in this implementation.
-    method_not_found,
+    method_not_found = 6,
     // The method table has a slot above the handle's capacity.
-    method_capacity_exceeded,
+    method_capacity_exceeded = 7,
     // The bound method's recorded signature differs from the expected one, so a
     // call through the assumed function type would be unsafe.
-    signature_mismatch,
+    signature_mismatch = 8,
 };
+
+static_assert(
+    static_cast<uint32_t>(InterfaceStatus::ok) == 0, "InterfaceStatus values are a diagnostics compatibility surface");
+static_assert(static_cast<uint32_t>(InterfaceStatus::signature_mismatch) == 8,
+    "InterfaceStatus values are a diagnostics compatibility surface");
 
 constexpr const char *to_string(InterfaceStatus status) noexcept {
     switch (status) {

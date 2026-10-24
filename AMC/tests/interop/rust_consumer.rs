@@ -45,6 +45,11 @@ fn main() {
         let err = demo_div_result(10, 0).expect_err("div by zero");
         assert_eq!(err.0, 1, "div error status");
 
+        // Unknown error codes must survive the Rust projection. The library
+        // returns 99, which is outside the contract's known status values.
+        let unknown = demo_div_unknown_result(10, 2).expect_err("unknown status");
+        assert_eq!(unknown.0, 99, "unknown error code is preserved");
+
         // Runtime metadata: parse the ABIX Metadata Region embedded in this
         // projection and check the facts it records against the Rust type.
         let region = abi::metadata::Region::open(&abi::AMC_METADATA_REGION).expect("metadata region");

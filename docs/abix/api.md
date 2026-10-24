@@ -248,7 +248,7 @@ Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
 inline dll::CallError &last_error() noexcept;
 ```
 
-Returns a reference to the thread-local last error code. Thread-safe (each thread has its own error state).
+Returns a reference to the thread-local last error code. Each thread has its own error state; because the function is defined in a header, each DSO may also have its own copy. Do not use `last_error()` as a cross-module error channel; pass an explicit return value or `[[error]]` contract instead.
 
 ### `dll::Object`
 
