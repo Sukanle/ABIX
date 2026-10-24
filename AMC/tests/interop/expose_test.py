@@ -93,6 +93,23 @@ def toml_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
+def include_roots(source_root: str) -> tuple[str, ...]:
+    """Public include roots of the SKL-layout source tree."""
+    return (
+        os.path.join(source_root, "include"),
+        os.path.join(source_root, "MICS", "include"),
+        os.path.join(source_root, "MICS", "HLMD"),
+    )
+
+
+def include_flags(source_root: str) -> list[str]:
+    return ["-I" + root for root in include_roots(source_root)]
+
+
+def toml_include_flags(source_root: str) -> str:
+    return ", ".join('"-I%s"' % toml_path(root) for root in include_roots(source_root))
+
+
 # `--keep-artifacts`, or KEEP_ARTIFACTS=1 in the environment (set by the CMake
 # option SKL_ABIX_KEEP_TEST_ARTIFACTS), retains the temporary working directory.
 if "--keep-artifacts" in sys.argv:
@@ -154,7 +171,8 @@ def main() -> int:
 
     # 2. Compile the generated thunks into the producing module.
     module = module_path(work, "counter")
-    r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", thunks, "-I" + source_root, "-o", module]
+    r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", thunks,
+             *include_flags(source_root), "-o", module]
             + module_flags(work, "counter"))
     if not check(r.returncode == 0, "the generated thunks compile", r.stderr[-400:]):
         return 1
@@ -193,7 +211,8 @@ def main() -> int:
     # 5/8/9: discovery through the fixed entry, binding once, and a module lease
     # that keeps the module loaded while the object is alive.
     cpp_consumer = os.path.join(work, exe_name("cpp_consumer"))
-    r = run([cxx, "-std=c++17", os.path.join(work, "cpp_consumer.cpp"), "-I" + source_root, "-o", cpp_consumer])
+    r = run([cxx, "-std=c++17", os.path.join(work, "cpp_consumer.cpp"),
+             *include_flags(source_root), "-o", cpp_consumer])
     if not check(r.returncode == 0, "the registry consumer compiles", r.stderr[-400:]):
         return 1
     r = run([cpp_consumer, module], env=env)
@@ -204,19 +223,19 @@ def main() -> int:
     # / Result, and the contracts are recorded and projected.
     for name in ("std_api.hpp", "std_api.abic.toml", "rust_consumer_std.rs"):
         shutil.copy(os.path.join(fixture, name), os.path.join(work, name))
-    # The fixture includes `ABIX/STD/...` by its include root; add the source
+    # The fixture includes `SKL/ABIX/STD/...` by its include root; add the source
     # root to the import flags so neither the header nor the generated thunks
     # need an absolute include path.
     std_config = os.path.join(work, "std_api.abic.toml")
     text = open(std_config, encoding="utf-8").read().replace(
-        '"-std=c++17"', '"-std=c++17", "-I' + toml_path(source_root) + '"')
+        '"-std=c++17"', '"-std=c++17", ' + toml_include_flags(source_root))
     open(std_config, "w", encoding="utf-8").write(text)
     r = run([amc, "build", "-c", std_config, "-B", os.path.join(work, "std_out")])
     if not check(r.returncode == 0, "amc build for the ABIX-STD api", (r.stdout + r.stderr)[-400:]):
         return 1
     std_module = module_path(work, "metrics")
     r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "std_thunks.cpp"),
-             "-I" + source_root, "-o", std_module] + module_flags(work, "metrics"))
+             *include_flags(source_root), "-o", std_module] + module_flags(work, "metrics"))
     if not check(r.returncode == 0, "the ABIX-STD thunks compile", r.stderr[-400:]):
         return 1
     std_gen = os.path.join(work, "std_gen")
@@ -253,7 +272,7 @@ def main() -> int:
           "a std::vector parameter becomes a SequenceView with a generated adapter")
     nat_module = module_path(work, "native")
     r = run([cxx, "-std=c++20", "-fPIC", "-shared", "-O2", os.path.join(work, "native_thunks.cpp"),
-             "-I" + source_root, "-o", nat_module] + module_flags(work, "native"))
+             *include_flags(source_root), "-o", nat_module] + module_flags(work, "native"))
     if not check(r.returncode == 0, "the native adaptation thunks compile", r.stderr[-400:]):
         return 1
     nat_gen = os.path.join(work, "nat_gen")
@@ -298,7 +317,8 @@ def main() -> int:
                 '    return amc_generated::ShapeTraits::version == 1 ? 0 : 1;\n'
                 '}\n')
             proxy_bin = os.path.join(work, exe_name("shapes_proxy"))
-            r = run([cxx, "-std=c++17", "-I" + source_root, "-I" + work, proxy_src, "-o", proxy_bin])
+            r = run([cxx, "-std=c++17", *include_flags(source_root), "-I" + work,
+                     proxy_src, "-o", proxy_bin])
             if check(r.returncode == 0, "the generated interface proxy header compiles", r.stderr[-400:]):
                 r = run([proxy_bin], env=env)
                 check(r.returncode == 0, "the generated interface proxy header runs")
@@ -355,7 +375,7 @@ output = "cmdly_key.abix"
             key_module = module_path(work, "cmdlykey")
             key_link = ["-L" + cmdly_lib] + ([] if IS_WINDOWS else ["-Wl,-rpath," + cmdly_lib])
             r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "cmdly_thunks.cpp"),
-                     "-I" + source_root, "-I" + cmdly_include, "-o", key_module]
+                     *include_flags(source_root), "-I" + cmdly_include, "-o", key_module]
                     + key_link + fmt_cflags + module_flags(work, "cmdlykey"))
             if check(r.returncode == 0, "cmdly thunks compile", r.stderr[-400:]):
                 key_gen = os.path.join(work, "cmdly_gen")
@@ -437,7 +457,7 @@ output = "cmdly_history.abix"
             history_module = module_path(work, "cmdlyhistory")
             history_link = ["-L" + cmdly_lib] + ([] if IS_WINDOWS else ["-Wl,-rpath," + cmdly_lib])
             r = run([cxx, "-std=c++17", "-fPIC", "-shared", "-O2", os.path.join(work, "history_thunks.cpp"),
-                     "-I" + source_root, "-I" + cmdly_include, "-o", history_module]
+                     *include_flags(source_root), "-I" + cmdly_include, "-o", history_module]
                     + history_link + fmt_cflags + module_flags(work, "cmdlyhistory"))
             if check(r.returncode == 0, "cmdly history thunks compile", r.stderr[-400:]):
                 hist_gen = os.path.join(work, "hist_gen")

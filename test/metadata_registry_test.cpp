@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Metadata/Registry.h"
-#include "ABIX/Metadata/Descriptor.h"
-#include "ABIX/Runtime/Registry.h"
+#include "SKL/ABIX/Metadata/Registry.h"
+#include "SKL/ABIX/Metadata/Descriptor.h"
+#include "SKL/ABIX/Runtime/Registry.h"
 
 TEST_CASE("bootstrap records are promoted into the single-thread registry") {
     using namespace skl::abix;

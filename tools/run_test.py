@@ -47,6 +47,17 @@ FAIL_MARK = "✗" if _supports("✗") else "[fail]"
 TOOLS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = TOOLS_DIR.parent
 
+ABIX_INCLUDE_DIR = PROJECT_ROOT / "include"
+MICS_INCLUDE_DIR = PROJECT_ROOT / "MICS" / "include"
+MICS_HLMD_INCLUDE_DIR = PROJECT_ROOT / "MICS" / "HLMD"
+INCLUDE_DIRS = (ABIX_INCLUDE_DIR, MICS_INCLUDE_DIR, MICS_HLMD_INCLUDE_DIR)
+
+REQUIRED_HEADERS = (
+    ABIX_INCLUDE_DIR / "SKL" / "ABIX" / "ABIX.h",
+    MICS_INCLUDE_DIR / "SKL" / "MICS" / "MICS.h",
+    MICS_HLMD_INCLUDE_DIR / "SKL" / "HLMD" / "HLMD.h",
+)
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -54,6 +65,18 @@ PROJECT_ROOT = TOOLS_DIR.parent
 
 def exe_name(base: str) -> str:
     return f"{base}.exe" if sys.platform == "win32" else base
+
+
+def include_args() -> list[str]:
+    """Return compiler flags for the ABIX, MICS and HLMD include roots."""
+    flags: list[str] = []
+    for directory in INCLUDE_DIRS:
+        flags.extend(["-I", str(directory)])
+    return flags
+
+
+def missing_headers() -> list[Path]:
+    return [path for path in REQUIRED_HEADERS if not path.is_file()]
 
 
 def run_cmd(
@@ -212,14 +235,21 @@ def test_compile_elf(header: Path, workdir: Path) -> tuple[Path, TestResult]:
 
     binary = workdir / ("test_abix.exe" if IS_WINDOWS else "test_abix")
 
+    missing = missing_headers()
+    if missing:
+        result.fail(
+            "project headers",
+            "missing " + ", ".join(str(path) for path in missing),
+        )
+        return binary, result
+
     r = _run(
         [
             "clang++",
             "-std=c++17",
             "-I",
             str(workdir),
-            "-I",
-            str(PROJECT_ROOT),
+            *include_args(),
             str(main_cpp),
             "-o",
             str(binary),
@@ -682,6 +712,15 @@ def run_bootstrap_test(build_dir: Path, keep: bool = False) -> int:
     print(f"[INFO] build dir:   {build_dir}")
     print(f"[INFO] work dir:    {work_dir}")
 
+    missing = missing_headers()
+    if missing:
+        print(
+            "[FAIL] missing required headers: "
+            + ", ".join(str(path) for path in missing),
+            file=sys.stderr,
+        )
+        return 1
+
     # Require commands. clang++'s path is captured, not just checked: the
     # consumer fixture compiles with the same compiler `self.abic.toml`'s import
     # flags assume, so it is pinned into the fixture's CMake cache rather than
@@ -821,6 +860,15 @@ def run_interop_tests(build_dir: Path, keep: bool = True, cmdly_root: str | None
     print("\n" + "=" * 60)
     print("Cross-language Interop Tests (Rust/Zig/C++)")
     print("=" * 60)
+
+    missing = missing_headers()
+    if missing:
+        print(
+            "[FAIL] missing required headers: "
+            + ", ".join(str(path) for path in missing),
+            file=sys.stderr,
+        )
+        return 1
 
     amc_bin_dir = build_dir / "bin"
     source_root = str(PROJECT_ROOT)

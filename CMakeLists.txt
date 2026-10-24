@@ -78,8 +78,8 @@ else()
     endif()
 endif()
 
-set(SKL_ABIX_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(SKL_ABIX_INC_DIR ${SKL_ABIX_SRC_DIR})
+set(SKL_ABIX_PROJ_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(SKL_ABIX_INC_DIR ${SKL_ABIX_PROJ_DIR}/include)
 
 if(MSVC)
     add_compile_options(/utf-8)
@@ -100,6 +100,16 @@ endif()
 # ---------------------------------------------------------------------------
 include(cmake/AbixDependencies.cmake)
 
+# ---------------------------------------------------------------------------
+# MICS (header-only submodule)
+# ---------------------------------------------------------------------------
+# Import MICS's own CMake target instead of hardcoding its include directories
+# in every subproject. The target also carries HLMD, which MICS.h includes
+# directly.
+if(NOT TARGET MICS::MICS)
+    add_subdirectory(${SKL_ABIX_PROJ_DIR}/MICS ${CMAKE_CURRENT_BINARY_DIR}/MICS EXCLUDE_FROM_ALL)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
     enable_testing()
@@ -113,8 +123,9 @@ else()
 endif()
 
 function(abi_add_dll name)
-    add_library(${name} SHARED ${SKL_ABIX_SRC_DIR}/dlls/${name}.cpp)
+    add_library(${name} SHARED ${SKL_ABIX_PROJ_DIR}/dlls/${name}.cpp)
     target_include_directories(${name} PRIVATE ${SKL_ABIX_INC_DIR})
+    target_link_libraries(${name} PRIVATE MICS::MICS)
     set_target_properties(
         ${name}
         PROPERTIES PREFIX ""
@@ -159,16 +170,19 @@ abi_add_dll(edge_stdcall_dll)
 
 # `hotcache_dll.cpp` is generated (and gitignored), so a plain CMake configure
 # must be able to produce it without the tools/run_build.py wrapper.
-set(SKL_ABIX_HOTCACHE_SOURCE ${SKL_ABIX_SRC_DIR}/dlls/hotcache_dll.cpp)
+set(SKL_ABIX_HOTCACHE_SOURCE ${SKL_ABIX_PROJ_DIR}/dlls/hotcache_dll.cpp)
 if(NOT EXISTS ${SKL_ABIX_HOTCACHE_SOURCE})
-    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_package(
+        Python3
+        COMPONENTS Interpreter
+        QUIET)
     if(NOT Python3_Interpreter_FOUND)
         message(FATAL_ERROR "dlls/hotcache_dll.cpp is missing and Python 3 is required to generate it")
     endif()
     add_custom_command(
         OUTPUT ${SKL_ABIX_HOTCACHE_SOURCE}
-        COMMAND ${Python3_EXECUTABLE} ${SKL_ABIX_SRC_DIR}/tools/gen_hotcache_dll.py
-        DEPENDS ${SKL_ABIX_SRC_DIR}/tools/gen_hotcache_dll.py
+        COMMAND ${Python3_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/tools/gen_hotcache_dll.py
+        DEPENDS ${SKL_ABIX_PROJ_DIR}/tools/gen_hotcache_dll.py
         COMMENT "Generating dlls/hotcache_dll.cpp")
     set_source_files_properties(${SKL_ABIX_HOTCACHE_SOURCE} PROPERTIES GENERATED TRUE)
 endif()
@@ -179,8 +193,7 @@ abi_add_dll(closed_dll_v2)
 abi_add_dll(interface_dll)
 abi_add_dll(owner_dll)
 
-include_directories(${SKL_ABIX_INC_DIR})
-include_directories(${SKL_ABIX_INC_DIR}/mics)
+include_directories(${SKL_ABIX_PROJ_DIR})
 
 if(ABIX_Catch2_FOUND)
     add_subdirectory(test)
@@ -242,19 +255,20 @@ if(AMC_BUILD)
         # ------------------------------------------------------------------
         add_library(
             libabix-format STATIC
-            AMC/src/Core/Core.cpp # .abix v4 read/write + hashing + canonical form
-            AMC/src/Core/Error.cpp
-            AMC/src/Core/ELF.cpp
-            AMC/src/Core/Json.cpp
+            AMC/src/SKL/AMC/Core/Core.cpp # .abix v4 read/write + hashing + canonical form
+            AMC/src/SKL/AMC/Core/Error.cpp
+            AMC/src/SKL/AMC/Core/ELF.cpp
+            AMC/src/SKL/AMC/Core/Json.cpp
             AMC/src/ljson/json.c
             AMC/src/ljson/jnum.c
             AMC/src/ljson/grisu2.c
             AMC/src/ljson/dragonbox.c)
-        target_include_directories(libabix-format PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include
-                                                         ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include/ljson)
+        target_include_directories(libabix-format PUBLIC ${SKL_ABIX_INC_DIR} ${SKL_ABIX_PROJ_DIR}/AMC/include
+                                                         ${SKL_ABIX_PROJ_DIR}/AMC/include/ljson)
         # Core.cpp / Error.cpp use fmt; every libabix-* library links this one, so
         # a PUBLIC link here also supplies the include directory to its dependents.
-        target_link_libraries(libabix-format PUBLIC fmt::fmt)
+        # MICS is a public dependency of the ABIX headers included by AMC.
+        target_link_libraries(libabix-format PUBLIC fmt::fmt MICS::MICS)
         # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep the rest of the project on C++17 and
         # compile only these files as C23.
         set_target_properties(libabix-format PROPERTIES C_STANDARD 23 C_STANDARD_REQUIRED ON)
@@ -271,16 +285,17 @@ if(AMC_BUILD)
                     JSON_PARSE_FINISHED_CHAR=0
                     JSON_ERROR_PRINT_ENABLE=0)
 
-        add_library(libabix-abi STATIC AMC/src/Core/Verify.cpp)
+        add_library(libabix-abi STATIC AMC/src/SKL/AMC/Core/Verify.cpp)
         target_link_libraries(libabix-abi PUBLIC libabix-format)
 
         add_library(
-            libabix-metadata STATIC AMC/src/Core/Metadata.cpp # Metadata Region serialize/parse/materialize
-                                    AMC/src/Core/Materialize.cpp AMC/src/Core/Context.cpp AMC/src/Core/Query.cpp)
+            libabix-metadata STATIC
+            AMC/src/SKL/AMC/Core/Metadata.cpp # Metadata Region serialize/parse/materialize
+            AMC/src/SKL/AMC/Core/Materialize.cpp AMC/src/SKL/AMC/Core/Context.cpp AMC/src/SKL/AMC/Core/Query.cpp)
         target_link_libraries(libabix-metadata PUBLIC libabix-abi)
 
-        add_library(libabix-tools STATIC AMC/src/Core/Adapter.cpp AMC/src/Core/Lua.cpp AMC/src/Core/Symbol.cpp
-                                        AMC/src/Core/Cache.cpp)
+        add_library(libabix-tools STATIC AMC/src/SKL/AMC/Core/Adapter.cpp AMC/src/SKL/AMC/Core/Lua.cpp
+                                         AMC/src/SKL/AMC/Core/Symbol.cpp AMC/src/SKL/AMC/Core/Cache.cpp)
         target_link_libraries(libabix-tools PUBLIC libabix-metadata)
 
         # The libabix-* objects are linked into the LLDB plugin, which is a shared object, so they must be position
@@ -288,28 +303,31 @@ if(AMC_BUILD)
         set_target_properties(libabix-format libabix-abi libabix-metadata libabix-tools
                               PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-        # Header-only runtime registry/binding layer; consumers link it for the `ABIX/` include root.
+        # Header-only runtime registry/binding layer; consumers link it for the `SKL/ABIX/` include root.
         add_library(libabix-runtime INTERFACE)
-        target_include_directories(libabix-runtime INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+        target_include_directories(libabix-runtime INTERFACE ${SKL_ABIX_PROJ_DIR})
+        target_link_libraries(libabix-runtime INTERFACE MICS::MICS)
 
         # Backwards-compatible aggregate used by the AMC executables and tests. Shared helpers for the AMC executables
         # (hex/name rendering, JSON text helpers, the unified error envelope).
-        add_library(amc-util STATIC AMC/src/Util/Names.cpp AMC/src/Util/Json.cpp AMC/src/Util/Error.cpp)
-        target_include_directories(amc-util PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        add_library(amc-util STATIC AMC/src/SKL/AMC/Util/Names.cpp AMC/src/SKL/AMC/Util/Json.cpp
+                                    AMC/src/SKL/AMC/Util/Error.cpp)
+        target_include_directories(amc-util PUBLIC ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-util PUBLIC libabix-format fmt::fmt)
 
         # Language-provider infrastructure shared by every `amc-<language>` executable: `.abic.toml` import config,
         # JSONL IPC and capability dispatch.
-        add_library(amc-lang STATIC AMC/src/Lang/Lang.cpp)
-        target_include_directories(amc-lang PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        add_library(amc-lang STATIC AMC/src/SKL/AMC/Lang/Lang.cpp)
+        target_include_directories(amc-lang PUBLIC ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-lang PUBLIC amc-util fmt::fmt tomlplusplus::tomlplusplus)
 
         add_library(amc-core INTERFACE)
         target_link_libraries(amc-core INTERFACE libabix-format libabix-abi libabix-metadata libabix-tools amc-util
                                                  fmt::fmt)
 
-        add_executable(amc-cpp AMC/src/Lang/C++/C++.cpp AMC/src/Lang/C++/Frontend.cpp AMC/src/Lang/C++/Backend.cpp)
-        target_include_directories(amc-cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        add_executable(amc-cpp AMC/src/SKL/AMC/Lang/C++/C++.cpp AMC/src/SKL/AMC/Lang/C++/Frontend.cpp
+                               AMC/src/SKL/AMC/Lang/C++/Backend.cpp)
+        target_include_directories(amc-cpp PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         # LLVM/Clang headers are reached as ordinary `-I` directories, so under
         # -Wall -Wextra their own diagnostics (chiefly -Wunused-parameter in the
         # clang/* headers) flood the build log.  Marking them SYSTEM keeps the
@@ -320,53 +338,55 @@ if(AMC_BUILD)
 
         # Rust provider: a self-contained frontend (source-level #[repr(C)] / extern "C" extractor) and backend (ABIX ->
         # Rust repr(C) projection). Unlike amc-cpp it does not link Clang/LLVM.
-        add_executable(amc-rust AMC/src/Lang/Rust/Rust.cpp AMC/src/Lang/Rust/Frontend.cpp AMC/src/Lang/Rust/Backend.cpp)
-        target_include_directories(amc-rust PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        add_executable(amc-rust AMC/src/SKL/AMC/Lang/Rust/Rust.cpp AMC/src/SKL/AMC/Lang/Rust/Frontend.cpp
+                                AMC/src/SKL/AMC/Lang/Rust/Backend.cpp)
+        target_include_directories(amc-rust PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-rust PRIVATE amc-core amc-lang fmt::fmt)
 
         # Zig provider: backend-only, a minimal consumer of the same ABIX IR. It
         # exists to validate that `.abix` is reusable across languages; there is
         # no Zig frontend and no Zig-specific model.
-        add_executable(amc-zig AMC/src/Lang/Zig/Zig.cpp AMC/src/Lang/Zig/Backend.cpp)
-        target_include_directories(amc-zig PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        add_executable(amc-zig AMC/src/SKL/AMC/Lang/Zig/Zig.cpp AMC/src/SKL/AMC/Lang/Zig/Backend.cpp)
+        target_include_directories(amc-zig PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-zig PRIVATE amc-core amc-lang fmt::fmt)
 
         # Test-only provider for the cooperative-cancellation IPC test. Its
         # backend polls the cancellation token instead of sleeping to completion.
         add_executable(amc-cancel-test-provider AMC/tests/providers/cancellation/cancellation_provider.cpp)
-        target_include_directories(amc-cancel-test-provider PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_include_directories(amc-cancel-test-provider PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-cancel-test-provider PRIVATE amc-lang fmt::fmt)
 
         add_executable(
             amc
             AMC/main.cpp
-            AMC/src/CLI/CLI.cpp
-            AMC/src/CLI/Context.cpp
-            AMC/src/CLI/Metadata.cpp
-            AMC/src/CLI/Adapter.cpp
-            AMC/src/CLI/Query.cpp
-            AMC/src/CLI/Symbols.cpp
-            AMC/src/CLI/Verify.cpp
-            AMC/src/CLI/Diff.cpp
-            AMC/src/CLI/Generate.cpp
-            AMC/src/CLI/Build.cpp
-            AMC/src/CLI/Cache.cpp
-            AMC/src/CLI/Providers.cpp)
-        target_include_directories(amc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
-        target_compile_definitions(
-            amc PRIVATE AMC_DEFAULT_PROVIDERS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/AMC/providers.toml")
+            AMC/src/SKL/AMC/CLI/CLI.cpp
+            AMC/src/SKL/AMC/CLI/Context.cpp
+            AMC/src/SKL/AMC/CLI/Metadata.cpp
+            AMC/src/SKL/AMC/CLI/Adapter.cpp
+            AMC/src/SKL/AMC/CLI/Query.cpp
+            AMC/src/SKL/AMC/CLI/Symbols.cpp
+            AMC/src/SKL/AMC/CLI/Verify.cpp
+            AMC/src/SKL/AMC/CLI/Diff.cpp
+            AMC/src/SKL/AMC/CLI/Generate.cpp
+            AMC/src/SKL/AMC/CLI/Build.cpp
+            AMC/src/SKL/AMC/CLI/Cache.cpp
+            AMC/src/SKL/AMC/CLI/Providers.cpp)
+        target_include_directories(amc PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
+        target_compile_definitions(amc
+                                   PRIVATE AMC_DEFAULT_PROVIDERS_FILE="${SKL_ABIX_PROJ_DIR}/AMC/providers.toml")
         target_link_libraries(amc PRIVATE amc-core tomlplusplus::tomlplusplus)
         # `amc --list-languages` / `--describe-language` read this manifest. Keep
         # the source-tree copy next to the built executable so CTest and manual
         # runs use the same file; an installed layout can place it beside `amc`.
-        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/AMC/providers.toml
-                       ${CMAKE_BINARY_DIR}/bin/amc-providers.toml COPYONLY)
-        add_executable(amc-dump AMC/src/Tool/Dump/Dump.cpp AMC/src/Tool/Dump/Json.cpp AMC/src/Tool/Dump/Text.cpp)
-        target_include_directories(amc-dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        configure_file(${SKL_ABIX_PROJ_DIR}/AMC/providers.toml ${CMAKE_BINARY_DIR}/bin/amc-providers.toml
+                       COPYONLY)
+        add_executable(amc-dump AMC/src/SKL/AMC/Tool/Dump/Dump.cpp AMC/src/SKL/AMC/Tool/Dump/Json.cpp
+                                AMC/src/SKL/AMC/Tool/Dump/Text.cpp)
+        target_include_directories(amc-dump PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-dump PRIVATE amc-core)
-        add_executable(amc-mcp AMC/src/Tool/MCP/MCP.cpp AMC/src/Tool/MCP/State.cpp AMC/src/Tool/MCP/Tools.cpp
-                               AMC/src/Tool/MCP/Server.cpp)
-        target_include_directories(amc-mcp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        add_executable(amc-mcp AMC/src/SKL/AMC/Tool/MCP/MCP.cpp AMC/src/SKL/AMC/Tool/MCP/State.cpp
+                               AMC/src/SKL/AMC/Tool/MCP/Tools.cpp AMC/src/SKL/AMC/Tool/MCP/Server.cpp)
+        target_include_directories(amc-mcp PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-mcp PRIVATE amc-core)
 
         # ABIX LLDB C++ plugin (AI-P2): a native `abix` command linked against the shared libabix-* libraries. Loaded
@@ -375,7 +395,7 @@ if(AMC_BUILD)
         find_library(ABIX_LLDB_LIBRARY NAMES lldb)
         if(ABIX_LLDB_INCLUDE_DIR AND ABIX_LLDB_LIBRARY)
             add_library(abix-lldb MODULE tools/lldb_abix.cpp)
-            target_include_directories(abix-lldb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+            target_include_directories(abix-lldb PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
             # LLDB headers ship with LLVM; treat them as system headers for the
             # same reason as the clang/* includes above.
             target_include_directories(abix-lldb SYSTEM PRIVATE ${ABIX_LLDB_INCLUDE_DIR})
@@ -387,53 +407,58 @@ if(AMC_BUILD)
             message(STATUS "LLDB not found: the native ABIX LLDB plugin will not be built")
         endif()
         add_executable(amc-core-test AMC/tests/unit/core_test.cpp)
-        target_include_directories(amc-core-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_include_directories(amc-core-test PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-core-test PRIVATE amc-core)
         add_test(NAME amc-core-test COMMAND amc-core-test)
         add_executable(amc-e2e-test AMC/tests/e2e/e2e_test.cpp)
-        target_include_directories(amc-e2e-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/AMC/include)
+        target_include_directories(amc-e2e-test PRIVATE ${SKL_ABIX_PROJ_DIR}/AMC/include)
         target_link_libraries(amc-e2e-test PRIVATE amc-core)
         add_test(NAME amc-e2e-test COMMAND amc-e2e-test)
         find_program(AMC_PYTHON_EXECUTABLE NAMES python3 python)
         if(AMC_PYTHON_EXECUTABLE)
             add_test(NAME amc-integration-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/integration_test.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/integration_test.py
                              ${CMAKE_BINARY_DIR}/bin)
             add_test(NAME amc-feature-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/feature_test.py
-                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/feature_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
             add_test(
                 NAME amc-cmake-integration-test
-                COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/cli/cmake_integration_test.py
-                        ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
-            add_test(NAME amc-rust-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/rust/conformance_test.py
-                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+                COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/cmake_integration_test.py
+                        ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
+            add_test(
+                NAME amc-rust-test
+                COMMAND
+                    ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/providers/rust/conformance_test.py
+                    ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
             add_test(NAME amc-rust-panic-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/panic_test.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/interop/panic_test.py
                              ${CMAKE_BINARY_DIR}/bin)
             set_tests_properties(amc-rust-panic-test PROPERTIES TIMEOUT 120)
-            add_test(NAME amc-cancellation-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/providers/cancellation/cancellation_test.py
-                             ${CMAKE_BINARY_DIR}/bin)
+            add_test(
+                NAME amc-cancellation-test
+                COMMAND
+                    ${AMC_PYTHON_EXECUTABLE}
+                    ${SKL_ABIX_PROJ_DIR}/AMC/tests/providers/cancellation/cancellation_test.py
+                    ${CMAKE_BINARY_DIR}/bin)
             set_tests_properties(amc-cancellation-test PROPERTIES TIMEOUT 20)
             add_test(NAME amc-example-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/example/cross_language/run_example.py
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/example/cross_language/run_example.py
                              --amc ${CMAKE_BINARY_DIR}/bin/amc --cxx ${CMAKE_CXX_COMPILER} --skip-missing)
             set_tests_properties(amc-example-test PROPERTIES TIMEOUT 120)
             add_test(NAME amc-interop-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/interop_test.py
-                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/interop/interop_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
             # Real-library demo over cmdly (C++). Skips when cmdly/fmt/rustc are
             # unavailable.
             add_test(NAME amc-cmdly-interop-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/cmdly_test.py
-                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/interop/cmdly_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
             # P0 automation: expose a C++ class as capabilities with no
             # hand-written adapter (auto thunks + metadata + Rust bindings).
             add_test(NAME amc-expose-interop-test
-                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AMC/tests/interop/expose_test.py
-                             ${CMAKE_BINARY_DIR}/bin ${CMAKE_CURRENT_SOURCE_DIR})
+                     COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/interop/expose_test.py
+                             ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
         else()
             message(WARNING "python3 not found: AMC integration tests will not be registered")
         endif()
@@ -451,20 +476,27 @@ if(AMC_BUILD)
         # Install the driver, language providers and the manifest together: the
         # manifest is resolved next to `amc`, so a split install would make
         # `--list-languages` fail at run time.
+        install(TARGETS amc amc-cpp amc-rust amc-zig amc-dump amc-mcp RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
         install(
-            TARGETS amc amc-cpp amc-rust amc-zig amc-dump amc-mcp
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/AMC/providers.toml
-                DESTINATION ${CMAKE_INSTALL_BINDIR}
-                RENAME amc-providers.toml)
+            FILES ${SKL_ABIX_PROJ_DIR}/AMC/providers.toml
+            DESTINATION ${CMAKE_INSTALL_BINDIR}
+            RENAME amc-providers.toml)
         # SKL_ABIX_KEEP_TEST_ARTIFACTS: run every suite with KEEP_ARTIFACTS=1 so
         # its temporary directory is retained and printed for inspection.
         if(SKL_ABIX_KEEP_TEST_ARTIFACTS AND BUILD_TESTING)
             set(_abix_keep_tests amc-core-test amc-e2e-test)
             if(AMC_PYTHON_EXECUTABLE)
-                list(APPEND _abix_keep_tests
-                     amc-integration-test amc-feature-test amc-cmake-integration-test amc-rust-test
-                     amc-rust-panic-test amc-interop-test amc-cmdly-interop-test amc-expose-interop-test)
+                list(
+                    APPEND
+                    _abix_keep_tests
+                    amc-integration-test
+                    amc-feature-test
+                    amc-cmake-integration-test
+                    amc-rust-test
+                    amc-rust-panic-test
+                    amc-interop-test
+                    amc-cmdly-interop-test
+                    amc-expose-interop-test)
             endif()
             set_tests_properties(${_abix_keep_tests} PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
             message(STATUS "Test artifacts are retained: each suite prints its working directory (KEEP_ARTIFACTS=1)")

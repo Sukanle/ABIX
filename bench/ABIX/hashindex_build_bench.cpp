@@ -1,7 +1,7 @@
 // ============================================================
 // Probe: how should HashIndex::build be built?
 //
-// `HashIndex::build` (ABIX/Runtime/Search.h) runs on every load/reload for tables
+// `HashIndex::build` (SKL/ABIX/Runtime/Search.h) runs on every load/reload for tables
 // at or above SKL_ABIX_HASH_THRESHOLD:
 //   capacity = next_pow2(count * 2) slots of {hash32, index32} (8 B)
 //   + an O(capacity) pass writing `hash = 0; index = EMPTY` to every slot
@@ -51,7 +51,7 @@
 #include <new>
 #include <vector>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 
 #if defined(_WIN32)

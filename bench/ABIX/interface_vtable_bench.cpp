@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <typeinfo>
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 #include "bench_common.hpp"
 
 namespace bench_interface_vtable {
@@ -76,8 +76,8 @@ constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 using AreaFn = int32_t (*)(const void *);
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {
-        method_signature("area", i32, skl::mics::utils::array{}),
+    static constexpr skl::mics::util::array signatures = {
+        method_signature("area", i32, skl::mics::util::array{}),
     };
     static constexpr uint32_t version = 1;
     static constexpr InterfaceId id = interface_id("Shape", version, signatures);
@@ -85,7 +85,7 @@ struct ShapeTraits {
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {

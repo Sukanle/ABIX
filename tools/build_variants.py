@@ -12,7 +12,16 @@ import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INCLUDE_DIR = {PROJECT_ROOT, PROJECT_ROOT / "mics"}
+ABIX_INCLUDE_DIR = PROJECT_ROOT / "include"
+MICS_INCLUDE_DIR = PROJECT_ROOT / "MICS" / "include"
+MICS_HLMD_INCLUDE_DIR = PROJECT_ROOT / "MICS" / "HLMD"
+INCLUDE_DIR = (ABIX_INCLUDE_DIR, MICS_INCLUDE_DIR, MICS_HLMD_INCLUDE_DIR)
+
+REQUIRED_HEADERS = (
+    ABIX_INCLUDE_DIR / "SKL" / "ABIX" / "ABIX.h",
+    MICS_INCLUDE_DIR / "SKL" / "MICS" / "MICS.h",
+    MICS_HLMD_INCLUDE_DIR / "SKL" / "HLMD" / "HLMD.h",
+)
 
 GCC_FALLBACKS = [
     r"g++.exe",
@@ -36,6 +45,15 @@ MSVC_VARIANTS = [
 # the MinGW headers/libraries conflict with the Visual C++ runtime.
 MSVC_STRIP = re.compile(r"msys2|mingw|ucrt64", re.IGNORECASE)
 MSVC_PATH_STRIP = re.compile(r"msys2-data", re.IGNORECASE)
+
+
+def check_headers() -> None:
+    """Fail early when the source tree no longer matches the expected layout."""
+    missing = [str(path) for path in REQUIRED_HEADERS if not path.is_file()]
+    if missing:
+        raise SystemExit(
+            "Required headers are missing:\n  " + "\n  ".join(missing)
+        )
 
 
 def find_compiler(name: str) -> str | None:
@@ -184,7 +202,9 @@ def msvc_environment(vs_path: str) -> dict[str, str]:
 def strip_env_entries(value: str, pattern: re.Pattern[str]) -> str:
     """Return `value` with the PATH-separated entries matching `pattern` removed."""
     return os.pathsep.join(
-        entry for entry in value.split(os.pathsep) if entry and not pattern.search(entry)
+        entry
+        for entry in value.split(os.pathsep)
+        if entry and not pattern.search(entry)
     )
 
 
@@ -238,7 +258,7 @@ def build_msvc_variant(
             "/O2",
             "/permissive-",
             "/D_AMD64_",
-            *[f"/I{d}" for d in (PROJECT_ROOT, PROJECT_ROOT / "mics")],
+            *[f"/I{d}" for d in INCLUDE_DIR],
             "/c",
             str(src),
             f"/Fo{obj}",
@@ -279,7 +299,9 @@ def build_msvc_variants(vs_path: str | None, build_type: str) -> None:
 
     for dll_name, src_name, link_libs in MSVC_VARIANTS:
         try:
-            build_msvc_variant(cl, environment, dll_name, src_name, link_libs, build_type)
+            build_msvc_variant(
+                cl, environment, dll_name, src_name, link_libs, build_type
+            )
         except RuntimeError as exc:
             print(
                 f"  [Warning] {dll_name} build failed ({exc}); "
@@ -304,6 +326,8 @@ def main() -> None:
             help="Visual Studio installation path (use with --with-msvc)",
         )
     args = parser.parse_args()
+
+    check_headers()
 
     gnu = find_compiler("g++")
     clang = find_compiler("clang++")

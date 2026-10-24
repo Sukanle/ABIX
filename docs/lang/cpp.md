@@ -58,7 +58,7 @@ It asserts `sizeof`, `alignof`, per-field `offsetof` and per-field width. Bit-fi
 
 ## Interface layer
 
-The C++ interface layer is header-only and lives in [`ABIX/Interface/`](../../ABIX/Interface/):
+The C++ interface layer is header-only and lives in [`SKL/ABIX/Interface/`](../../ABIX/Interface/):
 
 - `Contract.h`: `InterfaceId`, `method_signature`, `interface_id`, `InterfaceMethod` and `InterfaceImplementation`.
 - `Proxy.h`: `UniqueInterfaceProxy<Traits>`; a generated or hand-written proxy gives `shape.area()`.

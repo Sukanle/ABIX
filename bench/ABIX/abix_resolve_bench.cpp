@@ -16,7 +16,7 @@
 #include <cstring>
 #include <vector>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 
 // Named namespace: the file is also #included by bench_all.cpp, where all

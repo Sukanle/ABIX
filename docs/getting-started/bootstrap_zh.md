@@ -412,7 +412,7 @@ AMC 的验证表明，已编译的 AMC stage 能解析自身 core IR，并生成
 
 ### Self-hosting Bootstrap
 
-1. `ABIX/self.abic.toml` 覆盖 Type、Registry、Map、Bootstrap 与 RCU/EBR 核心类型。
+1. `SKL/ABIX/self.abic.toml` 覆盖 Type、Registry、Map、Bootstrap 与 RCU/EBR 核心类型。
 2. AMC 从干净构建目录生成 `build/abix_self.abix`，并生成消费者使用的 `abix_self_metadata.hpp`。
 3. 生成的 `ModuleDescriptor` 通过 `runtime::Registry::register_module()` 接入；`metadata::Registry::bootstrap_self()` 中仅保留两条 Bootstrap Kernel wire record 作为 TCB。
 4. 闭环消费者验证 `type_of<TypeInfo>()`、`type_of<RegistryEntry>()`、按 TypeId/名称 lookup、canonical registry bridge，以及生成 descriptor 的 size/align 与本机类型一致。

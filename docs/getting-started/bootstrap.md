@@ -412,7 +412,7 @@ The AMC verification shows that the compiled AMC stage can parse its own core IR
 
 ### Self-hosting bootstrap
 
-1. `ABIX/self.abic.toml` covers the core type, registry, map, bootstrap and RCU/EBR types.
+1. `SKL/ABIX/self.abic.toml` covers the core type, registry, map, bootstrap and RCU/EBR types.
 2. AMC generates `build/abix_self.abix` from a clean build directory and emits `abix_self_metadata.hpp` for consumers.
 3. The generated `ModuleDescriptor` is attached through `runtime::Registry::register_module()`; only two bootstrap kernel wire records remain in `metadata::Registry::bootstrap_self()` as the TCB.
 4. Closure consumers verify `type_of<TypeInfo>()`, `type_of<RegistryEntry>()`, lookup by `TypeId` and name, the canonical registry bridge, and that generated descriptor size/alignment match the native types.

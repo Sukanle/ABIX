@@ -24,7 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace bench_interface_lifecycle {
 
@@ -59,11 +59,11 @@ constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 using OpFn = int32_t (*)(const void *, int32_t);
 
 struct ServiceTraits {
-    static constexpr skl::mics::utils::array signatures = {
-        method_signature("add", i32, skl::mics::utils::array{i32}),
-        method_signature("multiply", i32, skl::mics::utils::array{i32}),
-        method_signature("minimum", i32, skl::mics::utils::array{i32}),
-        method_signature("maximum", i32, skl::mics::utils::array{i32}),
+    static constexpr skl::mics::util::array signatures = {
+        method_signature("add", i32, skl::mics::util::array{i32}),
+        method_signature("multiply", i32, skl::mics::util::array{i32}),
+        method_signature("minimum", i32, skl::mics::util::array{i32}),
+        method_signature("maximum", i32, skl::mics::util::array{i32}),
     };
     static constexpr uint32_t version = 1;
     static constexpr InterfaceId id = interface_id("Service", version, signatures);
@@ -74,7 +74,7 @@ struct ServiceTraits {
         uint32_t minimum;
         uint32_t maximum;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Service : public UniqueInterfaceProxy<ServiceTraits> {

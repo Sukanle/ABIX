@@ -287,7 +287,7 @@ A purely static reflection layer is zero-overhead but fixed; a purely dynamic on
 
 * **Static track (`skl::mics::ct` / SRefl).** `type_list` plus a functional type library (`map`/`filter`/`fold`/`unique`), and `field_traits`/`fn_traits`/`enum_traits` to extract fields, methods and enumerations; `type_info<T>()` is `consteval`.
 * **Dynamic track (`skl::mics::rt` / DRefl).** A `Registry` singleton, `TypeInfo`, `FieldAccessor` (getter/setter), `MethodInvoker` and `Any` (16-byte small-buffer type erasure).
-* **Shared utilities (`skl::mics::utils` / URefl).** The ABI-stable immutable container `URefl::vector` (fixed `sizeof`, move-only, `malloc`/`free`, constructed only through `vector_builder`) is the uniform carrier for all reflection description data (fields, methods, parameters, enumerators) and the key to cross-compiler binary compatibility.
+* **Shared utilities (`skl::mics::util` / URefl).** The ABI-stable immutable container `URefl::vector` (fixed `sizeof`, move-only, `malloc`/`free`, constructed only through `vector_builder`) is the uniform carrier for all reflection description data (fields, methods, parameters, enumerators) and the key to cross-compiler binary compatibility.
 * **Hash consistency.** The static and dynamic tracks share `type_hash<T>()` as the single source of TypeId, so compile-time type identity and the identity found at run time are the same.
 
 Declaring a struct and one registration macro yields runtime reflection, and `register_dll_table` bridges a DLL export table to the reflection registry, so objects inside a module are accessible to generic tools through reflection.

@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Model/ABI.h"
-#include "ABIX/Model/Bootstrap.h"
+#include "SKL/ABIX/Model/ABI.h"
+#include "SKL/ABIX/Model/Bootstrap.h"
 
 namespace {
 struct Sink {

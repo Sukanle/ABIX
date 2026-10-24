@@ -35,7 +35,7 @@
 
 ## Positioning
 
-> **ABIX/AMC has no single one-to-one competitor.** The problems it aims to solve are currently scattered across ABI analysis, package management, FFI, plugin systems, build systems, component models, RPC/IDL, and AI tooling.
+> **SKL/ABIX/AMC has no single one-to-one competitor.** The problems it aims to solve are currently scattered across ABI analysis, package management, FFI, plugin systems, build systems, component models, RPC/IDL, and AI tooling.
 >
 > ABIX's differentiation is not "better than libabigail" or "better than Conan." It is unifying native binary lifecycle capabilities onto a single ABI/IR.
 

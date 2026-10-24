@@ -1,4 +1,4 @@
-// The slot-buffer pool in ABIX/Runtime/Search.h keeps at most one freed
+// The slot-buffer pool in SKL/ABIX/Runtime/Search.h keeps at most one freed
 // `HashIndex` slot array and hands it to the next build that wants exactly that
 // capacity. These cases drive `HashIndex` directly - the same thing `Object::load`
 // and `Object::reload` do with a plugin's table - because the interesting

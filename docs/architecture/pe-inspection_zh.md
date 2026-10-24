@@ -4,7 +4,7 @@
   中文 · <a href="pe-inspection.md">English</a>
 </p>
 
-> **状态：已实现。** `amc generate -l cpp` 会为 `_WIN32` 发射 `.abix` / `.abix.n` 节区（GNU/clang 属性，以及 MSVC 的 `#pragma section` + `__declspec(allocate)`）； AMC 再经能力层（[binary-image_zh.md](binary-image_zh.md)，`ABIX/Binary/PE.h`）读回 region。已用 clang++ 与 cl.exe 验证，覆盖 `amc metadata --from-elf` 与 `amc publish`（CodeView GUID + Age）。ABIX 可用 MSYS2 UCRT64 工具链在 Windows 上构建，PE 镜像已被端到端处理。
+> **状态：已实现。** `amc generate -l cpp` 会为 `_WIN32` 发射 `.abix` / `.abix.n` 节区（GNU/clang 属性，以及 MSVC 的 `#pragma section` + `__declspec(allocate)`）； AMC 再经能力层（[binary-image_zh.md](binary-image_zh.md)，`SKL/ABIX/Binary/PE.h`）读回 region。已用 clang++ 与 cl.exe 验证，覆盖 `amc metadata --from-elf` 与 `amc publish`（CodeView GUID + Age）。ABIX 可用 MSYS2 UCRT64 工具链在 Windows 上构建，PE 镜像已被端到端处理。
 
 <details>
 

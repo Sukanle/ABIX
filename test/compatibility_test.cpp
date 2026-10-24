@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Model/Compat.h"
+#include "SKL/ABIX/Model/Compat.h"
 
 TEST_CASE("type, layout and ABI signature hashes are domain separated") {
     constexpr auto type = skl::abix::model::canonical_type_id("Foo");

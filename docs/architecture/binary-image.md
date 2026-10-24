@@ -4,7 +4,7 @@
   <a href="binary-image_zh.md">中文</a> · English
 </p>
 
-> **Status: implemented (first version).** The layer lives in `ABIX/Binary/` and is wired into AMC; ELF, Mach-O and PE are supported for the capabilities below.
+> **Status: implemented (first version).** The layer lives in `SKL/ABIX/Binary/` and is wired into AMC; ELF, Mach-O and PE are supported for the capabilities below.
 
 <details>
 
@@ -25,14 +25,14 @@
 
 ABIX does **not** try to fold `Elf64_Ehdr`, `mach_header_64` and `IMAGE_NT_HEADERS` into a single "binary header" struct. Those containers describe different things — ELF's program/section headers, Mach-O's segment/load-command model, PE's COFF header, section table and data directories — and a merged struct would end up as a pile of `#ifdef`s.
 
-What ABIX unifies is the **question asked of a binary module**: what format is this, what target does it describe, where is a named region, which symbols does it export. Each adapter translates its native structures into that shared model; nothing above `ABIX/Binary/` sees a container header.
+What ABIX unifies is the **question asked of a binary module**: what format is this, what target does it describe, where is a named region, which symbols does it export. Each adapter translates its native structures into that shared model; nothing above `SKL/ABIX/Binary/` sees a container header.
 
 > **Format is implementation; capability is the interface.**
 
 ## Layers
 
 ```text
-                    BinaryImage (ABIX/Binary/BinaryImage.h)
+                    BinaryImage (SKL/ABIX/Binary/BinaryImage.h)
                               │
               ┌───────────────┼───────────────┐
              ELF.h          MachO.h          PE.h          (adapters)
@@ -42,7 +42,7 @@ What ABIX unifies is the **question asked of a binary module**: what format is t
   Above the line, consumers see: Target · Section · Export · Region
 ```
 
-The core runtime (`ABIX/Runtime`, `ABIX/Interface`, `ABIX/Metadata`) never includes `<elf.h>`, `<mach-o/...>` or `<windows.h>`; the adapters are dependency-free and read from documented byte offsets.
+The core runtime (`SKL/ABIX/Runtime`, `SKL/ABIX/Interface`, `SKL/ABIX/Metadata`) never includes `<elf.h>`, `<mach-o/...>` or `<windows.h>`; the adapters are dependency-free and read from documented byte offsets.
 
 ## Format, OS and architecture are separate axes
 
@@ -93,9 +93,9 @@ bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &image, st
 
 | Adapter | Reads | Exports from |
 |---------|-------|--------------|
-| `ABIX/Binary/ELF.h` | ELF64 little-endian | `.dynsym` (GLOBAL/WEAK, defined) |
-| `ABIX/Binary/MachO.h` | 32/64-bit little-endian Mach-O | `LC_SYMTAB` (external, `N_SECT`) |
-| `ABIX/Binary/PE.h` | PE32 / PE32+ | `IMAGE_EXPORT_DIRECTORY` |
+| `SKL/ABIX/Binary/ELF.h` | ELF64 little-endian | `.dynsym` (GLOBAL/WEAK, defined) |
+| `SKL/ABIX/Binary/MachO.h` | 32/64-bit little-endian Mach-O | `LC_SYMTAB` (external, `N_SECT`) |
+| `SKL/ABIX/Binary/PE.h` | PE32 / PE32+ | `IMAGE_EXPORT_DIRECTORY` |
 
 Each adapter exposes a cheap `is_*` magic check and a `detail::parse_*` that fills a `ParseResult`. PE additionally resolves RVAs to file offsets (for the export name/function arrays) and computes `address = image_base + RVA`.
 

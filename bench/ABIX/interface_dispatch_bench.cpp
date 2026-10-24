@@ -26,7 +26,7 @@
 
 #include <cstdint>
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace bench_interface_dispatch {
 
@@ -51,9 +51,9 @@ using AreaFn = int32_t (*)(const void *);
 using ResizeFn = int32_t (*)(void *, int32_t, int32_t);
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {
-        method_signature("area", i32, skl::mics::utils::array{}),
-        method_signature("resize", i32, skl::mics::utils::array{i32, i32}),
+    static constexpr skl::mics::util::array signatures = {
+        method_signature("area", i32, skl::mics::util::array{}),
+        method_signature("resize", i32, skl::mics::util::array{i32, i32}),
     };
     static constexpr uint32_t version = 1;
     static constexpr InterfaceId id = interface_id("Shape", version, signatures);
@@ -63,7 +63,7 @@ struct ShapeTraits {
         uint32_t resize;
     };
     // Slots are zero-based: the first entry is slot 0.
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {

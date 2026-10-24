@@ -3,7 +3,7 @@
 // The capability polls `amc::lang::cancellation_requested()` at a safe point.
 // A CANCEL must therefore turn the long-running projection into
 // `kCapabilityCancelled` instead of waiting for the loop to finish.
-#include "AMC/Lang/Lang.h"
+#include "SKL/AMC/Lang/Lang.h"
 
 #include <chrono>
 #include <thread>

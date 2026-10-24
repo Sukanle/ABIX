@@ -4,7 +4,7 @@
   <a href="pe-inspection_zh.md">中文</a> · English
 </p>
 
-> **Status: implemented.** `amc generate -l cpp` emits the `.abix` / `.abix.n` sections for `_WIN32` (GNU/clang attributes and MSVC `#pragma section` + `__declspec(allocate)`), and AMC reads the region back through the capability layer ([binary-image.md](binary-image.md), `ABIX/Binary/PE.h`). Verified with both clang++ and cl.exe, including `amc metadata --from-elf` and `amc publish` (CodeView GUID + Age). ABIX builds on Windows with the MSYS2 UCRT64 toolchain, and PE images are handled end to end.
+> **Status: implemented.** `amc generate -l cpp` emits the `.abix` / `.abix.n` sections for `_WIN32` (GNU/clang attributes and MSVC `#pragma section` + `__declspec(allocate)`), and AMC reads the region back through the capability layer ([binary-image.md](binary-image.md), `SKL/ABIX/Binary/PE.h`). Verified with both clang++ and cl.exe, including `amc metadata --from-elf` and `amc publish` (CodeView GUID + Age). ABIX builds on Windows with the MSYS2 UCRT64 toolchain, and PE images are handled end to end.
 
 <details>
 

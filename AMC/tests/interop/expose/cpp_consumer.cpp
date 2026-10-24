@@ -4,8 +4,8 @@
 // `abix_module_query_v1` entry, resolves the method bindings once, and calls
 // them through the cached pointers. An object handle holds a module lease, so
 // the module cannot be retired while the object is alive.
-#include "ABIX/DLL/Object.h"
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/DLL/Object.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 #include <cstdint>
 #include <cstdio>

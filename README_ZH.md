@@ -201,13 +201,13 @@ using namespace skl::abix::poly;
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr skl::mics::util::array signatures = {method_signature("area", i32, nullptr, 0)};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
@@ -379,7 +379,7 @@ AMC 围绕 ABIX 提供工具链，更高层次的应用可以独立构建，覆�
 
 ```text
 ABIX
-├── ABIX/                  纯头文件 ABI 模型与运行时
+├── SKL/ABIX/                  纯头文件 ABI 模型与运行时
 │   ├── Model/             Model.h ABI.h Bootstrap.h Map.h Compat.h
 │   ├── Metadata/          Metadata.h Registry.h Descriptor.h
 │   ├── Runtime/           Runtime.h Registry.h Type.h TypeSig.h Search.h Function.h
@@ -403,7 +403,7 @@ ABIX
 ├── scripts/               开发脚本 (git hooks、Markdown 重排)
 ├── src/                   自举 ABI 输入
 ├── docs/                  规范、指南、API、架构、AI、基准
-└── mics/                  反射子模块 (MICS / HLMD)
+└── MICS/                  反射子模块 (MICS / HLMD)
 ```
 
 ---

@@ -110,7 +110,7 @@ graph LR
 
 ```text
 ABIX
-├── ABIX/      ABI 模型 + 运行时（header-only 注册表）
+├── SKL/ABIX/      ABI 模型 + 运行时（header-only 注册表）
 ├── AMC/       AMC 工具链：core/、cpp/ 前后端、dump/、mcp/
 ├── test/      运行时与单元测试（Catch2）
 ├── bench/     基准测试

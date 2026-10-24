@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <mutex>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "dlls/plugin_path.h"
 #include "dlls/plugin_types.h"
 

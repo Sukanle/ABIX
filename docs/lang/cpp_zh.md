@@ -58,7 +58,7 @@ amc generate build/package.abix -l cpp -o gen/
 
 ## 接口层
 
-C++ 接口层是 header-only 的，位于 [`ABIX/Interface/`](../../ABIX/Interface/)：
+C++ 接口层是 header-only 的，位于 [`SKL/ABIX/Interface/`](../../ABIX/Interface/)：
 
 - `Contract.h`：`InterfaceId`、`method_signature`、`interface_id`、`InterfaceMethod` 与 `InterfaceImplementation`。
 - `Proxy.h`：`UniqueInterfaceProxy<Traits>`；生成或手写的代理提供 `shape.area()`。

@@ -1,7 +1,7 @@
 #include "workload_runner.hpp"
 #include "workload.hpp"
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 #include <benchmark/benchmark.h>
 #include <string>

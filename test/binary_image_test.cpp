@@ -1,6 +1,6 @@
 #include "test_common.hpp"
 
-#include "ABIX/Binary/BinaryImage.h"
+#include "SKL/ABIX/Binary/BinaryImage.h"
 
 #include <cstdint>
 #include <cstring>

@@ -30,12 +30,12 @@
 #include <lldb/API/SBThread.h>
 #include <lldb/API/SBValue.h>
 
-#include "AMC/Core/Core.h"
-#include "AMC/Core/ELF.h"
-#include "AMC/Core/Metadata.h"
-#include "AMC/Core/Query.h"
-#include "AMC/Core/Symbol.h"
-#include "AMC/Core/Verify.h"
+#include "SKL/AMC/Core/Core.h"
+#include "SKL/AMC/Core/ELF.h"
+#include "SKL/AMC/Core/Metadata.h"
+#include "SKL/AMC/Core/Query.h"
+#include "SKL/AMC/Core/Symbol.h"
+#include "SKL/AMC/Core/Verify.h"
 
 #include <cstdio>
 #include <cstring>

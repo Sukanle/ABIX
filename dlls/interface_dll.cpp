@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache License, Version 2.0.
  */
-#include "ABIX/ABIX.h"   // IWYU pragma: keep
+#include "SKL/ABIX/ABIX.h"   // IWYU pragma: keep
 #include "interface_plugin.h"
 
 // A provider that implements one ABIX Interface and discovers it through the

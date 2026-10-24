@@ -2,8 +2,8 @@ find_package(benchmark REQUIRED)
 # Every bench target formats its output with fmt (see bench/bench_fmt.hpp).
 find_package(fmt REQUIRED)
 
-set(BENCH_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(BENCH_INC_DIR ${SKL_ABIX_SRC_DIR} ${SKL_ABIX_SRC_DIR}/mics ${BENCH_SRC_DIR})
+set(BENCH_PROJ_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(BENCH_INC_DIR ${SKL_ABIX_INC_DIR} ${BENCH_PROJ_DIR})
 
 if(SKL_ABIX_DEVELOPMENT)
     add_compile_definitions(SKL_ABIX_DEVELOPMENT)
@@ -15,7 +15,7 @@ function(abi_add_bench)
 
     add_executable(${BENCH_NAME} ${BENCH_SOURCES})
     target_include_directories(${BENCH_NAME} PRIVATE ${BENCH_INC_DIR})
-    target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark_main fmt::fmt)
+    target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark_main fmt::fmt MICS::MICS)
     set_target_properties(${BENCH_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                      "RelWithDebInfo"))
@@ -36,7 +36,7 @@ abi_add_bench(NAME "lookup_bench" SOURCES "lookup_bench.cpp")
 abi_add_bench(NAME "abix_resolve_bench" SOURCES "ABIX/abix_resolve_bench.cpp")
 add_executable(hashindex_build_bench ABIX/hashindex_build_bench.cpp)
 target_include_directories(hashindex_build_bench PRIVATE ${BENCH_INC_DIR})
-target_link_libraries(hashindex_build_bench PRIVATE fmt::fmt)
+target_link_libraries(hashindex_build_bench PRIVATE fmt::fmt MICS::MICS)
 set_target_properties(hashindex_build_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # --- Advancement-starvation probe (standalone; not a Google Benchmark) ---
@@ -48,7 +48,7 @@ set_target_properties(hashindex_build_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY 
 if(SKL_ABIX_DEVELOPMENT)
     add_executable(rcu_advance_probe rcu/advance_probe.cpp)
     target_include_directories(rcu_advance_probe PRIVATE ${BENCH_INC_DIR})
-    target_link_libraries(rcu_advance_probe PRIVATE fmt::fmt)
+    target_link_libraries(rcu_advance_probe PRIVATE fmt::fmt MICS::MICS)
     target_compile_definitions(rcu_advance_probe PRIVATE SKL_ABIX_RCU_ENABLE_STATS=1)
     set_target_properties(rcu_advance_probe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_dependencies(rcu_advance_probe reload_dll_a reload_dll_b)
@@ -94,9 +94,9 @@ abi_add_bench(NAME "ebr_profile_bench" SOURCES "ebr/profile_bench.cpp" ${EBR_SOU
 # endif()
 
 # --- Unity build: all benchmarks in a single executable ---
-add_executable(bench_all ${BENCH_SRC_DIR}/bench_all.cpp ${EBR_SOURCES})
+add_executable(bench_all ${BENCH_PROJ_DIR}/bench_all.cpp ${EBR_SOURCES})
 target_include_directories(bench_all PRIVATE ${BENCH_INC_DIR})
-target_link_libraries(bench_all PRIVATE benchmark::benchmark_main fmt::fmt)
+target_link_libraries(bench_all PRIVATE benchmark::benchmark_main fmt::fmt MICS::MICS)
 set_target_properties(bench_all PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(bench_all PRIVATE -fno-devirtualize)

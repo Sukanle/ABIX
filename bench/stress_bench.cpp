@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 
 inline void busy_wait_ns(uint64_t ns) {

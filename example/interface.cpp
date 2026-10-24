@@ -1,5 +1,5 @@
-#include "ABIX/Interface/Declaration.h"
-// #include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Declaration.h"
+// #include "SKL/ABIX/Interface/Interface.h"
 
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 

@@ -201,7 +201,7 @@ BENCHMARK(BM_ABIX_Call_Raw);
 
 // --- Decomposition of the per-call cost in Function::operator() -------------
 //
-// `Function::operator()` (ABIX/DLL/Function.h) does, per call: a state load, an
+// `Function::operator()` (SKL/ABIX/DLL/Function.h) does, per call: a state load, an
 // RCU enter/exit bracket, a bounds check, a hash+sig verification, a strcmp of
 // the entry name, then an indirect call. These two benchmarks isolate the parts
 // so the ~6 ns delta against BM_ABIX_Call_Raw can be attributed instead of

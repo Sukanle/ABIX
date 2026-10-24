@@ -332,7 +332,7 @@ TEST_CASE("9d.concurrent calls through a cached handle", "[reload][threads][prom
     log_info("8 threads x 20000 calls through the cached path: 0 wrong results");
 }
 
-// The slot-buffer pool in ABIX/Runtime/Search.h only retains a buffer for tables
+// The slot-buffer pool in SKL/ABIX/Runtime/Search.h only retains a buffer for tables
 // at or above SKL_ABIX_HASH_POOL_MIN_SLOTS (4096 slots = 2048 entries), and the
 // largest test module (hotcache_dll, 1020 entries -> 2048 slots) sits just below
 // that. So this case is the lifecycle guard *around* the pool - the module really

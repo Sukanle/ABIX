@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ABIX/ABIX.h"   // IWYU pragma: keep
+#include "SKL/ABIX/ABIX.h"   // IWYU pragma: keep
 
 using Cb = skl::abix::runtime::Function<void(int)>;
 

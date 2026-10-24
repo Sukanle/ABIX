@@ -71,7 +71,7 @@ Stage 0 is the initial hand-built loader; Stage 1 is the first version built by 
 
 ABIX describes its own core IR through its own configuration and validates the result:
 
-* `ABIX/self.abic.toml` — the ABIX runtime's public types
+* `SKL/ABIX/self.abic.toml` — the ABIX runtime's public types
 * `AMC/self.abic.toml` — the AMC core IR
 * `src/self_types.cpp`, `AMC/self_types.cpp` — the inputs described
 

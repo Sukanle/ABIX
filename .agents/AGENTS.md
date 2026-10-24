@@ -85,7 +85,7 @@ genuine ABI concept. Language-specific behaviour belongs in a
 ## 2. Repository Orientation
 
 ```text
-ABIX/    header-only ABI model + runtime, organised by layer:
+SKL/ABIX/    header-only ABI model + runtime, organised by layer:
          Model/ (abi.h, Bootstrap.h, Map.h, Compat.h),
          Metadata/ (Registry.h, Descriptor.h),
          Runtime/ (Registry.h, Type.h, TypeSig.h, Search.h, Function.h),
@@ -106,18 +106,18 @@ docs/    specification and design
 
 | Subsystem | Location | Responsibility |
 |-----------|----------|----------------|
-| ABI model | `ABIX/Model/` | `model::TypeDesc`, `model::TypeLayout`, `model::Field`, `model::Target`, `model::Compat` |
-| Metadata projection | `ABIX/Metadata/` | `metadata::Registry`, `metadata::TypeDescriptor`, `metadata::ModuleDescriptor` |
-| ABI runtime | `ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
-| DLL binding | `ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
-| Adapter dispatch | `ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
-| Binary reader | `ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by `AMC/core/` | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
+| ABI model | `SKL/ABIX/Model/` | `model::TypeDesc`, `model::TypeLayout`, `model::Field`, `model::Target`, `model::Compat` |
+| Metadata projection | `SKL/ABIX/Metadata/` | `metadata::Registry`, `metadata::TypeDescriptor`, `metadata::ModuleDescriptor` |
+| ABI runtime | `SKL/ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
+| DLL binding | `SKL/ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
+| Adapter dispatch | `SKL/ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
+| Binary reader | `SKL/ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by `AMC/core/` | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
 | Metadata Region | `AMC/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
 | ABI adapter | `AMC/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
 | Symbol store | `AMC/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
 | MCP server | `AMC/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
 | LLDB plugin | `AMC/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
-| Versioned registry | `ABIX/Runtime/Registry.h` | `runtime::Registry::register_module(module, version)` — same TypeID across versions |
+| Versioned registry | `SKL/ABIX/Runtime/Registry.h` | `runtime::Registry::register_module(module, version)` — same TypeID across versions |
 
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
 your change.
@@ -273,9 +273,9 @@ inconvenient.
 
 ### 6.1 Dependencies and output formatting
 
-`ABIX/` is the library, not a facility: it stays free of third-party formatting
-dependencies. Do not include or link **fmt** in `ABIX/` — the ABI model and runtime
-keep their existing, dependency-free output and diagnostics (`ABIX/Util/Log.h` is the
+`SKL/ABIX/` is the library, not a facility: it stays free of third-party formatting
+dependencies. Do not include or link **fmt** in `SKL/ABIX/` — the ABI model and runtime
+keep their existing, dependency-free output and diagnostics (`SKL/ABIX/Util/Log.h` is the
 reference implementation: a variadic logger built on the C library).
 
 Everything else in the repository is a facility and **may** use **fmt** for output
@@ -284,7 +284,7 @@ the formatter to use — `fmt::print` / `fmt::format` / `fmt::format_to_n` inste
 `printf` family — and new output should stay on it rather than mixing two styles.
 `bench/` already does, through `bench/bench_fmt.hpp`.
 
-"ABIX itself" means the `ABIX/` headers and the runtime target, not every target whose
+"ABIX itself" means the `SKL/ABIX/` headers and the runtime target, not every target whose
 name starts with `abix`: the `libabix-*` static libraries are facilities (their sources
 live under `AMC/src/Core/`), so they keep using fmt.
 

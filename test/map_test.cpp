@@ -1,7 +1,7 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Model/Map.h"
+#include "SKL/ABIX/Model/Map.h"
 
 TEST_CASE("dynamic map copies and initializes fields with bounds checks") {
     using namespace skl::abix;

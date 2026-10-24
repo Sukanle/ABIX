@@ -5,7 +5,7 @@
  */
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace {
 
@@ -224,11 +224,11 @@ int counter_area(const void *self) { return static_cast<const Counter *>(self)->
 struct TestShapeTraits {
     static constexpr InterfaceId id{0x71, 0x00};
     static constexpr uint32_t version = 1;
-    static constexpr skl::mics::utils::array<InterfaceMethodHash, 1> signatures = {{{0x1111, 0x2222}}};
+    static constexpr skl::mics::util::array<InterfaceMethodHash, 1> signatures = {{{0x1111, 0x2222}}};
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class TestShape : public UniqueInterfaceProxy<TestShapeTraits> {
     using Base = UniqueInterfaceProxy<TestShapeTraits>;
@@ -468,7 +468,7 @@ TEST_CASE("method_signature accepts pointer, StaticArray and variadic parameter 
     constexpr skl::abix::model::TypeId params[] = {i32, i32};
 
     constexpr auto by_pointer = skl::abix::poly::method_signature("resize", v, params, 2);
-    constexpr auto by_array = skl::abix::poly::method_signature("resize", v, skl::mics::utils::array{i32, i32});
+    constexpr auto by_array = skl::abix::poly::method_signature("resize", v, skl::mics::util::array{i32, i32});
     constexpr auto by_variadic = skl::abix::poly::method_signature("resize", v, i32, i32);
 
     STATIC_REQUIRE(by_pointer == by_array);

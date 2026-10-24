@@ -2,11 +2,11 @@
 
 #include <stdint.h>
 
-#include "../../../ABIX/STD/Span.h"       // abix_span_i32 — the ABIX-STD borrowed span
-#include "../../../ABIX/STD/String.h"     // abix_str_utf8 — the ABIX-STD string view
-#include "../../../ABIX/STD/Optional.h"   // abix_optional_i32 — the ABIX-STD optional
-#include "../../../ABIX/STD/Result.h"     // abix_result_i32 — the ABIX-STD result
-#include "../../../ABIX/STD/Callback.h"   // abix_callback — the ABIX-STD callback
+#include "SKL/ABIX/STD/Span.h"       // abix_span_i32 — the ABIX-STD borrowed span
+#include "SKL/ABIX/STD/String.h"     // abix_str_utf8 — the ABIX-STD string view
+#include "SKL/ABIX/STD/Optional.h"   // abix_optional_i32 — the ABIX-STD optional
+#include "SKL/ABIX/STD/Result.h"     // abix_result_i32 — the ABIX-STD result
+#include "SKL/ABIX/STD/Callback.h"   // abix_callback — the ABIX-STD callback
 
 // Public C ABI of the interop demo.
 //

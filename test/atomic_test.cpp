@@ -1,6 +1,6 @@
 #include "test_common.hpp"
 
-#include "ABIX/Util/Atomic.h"
+#include "SKL/ABIX/Util/Atomic.h"
 
 #include <cstdint>
 

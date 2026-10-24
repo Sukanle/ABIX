@@ -4,10 +4,10 @@
 // Test-only Error ABI prototype. This header is deliberately outside the
 // public ABIX headers: it exists to validate fixed-layout error identity,
 // domain mapping and unknown-code behavior before the v0.3.0 specification.
-// Do not include it from ABIX/ABIX.h and do not install it.
+// Do not include it from SKL/ABIX/ABIX.h and do not install it.
 
-#include "ABIX/DLL/Object.h"
-#include "ABIX/Interface/Contract.h"
+#include "SKL/ABIX/DLL/Object.h"
+#include "SKL/ABIX/Interface/Contract.h"
 
 #include <cstdint>
 #include <type_traits>
