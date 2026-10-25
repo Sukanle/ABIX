@@ -75,7 +75,7 @@ const char *float_format_name(uint32_t format) {
     switch (static_cast<amc::FloatFormat>((format & amc::primitive_format_mask) >> amc::primitive_format_shift)) {
         case amc::FloatFormat::none:              return "none";
         case amc::FloatFormat::ieee16:            return "ieee16";
-        case amc::FloatFormat::bfloat16:          return "bfloat16";
+        case amc::FloatFormat::bf16:              return "bf16";
         case amc::FloatFormat::ieee32:            return "ieee32";
         case amc::FloatFormat::ieee64:            return "ieee64";
         case amc::FloatFormat::ieee128:           return "ieee128";

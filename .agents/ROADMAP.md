@@ -81,6 +81,15 @@ public ABI or error-protocol change.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
+## Patch — ABIX 0.2.2 (Built-in type IDs)
+
+Additive release: predefined canonical `TypeId` constants for primitive ABI
+descriptors, including integer widths, pointer-sized `isize`/`usize`, IEEE and
+extended floating formats, target `long double`, and character kinds. Existing
+identities and the `.abix` wire format are unchanged.
+
+See [`CHANGELOG.md`](../CHANGELOG.md).
+
 ## Post-0.2.0 — toolchain and ecosystem follow-ups
 
 These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 work.

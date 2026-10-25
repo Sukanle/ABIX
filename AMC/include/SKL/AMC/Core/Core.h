@@ -71,7 +71,7 @@ constexpr uint32_t primitive_signed_bit = 1u << 24;
 enum class FloatFormat : uint32_t {
     none = 0,
     ieee16,
-    bfloat16,
+    bf16,
     ieee32,
     ieee64,
     ieee128,

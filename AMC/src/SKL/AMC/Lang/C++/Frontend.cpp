@@ -38,7 +38,7 @@ namespace {
 const char *float_semantics_tag(const llvm::fltSemantics &semantics) {
     using llvm::APFloatBase;
     if (&semantics == &APFloatBase::IEEEhalf()) return "ieee16";
-    if (&semantics == &APFloatBase::BFloat()) return "bfloat16";
+    if (&semantics == &APFloatBase::BFloat()) return "bf16";
     if (&semantics == &APFloatBase::IEEEsingle()) return "ieee32";
     if (&semantics == &APFloatBase::IEEEdouble()) return "ieee64";
     if (&semantics == &APFloatBase::IEEEquad()) return "ieee128";
@@ -50,7 +50,7 @@ const char *float_semantics_tag(const llvm::fltSemantics &semantics) {
 amc::FloatFormat float_format_code(const llvm::fltSemantics &semantics) {
     using llvm::APFloatBase;
     if (&semantics == &APFloatBase::IEEEhalf()) return amc::FloatFormat::ieee16;
-    if (&semantics == &APFloatBase::BFloat()) return amc::FloatFormat::bfloat16;
+    if (&semantics == &APFloatBase::BFloat()) return amc::FloatFormat::bf16;
     if (&semantics == &APFloatBase::IEEEsingle()) return amc::FloatFormat::ieee32;
     if (&semantics == &APFloatBase::IEEEdouble()) return amc::FloatFormat::ieee64;
     if (&semantics == &APFloatBase::IEEEquad()) return amc::FloatFormat::ieee128;
