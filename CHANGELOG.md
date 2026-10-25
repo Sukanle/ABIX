@@ -3,6 +3,53 @@
 All notable changes to ABIX are recorded here. Older releases are available in
 the GitHub release history.
 
+## v0.2.3 — Runtime-only package and diagnostics
+
+Packaging and diagnostics release: the header-only runtime and its CMake package
+are now installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
+
+### Added
+
+- `ABIX::runtime` and the ABIX package metadata are created and installed
+  outside the AMC/LLVM branch.
+- `ABIX_BUILD_RUNTIME_ONLY=ON` skips AMC, tests, benchmarks and DLLs for
+  runtime-only builds.
+- `ABIX_INSTALL` controls ABIX install rules; it defaults to ON only for a
+  top-level build.
+- `abix-cmake-runtime-package-test` installs a runtime-only package and
+  consumes it with `ABIX::runtime` while fmt is disabled.
+- Logging now has an explicit `LogState`, ABIX-atomic sink/level registration,
+  a runtime threshold, and a length-aware `LogRecord` callback with truncation.
+- `ABIX_LOG_*_TO(state, ...)` macros route diagnostics through an explicit
+  state for host-owned logging.
+- Log configuration uses `SKL/ABIX/Util/Atomic.h` over plain function-pointer
+  and `uint8_t` storage instead of `std::atomic`, avoiding standard-library
+  object-layout coupling across DLL/CRT boundaries.
+- `ABIX_LOG_THREAD_SAFE` selects thread-safe configuration (default) or the
+  low-overhead single-threaded/fixed-sink policy; `ThreadSafeLogState` and
+  `SingleThreadedLogState` are also available explicitly.
+- Added an optional Quill integration test (`ABIX_ENABLE_QUILL_TEST`).
+
+### Changed
+
+- `ABIXConfig.cmake` requires MICS for the runtime, but only requires fmt when
+  the format/ABI/metadata/tools components or the full aggregate are used.
+- `ABIX::ABIX` is always available: it is runtime-only in a runtime-only
+  package and gains the optional libraries in a full build.
+- Subproject defaults for tests, benchmarks, AMC, DLL variants and bundled MICS
+  installation are now OFF. `MICS_INSTALL` is no longer forced.
+- Global build-type, compiler-option and compile-command settings are limited
+  to top-level builds.
+- The logging default threshold is `Warning`; callers that need `Info`/`Debug`
+  must lower it. The legacy `log_sink_t` callback remains source-compatible.
+- Log macros no longer rely on the GNU `##__VA_ARGS__` extension.
+
+### Compatibility
+
+- Additive packaging change; no `TypeID`, `.abix` format or public ABI change.
+- `find_package(ABIX 0.2 CONFIG REQUIRED)` and `ABIX::runtime` work from the
+  installed prefix without a LLVM/AMC installation.
+
 ## v0.2.2 — Built-in type IDs
 
 Additive release: predefined canonical `TypeId` constants for the primitive ABI

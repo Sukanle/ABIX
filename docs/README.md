@@ -133,6 +133,7 @@ Project design, comparison, and roadmap.
 | Document | 中文 | Description |
 |----------|------|-------------|
 | [design-notes.md](development/design-notes.md) | [design-notes_zh.md](development/design-notes_zh.md) | design principles and project history |
+| [logging.md](development/logging.md) | [logging_zh.md](development/logging_zh.md) | diagnostic callback contract, error/log boundary, and cross-DLL ownership |
 | [type-model.md](development/type-model.md) | [type-model_zh.md](development/type-model_zh.md) | ABI facts vs source-language types, and the per-target generation model |
 | [competitors.md](development/competitors.md) | [competitors_zh.md](development/competitors_zh.md) | competitive landscape analysis |
 | [roadmap.md](development/roadmap.md) | [roadmap_zh.md](development/roadmap_zh.md) | scope and sequencing |

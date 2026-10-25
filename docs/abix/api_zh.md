@@ -470,23 +470,43 @@ domain.synchronize();
 
 ### 日志系统（`SKL/ABIX/Util/Log.h`）
 
-**命名空间：** `skl::abix`
+**命名空间：** `skl::abix::util`
 
-| 类型 / 函数            | 说明                                                                 |
-| ---------------------- | -------------------------------------------------------------------- |
-| `LogLevel`             | 枚举：`Debug`、`Info`、`Warning`、`Error`                            |
-| `log_sink_t`           | `void (*)(LogLevel level, const char *message)` — C 回调，ABI 安全   |
-| `set_log_sink(sink)`   | 设置全局日志接收器。默认：无操作（无输出）。                         |
-| `log(level, fmt, ...)` | 内部格式化器；通过 `vsnprintf` 格式化到 1KB 缓冲区，然后调用接收器。 |
+日志是可选的诊断副作用。程序可判断的失败由错误码 / `CallError` 返回；日志不能替代错误处理。
+
+| 类型 / 函数 | 说明 |
+| --- | --- |
+| `LogLevel` | `Debug`、`Info`、`Warning`、`Error`、`Off`（8-bit 枚举） |
+| `log_sink_t` | 兼容回调：`void (*)(LogLevel, const char *)`；消息只在回调期间有效 |
+| `LogRecord` | `{level, message, length, truncated}`，供需要长度/截断信息的消费者使用 |
+| `log_record_sink_t` | `void (*)(const LogRecord *)`；消息只在回调期间有效 |
+| `ThreadSafeLogState` | `LogStateT<true>`；使用 ABIX 原子配置存储 |
+| `SingleThreadedLogState` | `LogStateT<false>`；普通存储，由宿主保证配置访问安全 |
+| `LogState` | 由 `ABIX_LOG_THREAD_SAFE` 选择的别名（默认 `ThreadSafeLogState`） |
+| `default_log_state()` | 便利状态；**每个 DSO/镜像一份**，不是进程级单例 |
+| `set_log_sink(sink)` / `set_log_sink(state, sink)` | 设置/清除兼容 sink |
+| `set_log_record_sink(sink)` / 重载 | 设置/清除带长度信息的 sink |
+| `set_log_level(level)` / 重载 | 设置运行时阈值 |
+| `get_log_sink()` / `get_log_level()` | 读取当前回调 / 阈值 |
+| `log(level, fmt, ...)` / `log(state, ...)` | 格式化到固定 1 KiB 缓冲区并同步分发 |
+
+配置存储使用 `SKL/ABIX/Util/Atomic.h` 的 plain-storage 原语，而不是 `std::atomic`，避免标准库实现在 DLL/CRT 边界上影响状态布局。`ABIX_LOG_THREAD_SAFE` 默认 `1`：对普通函数指针和 `uint8_t` 字段使用 acquire/release 读写。设为 `0` 表示固定 sink / 单线程配置，所有配置变更必须发生在工作线程启动之前。该策略是编译期契约；共享同一个 `LogState` 的模块必须使用相同策略。
+
+sink 只观察诊断事件：它在调用线程执行，ABIX 不持有锁；回调不能抛异常，若需要异步入队必须在返回前复制 `message`。允许回调重入日志 API，但必须避免无界递归。`length` 不包含 NUL 终止符；`truncated` 表示消息是否超过 1 KiB 缓冲区。Quill/fmtlog 等外部后端自行负责队列/锁；ABIX 不增加第二层分派锁。
+
+便利状态是 inline 的，因此每个编译 ABIX 的 DSO 各有一份。跨 DLL 共享状态时，应由宿主/运行时持有一个显式 `LogState`；不要把 `set_log_sink()` 当作进程级全局设置。
 
 **宏：**
 
-| 宏                           | 生效条件                                                            |
-| ---------------------------- | ------------------------------------------------------------------- |
-| `ABIX_LOG_DEBUG(fmt, ...)`   | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG`   |
-| `ABIX_LOG_INFO(fmt, ...)`    | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO`    |
+| 宏 | 生效条件 |
+| --- | --- |
+| `ABIX_LOG_DEBUG(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
+| `ABIX_LOG_INFO(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO` |
 | `ABIX_LOG_WARNING(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
-| `ABIX_LOG_ERROR(fmt, ...)`   | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
+| `ABIX_LOG_ERROR(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR` |
+| `ABIX_LOG_*_TO(state, fmt, ...)` | 同上，但通过显式 `LogState` 分发 |
+
+运行时过滤在 `vsnprintf` 之前执行；编译期级别关闭会完全移除调用。
 
 ## 5. `SKL/ABIX/DLL/Function.h` — 类型化函数句柄
 

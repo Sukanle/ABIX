@@ -433,22 +433,24 @@ ctest --test-dir build/Release --output-on-failure
 
 ### CMake 包
 
-安装 ABIX 后即可用 `find_package(ABIX CONFIG REQUIRED)` 消费：
+安装 runtime-only ABIX 包，并用 `find_package(ABIX CONFIG REQUIRED)` 消费：
 
 ```bash
-cmake --install build/Release --prefix /opt/abix
+cmake -B build/runtime -DABIX_BUILD_RUNTIME_ONLY=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build/runtime --parallel
+cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.2 CONFIG REQUIRED)
+find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE ABIX::ABIX)
+target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
-`ABIX::ABIX` 聚合了 header-only runtime 以及 `.abix` format、ABI 校验、metadata 和 tools 库；也可以按需链接 `ABIX::runtime`、`ABIX::format`、`ABIX::abi`、`ABIX::metadata` 或 `ABIX::tools`。
+runtime 包会安装 `SKL/ABIX`、MICS/HLMD 和 CMake 包，不需要 AMC、LLVM/Clang 或 fmt。完整包额外提供 `ABIX::ABIX` 以及 `ABIX::format`、`ABIX::abi`、`ABIX::metadata`、`ABIX::tools`；这些可选库使用 fmt。`ABIX::ABIX` 始终可用，但未构建可选库时只包含 runtime。
 
-ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。安装后的 config 会用 `find_dependency()` 解析 `MICS` 与 `fmt`。
+ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。runtime config 只解析 `MICS`；请求库 component 或完整聚合目标时才会解析 fmt。`ABIX_INSTALL` 在顶层构建时默认 ON，作为子项目时默认 OFF。
 
 ### 试用
 
@@ -551,6 +553,7 @@ ABIX 的发布按项目阶段划分，而不是功能清单：
 - **ABIX 0.2.0 — Cross-language** (已发布；Rust provider 与 Zig backend 已交付)
 - **ABIX 0.2.1 — Maintenance** (维护版本；修复现有行为、补测试和文档，不改变公共 ABI)
 - **ABIX 0.2.2 — Built-in type IDs** (预定义 canonical primitive TypeId 常量)
+- **ABIX 0.2.3 — Runtime-only package** (不依赖 AMC/LLVM/fmt 的可安装 `ABIX::runtime`；宿主负责日志后端)
 - **ABIX 0.3.0 — Ecosystem** (AMC Interface 去分派、LSP、包管理；MCP/Agent 高级工具待议)
 
 ```mermaid
