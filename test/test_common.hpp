@@ -22,6 +22,7 @@
 namespace {
 struct LogSinkInitializer {
     LogSinkInitializer() {
+        skl::abix::util::set_log_level(skl::abix::util::LogLevel::Debug);
         skl::abix::util::set_log_sink([](skl::abix::util::LogLevel level, const char *msg) {
             static std::mutex log_mutex;
             std::lock_guard<std::mutex> lock(log_mutex);
@@ -31,6 +32,7 @@ struct LogSinkInitializer {
                 case skl::abix::util::LogLevel::Info:    level_str = "INFO"; break;
                 case skl::abix::util::LogLevel::Warning: level_str = "WARNING"; break;
                 case skl::abix::util::LogLevel::Error:   level_str = "ERROR"; break;
+                case skl::abix::util::LogLevel::Off:     level_str = "OFF"; break;
             }
             fprintf(stderr, "[ABIX_%s] %s\n", level_str, msg);
         });

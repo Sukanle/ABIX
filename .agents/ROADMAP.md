@@ -98,7 +98,9 @@ provides a subproject/runtime-only build mode; `ABIXConfig.cmake` resolves fmt
 only for the optional library components. Subproject defaults no longer enable
 tests, benchmarks, AMC, DLL variants or bundled MICS installation, and
 `MICS_INSTALL` is not forced. The runtime package consumer test covers
-`ABIX::runtime` with fmt disabled.
+`ABIX::runtime` with fmt disabled. Logging gains an explicit `LogState`, atomic
+sink/threshold registration, runtime filtering, a length-aware `LogRecord`
+callback and documented callback / cross-DLL ownership rules.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 

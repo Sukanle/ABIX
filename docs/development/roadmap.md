@@ -99,6 +99,9 @@ toolchain:
 * Subproject defaults no longer enable tests, benchmarks, AMC, DLL variants or
   bundled MICS installation, and `MICS_INSTALL` is not forced.
 * A runtime-only package consumer test covers `ABIX::runtime` without fmt.
+* Logging gains an explicit `LogState`, atomic sink/threshold registration,
+  runtime filtering, a length-aware `LogRecord` callback and documented
+  callback / cross-DLL ownership rules.
 
 The `.abix` format, `TypeID` values and public ABI are unchanged.
 

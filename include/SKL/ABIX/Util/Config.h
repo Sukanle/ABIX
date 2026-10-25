@@ -64,10 +64,14 @@
 
 #include <stdint.h>   // IWYU pragma: keep
 
-// #define ABIX_DISABLE_LOGGING               // Completely disable all logging (zero overhead)
+// Compile-time logging switches (zero overhead when disabled):
+// #define ABIX_DISABLE_LOGGING               // Completely disable all logging
 // #define ABIX_DISABLE_LOG_LEVEL_DEBUG      // Disable Debug-level logs
 // #define ABIX_DISABLE_LOG_LEVEL_INFO       // Disable Info-level logs
 // #define ABIX_DISABLE_LOG_LEVEL_WARNING    // Disable Warning-level logs
 // #define ABIX_DISABLE_LOG_LEVEL_ERROR      // Disable Error-level logs
+//
+// Runtime threshold and sink: skl::abix::util::set_log_level() /
+// set_log_sink(). Logging is diagnostic only; errors are returned independently.
 
 #endif

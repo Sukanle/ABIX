@@ -18,6 +18,10 @@ installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
   top-level build.
 - `abix-cmake-runtime-package-test` installs a runtime-only package and
   consumes it with `ABIX::runtime` while fmt is disabled.
+- Logging now has an explicit `LogState`, atomic sink/level registration, a
+  runtime threshold, and a length-aware `LogRecord` callback with truncation.
+- `ABIX_LOG_*_TO(state, ...)` macros route diagnostics through an explicit
+  state for host-owned logging.
 
 ### Changed
 
@@ -29,6 +33,9 @@ installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
   installation are now OFF. `MICS_INSTALL` is no longer forced.
 - Global build-type, compiler-option and compile-command settings are limited
   to top-level builds.
+- The logging default threshold is `Warning`; callers that need `Info`/`Debug`
+  must lower it. The legacy `log_sink_t` callback remains source-compatible.
+- Log macros no longer rely on the GNU `##__VA_ARGS__` extension.
 
 ### Compatibility
 
