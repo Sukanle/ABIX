@@ -38,7 +38,7 @@ constexpr const char *kManifestSchema = "abix.instantiation-cache/1";
 constexpr uint64_t kRequestDomain = 0x494e5354ULL;    // "INST"
 constexpr uint64_t kTemplateDomain = 0x54454d50ULL;   // "TEMP"
 
-std::string hex_u64(uint64_t value) { return fmt::format("{:016x}\n", value); }
+std::string hex_u64(uint64_t value) { return fmt::format("{:016x}", value); }
 
 std::string hash_hex_plain(Hash128 value) { return hex_u64(value.hi) + hex_u64(value.lo); }
 

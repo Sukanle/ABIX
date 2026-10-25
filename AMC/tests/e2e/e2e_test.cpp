@@ -1063,7 +1063,7 @@ static std::string cpp_name(std::string s) {
 
 std::string generate_projection(const amc::AbiModule &m) {
     std::ostringstream o;
-    o << "#pragma once\n#include <stddef.h>\n#include <stdint.h>\nnamespace amc_generat.hed {\n";
+    o << "#pragma once\n#include <stddef.h>\n#include <stdint.h>\nnamespace amc_generated {\n";
     for (auto &t : m.types) {
         o
             << "struct "

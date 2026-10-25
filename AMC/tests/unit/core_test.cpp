@@ -1707,7 +1707,7 @@ int main() {
             amc::InstantiationBuildInputs inputs;
             inputs.request = request;
             inputs.source_digest = amc::digest_text("source-v1", amc::digest_domain_source);
-            inputs.toolchain = amc::digest_text("clang-19", amc::digest_domain_toolchain);
+            inputs.toolchain = amc::digest_text("clang", amc::digest_domain_toolchain);
             inputs.build_options = amc::digest_text("-O2", amc::digest_domain_options);
             return inputs;
         };
@@ -1937,7 +1937,7 @@ int main() {
     }
 
     if (failures != 0) {
-        fmt::print(stderr, "amc-core-test: %d failure(s)\n", failures);
+        fmt::print(stderr, "amc-core-test: {} failure(s)\n", failures);
         return 1;
     }
     fmt::print("amc-core-test: all checks passed\n");
