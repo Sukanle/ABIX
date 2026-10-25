@@ -33,7 +33,7 @@ The same task — three shapes each computing an area, then one polymorphic call
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -60,7 +60,7 @@ int main() {
     Rectangle rectangle{2, 6};
     Triangle triangle{4, 5};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
+    for (const Shape *shape : shapes) printf("area=%d\n", total(*shape));
     return 0;
 }
 ```
@@ -69,7 +69,7 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 #include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -151,7 +151,7 @@ int main() {
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         if (!shape.valid()) return 1;
-        std::printf("area=%d\n", shape.area());
+        printf("area=%d\n", shape.area());
     }
     return 0;
 }
@@ -351,7 +351,7 @@ SharedShape second(table, &b);  // 24 bytes, same table
 Three steps: **register** (record "this concrete type implements this interface" in the registry) → **resolve** (look the binding up once and cache the adapter entries) → **call** (a plain native indirect call). The complete program below needs no shared library.
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 #include "SKL/ABIX/Interface/Interface.h"
 
@@ -384,7 +384,7 @@ int main() {
     if (ref.resolve(registry, &v, vec2_id, ivec, 1) != InterfaceStatus::ok) return 1;
 
     const auto axis = ref.method<AxisFn>(0);
-    std::printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
+    printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
 }
 ```
 
@@ -533,7 +533,7 @@ On the provider side, three plain implementations; each method has one adapter w
 ```cpp
 // shapes.cpp
 // Build: c++ -std=c++17 -I<abix_root> shapes.cpp -o shapes
-#include <cstdio>
+#include <stdio.h>
 
 #include "shape.h"
 
@@ -641,7 +641,7 @@ int main() {
     for (const auto &instance : instances) {
         demo::Shape shape;
         if (shape.bind(registry, instance.object, instance.type) != InterfaceStatus::ok) return 1;
-        std::printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
+        printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
     }
     return 0;
 }
@@ -717,7 +717,7 @@ The consumer loads, discovers, binds once, calls, then unloads:
 ```cpp
 // canvas_host.cpp
 // build: c++ -std=c++17 -I<abix_root> canvas_host.cpp -ldl -o canvas_host
-#include <cstdio>
+#include <stdio.h>
 
 #include "SKL/ABIX/DLL/Object.h"
 #include "SKL/ABIX/Interface/Interface.h"
@@ -747,7 +747,7 @@ int main() {
         auto bound = bind_interface(*binding, object);   // acquires the module lease
         if (!bound.valid()) return 1;
         const auto width = bound.ref.method<canvas::WidthFn>(0);
-        std::printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
+        printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
     }   // bound destructs: releases the lease
 
     registry.unregister_module(control.id);   // the lease is gone: unload completes
@@ -803,7 +803,7 @@ skl::abix::owner::handle owner_counter_create(int base) {
 The consumer adopts the handle and holds a lease, destroying exactly once when it goes out of scope (continues Example 2's `lib` / `control` / `binding`):
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 #include "SKL/ABIX/Interface/Owner.h"
 
@@ -823,7 +823,7 @@ if (!skl::abix::owner::valid(raw)) return 1;
 
     auto bound = bind_interface(*binding, object.object());
     const auto add = bound.ref.method<AddFn>(0);
-    std::printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
+    printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
 }   // object destructs: calls the creator's destroy, then drops the lease
 
 registry.unregister_module(control.id);   // now it can unload
@@ -1279,7 +1279,7 @@ Left: C++ virtual functions; middle: ABIX manual registration (a hand-written ad
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -1305,7 +1305,7 @@ int main() {
     Rectangle rectangle{4, 6};
     Triangle triangle{6, 4};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", shape->area());
+    for (const Shape *shape : shapes) printf("area=%d\n", shape->area());
     return 0;
 }
 ```
@@ -1314,7 +1314,7 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 #include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -1375,7 +1375,7 @@ int main() {
         InterfaceRef<2> ref;
         if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
         const auto area = ref.method<AreaFn>(0);
-        std::printf("area=%d\n", area(ref.object()));
+        printf("area=%d\n", area(ref.object()));
     }
     return 0;
 }
@@ -1414,7 +1414,7 @@ int main() {
     const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
-        std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+        printf("area=%d\n", shape.valid() ? shape.area() : -1);
     }
     return 0;
 }

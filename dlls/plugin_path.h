@@ -85,7 +85,7 @@ inline std::string getExecutablePath() {
 // at it) keeps the trailing separator, so `substr` can be concatenated directly.
 inline std::string dll_path(const char *name) {
     const std::string exepath = getExecutablePath();
-    const std::size_t sep = exepath.find_last_of(SKL_ABIX_PATHSEPARATOR);
+    const size_t sep = exepath.find_last_of(SKL_ABIX_PATHSEPARATOR);
     if (sep == std::string::npos) return std::string(name) + SKL_ABIX_DLL_SUFFIX;
     return exepath.substr(0, sep + 1) + name + SKL_ABIX_DLL_SUFFIX;
 }

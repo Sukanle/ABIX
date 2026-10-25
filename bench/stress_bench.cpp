@@ -1,9 +1,10 @@
 #include <benchmark/benchmark.h>
 #include <atomic>
 #include <chrono>
+
+#define NOMINMAX
 #include <algorithm>
-#include <cmath>
-#include <cstring>
+#include <string.h>
 #include <thread>
 #include <vector>
 

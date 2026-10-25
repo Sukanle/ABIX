@@ -1,7 +1,7 @@
 #ifndef AMC_CACHE_H
 #define AMC_CACHE_H
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <utility>
 #include <vector>

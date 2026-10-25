@@ -28,8 +28,8 @@
 // Deliberately small for the first version: format / target / sections /
 // exports / region lookup. Segments, imports and relocations are future work.
 
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 #include <vector>

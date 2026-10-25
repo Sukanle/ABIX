@@ -4,11 +4,13 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <filesystem>
 #include <fstream>
+
+#include <fmt/format.h>
 
 #if defined(_WIN32)
 #  include <process.h>
@@ -36,11 +38,7 @@ constexpr const char *kManifestSchema = "abix.instantiation-cache/1";
 constexpr uint64_t kRequestDomain = 0x494e5354ULL;    // "INST"
 constexpr uint64_t kTemplateDomain = 0x54454d50ULL;   // "TEMP"
 
-std::string hex_u64(uint64_t value) {
-    char buffer[17];
-    std::snprintf(buffer, sizeof(buffer), "%016llx", static_cast<unsigned long long>(value));
-    return buffer;
-}
+std::string hex_u64(uint64_t value) { return fmt::format("{:016x}\n", value); }
 
 std::string hash_hex_plain(Hash128 value) { return hex_u64(value.hi) + hex_u64(value.lo); }
 

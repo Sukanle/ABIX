@@ -1,16 +1,16 @@
 #include "SKL/AMC/Core/Core.h"
 #include <cassert>
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <algorithm>
 
 namespace {
@@ -1063,7 +1063,7 @@ static std::string cpp_name(std::string s) {
 
 std::string generate_projection(const amc::AbiModule &m) {
     std::ostringstream o;
-    o << "#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace amc_generated {\n";
+    o << "#pragma once\n#include <stddef.h>\n#include <stdint.h>\nnamespace amc_generat.hed {\n";
     for (auto &t : m.types) {
         o
             << "struct "

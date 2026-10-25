@@ -2,7 +2,7 @@
 #include "SKL/AMC/Core/Generated.h"
 
 #include <cctype>
-#include <cstdint>
+#include <stdint.h>
 #include <map>
 #include <utility>
 
@@ -55,10 +55,10 @@ uint32_t field_type_size(const AbiModule &module, const TypeMap &types, uint32_t
 
 std::string int_type(uint32_t size) {
     switch (size) {
-        case 1:  return "std::int8_t";
-        case 2:  return "std::int16_t";
-        case 4:  return "std::int32_t";
-        case 8:  return "std::int64_t";
+        case 1:  return "int8_t";
+        case 2:  return "int16_t";
+        case 4:  return "int32_t";
+        case 8:  return "int64_t";
         default: return {};
     }
 }
@@ -122,19 +122,19 @@ std::string generate_adapter(const AbiModule &source, const AbiModule &target, c
     out += "// target buffer is fully zero-initialised, so add_default / skip_field\n";
     out += "// need no code; convert_int / convert_float are emitted as casts.\n";
     if (!options.shim) out += "#pragma once\n";
-    out += "#include <cstddef>\n";
-    out += "#include <cstdint>\n";
-    out += "#include <cstring>\n";
+    out += "#include <stddef.h>\n";
+    out += "#include <stdint.h>\n";
+    out += "#include <string.h>\n";
     out += "\n";
     out += "namespace abix_adapter {\n\n";
-    out += "struct TypeId { std::uint64_t lo; std::uint64_t hi; };\n\n";
+    out += "struct TypeId { uint64_t lo; uint64_t hi; };\n\n";
     out += "struct Entry {\n";
     out += "    const char *source_name;\n";
     out += "    const char *target_name;\n";
     out += "    TypeId ids[2];        // [0] source, [1] target\n";
     out += "    const char *source_id;\n";
     out += "    const char *target_id;\n";
-    out += "    std::uint32_t target_size;  // bytes to zero-initialise\n";
+    out += "    uint32_t target_size;  // bytes to zero-initialise\n";
     out += "    void (*apply)(const void *, void *) noexcept;\n";
     out += "};\n\n";
 
@@ -158,17 +158,17 @@ std::string generate_adapter(const AbiModule &source, const AbiModule &target, c
         out += fn;
         out += "(const void *source, void *target) noexcept {\n";
         if (target_size != 0) {
-            out += "    std::memset(target, 0, ";
+            out += "    memset(target, 0, ";
             out += fmt::to_string(target_size);
             out += ");\n";
         }
         for (const auto &operation : map.operations) {
             switch (operation.opcode) {
                 case MapOpcode::copy_field:
-                    out += "    std::memcpy(static_cast<std::uint8_t *>(target) + ";
+                    out += "    memcpy(static_cast<uint8_t *>(target) + ";
                     out += fmt::to_string(operation.target_offset);
                     out += ",\n";
-                    out += "                static_cast<const std::uint8_t *>(source) + ";
+                    out += "                static_cast<const uint8_t *>(source) + ";
                     out += fmt::to_string(operation.source_offset);
                     out += ", ";
                     out += fmt::to_string(operation.byte_count);
@@ -202,14 +202,14 @@ std::string generate_adapter(const AbiModule &source, const AbiModule &target, c
                     }
                     out += "    *reinterpret_cast<";
                     out += to;
-                    out += " *>(static_cast<std::uint8_t *>(target) + ";
+                    out += " *>(static_cast<uint8_t *>(target) + ";
                     out += fmt::to_string(operation.target_offset);
                     out += ") =\n";
                     out += "        static_cast<";
                     out += to;
                     out += ">(*reinterpret_cast<const ";
                     out += from;
-                    out += " *>(static_cast<const std::uint8_t *>(source) + ";
+                    out += " *>(static_cast<const uint8_t *>(source) + ";
                     out += fmt::to_string(operation.source_offset);
                     out += "));  // convert_int ";
                     out += field_label(source, operation.source_field);
@@ -231,14 +231,14 @@ std::string generate_adapter(const AbiModule &source, const AbiModule &target, c
                     }
                     out += "    *reinterpret_cast<";
                     out += to;
-                    out += " *>(static_cast<std::uint8_t *>(target) + ";
+                    out += " *>(static_cast<uint8_t *>(target) + ";
                     out += fmt::to_string(operation.target_offset);
                     out += ") =\n";
                     out += "        static_cast<";
                     out += to;
                     out += ">(*reinterpret_cast<const ";
                     out += from;
-                    out += " *>(static_cast<const std::uint8_t *>(source) + ";
+                    out += " *>(static_cast<const uint8_t *>(source) + ";
                     out += fmt::to_string(operation.source_offset);
                     out += "));  // convert_float ";
                     out += field_label(source, operation.source_field);
@@ -279,14 +279,14 @@ std::string generate_adapter(const AbiModule &source, const AbiModule &target, c
         out += "_entry,\n";
     }
     out += "};\n";
-    out += "inline constexpr std::size_t entry_count = ";
+    out += "inline constexpr size_t entry_count = ";
     out += fmt::to_string(report.maps.size());
     out += ";\n\n";
 
     out += "inline const Entry *find(const char *source_name, const char *target_name) noexcept {\n";
     out += "    for (const Entry &entry : entries)\n";
-    out += "        if (std::strcmp(entry.source_name, source_name) == 0 &&\n";
-    out += "            std::strcmp(entry.target_name, target_name) == 0)\n";
+    out += "        if (strcmp(entry.source_name, source_name) == 0 &&\n";
+    out += "            strcmp(entry.target_name, target_name) == 0)\n";
     out += "            return &entry;\n";
     out += "    return nullptr;\n";
     out += "}\n\n";
@@ -339,7 +339,7 @@ std::string generate_adapter(const AbiModule &source, const AbiModule &target, c
         out += "// C ABI shim: compile this file into a shared library and load it\n";
         out += "// from a host that has no access to the C++ projection.\n";
         out += "extern \"C\" {\n";
-        out += "std::size_t abix_adapter_count() noexcept { return abix_adapter::entry_count; }\n";
+        out += "size_t abix_adapter_count() noexcept { return abix_adapter::entry_count; }\n";
         out += "bool abix_adapter_apply(const char *source_name, const char *target_name,\n";
         out += "                        const void *source, void *target) noexcept {\n";
         out += "    const abix_adapter::Entry *entry = abix_adapter::find(source_name, target_name);\n";

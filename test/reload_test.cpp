@@ -1,7 +1,7 @@
 #include "test_common.hpp"
 #include <thread>
 #include <atomic>
-#include <cstring>
+#include <string.h>
 #include <chrono>
 #include <vector>
 
@@ -371,7 +371,7 @@ TEST_CASE("43.reload_an_indexed_module_under_concurrent_calls", "[reload][pool][
         readers.emplace_back([&lib, &hot, &wrong, &stop, t] {
             const int n = 100 + t;
             char name[16];
-            std::snprintf(name, sizeof(name), "e_%04d", n);
+            snprintf(name, sizeof(name), "e_%04d", n);
             while (!stop.load(std::memory_order_relaxed)) {
                 // The cached call path: `hot` names an entry of this module, so
                 // after a same-path swap it must still reach that entry.

@@ -3,7 +3,7 @@
 #include "SKL/AMC/Core/Error.h"
 
 #include <algorithm>
-#include <cstring>
+#include <string.h>
 #include <fstream>
 #include <iterator>
 #include <string_view>
@@ -677,7 +677,7 @@ bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std
     module.types.reserve(header.type_count);
     for (uint32_t i = 0; i < header.type_count; ++i) {
         MetadataTypeRecord record;
-        std::memcpy(&record, desc + cursor, sizeof(record));
+        memcpy(&record, desc + cursor, sizeof(record));
         cursor += sizeof(record);
         Type type;
         type.name = name_at(record.name_offset);
@@ -696,7 +696,7 @@ bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std
     module.fields.reserve(header.field_count);
     for (uint32_t i = 0; i < header.field_count; ++i) {
         MetadataFieldRecord record;
-        std::memcpy(&record, desc + cursor, sizeof(record));
+        memcpy(&record, desc + cursor, sizeof(record));
         cursor += sizeof(record);
         Field field;
         field.owner_type = record.owner_type;
@@ -716,7 +716,7 @@ bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std
     module.functions.reserve(header.function_count);
     for (uint32_t i = 0; i < header.function_count; ++i) {
         MetadataFunctionRecord record;
-        std::memcpy(&record, desc + cursor, sizeof(record));
+        memcpy(&record, desc + cursor, sizeof(record));
         cursor += sizeof(record);
         Function function;
         function.owner_type = record.owner_type;
@@ -733,7 +733,7 @@ bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std
     parameters.reserve(header.parameter_count);
     for (uint32_t i = 0; i < header.parameter_count; ++i) {
         MetadataParameterRecord record;
-        std::memcpy(&record, desc + cursor, sizeof(record));
+        memcpy(&record, desc + cursor, sizeof(record));
         cursor += sizeof(record);
         Parameter parameter;
         parameter.name = name_at(record.name_offset);
@@ -751,7 +751,7 @@ bool module_from_region(const uint8_t *data, size_t size, AbiModule &module, std
     module.symbols.reserve(header.symbol_count);
     for (uint32_t i = 0; i < header.symbol_count; ++i) {
         MetadataSymbolRecord record;
-        std::memcpy(&record, desc + cursor, sizeof(record));
+        memcpy(&record, desc + cursor, sizeof(record));
         cursor += sizeof(record);
         Symbol symbol;
         symbol.name = name_at(record.name_offset);
@@ -793,7 +793,7 @@ bool find_extension(const uint8_t *data, [[maybe_unused]] size_t size, const Met
     }
     const uint8_t *base = data + header.desc_offset;
     MetadataExtensionHeader directory{};
-    std::memcpy(&directory, base + known, sizeof(directory));
+    memcpy(&directory, base + known, sizeof(directory));
     if (directory.version != metadata_extension_version) {
         error = "unsupported extension directory version";
         return false;
@@ -812,8 +812,7 @@ bool find_extension(const uint8_t *data, [[maybe_unused]] size_t size, const Met
     std::vector<uint32_t> seen;
     for (uint32_t i = 0; i < directory.count; ++i) {
         MetadataExtensionEntry entry{};
-        std::memcpy(
-            &entry, base + entries_begin + static_cast<uint64_t>(i) * sizeof(MetadataExtensionEntry), sizeof(entry));
+        memcpy(&entry, base + entries_begin + static_cast<uint64_t>(i) * sizeof(MetadataExtensionEntry), sizeof(entry));
         for (const uint32_t previous : seen)
             if (previous == entry.kind) {
                 error = "duplicate extension kind";
@@ -862,7 +861,7 @@ bool read_ownership_contracts(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataOwnershipRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.target_kind > 1 || record.mode > static_cast<uint32_t>(OwnershipMode::copy)) {
             error = "invalid ownership contract record";
             return false;
@@ -909,7 +908,7 @@ bool read_error_contracts(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataErrorRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.status_source > static_cast<uint32_t>(StatusSource::return_field)) {
             error = "invalid error contract record";
             return false;
@@ -957,7 +956,7 @@ bool read_lowering_contracts(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataLoweringRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.type_index >= header.type_count || record.contract_index >= header.type_count) {
             error = "lowering contract type index is out of range";
             return false;
@@ -1004,7 +1003,7 @@ bool read_view_adapters(const uint8_t *data, size_t size, std::vector<MetadataVi
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataViewAdapterRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.source_index >= header.type_count
             || record.target_index >= header.type_count
             || record.data_accessor >= header.function_count
@@ -1045,7 +1044,7 @@ bool read_range_adapters(const uint8_t *data, size_t size, std::vector<MetadataR
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataRangeAdapterRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.source_index >= header.type_count
             || record.size_accessor >= header.function_count
             || record.at_accessor >= header.function_count) {
@@ -1090,7 +1089,7 @@ bool read_interface_contracts(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataInterfaceRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         MetadataInterfaceContract contract;
         contract.id = record.interface_id;
         contract.version = record.version;
@@ -1138,7 +1137,7 @@ bool read_interface_methods(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataInterfaceMethodRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.return_type == Hash128{}) {
             error = "interface method has no return type";
             return false;
@@ -1158,8 +1157,7 @@ bool read_interface_methods(
             }
             for (uint32_t p = 0; p < record.parameter_count; ++p) {
                 MetadataInterfaceParameterRecord param{};
-                std::memcpy(
-                    &param, params + static_cast<size_t>(record.parameter_begin + p) * sizeof(param), sizeof(param));
+                memcpy(&param, params + static_cast<size_t>(record.parameter_begin + p) * sizeof(param), sizeof(param));
                 if (param.type_index >= header.type_count) {
                     error = "interface method parameter type index is out of range";
                     return false;
@@ -1197,7 +1195,7 @@ bool read_interface_implementations(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataInterfaceImplementationRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         if (record.concrete_type == Hash128{}) {
             error = "interface implementation has no concrete type";
             return false;
@@ -1236,7 +1234,7 @@ bool read_method_bindings(
     }
     for (uint32_t i = 0; i < count; ++i) {
         MetadataMethodBindingRecord record{};
-        std::memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+        memcpy(&record, records + static_cast<size_t>(i) * sizeof(record), sizeof(record));
         MetadataMethodBinding binding;
         binding.interface_id = record.interface_id;
         binding.method_signature = record.method_signature;
@@ -1274,7 +1272,7 @@ bool read_target_description(const uint8_t *data, size_t size, TargetDescription
         return false;
     }
     MetadataTargetRecord record{};
-    std::memcpy(&record, records, sizeof(record));
+    memcpy(&record, records, sizeof(record));
     out.arch = record.arch;
     out.os = record.os;
     out.target_abi = record.target_abi;
@@ -1312,7 +1310,7 @@ bool read_layout_encoding(const uint8_t *data, size_t size, uint32_t &version, b
         return false;
     }
     MetadataLayoutEncodingRecord record{};
-    std::memcpy(&record, records, sizeof(record));
+    memcpy(&record, records, sizeof(record));
     if (record.version != canonical_layout_version) {
         error = "unsupported layout encoding version";
         return false;
@@ -1362,7 +1360,7 @@ bool verify_target_abi(
         const uint32_t pointer_bytes = target.pointer_bits / 8;
         for (uint32_t i = 0; i < header.type_count; ++i) {
             MetadataTypeRecord record{};
-            std::memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
             if (record.kind == static_cast<uint32_t>(TypeKind::pointer) && record.size != pointer_bytes) {
                 incompatible = true;
                 out.reasons.push_back("a pointer type is not pointer-sized");
@@ -1430,7 +1428,7 @@ bool verify_abi(const uint8_t *data, size_t size, const TargetExpectation &expec
         types.reserve(header.type_count);
         for (uint32_t i = 0; i < header.type_count; ++i) {
             MetadataTypeRecord record{};
-            std::memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
             types.push_back({record.type_id, record.size});
         }
         const auto size_of = [&](Hash128 id, uint32_t &found) {
@@ -1445,7 +1443,7 @@ bool verify_abi(const uint8_t *data, size_t size, const TargetExpectation &expec
         const uint32_t pointer_bytes = target.pointer_bits != 0 ? target.pointer_bits / 8 : 0;
         for (uint32_t i = 0; i < header.type_count; ++i) {
             MetadataTypeRecord record{};
-            std::memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            memcpy(&record, base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
             if (record.kind != static_cast<uint32_t>(TypeKind::pointer)) continue;
             if (pointer_bytes == 0)
                 unverifiable = true;
@@ -1458,7 +1456,7 @@ bool verify_abi(const uint8_t *data, size_t size, const TargetExpectation &expec
         const uint8_t *field_base = base + static_cast<size_t>(header.type_count) * sizeof(MetadataTypeRecord);
         for (uint32_t i = 0; i < header.field_count; ++i) {
             MetadataFieldRecord record{};
-            std::memcpy(&record, field_base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+            memcpy(&record, field_base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
             uint32_t owner_size = 0, field_size = 0;
             if (!size_of(record.owner_type, owner_size) || !size_of(record.type_id, field_size)) {
                 unverifiable = true;
@@ -1488,7 +1486,7 @@ bool verify_abi(const uint8_t *data, size_t size, const TargetExpectation &expec
             bool incompatible = false, missing = false;
             for (uint32_t i = 0; i < header.function_count; ++i) {
                 MetadataFunctionRecord record{};
-                std::memcpy(&record, fn_base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
+                memcpy(&record, fn_base + static_cast<size_t>(i) * sizeof(record), sizeof(record));
                 if (record.calling_convention == 0)
                     missing = true;
                 else if (expected.calling_convention != 0 && record.calling_convention != expected.calling_convention)

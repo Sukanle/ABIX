@@ -1,9 +1,9 @@
 // C++ interop consumer for the same native library used by the Rust and Zig
 // consumers. It includes the public C ABI and the AMC-generated C++ projection,
 // so the generated static assertions run before main().
-#include <cassert>
-#include <cstdint>
-#include <cstdio>
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #include "demo_api.hpp"
 #include "amc_generated.hpp"
@@ -31,6 +31,6 @@ int main() {
     assert(numbers.data[0] == 1);
     assert(demo_sum(numbers) == 15);
 
-    std::printf("cpp interop ok\n");
+    printf("cpp interop ok\n");
     return 0;
 }

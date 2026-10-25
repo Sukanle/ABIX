@@ -2469,7 +2469,7 @@ int main() {
         drift_header = os.path.join(check_dir, "abi_check_drift.hpp")
         with open(drift_header, "w", encoding="utf-8") as handle:
             handle.write(
-                "#pragma once\n#include <cstdint>\n"
+                "#pragma once\n#include <stdint.h>\n"
                 "struct AmcTestFoo { int32_t x; double y; int32_t z; };\n"
                 "struct AmcTestBar { int32_t a; double b; int32_t c; };\n"
                 "enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n"
@@ -2502,7 +2502,7 @@ int main() {
         width_header = os.path.join(check_dir, "abi_check_width.hpp")
         with open(width_header, "w", encoding="utf-8") as handle:
             handle.write(
-                "#pragma once\n#include <cstdint>\n"
+                "#pragma once\n#include <stdint.h>\n"
                 "struct AmcTestFoo { int64_t x; double y; };\n"
                 "struct AmcTestBar { int32_t a; double b; int32_t c; };\n"
                 "enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n"

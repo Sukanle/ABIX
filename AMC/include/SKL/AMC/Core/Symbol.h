@@ -1,7 +1,7 @@
 #ifndef AMC_SYMBOL_STORE_H
 #define AMC_SYMBOL_STORE_H
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 #include <vector>

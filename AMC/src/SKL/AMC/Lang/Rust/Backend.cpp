@@ -5,7 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
+#include <stdint.h>
 #include <iterator>
 #include <string>
 #include <unordered_map>

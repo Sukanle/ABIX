@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include <atomic>
-#include <cstring>
+#include <string.h>
 #include <functional>
 #include <stdio.h>
 
@@ -228,10 +228,10 @@ BENCHMARK(BM_ABIX_HandleRcuBracket);
 static char g_strcmp_name[16];
 
 static void BM_Strcmp_ShortName(benchmark::State &state) {
-    std::strcpy(g_strcmp_name, "add");
+    strcpy(g_strcmp_name, "add");
     const char *entry_name = "add";
     for (auto _ : state) {
-        int r = std::strcmp(entry_name, g_strcmp_name);
+        int r = strcmp(entry_name, g_strcmp_name);
         benchmark::DoNotOptimize(r);
     }
 }

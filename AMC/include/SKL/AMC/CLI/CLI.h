@@ -1,7 +1,7 @@
 #ifndef AMC_CLI_H
 #define AMC_CLI_H
 
-#include <cstdint>
+#include <stdint.h>
 #include <filesystem>
 #include <string>
 #include <vector>

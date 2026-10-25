@@ -1,8 +1,8 @@
 #ifndef AMC_ELF_H
 #define AMC_ELF_H
 
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 #include <vector>

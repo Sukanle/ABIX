@@ -40,7 +40,7 @@ struct SyntheticTable {
         names.reserve(count);
         for (uint32_t i = 0; i < count; ++i) {
             char buf[40];
-            std::snprintf(buf, sizeof(buf), "%s_%04u", prefix, i);
+            snprintf(buf, sizeof(buf), "%s_%04u", prefix, i);
             names.emplace_back(buf);
         }
         entries.reserve(count);

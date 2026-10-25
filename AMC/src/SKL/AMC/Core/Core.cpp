@@ -1,7 +1,7 @@
 #include "SKL/AMC/Core/Core.h"
 
 #include <algorithm>
-#include <cstring>
+#include <string.h>
 #include <exception>
 #include <fstream>
 #include <limits>
@@ -1932,7 +1932,7 @@ bool read_abix(const std::string &path, AbiModule &module, std::string &error) {
         return false;
     }
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)), {});
-    if (bytes.size() < kHeaderSize || std::memcmp(bytes.data(), "ABIX", 4) != 0) {
+    if (bytes.size() < kHeaderSize || memcmp(bytes.data(), "ABIX", 4) != 0) {
         error = "invalid ABIX header";
         return false;
     }

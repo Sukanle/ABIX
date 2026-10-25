@@ -3,7 +3,7 @@
 
 #include "SKL/AMC/Core/Core.h"
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <vector>
 

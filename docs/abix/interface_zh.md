@@ -33,7 +33,7 @@ C++ 虚调用并不只是从对象取出一个函数指针：它可能涉及多�
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -60,7 +60,7 @@ int main() {
     Rectangle rectangle{2, 6};
     Triangle triangle{4, 5};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
+    for (const Shape *shape : shapes) printf("area=%d\n", total(*shape));
     return 0;
 }
 ```
@@ -69,7 +69,7 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 #include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -150,7 +150,7 @@ int main() {
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         if (!shape.valid()) return 1;
-        std::printf("area=%d\n", shape.area());
+        printf("area=%d\n", shape.area());
     }
     return 0;
 }
@@ -350,7 +350,7 @@ SharedShape second(table, &b);  // 24 字节，同一张表
 三步：**注册**（把「某具体类型实现某接口」写入注册表）→ **解析**（一次性查表并缓存适配器入口） → **调用**（普通原生间接调用）。下面的完整程序不需要动态库。
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 #include "SKL/ABIX/Interface/Interface.h"
 
@@ -382,7 +382,7 @@ int main() {
     if (ref.resolve(registry, &v, vec2_id, ivec, 1) != InterfaceStatus::ok) return 1;
 
     const auto axis = ref.method<AxisFn>(0);
-    std::printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
+    printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
 }
 ```
 
@@ -531,7 +531,7 @@ Provider 侧：三个普通实现类，每个方法一个适配器（首参是�
 ```cpp
 // shapes.cpp
 // 构建：c++ -std=c++17 -I<abix_root> shapes.cpp -o shapes
-#include <cstdio>
+#include <stdio.h>
 
 #include "shape.h"
 
@@ -635,7 +635,7 @@ int main() {
     for (const auto &instance : instances) {
         demo::Shape shape;
         if (shape.bind(registry, instance.object, instance.type) != InterfaceStatus::ok) return 1;
-        std::printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
+        printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
     }
     return 0;
 }
@@ -711,7 +711,7 @@ Consumer 加载、发现、绑定一次并调用，最后卸载：
 ```cpp
 // canvas_host.cpp
 // 构建：c++ -std=c++17 -I<abix_root> canvas_host.cpp -ldl -o canvas_host
-#include <cstdio>
+#include <stdio.h>
 
 #include "SKL/ABIX/DLL/Object.h"
 #include "SKL/ABIX/Interface/Interface.h"
@@ -740,7 +740,7 @@ int main() {
         auto bound = bind_interface(*binding, object);   // 取模块租约
         if (!bound.valid()) return 1;
         const auto width = bound.ref.method<canvas::WidthFn>(0);
-        std::printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
+        printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
     }   // bound 析构：释放租约
 
     registry.unregister_module(control.id);   // 租约已释放，完成卸载
@@ -796,7 +796,7 @@ skl::abix::owner::handle owner_counter_create(int base) {
 Consumer 收养句柄并持有租约，离开作用域时恰好销毁一次（承接示例 2 的 `lib` / `control` / `binding`）：
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 #include "SKL/ABIX/Interface/Owner.h"
 
@@ -815,7 +815,7 @@ if (!skl::abix::owner::valid(raw)) return 1;
 
     auto bound = bind_interface(*binding, object.object());
     const auto add = bound.ref.method<AddFn>(0);
-    std::printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
+    printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
 }   // object 析构：调用创建方 destroy，然后归还租约
 
 registry.unregister_module(control.id);   // 现在可以卸载
@@ -1269,7 +1269,7 @@ amc-dump module.abix                       # 完整 section dump
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -1295,7 +1295,7 @@ int main() {
     Rectangle rectangle{4, 6};
     Triangle triangle{6, 4};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", shape->area());
+    for (const Shape *shape : shapes) printf("area=%d\n", shape->area());
     return 0;
 }
 ```
@@ -1304,7 +1304,7 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 #include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
@@ -1365,7 +1365,7 @@ int main() {
         InterfaceRef<2> ref;
         if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
         const auto area = ref.method<AreaFn>(0);
-        std::printf("area=%d\n", area(ref.object()));
+        printf("area=%d\n", area(ref.object()));
     }
     return 0;
 }
@@ -1404,7 +1404,7 @@ int main() {
     const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
-        std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+        printf("area=%d\n", shape.valid() ? shape.area() : -1);
     }
     return 0;
 }

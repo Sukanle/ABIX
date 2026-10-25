@@ -13,7 +13,7 @@
 // ============================================================
 #include <benchmark/benchmark.h>
 
-#include <cstring>
+#include <string.h>
 #include <vector>
 
 #include "SKL/ABIX/ABIX.h"

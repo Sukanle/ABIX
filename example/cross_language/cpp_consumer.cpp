@@ -3,8 +3,8 @@
 // The public C ABI comes from native/shapes.hpp. The generated projection adds
 // compile-time layout assertions and ABIX metadata; including it here proves
 // that the same artifact also describes the C++ side.
-#include <cassert>
-#include <cstdio>
+#include <assert.h>
+#include <stdio.h>
 
 #include "native/shapes.hpp"
 #include "gen/amc_generated.hpp"
@@ -33,6 +33,6 @@ int main() {
     assert(quotient == 3.0);
     assert(shape_div(1.0, 0.0, &quotient) != 0);
 
-    std::printf("cpp example ok\n");
+    printf("cpp example ok\n");
     return 0;
 }

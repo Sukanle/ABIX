@@ -1,7 +1,7 @@
 #include "SKL/AMC/CLI/CLI.h"
 
-#include <cstdint>
-#include <cstdlib>
+#include <stdint.h>
+#include <stdlib.h>
 #include <system_error>
 
 #include <fmt/format.h>

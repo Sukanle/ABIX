@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 #include "SKL/ABIX/ABIX.h"
-#include <cstdio>
-#include <cstring>
+
+#include <stdio.h>
+#include <string.h>
 
 namespace {
 
@@ -24,9 +25,9 @@ int s_last_level = -1;
 int s_last_len = 0;
 
 void set_msg(const char *msg) {
-    std::snprintf(s_last_msg, sizeof(s_last_msg), "%s", msg ? msg : "");
+    snprintf(s_last_msg, sizeof(s_last_msg), "%s", msg ? msg : "");
     s_last_msg[sizeof(s_last_msg) - 1] = '\0';
-    s_last_len = msg ? static_cast<int>(std::strlen(msg)) : 0;
+    s_last_len = msg ? static_cast<int>(strlen(msg)) : 0;
 }
 
 }   // namespace

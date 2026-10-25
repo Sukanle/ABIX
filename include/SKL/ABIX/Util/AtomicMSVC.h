@@ -25,7 +25,7 @@
 // cheaper code path; the names below express intent, not a performance claim.
 // The interlocked operations also require the object to be naturally aligned.
 
-#include <cstddef>
+#include <stddef.h>
 #include <intrin.h>
 #include <type_traits>
 

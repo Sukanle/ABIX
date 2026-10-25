@@ -1,7 +1,7 @@
 #ifndef AMC_ERROR_H
 #define AMC_ERROR_H
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 

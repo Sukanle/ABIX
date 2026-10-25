@@ -24,7 +24,7 @@ const char *error_category_name(ErrorCategory category) {
 std::string error_code(ErrorCategory category) {
     std::string name = error_category_name(category);
     for (char &c : name)
-        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
     return "AMC-" + name;
 }
 

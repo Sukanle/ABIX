@@ -22,7 +22,7 @@
 // library call, so the memory-order names document intent rather than a
 // guaranteed lock-free path (see skl::abix::util::is_always_lock_free).
 
-#include <cstddef>
+#include <stddef.h>
 
 namespace skl::abix::util::atomic_detail {
 

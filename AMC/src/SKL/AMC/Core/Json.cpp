@@ -1,6 +1,6 @@
 #include "SKL/AMC/Core/Json.h"
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 
 namespace amc {

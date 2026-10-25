@@ -58,10 +58,10 @@ def main() -> int:
         with open(os.path.join(consumer, "main.cpp"), "w", encoding="utf-8") as handle:
             handle.write(
                 "#include <SKL/ABIX/ABIX.h>\n"
-                "#include <cstdio>\n"
+                "#include <stdio.h>\n"
                 "int main() {\n"
                 "    const auto id = skl::abix::model::canonical_type_id(\"prim:i32\");\n"
-                "    std::printf(\"package ok %llu\\n\", static_cast<unsigned long long>(id.lo));\n"
+                "    printf(\"package ok %llu\\n\", static_cast<unsigned long long>(id.lo));\n"
                 "    return 0;\n"
                 "}\n"
             )

@@ -1,5 +1,5 @@
 #include "test_common.hpp"
-#include <cstring>
+#include <string.h>
 
 TEST_CASE("7.version_evolution", "[version][prompt7]") {
     log_info(
@@ -13,7 +13,7 @@ TEST_CASE("7.version_evolution", "[version][prompt7]") {
     v1("hello v1");
     auto lastmsg = skl::abix::dll::Function<const char *()>(lib, "get_last_msg");
     auto level1 = skl::abix::dll::Function<int()>(lib, "get_last_level");
-    REQUIRE(std::strcmp(lastmsg(), "hello v1") == 0);
+    REQUIRE(strcmp(lastmsg(), "hello v1") == 0);
     REQUIRE(level1() == 0);
     log_info("v1.0 client called log(\"hello v1\"): last_msg=%s, level=%d (default mapping)", lastmsg(), level1());
 
@@ -21,7 +21,7 @@ TEST_CASE("7.version_evolution", "[version][prompt7]") {
     REQUIRE(v2.valid());
     v2("hello v2", 7);
     REQUIRE(level1() == 7);
-    REQUIRE(std::strcmp(lastmsg(), "hello v2") == 0);
+    REQUIRE(strcmp(lastmsg(), "hello v2") == 0);
     log_info(
         "v2.0 client called log(\"hello v2\", 7): last_msg=%s, level=%d (full functionality)", lastmsg(), level1());
 }

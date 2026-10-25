@@ -2,7 +2,7 @@
 #include "SKL/AMC/Core/ELF.h"
 
 #include <cctype>
-#include <cstdlib>
+#include <stdlib.h>
 #include <exception>
 #include <filesystem>
 #include <fstream>

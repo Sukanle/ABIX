@@ -4,8 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
-#include <cstdlib>
+#include <stdint.h>
+#include <stdlib.h>
 #include <filesystem>
 #include <fstream>
 #include <string>

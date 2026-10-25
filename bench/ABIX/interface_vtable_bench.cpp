@@ -21,7 +21,7 @@
 // ============================================================
 #include <benchmark/benchmark.h>
 
-#include <cstdint>
+#include <stdint.h>
 #include <typeinfo>
 
 #include "SKL/ABIX/Interface/Interface.h"

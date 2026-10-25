@@ -2,7 +2,7 @@
 
 namespace amc::util {
 
-std::string arch_name(std::uint32_t value) {
+std::string arch_name(uint32_t value) {
     switch (value) {
         case 0:  return "x86_64";
         case 1:  return "aarch64";
@@ -11,7 +11,7 @@ std::string arch_name(std::uint32_t value) {
     }
 }
 
-std::string os_name(std::uint32_t value) {
+std::string os_name(uint32_t value) {
     switch (value) {
         case 0:  return "linux";
         case 1:  return "windows";
@@ -20,7 +20,7 @@ std::string os_name(std::uint32_t value) {
     }
 }
 
-std::string compiler_name(std::uint32_t value) {
+std::string compiler_name(uint32_t value) {
     switch (value) {
         case 0:  return "gcc";
         case 1:  return "clang";
@@ -29,7 +29,7 @@ std::string compiler_name(std::uint32_t value) {
     }
 }
 
-std::string target_calling_convention_name(std::uint32_t value) {
+std::string target_calling_convention_name(uint32_t value) {
     switch (value) {
         case 0:  return "sysv_abi";
         case 1:  return "ms_abi";
@@ -38,7 +38,7 @@ std::string target_calling_convention_name(std::uint32_t value) {
     }
 }
 
-std::string function_calling_convention_name(std::uint32_t value) {
+std::string function_calling_convention_name(uint32_t value) {
     switch (value) {
         case 0:  return "unspecified";
         case 1:  return "c";
@@ -50,7 +50,7 @@ std::string function_calling_convention_name(std::uint32_t value) {
     }
 }
 
-const char *primitive_kind_name(std::uint32_t kind) {
+const char *primitive_kind_name(uint32_t kind) {
     switch (static_cast<amc::PrimitiveAbiKind>(kind & 0xffu)) {
         case amc::PrimitiveAbiKind::none:           return "none";
         case amc::PrimitiveAbiKind::void_:          return "void";
@@ -71,7 +71,7 @@ const char *primitive_kind_name(std::uint32_t kind) {
     return "unknown";
 }
 
-const char *float_format_name(std::uint32_t format) {
+const char *float_format_name(uint32_t format) {
     switch (static_cast<amc::FloatFormat>((format & amc::primitive_format_mask) >> amc::primitive_format_shift)) {
         case amc::FloatFormat::none:              return "none";
         case amc::FloatFormat::ieee16:            return "ieee16";

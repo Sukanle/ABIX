@@ -15,7 +15,7 @@ applyTo: "**/*.{cpp,h,hpp,cc,cxx}"
   surrounding subsystem's error model.
 - Avoid new third-party dependencies unless justified in the change
   description.
-- Fixed-width integers (`stdint.h` / `cstdint`) for anything that crosses an ABI
+- Fixed-width integers (`stdint.h`) for anything that crosses an ABI
   or serialization boundary.
 - Preserve the native fast path: do not add per-call work that could be done at
   binding time or generated at build time.

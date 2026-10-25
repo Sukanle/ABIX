@@ -1,6 +1,6 @@
 #include "cmdly_c.h"
 
-#include <cstring>
+#include <string.h>
 #include <deque>
 #include <memory>
 #include <string>
@@ -129,7 +129,7 @@ extern "C" int32_t cmdly_read_line(cmdly_terminal *terminal, const char *prompt,
     const std::string line = h->terminal->readLine(prompt != nullptr ? prompt : "");
     h->last_output = h->io->output();
     if (line.size() + 1 > capacity) return -1;
-    std::memcpy(out, line.data(), line.size());
+    memcpy(out, line.data(), line.size());
     out[line.size()] = '\0';
     return static_cast<int32_t>(line.size());
 }

@@ -21,9 +21,10 @@
 // ============================================================
 #include <benchmark/benchmark.h>
 
+#define NOMINMAX
 #include <algorithm>
-#include <cmath>
-#include <cstring>
+#include <math.h>
+#include <string.h>
 #include <random>
 #include <string>
 #include <vector>

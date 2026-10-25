@@ -5,7 +5,7 @@
 
 #include "SKL/ABIX/Metadata/Descriptor.h"
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <vector>
 

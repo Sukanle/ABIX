@@ -83,7 +83,7 @@ TEST_CASE("error.error_abi_prototype_layout_and_mapping", "[error][abi]") {
 
     const ErrorCode call_error = to_error_code(skl::abix::dll::CallError::not_found);
     CHECK(call_error.domain == domain_call_error);
-    CHECK(call_error.code == static_cast<std::uint32_t>(skl::abix::dll::CallError::not_found));
+    CHECK(call_error.code == static_cast<uint32_t>(skl::abix::dll::CallError::not_found));
     CHECK(!is_success(call_error));
 
     const ErrorCode interface_ok = to_error_code(skl::abix::poly::InterfaceStatus::ok);
@@ -93,7 +93,7 @@ TEST_CASE("error.error_abi_prototype_layout_and_mapping", "[error][abi]") {
 
     const ErrorCode interface_error = to_error_code(skl::abix::poly::InterfaceStatus::signature_mismatch);
     CHECK(interface_error.domain == domain_interface_status);
-    CHECK(interface_error.code == static_cast<std::uint32_t>(skl::abix::poly::InterfaceStatus::signature_mismatch));
+    CHECK(interface_error.code == static_cast<uint32_t>(skl::abix::poly::InterfaceStatus::signature_mismatch));
     CHECK(!is_success(interface_error));
 
     const ErrorCode unknown_call = to_error_code(static_cast<skl::abix::dll::CallError>(255));

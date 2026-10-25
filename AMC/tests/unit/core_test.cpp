@@ -18,8 +18,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -27,10 +25,14 @@
 #include <tuple>
 #include <vector>
 
+#define NOMINMAX
+
 #if !defined(_WIN32)
 #  include <sys/wait.h>
 #  include <unistd.h>
 #endif
+
+#include <fmt/base.h>
 
 namespace {
 
@@ -38,7 +40,7 @@ int failures = 0;
 
 void check(bool condition, const char *message) {
     if (!condition) {
-        std::fprintf(stderr, "  FAIL: %s\n", message);
+        fmt::print(stderr, "  FAIL: {}\n", message);
         ++failures;
     }
 }
@@ -66,7 +68,7 @@ bool keep_artifacts() {
 
 void cleanup_dir(const std::filesystem::path &root) {
     if (keep_artifacts()) {
-        std::printf("  [KEEP] retained artifacts: %s\n", root.string().c_str());
+        fmt::print("  [KEEP] retained artifacts: {}\n", root.string());
         return;
     }
     std::error_code ec;
@@ -1935,9 +1937,9 @@ int main() {
     }
 
     if (failures != 0) {
-        std::fprintf(stderr, "amc-core-test: %d failure(s)\n", failures);
+        fmt::print(stderr, "amc-core-test: %d failure(s)\n", failures);
         return 1;
     }
-    std::printf("amc-core-test: all checks passed\n");
+    fmt::print("amc-core-test: all checks passed\n");
     return 0;
 }

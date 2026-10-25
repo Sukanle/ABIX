@@ -1,5 +1,5 @@
 #include <array>
-#include <cstdint>
+#include <stdint.h>
 
 #include "SKL/ABIX/Model/Map.h"
 #include "amc_map.hpp"

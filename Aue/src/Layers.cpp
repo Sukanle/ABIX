@@ -1,6 +1,6 @@
 #include "Aue/Aue.h"
 
-#include <cstring>
+#include <string.h>
 
 namespace aue {
 namespace {
@@ -11,7 +11,7 @@ int meta_index(lua_State *state) {
     const char *key = lua_tostring(state, 2);
     if (contract != nullptr && key != nullptr) {
         for (size_t i = 0; i < contract->entry_count; ++i) {
-            if (std::strcmp(contract->entries[i].name, key) != 0) continue;
+            if (strcmp(contract->entries[i].name, key) != 0) continue;
             lua_pushcfunction(state, contract->entries[i].function);
             // Memoize: table[key] = function, so the metamethod runs once.
             lua_pushvalue(state, 2);

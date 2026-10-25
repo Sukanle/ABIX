@@ -584,7 +584,7 @@ int backend(const char *input, const char *output) {
             "// Bit-fields are skipped because `offsetof` and `sizeof` are not defined for them.\n"
             "// A mismatch indicates that the native layout may have drifted from the ABIX contract.\n"
             "#include \"amc_generated.hpp\"\n"
-            "#include <cstddef>\n\n");
+            "#include <stddef.h>\n\n");
         for (const auto &type : m.types) {
             if (!is_cpp_qualified_name(type.name)) continue;
             const std::string id = fmt::format("{}_ABIX", cpp_name(type.name));
@@ -646,7 +646,7 @@ static std::string brew_llvm_prefix() {
 // automatically know its resource directory or the active SDK sysroot.
 // This function fills those gaps.
 //
-// Include order (required by libc++ <cstddef>):
+// Include order (required by libc++ <stddef.h>):
 //   1. libc++ headers  (Brew LLVM: -cxx-isystem via -nostdinc++)
 //   2. Clang built-ins (via -resource-dir + -isystem)
 //   3. System headers  (via -isysroot)
@@ -708,7 +708,7 @@ void append_macos_sysroot(std::vector<std::string> &flags) {
     // IMPORTANT: We use `-isystem` (NOT `-cxx-isystem`) for brew libc++.
     // In Clang's header search, `-isystem` paths are searched *before*
     // `-cxx-isystem` paths.  If we used `-cxx-isystem`, the resource-dir's
-    // `-isystem` path would win over libc++, and `<cstddef>` would fail
+    // `-isystem` path would win over libc++, and `<stddef.h>` would fail
     // because it finds Clang's `<stddef.h>` instead of libc++'s wrapper.
     // ---------------------------------------------------------------------
     {

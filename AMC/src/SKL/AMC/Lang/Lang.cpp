@@ -1,7 +1,7 @@
 #include "SKL/AMC/Lang/Lang.h"
 
 #include <condition_variable>
-#include <cstdio>
+#include <stdio.h>
 #include <deque>
 #include <iostream>
 #include <memory>

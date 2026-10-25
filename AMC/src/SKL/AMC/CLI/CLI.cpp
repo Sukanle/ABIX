@@ -1,7 +1,7 @@
 #include "SKL/AMC/CLI/CLI.h"
 
 #include <chrono>
-#include <cstdlib>
+#include <stdlib.h>
 #include <exception>
 #include <string>
 

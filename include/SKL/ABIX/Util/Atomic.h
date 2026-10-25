@@ -29,8 +29,8 @@
 // Backend selection is by compiler capability, not by the target OS: clang-cl
 // defines both `__clang__` and `_MSC_VER` and uses the `__atomic` backend.
 
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 #include <type_traits>
 
 #if defined(__clang__) || defined(__GNUC__)

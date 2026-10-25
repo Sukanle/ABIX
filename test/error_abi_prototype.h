@@ -9,7 +9,7 @@
 #include "SKL/ABIX/DLL/Object.h"
 #include "SKL/ABIX/Interface/Contract.h"
 
-#include <cstdint>
+#include <stdint.h>
 #include <type_traits>
 
 namespace skl::abix::error_abi::prototype {
@@ -18,16 +18,16 @@ using dll::CallError;
 using poly::InterfaceStatus;
 
 struct ErrorCode final {
-    std::uint64_t domain;
-    std::uint32_t code;
-    std::uint32_t flags;
+    uint64_t domain;
+    uint32_t code;
+    uint32_t flags;
 };
 
-inline constexpr std::uint64_t domain_call_error = 1;
-inline constexpr std::uint64_t domain_interface_status = 2;
+inline constexpr uint64_t domain_call_error = 1;
+inline constexpr uint64_t domain_interface_status = 2;
 
-inline constexpr std::uint32_t code_unknown = UINT32_MAX;
-inline constexpr std::uint32_t flag_unknown = 1u << 0;
+inline constexpr uint32_t code_unknown = UINT32_MAX;
+inline constexpr uint32_t flag_unknown = 1u << 0;
 
 static_assert(sizeof(ErrorCode) == 16, "ErrorCode is a 16-byte fixed-layout record");
 static_assert(alignof(ErrorCode) == 8, "ErrorCode is 8-byte aligned");
@@ -67,23 +67,23 @@ constexpr bool known(InterfaceStatus status) noexcept {
     return false;
 }
 
-constexpr ErrorCode make(std::uint64_t domain, std::uint32_t code, bool is_known) noexcept {
+constexpr ErrorCode make(uint64_t domain, uint32_t code, bool is_known) noexcept {
     return ErrorCode{domain, code, is_known ? 0u : flag_unknown};
 }
 }   // namespace detail
 
 constexpr ErrorCode to_error_code(CallError error) noexcept {
-    return detail::make(domain_call_error, static_cast<std::uint32_t>(error), detail::known(error));
+    return detail::make(domain_call_error, static_cast<uint32_t>(error), detail::known(error));
 }
 
 constexpr ErrorCode to_error_code(InterfaceStatus status) noexcept {
-    return detail::make(domain_interface_status, static_cast<std::uint32_t>(status), detail::known(status));
+    return detail::make(domain_interface_status, static_cast<uint32_t>(status), detail::known(status));
 }
 
 constexpr bool is_success(ErrorCode code) noexcept {
     if ((code.flags & flag_unknown) != 0) return false;
-    if (code.domain == domain_call_error) return code.code == static_cast<std::uint32_t>(CallError::none);
-    if (code.domain == domain_interface_status) return code.code == static_cast<std::uint32_t>(InterfaceStatus::ok);
+    if (code.domain == domain_call_error) return code.code == static_cast<uint32_t>(CallError::none);
+    if (code.domain == domain_interface_status) return code.code == static_cast<uint32_t>(InterfaceStatus::ok);
     return false;
 }
 

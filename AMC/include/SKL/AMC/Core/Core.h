@@ -1,7 +1,7 @@
 #ifndef AMC_CORE_H
 #define AMC_CORE_H
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 #include <vector>

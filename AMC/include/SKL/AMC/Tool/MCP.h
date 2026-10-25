@@ -15,7 +15,7 @@
 #include "SKL/AMC/Util/Hex.h"
 #include "SKL/AMC/Util/Names.h"
 
-#include <cstdio>
+#include <stdio.h>
 #include <iostream>
 #include <string>
 #include <vector>
