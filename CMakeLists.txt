@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
-project(AbiCrossDllTests VERSION 0.2.2 LANGUAGES C CXX)
+project(AbiCrossDllTests VERSION 0.2.3 LANGUAGES C CXX)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(ABIX_IS_TOP_LEVEL ON)
+else()
+    set(ABIX_IS_TOP_LEVEL OFF)
+endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -45,20 +51,55 @@ endif()
 
 message(STATUS "Target long double: ${ABIX_LONG_DOUBLE_FORMAT} (LDBL_MANT_DIG=${ABIX_LDBL_MANT_DIG})")
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+if(ABIX_IS_TOP_LEVEL)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
 
-option(BUILD_TESTING "Build tests" ON)
-option(BUILD_BENCHMARKS "Build benchmarks" ON)
+if(ABIX_IS_TOP_LEVEL)
+    set(_abix_default_tests ON)
+    set(_abix_default_benchmarks ON)
+    set(_abix_default_amc ON)
+    set(_abix_default_dll_variants ON)
+    set(_abix_default_bundled_mics ON)
+else()
+    set(_abix_default_tests OFF)
+    set(_abix_default_benchmarks OFF)
+    set(_abix_default_amc OFF)
+    set(_abix_default_dll_variants OFF)
+    set(_abix_default_bundled_mics OFF)
+endif()
+
+option(BUILD_TESTING "Build tests" ${_abix_default_tests})
+option(BUILD_BENCHMARKS "Build benchmarks" ${_abix_default_benchmarks})
 option(SKL_ABIX_DEVELOPMENT "Enable development-only benchmarks (internal diagnostics)" OFF)
 option(SKL_ABIX_RCU_ENABLE_STATS "Collect RCU advancement diagnostics (advance contention/timeout counters)" OFF)
 option(SKL_ABIX_BUILD_DLL_VARIANTS
-       "Build different DLL variants for different toolchains to simulate cross-compiler behavior" ON)
-option(AMC_BUILD "Build the AMC C++ frontend/backend tools" ON)
+       "Build different DLL variants for different toolchains to simulate cross-compiler behavior"
+       ${_abix_default_dll_variants})
+option(AMC_BUILD "Build the AMC C++ frontend/backend tools" ${_abix_default_amc})
+option(ABIX_BUILD_RUNTIME_ONLY
+       "Build and install only the header-only ABIX runtime; skip AMC, tests, benchmarks and DLLs" OFF)
+option(ABIX_INSTALL "Generate ABIX install rules" ${ABIX_IS_TOP_LEVEL})
+option(ABIX_INSTALL_BUNDLED_MICS
+       "Install the bundled MICS package with ABIX" ${_abix_default_bundled_mics})
 option(SKL_ABIX_KEEP_TEST_ARTIFACTS
        "Keep the test suites' temporary artifacts on disk for inspection (sets KEEP_ARTIFACTS=1)" OFF)
+
+if(ABIX_BUILD_RUNTIME_ONLY)
+    set(AMC_BUILD OFF)
+    set(BUILD_TESTING OFF)
+    set(BUILD_BENCHMARKS OFF)
+    set(SKL_ABIX_BUILD_DLL_VARIANTS OFF)
+endif()
+
+unset(_abix_default_tests)
+unset(_abix_default_benchmarks)
+unset(_abix_default_amc)
+unset(_abix_default_dll_variants)
+unset(_abix_default_bundled_mics)
 
 if(DEFINED SKL_ABIX_RCU_EPOCH_BATCH)
     add_definitions(-DSKL_ABIX_RCU_EPOCH_BATCH=${SKL_ABIX_RCU_EPOCH_BATCH})
@@ -96,44 +137,46 @@ if(SKL_ABIX_DEVELOPMENT)
     add_definitions(-DSKL_ABIX_DEVELOPMENT)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_BUILD_TYPE Release)
-else()
-    set(CMAKE_BUILD_TYPE Debug)
-    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-    if(NOT WIN32)
-        set(SANITIZER
-            "none"
-            CACHE STRING "Choose sanitizer to enable (Debug build, not supported on Windows): asan, tsan or none")
-        set_property(CACHE SANITIZER PROPERTY STRINGS "none" "asan" "tsan")
-        if(SANITIZER STREQUAL "asan")
-            add_compile_options(-fsanitize=address,undefined)
-            add_link_options(-fsanitize=address,undefined)
-        elseif(SANITIZER STREQUAL "tsan")
-            add_compile_options(-fsanitize=thread,undefined)
-            add_link_options(-fsanitize=thread,undefined)
-        elseif(SANITIZER STREQUAL "none")
-            add_compile_options(-fno-sanitize=address,thread)
-        else()
-            message(FATAL_ERROR "Unknown sanitizer: ${SANITIZER}")
-        endif()
-    endif()
-endif()
-
 set(SKL_ABIX_PROJ_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(SKL_ABIX_INC_DIR ${SKL_ABIX_PROJ_DIR}/include)
 
-if(MSVC)
-    add_compile_options(/utf-8)
-    add_compile_options(/permissive-)
-    add_definitions(-DCRT_SECURE_NO_WARNINGS -DCRT_NONSTDC_NO_WARNINGS)
-    add_compile_options(/W4)
-else()
-    add_compile_options(-Wall -Wextra)
-    # MinGW GCC needs this so inline functions exported with dllexport are still emitted. It is a GCC-only flag
-    # (Clang rejects it), so restrict it to GNU on Windows.
-    if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        add_compile_options(-fno-keep-inline-dllexport)
+if(ABIX_IS_TOP_LEVEL)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(CMAKE_BUILD_TYPE Release)
+    else()
+        set(CMAKE_BUILD_TYPE Debug)
+        set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
+        if(NOT WIN32)
+            set(SANITIZER
+                "none"
+                CACHE STRING "Choose sanitizer to enable (Debug build, not supported on Windows): asan, tsan or none")
+            set_property(CACHE SANITIZER PROPERTY STRINGS "none" "asan" "tsan")
+            if(SANITIZER STREQUAL "asan")
+                add_compile_options(-fsanitize=address,undefined)
+                add_link_options(-fsanitize=address,undefined)
+            elseif(SANITIZER STREQUAL "tsan")
+                add_compile_options(-fsanitize=thread,undefined)
+                add_link_options(-fsanitize=thread,undefined)
+            elseif(SANITIZER STREQUAL "none")
+                add_compile_options(-fno-sanitize=address,thread)
+            else()
+                message(FATAL_ERROR "Unknown sanitizer: ${SANITIZER}")
+            endif()
+        endif()
+    endif()
+
+    if(MSVC)
+        add_compile_options(/utf-8)
+        add_compile_options(/permissive-)
+        add_definitions(-DCRT_SECURE_NO_WARNINGS -DCRT_NONSTDC_NO_WARNINGS)
+        add_compile_options(/W4)
+    else()
+        add_compile_options(-Wall -Wextra)
+        # MinGW GCC needs this so inline functions exported with dllexport are still emitted. It is a GCC-only flag
+        # (Clang rejects it), so restrict it to GNU on Windows.
+        if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            add_compile_options(-fno-keep-inline-dllexport)
+        endif()
     endif()
 endif()
 
@@ -148,12 +191,12 @@ include(cmake/AbixDependencies.cmake)
 # Import MICS's own CMake target instead of hardcoding its include directories
 # in every subproject. The target also carries HLMD, which MICS.h includes
 # directly.
-option(ABIX_INSTALL_BUNDLED_MICS "Install the bundled MICS package with ABIX" ON)
 if(NOT TARGET MICS::MICS)
-    if(ABIX_INSTALL_BUNDLED_MICS)
-        # ABIXTargets references MICS::MICS, so the bundled dependency must be
-        # installable too; otherwise find_package(ABIX) cannot resolve it.
-        set(MICS_INSTALL ON CACHE BOOL "Install MICS's CMake package" FORCE)
+    if(ABIX_INSTALL AND ABIX_INSTALL_BUNDLED_MICS AND NOT DEFINED MICS_INSTALL)
+        # ABIXTargets references MICS::MICS, so an installable ABIX package must
+        # carry the bundled MICS package too. Do not force a parent project's
+        # MICS_INSTALL choice.
+        set(MICS_INSTALL ON CACHE BOOL "Install MICS's CMake package")
     endif()
     add_subdirectory(${SKL_ABIX_PROJ_DIR}/MICS ${CMAKE_CURRENT_BINARY_DIR}/MICS)
 endif()
@@ -162,13 +205,32 @@ include(CTest)
 if(BUILD_TESTING)
     enable_testing()
 endif()
-if(ABIX_Catch2_FOUND)
+if(BUILD_TESTING AND ABIX_Catch2_FOUND)
     include(Catch)
     set(SKL_ABIX_HAVE_TEST RunnerBuildsTests ON)
 else()
     set(SKL_ABIX_HAVE_TEST RunnerBuildsTests OFF)
-    message(STATUS "Catch2 not found — only building plugin DLLs")
+    message(STATUS "Tests disabled or Catch2 not found — skipping test runners")
 endif()
+
+# Header-only runtime target. This target and its install/export rules are
+# intentionally outside the AMC/LLVM branch: consumers such as WCAS only need
+# the headers and MICS, not the compiler toolchain.
+add_library(libabix-runtime INTERFACE)
+target_compile_features(libabix-runtime INTERFACE cxx_std_17)
+target_include_directories(
+    libabix-runtime INTERFACE $<BUILD_INTERFACE:${SKL_ABIX_INC_DIR}>
+                              $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(libabix-runtime INTERFACE MICS::MICS)
+set_target_properties(libabix-runtime PROPERTIES EXPORT_NAME runtime)
+add_library(ABIX::runtime ALIAS libabix-runtime)
+
+# Aggregate target. It starts as runtime-only and receives the format/ABI/
+# metadata/tools libraries below when those optional components are built.
+add_library(abix INTERFACE)
+target_link_libraries(abix INTERFACE libabix-runtime)
+set_target_properties(abix PROPERTIES EXPORT_NAME ABIX)
+add_library(ABIX::ABIX ALIAS abix)
 
 function(abi_add_dll name)
     add_library(${name} SHARED ${SKL_ABIX_PROJ_DIR}/dlls/${name}.cpp)
@@ -203,51 +265,54 @@ function(abi_add_dll name)
     endif()
 endfunction()
 
-abi_add_dll(math_dll)
-abi_add_dll(version_dll)
-abi_add_dll(sigcheck_dll)
-abi_add_dll(resource_dll)
-if(WIN32)
-    target_link_libraries(resource_dll PRIVATE ws2_32)
-endif()
-abi_add_dll(callback_dll)
-abi_add_dll(reload_dll_a)
-abi_add_dll(reload_dll_b)
-abi_add_dll(edge_dll)
-abi_add_dll(edge_stdcall_dll)
-
-# `hotcache_dll.cpp` is generated (and gitignored), so a plain CMake configure
-# must be able to produce it without the tools/run_build.py wrapper.
-set(SKL_ABIX_HOTCACHE_SOURCE ${SKL_ABIX_PROJ_DIR}/dlls/hotcache_dll.cpp)
-if(NOT EXISTS ${SKL_ABIX_HOTCACHE_SOURCE})
-    find_package(
-        Python3
-        COMPONENTS Interpreter
-        QUIET)
-    if(NOT Python3_Interpreter_FOUND)
-        message(FATAL_ERROR "dlls/hotcache_dll.cpp is missing and Python 3 is required to generate it")
+if(BUILD_TESTING)
+    abi_add_dll(math_dll)
+    abi_add_dll(version_dll)
+    abi_add_dll(sigcheck_dll)
+    abi_add_dll(resource_dll)
+    if(WIN32)
+        target_link_libraries(resource_dll PRIVATE ws2_32)
     endif()
-    add_custom_command(
-        OUTPUT ${SKL_ABIX_HOTCACHE_SOURCE}
-        COMMAND ${Python3_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/tools/gen_hotcache_dll.py
-        DEPENDS ${SKL_ABIX_PROJ_DIR}/tools/gen_hotcache_dll.py
-        COMMENT "Generating dlls/hotcache_dll.cpp")
-    set_source_files_properties(${SKL_ABIX_HOTCACHE_SOURCE} PROPERTIES GENERATED TRUE)
-endif()
+    abi_add_dll(callback_dll)
+    abi_add_dll(reload_dll_a)
+    abi_add_dll(reload_dll_b)
+    abi_add_dll(edge_dll)
+    abi_add_dll(edge_stdcall_dll)
 
-abi_add_dll(hotcache_dll)
-abi_add_dll(closed_dll)
-abi_add_dll(closed_dll_v2)
-abi_add_dll(interface_dll)
-abi_add_dll(owner_dll)
+    # `hotcache_dll.cpp` is generated (and gitignored), so a plain CMake
+    # configure must be able to produce it without the tools/run_build.py
+    # wrapper.
+    set(SKL_ABIX_HOTCACHE_SOURCE ${SKL_ABIX_PROJ_DIR}/dlls/hotcache_dll.cpp)
+    if(NOT EXISTS ${SKL_ABIX_HOTCACHE_SOURCE})
+        find_package(
+            Python3
+            COMPONENTS Interpreter
+            QUIET)
+        if(NOT Python3_Interpreter_FOUND)
+            message(FATAL_ERROR "dlls/hotcache_dll.cpp is missing and Python 3 is required to generate it")
+        endif()
+        add_custom_command(
+            OUTPUT ${SKL_ABIX_HOTCACHE_SOURCE}
+            COMMAND ${Python3_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/tools/gen_hotcache_dll.py
+            DEPENDS ${SKL_ABIX_PROJ_DIR}/tools/gen_hotcache_dll.py
+            COMMENT "Generating dlls/hotcache_dll.cpp")
+        set_source_files_properties(${SKL_ABIX_HOTCACHE_SOURCE} PROPERTIES GENERATED TRUE)
+    endif()
+
+    abi_add_dll(hotcache_dll)
+    abi_add_dll(closed_dll)
+    abi_add_dll(closed_dll_v2)
+    abi_add_dll(interface_dll)
+    abi_add_dll(owner_dll)
+endif()
 
 include_directories(${SKL_ABIX_PROJ_DIR})
 
-if(ABIX_Catch2_FOUND)
+if(BUILD_TESTING AND ABIX_Catch2_FOUND)
     add_subdirectory(test)
 endif()
 
-if(ABIX_benchmark_FOUND)
+if(BUILD_BENCHMARKS AND ABIX_benchmark_FOUND)
     add_subdirectory(bench)
 endif()
 
@@ -320,6 +385,7 @@ if(AMC_BUILD)
         # a PUBLIC link here also supplies the include directory to its dependents.
         # MICS is a public dependency of the ABIX headers included by AMC.
         target_link_libraries(libabix-format PUBLIC fmt::fmt MICS::MICS)
+        target_compile_features(libabix-format PUBLIC cxx_std_17)
         set_target_properties(libabix-format PROPERTIES EXPORT_NAME format)
         # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep the rest of the project on C++17 and
         # compile only these files as C23.
@@ -364,21 +430,13 @@ if(AMC_BUILD)
         set_target_properties(libabix-metadata PROPERTIES OUTPUT_NAME abix-metadata)
         set_target_properties(libabix-tools PROPERTIES OUTPUT_NAME abix-tools)
 
-        # Header-only runtime registry/binding layer; consumers link it for the `SKL/ABIX/` include root.
-        add_library(libabix-runtime INTERFACE)
-        target_compile_features(libabix-runtime INTERFACE cxx_std_17)
-        target_include_directories(
-            libabix-runtime INTERFACE $<BUILD_INTERFACE:${SKL_ABIX_INC_DIR}>
-                                      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-        target_link_libraries(libabix-runtime INTERFACE MICS::MICS)
-        set_target_properties(libabix-runtime PROPERTIES EXPORT_NAME runtime)
-
-        # Convenience aggregate: `target_link_libraries(app PRIVATE ABIX::ABIX)`
-        # gives the header-only runtime plus the format/metadata/tools libraries.
-        add_library(abix INTERFACE)
-        target_link_libraries(abix INTERFACE libabix-runtime libabix-format libabix-abi libabix-metadata
-                                               libabix-tools)
-        set_target_properties(abix PROPERTIES EXPORT_NAME ABIX)
+        # The aggregate target becomes the full runtime + format/ABI/metadata/
+        # tools package when those optional libraries are available.
+        target_link_libraries(abix INTERFACE libabix-format libabix-abi libabix-metadata libabix-tools)
+        add_library(ABIX::format ALIAS libabix-format)
+        add_library(ABIX::abi ALIAS libabix-abi)
+        add_library(ABIX::metadata ALIAS libabix-metadata)
+        add_library(ABIX::tools ALIAS libabix-tools)
 
         # Backwards-compatible aggregate used by the AMC executables and tests. Shared helpers for the AMC executables
         # (hex/name rendering, JSON text helpers, the unified error envelope).
@@ -553,63 +611,28 @@ if(AMC_BUILD)
         # Install the driver, language providers and the manifest together: the
         # manifest is resolved next to `amc`, so a split install would make
         # `--list-languages` fail at run time.
-        install(TARGETS amc amc-cpp amc-rust amc-zig amc-dump amc-mcp RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-        install(
-            FILES ${SKL_ABIX_PROJ_DIR}/AMC/providers.toml
-            DESTINATION ${CMAKE_INSTALL_BINDIR}
-            RENAME amc-providers.toml)
+        if(ABIX_INSTALL)
+            install(
+                TARGETS amc amc-cpp amc-rust amc-zig amc-dump amc-mcp
+                RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+            install(
+                FILES ${SKL_ABIX_PROJ_DIR}/AMC/providers.toml
+                DESTINATION ${CMAKE_INSTALL_BINDIR}
+                RENAME amc-providers.toml)
 
-        # ------------------------------------------------------------------
-        # ABIX CMake package: find_package(ABIX CONFIG REQUIRED)
-        #
-        # Exported targets:
-        #   ABIX::ABIX      aggregate (runtime + format + abi + metadata + tools)
-        #   ABIX::runtime   header-only runtime headers
-        #   ABIX::format    .abix / Metadata Region format library
-        #   ABIX::abi       ABI verification
-        #   ABIX::metadata  Metadata Region
-        #   ABIX::tools     adapter / symbol / cache helpers
-        #
-        # MICS and fmt are public dependencies and must be discoverable by the
-        # consumer; the config file uses find_dependency() for both.
-        # ------------------------------------------------------------------
-        set(ABIX_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/ABIX")
+            # Optional libraries. The runtime target and the package config are
+            # installed outside this branch, so a header-only installation does
+            # not depend on AMC or LLVM.
+            install(
+                TARGETS libabix-format libabix-abi libabix-metadata libabix-tools
+                EXPORT ABIXTargets
+                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+                RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-        install(
-            TARGETS libabix-runtime libabix-format libabix-abi libabix-metadata libabix-tools abix
-            EXPORT ABIXTargets
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-        # Keep the installed include tree in the same SKL/... layout as the
-        # source tree, so both the generated and handwritten headers resolve
-        # with a single include root.
-        install(DIRECTORY ${SKL_ABIX_INC_DIR}/SKL/ABIX DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
-        install(DIRECTORY ${SKL_ABIX_PROJ_DIR}/AMC/include/SKL/AMC DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
-        install(DIRECTORY ${SKL_ABIX_PROJ_DIR}/AMC/include/ljson DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-
-        install(
-            EXPORT ABIXTargets
-            FILE ABIXTargets.cmake
-            NAMESPACE ABIX::
-            DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
-
-        configure_package_config_file(
-            ${SKL_ABIX_PROJ_DIR}/cmake/ABIXConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake
-            INSTALL_DESTINATION ${ABIX_CMAKE_INSTALL_DIR}
-            PATH_VARS CMAKE_INSTALL_INCLUDEDIR)
-
-        write_basic_package_version_file(
-            ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
-            VERSION ${PROJECT_VERSION}
-            COMPATIBILITY SameMajorVersion)
-
-        install(
-            FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
-            DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
-        install(FILES ${SKL_ABIX_PROJ_DIR}/LICENSE ${SKL_ABIX_PROJ_DIR}/THIRD_PARTY_NOTICES.md
-                DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/ABIX)
+            install(DIRECTORY ${SKL_ABIX_PROJ_DIR}/AMC/include/SKL/AMC DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
+            install(DIRECTORY ${SKL_ABIX_PROJ_DIR}/AMC/include/ljson DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        endif()
         # SKL_ABIX_KEEP_TEST_ARTIFACTS: run every suite with KEEP_ARTIFACTS=1 so
         # its temporary directory is retained and printed for inspection.
         if(SKL_ABIX_KEEP_TEST_ARTIFACTS AND BUILD_TESTING)
@@ -637,10 +660,69 @@ if(AMC_BUILD)
 endif()
 
 # ---------------------------------------------------------------------------
+# ABIX CMake package: find_package(ABIX CONFIG REQUIRED)
+#
+# The runtime target, public headers, license and package metadata are always
+# installed. `format`/`abi`/`metadata`/`tools` are appended only when the
+# optional AMC libraries were built.
+# ---------------------------------------------------------------------------
+if(ABIX_INSTALL)
+    set(ABIX_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/ABIX")
+    set(ABIX_HAS_LIBRARIES OFF)
+    if(TARGET libabix-format)
+        set(ABIX_HAS_LIBRARIES ON)
+    endif()
+
+    install(
+        TARGETS libabix-runtime abix
+        EXPORT ABIXTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+    # Keep the installed include tree in the same SKL/... layout as the source
+    # tree, so both generated and handwritten headers resolve with one include root.
+    install(DIRECTORY ${SKL_ABIX_INC_DIR}/SKL/ABIX DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
+
+    install(
+        EXPORT ABIXTargets
+        FILE ABIXTargets.cmake
+        NAMESPACE ABIX::
+        DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+
+    configure_package_config_file(
+        ${SKL_ABIX_PROJ_DIR}/cmake/ABIXConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake
+        INSTALL_DESTINATION ${ABIX_CMAKE_INSTALL_DIR}
+        PATH_VARS CMAKE_INSTALL_INCLUDEDIR)
+
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
+            DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+    install(FILES ${SKL_ABIX_PROJ_DIR}/LICENSE ${SKL_ABIX_PROJ_DIR}/THIRD_PARTY_NOTICES.md
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/ABIX)
+endif()
+
+find_program(ABIX_PYTHON_EXECUTABLE NAMES python3 python)
+if(BUILD_TESTING AND ABIX_PYTHON_EXECUTABLE)
+    add_test(
+        NAME abix-cmake-runtime-package-test
+        COMMAND ${ABIX_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/cmake_runtime_package_test.py
+                ${SKL_ABIX_PROJ_DIR} --cxx ${CMAKE_CXX_COMPILER})
+    set_tests_properties(abix-cmake-runtime-package-test PROPERTIES TIMEOUT 120)
+    if(SKL_ABIX_KEEP_TEST_ARTIFACTS)
+        set_tests_properties(abix-cmake-runtime-package-test PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Aue: Lua L0/L1 differential-conformance prototype (plan direction 4). Optional: built only when a Lua development
 # package is available.
 # ---------------------------------------------------------------------------
-if(NOT WIN32)
+if(ABIX_IS_TOP_LEVEL AND NOT ABIX_BUILD_RUNTIME_ONLY AND NOT WIN32)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(LUA QUIET lua5.4)

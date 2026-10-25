@@ -90,6 +90,18 @@ identities and the `.abix` wire format are unchanged.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
+## Patch — ABIX 0.2.3 (Runtime-only package)
+
+Packaging release: `ABIX::runtime`, public headers, license and CMake package
+metadata are installed without AMC, LLVM/Clang or fmt. `ABIX_BUILD_RUNTIME_ONLY`
+provides a subproject/runtime-only build mode; `ABIXConfig.cmake` resolves fmt
+only for the optional library components. Subproject defaults no longer enable
+tests, benchmarks, AMC, DLL variants or bundled MICS installation, and
+`MICS_INSTALL` is not forced. The runtime package consumer test covers
+`ABIX::runtime` with fmt disabled.
+
+See [`CHANGELOG.md`](../CHANGELOG.md).
+
 ## Post-0.2.0 — toolchain and ecosystem follow-ups
 
 These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 work.

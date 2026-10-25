@@ -3,6 +3,39 @@
 All notable changes to ABIX are recorded here. Older releases are available in
 the GitHub release history.
 
+## v0.2.3 — Runtime-only package
+
+Packaging release: the header-only runtime and its CMake package are now
+installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
+
+### Added
+
+- `ABIX::runtime` and the ABIX package metadata are created and installed
+  outside the AMC/LLVM branch.
+- `ABIX_BUILD_RUNTIME_ONLY=ON` skips AMC, tests, benchmarks and DLLs for
+  runtime-only builds.
+- `ABIX_INSTALL` controls ABIX install rules; it defaults to ON only for a
+  top-level build.
+- `abix-cmake-runtime-package-test` installs a runtime-only package and
+  consumes it with `ABIX::runtime` while fmt is disabled.
+
+### Changed
+
+- `ABIXConfig.cmake` requires MICS for the runtime, but only requires fmt when
+  the format/ABI/metadata/tools components or the full aggregate are used.
+- `ABIX::ABIX` is always available: it is runtime-only in a runtime-only
+  package and gains the optional libraries in a full build.
+- Subproject defaults for tests, benchmarks, AMC, DLL variants and bundled MICS
+  installation are now OFF. `MICS_INSTALL` is no longer forced.
+- Global build-type, compiler-option and compile-command settings are limited
+  to top-level builds.
+
+### Compatibility
+
+- Additive packaging change; no `TypeID`, `.abix` format or public ABI change.
+- `find_package(ABIX 0.2 CONFIG REQUIRED)` and `ABIX::runtime` work from the
+  installed prefix without a LLVM/AMC installation.
+
 ## v0.2.2 — Built-in type IDs
 
 Additive release: predefined canonical `TypeId` constants for the primitive ABI

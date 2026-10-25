@@ -433,27 +433,32 @@ ctest --test-dir build/Release --output-on-failure
 
 ### CMake package
 
-Install ABIX and consume it with `find_package(ABIX CONFIG REQUIRED)`:
+Install a runtime-only ABIX package and consume it with `find_package(ABIX CONFIG REQUIRED)`:
 
 ```bash
-cmake --install build/Release --prefix /opt/abix
+cmake -B build/runtime -DABIX_BUILD_RUNTIME_ONLY=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build/runtime --parallel
+cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.2 CONFIG REQUIRED)
+find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
-target_link_libraries(app PRIVATE ABIX::ABIX)
+target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
-The aggregate target `ABIX::ABIX` provides the header-only runtime plus the
-`.abix` format, ABI verification, metadata and tools libraries. Finer-grained
-targets are also available: `ABIX::runtime`, `ABIX::format`, `ABIX::abi`,
-`ABIX::metadata` and `ABIX::tools`.
+The runtime package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It
+does not require AMC, LLVM/Clang or fmt. The full package additionally provides
+`ABIX::ABIX` and `ABIX::format`, `ABIX::abi`, `ABIX::metadata` and
+`ABIX::tools`; those optional libraries use fmt. `ABIX::ABIX` is always
+available and is runtime-only when the optional libraries were not built.
 
 ABIX installs its bundled MICS package by default. Set
-`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately; in both
-cases the installed config resolves `MICS` and `fmt` with `find_dependency()`.
+`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The
+runtime config only resolves `MICS`; fmt is resolved when a library component or
+the full aggregate is requested. `ABIX_INSTALL` defaults to ON for a top-level
+build and OFF when ABIX is added as a subproject.
 
 ### Try it
 
@@ -556,6 +561,7 @@ ABIX releases are project stages, not feature lists:
 - **ABIX 0.2.0 — Cross-language** (released; the Rust provider and Zig backend are delivered)
 - **ABIX 0.2.1 — Maintenance** (fix existing behavior, add tests/docs; no public ABI change)
 - **ABIX 0.2.2 — Built-in type IDs** (predefined canonical primitive TypeId constants)
+- **ABIX 0.2.3 — Runtime-only package** (installable `ABIX::runtime` without AMC/LLVM/fmt)
 - **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
 
 ```mermaid

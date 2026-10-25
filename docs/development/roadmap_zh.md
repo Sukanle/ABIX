@@ -31,6 +31,7 @@ ABIX 0.1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于�
 ABIX 0.2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
 ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档，不改变公共 ABI
 ABIX 0.2.2 — Built-in type IDs         预定义 canonical primitive TypeId 常量
+ABIX 0.2.3 — Runtime-only package      不依赖 AMC/LLVM/fmt 的可安装 runtime
 ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
@@ -81,6 +82,18 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * `wint_t` 解析为其底层整数描述符，不引入 `prim:wint`。
 
 这些常量只是既有 canonical 描述符的编译期入口，不改变任何 `TypeID`、`.abix` 格式或公共 ABI。
+
+### ABIX 0.2.3 — Runtime-only package
+
+让 header-only runtime 及其 CMake 包不再依赖 AMC 工具链：
+
+* `ABIX::runtime` 和 ABIX 包元数据可在没有 AMC、LLVM/Clang、fmt 的环境中安装。
+* `ABIX_BUILD_RUNTIME_ONLY=ON` 跳过 AMC、测试、benchmark 和 DLL。
+* `ABIXConfig.cmake` 只在请求 format/ABI/metadata/tools component 或完整聚合目标时解析 fmt。
+* 作为子项目时，测试、benchmark、AMC、DLL variants 和 bundled MICS 安装默认关闭，且不再强制覆盖 `MICS_INSTALL`。
+* 新增不依赖 fmt 的 `ABIX::runtime` 安装消费测试。
+
+`.abix` 格式、`TypeID` 和公共 ABI 不变。
 
 ### ABIX 0.3.0 — Ecosystem（未来）
 
@@ -168,6 +181,7 @@ ABIX 使用标准 SemVer tag，从非稳定的 `v0.1.0` 线开始。项目阶段
 * `v0.2.0` — Cross-language（pre-1.0，非稳定）
 * `v0.2.1` — Maintenance（维护版本）
 * `v0.2.2` — Built-in type IDs（预定义 canonical primitive TypeId）
+* `v0.2.3` — Runtime-only package（不依赖 AMC/LLVM/fmt 的 `ABIX::runtime`）
 
 ## 明确不在范围内
 
