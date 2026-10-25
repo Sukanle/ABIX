@@ -12,6 +12,7 @@
 #include <float.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <wchar.h>
 
 #include <limits>
 
@@ -149,6 +150,20 @@ inline constexpr auto u32 = skl::abix::model::canonical_type_id("prim:u32");
 inline constexpr auto u64 = skl::abix::model::canonical_type_id("prim:u64");
 inline constexpr auto u128 = skl::abix::model::canonical_type_id("prim:u128");
 inline constexpr auto usize = sizeof(void *) == 4 ? u32 : u64;
+
+// `wint_t` has no independent ABI identity: it is a typedef to an integer with
+// the same width and signedness. Resolve it to that integer's descriptor.
+constexpr TypeId integer_type_id(size_t size, bool is_signed) noexcept {
+    switch (size) {
+        case 1:  return is_signed ? i8 : u8;
+        case 2:  return is_signed ? i16 : u16;
+        case 4:  return is_signed ? i32 : u32;
+        case 8:  return is_signed ? i64 : u64;
+        default: return is_signed ? i32 : u32;
+    }
+}
+
+inline constexpr auto wint = integer_type_id(sizeof(wint_t), signedness_kind<wint_t>());
 
 // Floating-point formats. The key is the format, never the C/C++ spelling.
 

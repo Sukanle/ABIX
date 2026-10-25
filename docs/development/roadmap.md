@@ -78,7 +78,9 @@ Adds predefined `TypeId` constants for the canonical primitive ABI descriptors:
 * IEEE binary16/32/64/128, x87 80-bit, PowerPC double-double and bf16;
 * `long double` mapped by `LDBL_MANT_DIG`;
 * target-defined plain `char` / `wchar_t` signedness, plus `schar` / `uchar` /
-  `char8` / `char16` / `char32`.
+  `char8` / `char16` / `char32`;
+* `wint_t` resolved to its underlying integer descriptor; there is no
+  `prim:wint`.
 
 These constants are compile-time entry points to existing canonical
 descriptors. They do not change any `TypeID`, `.abix` format or public ABI.

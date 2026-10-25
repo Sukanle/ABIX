@@ -77,7 +77,8 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * 指针宽度相关的 `isize` / `usize`；
 * IEEE binary16/32/64/128、x87 80-bit、PowerPC double-double 与 bf16；
 * `long double` 按 `LDBL_MANT_DIG` 映射到目标格式；
-* plain `char` / `wchar_t` 的目标有符号性，以及 `schar` / `uchar` / `char8` / `char16` / `char32`。
+* plain `char` / `wchar_t` 的目标有符号性，以及 `schar` / `uchar` / `char8` / `char16` / `char32`；
+* `wint_t` 解析为其底层整数描述符，不引入 `prim:wint`。
 
 这些常量只是既有 canonical 描述符的编译期入口，不改变任何 `TypeID`、`.abix` 格式或公共 ABI。
 
