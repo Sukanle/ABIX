@@ -431,6 +431,25 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
+### CMake 包
+
+安装 ABIX 后即可用 `find_package(ABIX CONFIG REQUIRED)` 消费：
+
+```bash
+cmake --install build/Release --prefix /opt/abix
+```
+
+```cmake
+find_package(ABIX 0.2 CONFIG REQUIRED)
+
+add_executable(app main.cpp)
+target_link_libraries(app PRIVATE ABIX::ABIX)
+```
+
+`ABIX::ABIX` 聚合了 header-only runtime 以及 `.abix` format、ABI 校验、metadata 和 tools 库；也可以按需链接 `ABIX::runtime`、`ABIX::format`、`ABIX::abi`、`ABIX::metadata` 或 `ABIX::tools`。
+
+ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。安装后的 config 会用 `find_dependency()` 解析 `MICS` 与 `fmt`。
+
 ### 试用
 
 ```bash

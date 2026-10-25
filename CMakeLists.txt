@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(AbiCrossDllTests LANGUAGES C CXX)
+project(AbiCrossDllTests VERSION 0.2.1 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -106,8 +107,14 @@ include(cmake/AbixDependencies.cmake)
 # Import MICS's own CMake target instead of hardcoding its include directories
 # in every subproject. The target also carries HLMD, which MICS.h includes
 # directly.
+option(ABIX_INSTALL_BUNDLED_MICS "Install the bundled MICS package with ABIX" ON)
 if(NOT TARGET MICS::MICS)
-    add_subdirectory(${SKL_ABIX_PROJ_DIR}/MICS ${CMAKE_CURRENT_BINARY_DIR}/MICS EXCLUDE_FROM_ALL)
+    if(ABIX_INSTALL_BUNDLED_MICS)
+        # ABIXTargets references MICS::MICS, so the bundled dependency must be
+        # installable too; otherwise find_package(ABIX) cannot resolve it.
+        set(MICS_INSTALL ON CACHE BOOL "Install MICS's CMake package" FORCE)
+    endif()
+    add_subdirectory(${SKL_ABIX_PROJ_DIR}/MICS ${CMAKE_CURRENT_BINARY_DIR}/MICS)
 endif()
 
 include(CTest)
@@ -263,12 +270,16 @@ if(AMC_BUILD)
             AMC/src/ljson/jnum.c
             AMC/src/ljson/grisu2.c
             AMC/src/ljson/dragonbox.c)
-        target_include_directories(libabix-format PUBLIC ${SKL_ABIX_INC_DIR} ${SKL_ABIX_PROJ_DIR}/AMC/include
-                                                         ${SKL_ABIX_PROJ_DIR}/AMC/include/ljson)
+        target_include_directories(
+            libabix-format
+            PUBLIC $<BUILD_INTERFACE:${SKL_ABIX_INC_DIR}> $<BUILD_INTERFACE:${SKL_ABIX_PROJ_DIR}/AMC/include>
+                   $<BUILD_INTERFACE:${SKL_ABIX_PROJ_DIR}/AMC/include/ljson>
+                   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
         # Core.cpp / Error.cpp use fmt; every libabix-* library links this one, so
         # a PUBLIC link here also supplies the include directory to its dependents.
         # MICS is a public dependency of the ABIX headers included by AMC.
         target_link_libraries(libabix-format PUBLIC fmt::fmt MICS::MICS)
+        set_target_properties(libabix-format PROPERTIES EXPORT_NAME format)
         # The vendored ljson C sources use C23 digit separators (e.g. 8'192); keep the rest of the project on C++17 and
         # compile only these files as C23.
         set_target_properties(libabix-format PROPERTIES C_STANDARD 23 C_STANDARD_REQUIRED ON)
@@ -287,26 +298,46 @@ if(AMC_BUILD)
 
         add_library(libabix-abi STATIC AMC/src/SKL/AMC/Core/Verify.cpp)
         target_link_libraries(libabix-abi PUBLIC libabix-format)
+        set_target_properties(libabix-abi PROPERTIES EXPORT_NAME abi)
 
         add_library(
             libabix-metadata STATIC
             AMC/src/SKL/AMC/Core/Metadata.cpp # Metadata Region serialize/parse/materialize
             AMC/src/SKL/AMC/Core/Materialize.cpp AMC/src/SKL/AMC/Core/Context.cpp AMC/src/SKL/AMC/Core/Query.cpp)
         target_link_libraries(libabix-metadata PUBLIC libabix-abi)
+        set_target_properties(libabix-metadata PROPERTIES EXPORT_NAME metadata)
 
         add_library(libabix-tools STATIC AMC/src/SKL/AMC/Core/Adapter.cpp AMC/src/SKL/AMC/Core/Lua.cpp
                                          AMC/src/SKL/AMC/Core/Symbol.cpp AMC/src/SKL/AMC/Core/Cache.cpp)
         target_link_libraries(libabix-tools PUBLIC libabix-metadata)
+        set_target_properties(libabix-tools PROPERTIES EXPORT_NAME tools)
 
         # The libabix-* objects are linked into the LLDB plugin, which is a shared object, so they must be position
         # independent.
         set_target_properties(libabix-format libabix-abi libabix-metadata libabix-tools
                               PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        # The internal target names carry the `libabix-` prefix already; keep the
+        # installed archives from becoming `liblibabix-*.a`.
+        set_target_properties(libabix-format PROPERTIES OUTPUT_NAME abix-format)
+        set_target_properties(libabix-abi PROPERTIES OUTPUT_NAME abix-abi)
+        set_target_properties(libabix-metadata PROPERTIES OUTPUT_NAME abix-metadata)
+        set_target_properties(libabix-tools PROPERTIES OUTPUT_NAME abix-tools)
 
         # Header-only runtime registry/binding layer; consumers link it for the `SKL/ABIX/` include root.
         add_library(libabix-runtime INTERFACE)
-        target_include_directories(libabix-runtime INTERFACE ${SKL_ABIX_PROJ_DIR})
+        target_compile_features(libabix-runtime INTERFACE cxx_std_17)
+        target_include_directories(
+            libabix-runtime INTERFACE $<BUILD_INTERFACE:${SKL_ABIX_INC_DIR}>
+                                      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
         target_link_libraries(libabix-runtime INTERFACE MICS::MICS)
+        set_target_properties(libabix-runtime PROPERTIES EXPORT_NAME runtime)
+
+        # Convenience aggregate: `target_link_libraries(app PRIVATE ABIX::ABIX)`
+        # gives the header-only runtime plus the format/metadata/tools libraries.
+        add_library(abix INTERFACE)
+        target_link_libraries(abix INTERFACE libabix-runtime libabix-format libabix-abi libabix-metadata
+                                               libabix-tools)
+        set_target_properties(abix PROPERTIES EXPORT_NAME ABIX)
 
         # Backwards-compatible aggregate used by the AMC executables and tests. Shared helpers for the AMC executables
         # (hex/name rendering, JSON text helpers, the unified error envelope).
@@ -427,6 +458,11 @@ if(AMC_BUILD)
                 COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/cmake_integration_test.py
                         ${CMAKE_BINARY_DIR}/bin ${SKL_ABIX_PROJ_DIR})
             add_test(
+                NAME abix-cmake-package-test
+                COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/cmake_package_test.py
+                        ${CMAKE_BINARY_DIR} ${SKL_ABIX_PROJ_DIR} --cxx ${CMAKE_CXX_COMPILER})
+            set_tests_properties(abix-cmake-package-test PROPERTIES TIMEOUT 120)
+            add_test(
                 NAME amc-rust-test
                 COMMAND
                     ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/providers/rust/conformance_test.py
@@ -481,6 +517,58 @@ if(AMC_BUILD)
             FILES ${SKL_ABIX_PROJ_DIR}/AMC/providers.toml
             DESTINATION ${CMAKE_INSTALL_BINDIR}
             RENAME amc-providers.toml)
+
+        # ------------------------------------------------------------------
+        # ABIX CMake package: find_package(ABIX CONFIG REQUIRED)
+        #
+        # Exported targets:
+        #   ABIX::ABIX      aggregate (runtime + format + abi + metadata + tools)
+        #   ABIX::runtime   header-only runtime headers
+        #   ABIX::format    .abix / Metadata Region format library
+        #   ABIX::abi       ABI verification
+        #   ABIX::metadata  Metadata Region
+        #   ABIX::tools     adapter / symbol / cache helpers
+        #
+        # MICS and fmt are public dependencies and must be discoverable by the
+        # consumer; the config file uses find_dependency() for both.
+        # ------------------------------------------------------------------
+        set(ABIX_CMAKE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/ABIX")
+
+        install(
+            TARGETS libabix-runtime libabix-format libabix-abi libabix-metadata libabix-tools abix
+            EXPORT ABIXTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+        # Keep the installed include tree in the same SKL/... layout as the
+        # source tree, so both the generated and handwritten headers resolve
+        # with a single include root.
+        install(DIRECTORY ${SKL_ABIX_INC_DIR}/SKL/ABIX DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
+        install(DIRECTORY ${SKL_ABIX_PROJ_DIR}/AMC/include/SKL/AMC DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
+        install(DIRECTORY ${SKL_ABIX_PROJ_DIR}/AMC/include/ljson DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+        install(
+            EXPORT ABIXTargets
+            FILE ABIXTargets.cmake
+            NAMESPACE ABIX::
+            DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+
+        configure_package_config_file(
+            ${SKL_ABIX_PROJ_DIR}/cmake/ABIXConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake
+            INSTALL_DESTINATION ${ABIX_CMAKE_INSTALL_DIR}
+            PATH_VARS CMAKE_INSTALL_INCLUDEDIR)
+
+        write_basic_package_version_file(
+            ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
+            VERSION ${PROJECT_VERSION}
+            COMPATIBILITY SameMajorVersion)
+
+        install(
+            FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
+            DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+        install(FILES ${SKL_ABIX_PROJ_DIR}/LICENSE ${SKL_ABIX_PROJ_DIR}/THIRD_PARTY_NOTICES.md
+                DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/ABIX)
         # SKL_ABIX_KEEP_TEST_ARTIFACTS: run every suite with KEEP_ARTIFACTS=1 so
         # its temporary directory is retained and printed for inspection.
         if(SKL_ABIX_KEEP_TEST_ARTIFACTS AND BUILD_TESTING)
@@ -492,6 +580,7 @@ if(AMC_BUILD)
                     amc-integration-test
                     amc-feature-test
                     amc-cmake-integration-test
+                    abix-cmake-package-test
                     amc-rust-test
                     amc-rust-panic-test
                     amc-interop-test

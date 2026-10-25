@@ -431,6 +431,30 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
+### CMake package
+
+Install ABIX and consume it with `find_package(ABIX CONFIG REQUIRED)`:
+
+```bash
+cmake --install build/Release --prefix /opt/abix
+```
+
+```cmake
+find_package(ABIX 0.2 CONFIG REQUIRED)
+
+add_executable(app main.cpp)
+target_link_libraries(app PRIVATE ABIX::ABIX)
+```
+
+The aggregate target `ABIX::ABIX` provides the header-only runtime plus the
+`.abix` format, ABI verification, metadata and tools libraries. Finer-grained
+targets are also available: `ABIX::runtime`, `ABIX::format`, `ABIX::abi`,
+`ABIX::metadata` and `ABIX::tools`.
+
+ABIX installs its bundled MICS package by default. Set
+`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately; in both
+cases the installed config resolves `MICS` and `fmt` with `find_dependency()`.
+
 ### Try it
 
 ```bash
