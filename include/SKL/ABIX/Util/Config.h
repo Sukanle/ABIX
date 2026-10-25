@@ -73,5 +73,7 @@
 //
 // Runtime threshold and sink: skl::abix::util::set_log_level() /
 // set_log_sink(). Logging is diagnostic only; errors are returned independently.
+// ABIX_LOG_THREAD_SAFE (default 1) selects atomic configuration; 0 selects
+// plain storage for a fixed sink / single-threaded configuration.
 
 #endif

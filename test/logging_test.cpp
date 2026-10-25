@@ -4,7 +4,11 @@
 #include <string.h>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <vector>
+
+static_assert(std::is_same_v<skl::abix::util::LogState, skl::abix::util::ThreadSafeLogState>,
+    "the default logging policy must be thread-safe");
 
 TEST_CASE("19.logging_basic", "[log][prompt19]") {
     log_info("Test 19: basic logging — verify log levels, runtime filtering, set_log_sink, and ABIX_LOG_* macros");

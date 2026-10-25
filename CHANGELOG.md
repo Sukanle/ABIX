@@ -3,10 +3,10 @@
 All notable changes to ABIX are recorded here. Older releases are available in
 the GitHub release history.
 
-## v0.2.3 — Runtime-only package
+## v0.2.3 — Runtime-only package and diagnostics
 
-Packaging release: the header-only runtime and its CMake package are now
-installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
+Packaging and diagnostics release: the header-only runtime and its CMake package
+are now installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
 
 ### Added
 
@@ -18,10 +18,17 @@ installable without AMC, LLVM, Clang, fmt or the static ABIX libraries.
   top-level build.
 - `abix-cmake-runtime-package-test` installs a runtime-only package and
   consumes it with `ABIX::runtime` while fmt is disabled.
-- Logging now has an explicit `LogState`, atomic sink/level registration, a
-  runtime threshold, and a length-aware `LogRecord` callback with truncation.
+- Logging now has an explicit `LogState`, ABIX-atomic sink/level registration,
+  a runtime threshold, and a length-aware `LogRecord` callback with truncation.
 - `ABIX_LOG_*_TO(state, ...)` macros route diagnostics through an explicit
   state for host-owned logging.
+- Log configuration uses `SKL/ABIX/Util/Atomic.h` over plain function-pointer
+  and `uint8_t` storage instead of `std::atomic`, avoiding standard-library
+  object-layout coupling across DLL/CRT boundaries.
+- `ABIX_LOG_THREAD_SAFE` selects thread-safe configuration (default) or the
+  low-overhead single-threaded/fixed-sink policy; `ThreadSafeLogState` and
+  `SingleThreadedLogState` are also available explicitly.
+- Added an optional Quill integration test (`ABIX_ENABLE_QUILL_TEST`).
 
 ### Changed
 

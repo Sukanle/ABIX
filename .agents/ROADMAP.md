@@ -90,7 +90,7 @@ identities and the `.abix` wire format are unchanged.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
-## Patch — ABIX 0.2.3 (Runtime-only package)
+## Patch — ABIX 0.2.3 (Runtime-only package and diagnostics)
 
 Packaging release: `ABIX::runtime`, public headers, license and CMake package
 metadata are installed without AMC, LLVM/Clang or fmt. `ABIX_BUILD_RUNTIME_ONLY`
@@ -98,9 +98,11 @@ provides a subproject/runtime-only build mode; `ABIXConfig.cmake` resolves fmt
 only for the optional library components. Subproject defaults no longer enable
 tests, benchmarks, AMC, DLL variants or bundled MICS installation, and
 `MICS_INSTALL` is not forced. The runtime package consumer test covers
-`ABIX::runtime` with fmt disabled. Logging gains an explicit `LogState`, atomic
-sink/threshold registration, runtime filtering, a length-aware `LogRecord`
-callback and documented callback / cross-DLL ownership rules.
+`ABIX::runtime` with fmt disabled. Logging gains an explicit `LogState`,
+ABIX-atomic sink/threshold registration, runtime filtering, a length-aware
+`LogRecord` callback and documented callback / cross-DLL ownership rules.
+`ABIX_LOG_THREAD_SAFE` selects thread-safe configuration (default) or the
+single-threaded/fixed-sink policy.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 

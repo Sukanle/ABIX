@@ -466,19 +466,31 @@ error return values / `CallError`; logging never replaces error handling.
 | `log_sink_t` | Legacy callback: `void (*)(LogLevel, const char *)`; message is valid only during the call |
 | `LogRecord` | `{level, message, length, truncated}` for length-aware consumers |
 | `log_record_sink_t` | `void (*)(const LogRecord *)`; message is valid only during the call |
-| `LogState` | Explicit owner for sink, record sink and runtime threshold; defaults to `Warning` |
+| `ThreadSafeLogState` | `LogStateT<true>`; ABIX atomic configuration storage |
+| `SingleThreadedLogState` | `LogStateT<false>`; plain storage, host guarantees configuration safety |
+| `LogState` | Alias selected by `ABIX_LOG_THREAD_SAFE` (default `ThreadSafeLogState`) |
 | `default_log_state()` | Convenience state; it is **per DSO/image**, not a process-global singleton |
-| `set_log_sink(sink)` / `set_log_sink(state, sink)` | Install/clear a legacy sink (thread-safe) |
-| `set_log_record_sink(sink)` / overload | Install/clear a length-aware sink (thread-safe) |
-| `set_log_level(level)` / overload | Set the runtime threshold (thread-safe) |
+| `set_log_sink(sink)` / `set_log_sink(state, sink)` | Install/clear a legacy sink |
+| `set_log_record_sink(sink)` / overload | Install/clear a length-aware sink |
+| `set_log_level(level)` / overload | Set the runtime threshold |
 | `get_log_sink()` / `get_log_level()` | Read current callback / threshold |
 | `log(level, fmt, ...)` / `log(state, level, fmt, ...)` | Format into a fixed 1 KiB buffer and dispatch synchronously |
+
+Configuration storage uses the plain-storage primitives in
+`SKL/ABIX/Util/Atomic.h`, not `std::atomic`, so the state layout does not depend
+on the standard-library implementation across DLL/CRT boundaries.
+`ABIX_LOG_THREAD_SAFE` defaults to `1`: reads/writes use acquire/release
+operations over plain function-pointer and `uint8_t` fields. Set it to `0` for
+a fixed sink / single-threaded configuration where all configuration changes
+happen before worker threads start. The policy is a compile-time contract;
+modules sharing a `LogState` must use the same policy.
 
 A sink is observer-only. It runs on the calling thread, without an ABIX lock;
 it must not throw, and it must copy `message` before returning if it enqueues it
 for asynchronous processing. Re-entrant logging calls are allowed but must be
 bounded. `length` excludes the NUL terminator; `truncated` reports whether the
-message exceeded the 1 KiB buffer.
+message exceeded the 1 KiB buffer. External backends such as Quill/fmtlog own
+their own queue/locking; ABIX does not add a second dispatch lock.
 
 The convenience state is inline and therefore has one copy per DSO that
 compiles ABIX. Use an explicit `LogState` owned by the host/runtime when state

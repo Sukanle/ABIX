@@ -100,7 +100,12 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 - **Expected result** — every suite reports `All tests passed (N assertions in M test cases)`.
     - Notable suites:
         - `interface_dll_test` includes the lease-pinning case ("a lease keeps the module mapped across unload");
-        - `interface_module_test` includes the multithreaded register/unregister and lease/unload stress.
+        - `interface_module_test` includes the multithreaded register/unregister and lease/unload stress;
+        - `logging_single_thread_test` builds with `ABIX_LOG_THREAD_SAFE=0` and verifies the fixed-sink policy.
+    - Optional backend integration: configure with
+      `-DABIX_ENABLE_QUILL_TEST=ON -DABIX_QUILL_ROOT=/path/to/quill` to build
+      `logging_quill_test`, which forwards ABIX diagnostics through a Quill
+      file sink from multiple threads. The default build does not require Quill.
 
 ### B. AMC unit (`amc-core-test`)
 

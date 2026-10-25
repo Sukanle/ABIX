@@ -31,7 +31,7 @@ ABIX 0.1.0 — Foundation + Toolchain  the ABI foundation exists and ABIX is usa
 ABIX 0.2.0 — Cross-language          Rust / Zig frontends and cross-language bindings
 ABIX 0.2.1 — Maintenance             fix existing behavior, add tests/docs; no public ABI change
 ABIX 0.2.2 — Built-in type IDs       predefined canonical primitive TypeId constants
-ABIX 0.2.3 — Runtime-only package    installable runtime without AMC/LLVM/fmt
+ABIX 0.2.3 — Runtime-only package    installable runtime + host-owned diagnostics
 ABIX 0.3.0 — Ecosystem               others build on top of ABIX
 ```
 
@@ -99,9 +99,11 @@ toolchain:
 * Subproject defaults no longer enable tests, benchmarks, AMC, DLL variants or
   bundled MICS installation, and `MICS_INSTALL` is not forced.
 * A runtime-only package consumer test covers `ABIX::runtime` without fmt.
-* Logging gains an explicit `LogState`, atomic sink/threshold registration,
-  runtime filtering, a length-aware `LogRecord` callback and documented
-  callback / cross-DLL ownership rules.
+* Logging gains an explicit `LogState`, ABIX-atomic sink/threshold
+  registration, runtime filtering, a length-aware `LogRecord` callback and
+  documented callback / cross-DLL ownership rules. `ABIX_LOG_THREAD_SAFE`
+  selects the default thread-safe configuration or a fixed-sink/single-threaded
+  policy.
 
 The `.abix` format, `TypeID` values and public ABI are unchanged.
 

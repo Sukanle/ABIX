@@ -561,7 +561,7 @@ ABIX releases are project stages, not feature lists:
 - **ABIX 0.2.0 — Cross-language** (released; the Rust provider and Zig backend are delivered)
 - **ABIX 0.2.1 — Maintenance** (fix existing behavior, add tests/docs; no public ABI change)
 - **ABIX 0.2.2 — Built-in type IDs** (predefined canonical primitive TypeId constants)
-- **ABIX 0.2.3 — Runtime-only package** (installable `ABIX::runtime` without AMC/LLVM/fmt)
+- **ABIX 0.2.3 — Runtime-only package** (installable `ABIX::runtime` without AMC/LLVM/fmt; host-owned diagnostics)
 - **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
 
 ```mermaid

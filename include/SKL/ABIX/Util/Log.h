@@ -16,12 +16,25 @@
 #ifndef SKL_ABIX_LOG_H
 #define SKL_ABIX_LOG_H
 
+// 1 = atomic configuration storage (default); 0 = plain storage for a fixed
+// sink / single-threaded configuration. The policy is a compile-time contract,
+// not a per-call switch. Modules that share a LogState must use the same policy.
+#ifndef ABIX_LOG_THREAD_SAFE
+#  define ABIX_LOG_THREAD_SAFE 1
+#endif
+
+#if ABIX_LOG_THREAD_SAFE != 0 && ABIX_LOG_THREAD_SAFE != 1
+#  error "ABIX_LOG_THREAD_SAFE must be 0 or 1"
+#endif
+
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-#include <atomic>
 #include <type_traits>
+
+#include "SKL/ABIX/Util/Atomic.h"
 
 namespace skl::abix::util {
 
@@ -59,14 +72,77 @@ static_assert(std::is_trivially_copyable_v<LogRecord>, "LogRecord must remain a 
 // `log_buffer_size - 1`; longer output is marked truncated.
 inline constexpr size_t log_buffer_size = 1'024;
 
+namespace detail {
+
+// ABIX's atomic helpers operate on caller-owned plain storage, avoiding the
+// compiler-defined layout of std::atomic across DLL/CRT boundaries.
+template<typename Sink, bool ThreadSafe>
+struct SinkStorage;
+
+template<typename Sink>
+struct SinkStorage<Sink, true> {
+    Sink value = nullptr;
+
+    void set(Sink sink) noexcept { store_release(&value, sink); }
+    Sink get() const noexcept { return load_acquire(&value); }
+};
+
+template<typename Sink>
+struct SinkStorage<Sink, false> {
+    Sink value = nullptr;
+
+    void set(Sink sink) noexcept { value = sink; }
+    Sink get() const noexcept { return value; }
+};
+
+template<bool ThreadSafe>
+struct LevelStorage;
+
+template<>
+struct LevelStorage<true> {
+    uint8_t value = static_cast<uint8_t>(LogLevel::Warning);
+
+    void set(LogLevel level) noexcept { store_relaxed(&value, static_cast<uint8_t>(level)); }
+    LogLevel get() const noexcept { return static_cast<LogLevel>(load_relaxed(&value)); }
+};
+
+template<>
+struct LevelStorage<false> {
+    uint8_t value = static_cast<uint8_t>(LogLevel::Warning);
+
+    void set(LogLevel level) noexcept { value = static_cast<uint8_t>(level); }
+    LogLevel get() const noexcept { return static_cast<LogLevel>(value); }
+};
+
+}   // namespace detail
+
 // Explicit logging state. A host or runtime object can own one LogState and
 // share it with code under its control. ABIX does not require a process-global
 // singleton.
-struct LogState {
-    std::atomic<log_sink_t> sink{nullptr};
-    std::atomic<log_record_sink_t> record_sink{nullptr};
-    std::atomic<LogLevel> level{LogLevel::Warning};
+template<bool ThreadSafe>
+struct LogStateT {
+    detail::SinkStorage<log_sink_t, ThreadSafe> sink;
+    detail::SinkStorage<log_record_sink_t, ThreadSafe> record_sink;
+    detail::LevelStorage<ThreadSafe> level;
+
+    LogStateT() noexcept = default;
+    LogStateT(const LogStateT &) = delete;
+    LogStateT &operator=(const LogStateT &) = delete;
 };
+
+using ThreadSafeLogState = LogStateT<true>;
+using SingleThreadedLogState = LogStateT<false>;
+
+static_assert(std::is_standard_layout_v<ThreadSafeLogState>, "LogState must stay a plain-storage object");
+static_assert(std::is_standard_layout_v<SingleThreadedLogState>, "LogState must stay a plain-storage object");
+static_assert(sizeof(ThreadSafeLogState) == sizeof(SingleThreadedLogState),
+    "the dispatch policy must not change LogState layout");
+
+#if ABIX_LOG_THREAD_SAFE
+using LogState = ThreadSafeLogState;
+#else
+using LogState = SingleThreadedLogState;
+#endif
 
 // Header-only ABIX cannot promise that this state is process-global: a DSO
 // that compiles ABIX gets its own inline copy. Use an explicit LogState when
@@ -81,58 +157,71 @@ constexpr LogLevel normalize_log_level(LogLevel level) noexcept {
     return static_cast<uint8_t>(level) <= static_cast<uint8_t>(LogLevel::Off) ? level : LogLevel::Off;
 }
 
-inline void set_log_sink(LogState &state, log_sink_t sink) noexcept {
+template<bool ThreadSafe>
+inline void set_log_sink(LogStateT<ThreadSafe> &state, log_sink_t sink) noexcept {
     // Only one callback kind is active at a time.
-    state.record_sink.store(nullptr, std::memory_order_release);
-    state.sink.store(sink, std::memory_order_release);
+    state.record_sink.set(nullptr);
+    state.sink.set(sink);
 }
 
 inline void set_log_sink(log_sink_t sink) noexcept { set_log_sink(default_log_state(), sink); }
 
-inline void set_log_record_sink(LogState &state, log_record_sink_t sink) noexcept {
-    state.sink.store(nullptr, std::memory_order_release);
-    state.record_sink.store(sink, std::memory_order_release);
+template<bool ThreadSafe>
+inline void set_log_record_sink(LogStateT<ThreadSafe> &state, log_record_sink_t sink) noexcept {
+    state.sink.set(nullptr);
+    state.record_sink.set(sink);
 }
 
 inline void set_log_record_sink(log_record_sink_t sink) noexcept { set_log_record_sink(default_log_state(), sink); }
 
-inline void set_log_level(LogState &state, LogLevel level) noexcept {
-    state.level.store(normalize_log_level(level), std::memory_order_relaxed);
+template<bool ThreadSafe>
+inline void set_log_level(LogStateT<ThreadSafe> &state, LogLevel level) noexcept {
+    state.level.set(normalize_log_level(level));
 }
 
 inline void set_log_level(LogLevel level) noexcept { set_log_level(default_log_state(), level); }
 
-inline log_sink_t get_log_sink(const LogState &state) noexcept { return state.sink.load(std::memory_order_acquire); }
+template<bool ThreadSafe>
+inline log_sink_t get_log_sink(const LogStateT<ThreadSafe> &state) noexcept {
+    return state.sink.get();
+}
 
 inline log_sink_t get_log_sink() noexcept { return get_log_sink(default_log_state()); }
 
-inline log_record_sink_t get_log_record_sink(const LogState &state) noexcept {
-    return state.record_sink.load(std::memory_order_acquire);
+template<bool ThreadSafe>
+inline log_record_sink_t get_log_record_sink(const LogStateT<ThreadSafe> &state) noexcept {
+    return state.record_sink.get();
 }
 
 inline log_record_sink_t get_log_record_sink() noexcept { return get_log_record_sink(default_log_state()); }
 
-inline LogLevel get_log_level(const LogState &state) noexcept { return state.level.load(std::memory_order_relaxed); }
+template<bool ThreadSafe>
+inline LogLevel get_log_level(const LogStateT<ThreadSafe> &state) noexcept {
+    return state.level.get();
+}
 
 inline LogLevel get_log_level() noexcept { return get_log_level(default_log_state()); }
 
 namespace detail {
 
-inline bool log_level_enabled(const LogState &state, LogLevel level) noexcept {
+template<bool ThreadSafe>
+inline bool log_level_enabled(const LogStateT<ThreadSafe> &state, LogLevel level) noexcept {
     const auto value = static_cast<uint8_t>(level);
-    const auto threshold = static_cast<uint8_t>(get_log_level(state));
+    const auto threshold = static_cast<uint8_t>(state.level.get());
     return value <= static_cast<uint8_t>(LogLevel::Error)
         && threshold != static_cast<uint8_t>(LogLevel::Off)
         && value >= threshold;
 }
 
 // The sink and level are checked before formatting, so a disabled log pays only
-// two atomic loads. The callback runs synchronously and without an ABIX lock.
-inline void log_v(LogState &state, LogLevel level, const char *fmt, va_list args) noexcept {
+// the configured reads. The callback runs synchronously and without an ABIX
+// lock. External logging backends remain responsible for their own concurrency.
+template<bool ThreadSafe>
+inline void log_v(LogStateT<ThreadSafe> &state, LogLevel level, const char *fmt, va_list args) noexcept {
     if (fmt == nullptr || !log_level_enabled(state, level)) return;
 
-    const auto record_sink = state.record_sink.load(std::memory_order_acquire);
-    const auto sink = record_sink ? nullptr : state.sink.load(std::memory_order_acquire);
+    const auto record_sink = state.record_sink.get();
+    const auto sink = record_sink ? nullptr : state.sink.get();
     if (record_sink == nullptr && sink == nullptr) return;
 
     char buf[log_buffer_size];
@@ -158,7 +247,8 @@ inline void log_v(LogState &state, LogLevel level, const char *fmt, va_list args
 // must not throw; because this function is noexcept, an escaping exception
 // terminates the process. A callback may call back into the logging API, but
 // must avoid unbounded re-entrant logging.
-inline void log(LogState &state, LogLevel level, const char *fmt, ...) noexcept {
+template<bool ThreadSafe>
+inline void log(LogStateT<ThreadSafe> &state, LogLevel level, const char *fmt, ...) noexcept {
     va_list args;
     va_start(args, fmt);
     detail::log_v(state, level, fmt, args);

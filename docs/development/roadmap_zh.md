@@ -31,7 +31,7 @@ ABIX 0.1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于�
 ABIX 0.2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
 ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档，不改变公共 ABI
 ABIX 0.2.2 — Built-in type IDs         预定义 canonical primitive TypeId 常量
-ABIX 0.2.3 — Runtime-only package      不依赖 AMC/LLVM/fmt 的可安装 runtime
+ABIX 0.2.3 — Runtime-only package      不依赖 AMC/LLVM/fmt 的 runtime + 宿主日志
 ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
@@ -92,7 +92,7 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * `ABIXConfig.cmake` 只在请求 format/ABI/metadata/tools component 或完整聚合目标时解析 fmt。
 * 作为子项目时，测试、benchmark、AMC、DLL variants 和 bundled MICS 安装默认关闭，且不再强制覆盖 `MICS_INSTALL`。
 * 新增不依赖 fmt 的 `ABIX::runtime` 安装消费测试。
-* 日志增加显式 `LogState`、原子 sink/阈值注册、运行时过滤、带长度的 `LogRecord` 回调，以及回调 / 跨 DLL 所有权规则文档。
+* 日志增加显式 `LogState`、ABIX 原子 sink/阈值注册、运行时过滤、带长度的 `LogRecord` 回调，以及回调 / 跨 DLL 所有权规则文档；`ABIX_LOG_THREAD_SAFE` 可选择默认线程安全配置或固定 sink/单线程策略。
 
 `.abix` 格式、`TypeID` 和公共 ABI 不变。
 

@@ -91,6 +91,8 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 - **功能** —— 纯头文件的 ABI 运行时，对真实动态库进行验证：
     - 经 name+sig 表加载/解析/调用 DLL；
     - 热重载 RCU 卸载/超时/zombie 生命周期、日志；
+    - 日志策略：`logging_single_thread_test` 使用 `ABIX_LOG_THREAD_SAFE=0` 验证固定 sink 策略；
+    - 可选后端集成：配置 `-DABIX_ENABLE_QUILL_TEST=ON -DABIX_QUILL_ROOT=/path/to/quill` 可构建 `logging_quill_test`，从多线程把 ABIX 诊断转发到 Quill file sink；默认构建不依赖 Quill；
     - 边界/调用约定；
     - 跨编译器与跨 CRT 变体；
     - MICS 集成；

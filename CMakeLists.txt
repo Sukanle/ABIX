@@ -83,6 +83,8 @@ option(AMC_BUILD "Build the AMC C++ frontend/backend tools" ${_abix_default_amc}
 option(ABIX_BUILD_RUNTIME_ONLY
        "Build and install only the header-only ABIX runtime; skip AMC, tests, benchmarks and DLLs" OFF)
 option(ABIX_INSTALL "Generate ABIX install rules" ${ABIX_IS_TOP_LEVEL})
+option(ABIX_ENABLE_QUILL_TEST "Build the optional Quill logging integration test" OFF)
+set(ABIX_QUILL_ROOT "" CACHE PATH "Quill source root for the optional logging integration test")
 option(ABIX_INSTALL_BUNDLED_MICS
        "Install the bundled MICS package with ABIX" ${_abix_default_bundled_mics})
 option(SKL_ABIX_KEEP_TEST_ARTIFACTS

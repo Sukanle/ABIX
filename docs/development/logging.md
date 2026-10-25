@@ -57,8 +57,11 @@ to `Debug`, raise it to `Error`, or disable logging with `Off`.
 
 ## Threading and callback rules
 
-- Sink, record sink and threshold are atomics. Setting them while other threads
-  log is supported.
+- With the default `ABIX_LOG_THREAD_SAFE=1`, sink, record sink and threshold
+  use ABIX atomic load/store. Setting them while other threads log is supported.
+- With `ABIX_LOG_THREAD_SAFE=0`, the fields are plain storage; the host must
+  establish the fixed-sink configuration before worker threads start (or provide
+  its own synchronization).
 - The callback runs synchronously on the logging thread. ABIX holds no logging
   lock while calling it.
 - `message` points into a stack buffer and is valid only for the duration of the
@@ -73,6 +76,39 @@ to `Debug`, raise it to `Error`, or disable logging with `Off`.
   formatted output did not fit.
 - Filtering happens before `vsnprintf`; compile-time level disabling removes the
   call entirely.
+
+## Configuration and dispatch policy
+
+ABIX separates three concerns:
+
+| Layer | Owner | Responsibility |
+| --- | --- | --- |
+| Configuration storage | ABIX | Sink/record-sink/threshold storage and the read/write strategy |
+| Diagnostic dispatch | ABIX | Formatting, filtering and synchronous callback invocation |
+| Backend concurrency | Host / external logger | Queueing, locking, async worker, file output |
+
+`ABIX_LOG_THREAD_SAFE` selects the configuration strategy at compile time:
+
+- `1` (default) — `ThreadSafeLogState`: ABIX atomic load/store over plain
+  function-pointer/`uint8_t` storage. Concurrent reads and configuration
+  changes are supported.
+- `0` — `SingleThreadedLogState`: plain storage, no atomic operations on the log
+  path. The host must guarantee that sink and level changes do not race with
+  logging. This is the intended fixed-sink mode: install the sink before worker
+  threads start, then do not modify it.
+
+The selected type is exposed as `LogState`; the two concrete types remain
+available as `ThreadSafeLogState` and `SingleThreadedLogState`. The switch is
+compile-time, not a per-call branch. Because it is a header-only policy, every
+module that shares a `LogState` must use the same value; a mixed set of DLLs
+must instead share one host-owned configuration or an explicit runtime state.
+
+The atomic path uses `SKL/ABIX/Util/Atomic.h` free functions over caller-owned
+plain storage. It does not store a `std::atomic` object in `LogState`, avoiding
+standard-library object layout across DLL/CRT boundaries. Atomic sink
+configuration does not make the whole log operation lock-free: formatting and
+the external sink can still block. External loggers such as Quill/fmtlog remain
+responsible for their own queue and backpressure.
 
 ## Cross-DLL ownership
 
@@ -92,9 +128,9 @@ Choose one of these policies:
 Do not assume that an inline static variable is shared across DLLs. The
 callback ABI itself stays a plain function pointer and `LogRecord`, so replacing
 the host logger does not change ABIX core interfaces. An explicit `LogState` is
-a C++ atomics object: share it only between modules built with compatible C++
-ABI and ABIX headers, or keep it inside the host runtime and expose only the
-callback boundary.
+a plain-storage configuration object: share it only between modules built with
+compatible C++ ABI and ABIX headers, or keep it inside the host runtime and
+expose only the callback boundary.
 
 ## Deliberately out of scope
 
