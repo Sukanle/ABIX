@@ -2,6 +2,7 @@
 
 #include <float.h>
 #include <limits>
+#include <wchar.h>
 
 TEST_CASE("model.predefined_builtin_type_ids", "[model][types]") {
     using namespace skl::abix::model;
@@ -22,6 +23,16 @@ TEST_CASE("model.predefined_builtin_type_ids", "[model][types]") {
     CHECK(u64 == canonical_type_id("prim:u64"));
     CHECK(u128 == canonical_type_id("prim:u128"));
     CHECK(usize == (sizeof(void *) == 4 ? u32 : u64));
+
+    const bool wint_signed = std::numeric_limits<wint_t>::is_signed;
+    TypeId expected_wint = wint_signed ? i64 : u64;
+    if (sizeof(wint_t) == 1)
+        expected_wint = wint_signed ? i8 : u8;
+    else if (sizeof(wint_t) == 2)
+        expected_wint = wint_signed ? i16 : u16;
+    else if (sizeof(wint_t) == 4)
+        expected_wint = wint_signed ? i32 : u32;
+    CHECK(wint == expected_wint);
 
     CHECK(f32 == canonical_type_id("prim:fieee32"));
     CHECK(f64 == canonical_type_id("prim:fieee64"));

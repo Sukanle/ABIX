@@ -13,6 +13,8 @@ descriptors. No existing identity or wire format changes.
 - `SKL/ABIX/Model/ABI.h` exposes predefined IDs for void/bool, signed and
   unsigned integers, pointer-sized `isize`/`usize`, IEEE and extended floating
   formats, `long double`, and the character kinds.
+- `wint_t` resolves to its underlying integer `TypeId`; ABIX does not invent a
+  `prim:wint` descriptor because `wint_t` is a typedef, not a distinct ABI kind.
 - `test/builtin_types_test.cpp` checks every predefined ID against
   `canonical_type_id()` and the host `long double` / character signedness.
 
