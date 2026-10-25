@@ -3,6 +3,47 @@ project(AbiCrossDllTests VERSION 0.2.2 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(CheckCXXSourceCompiles)
+
+# Detect the target's long-double ABI without running a target executable, so
+# cross-compilation configures use the target compiler's <float.h> rather than
+# the host's. The ABIX model maps LDBL_MANT_DIG to a canonical float format.
+function(abix_probe_ldbl_mant_dig value out_var)
+    set(cache_var "ABIX_LDBL_MANT_DIG_${value}")
+    check_cxx_source_compiles(
+        "
+        #include <float.h>
+        #if LDBL_MANT_DIG != ${value}
+        #  error unexpected LDBL_MANT_DIG
+        #endif
+        int main() { return 0; }
+        "
+        ${cache_var})
+    set(${out_var} "${${cache_var}}" PARENT_SCOPE)
+endfunction()
+
+set(ABIX_LDBL_MANT_DIG "unknown")
+foreach(_abix_ldbl_value 53 64 106 113)
+    abix_probe_ldbl_mant_dig(${_abix_ldbl_value} _abix_ldbl_match)
+    if(_abix_ldbl_match)
+        set(ABIX_LDBL_MANT_DIG "${_abix_ldbl_value}")
+        break()
+    endif()
+endforeach()
+
+if(ABIX_LDBL_MANT_DIG STREQUAL "53")
+    set(ABIX_LONG_DOUBLE_FORMAT "IEEE binary64 (same as double)")
+elseif(ABIX_LDBL_MANT_DIG STREQUAL "64")
+    set(ABIX_LONG_DOUBLE_FORMAT "x87 80-bit extended")
+elseif(ABIX_LDBL_MANT_DIG STREQUAL "106")
+    set(ABIX_LONG_DOUBLE_FORMAT "PowerPC double-double")
+elseif(ABIX_LDBL_MANT_DIG STREQUAL "113")
+    set(ABIX_LONG_DOUBLE_FORMAT "IEEE binary128")
+else()
+    set(ABIX_LONG_DOUBLE_FORMAT "unknown")
+endif()
+
+message(STATUS "Target long double: ${ABIX_LONG_DOUBLE_FORMAT} (LDBL_MANT_DIG=${ABIX_LDBL_MANT_DIG})")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
