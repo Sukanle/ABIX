@@ -460,7 +460,7 @@ if(AMC_BUILD)
             add_test(
                 NAME abix-cmake-package-test
                 COMMAND ${AMC_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/AMC/tests/cli/cmake_package_test.py
-                        ${CMAKE_BINARY_DIR} ${SKL_ABIX_PROJ_DIR} --cxx ${CMAKE_CXX_COMPILER})
+                        ${CMAKE_BINARY_DIR} ${SKL_ABIX_PROJ_DIR} --cxx ${CMAKE_CXX_COMPILER} --fmt-dir=${fmt_DIR})
             set_tests_properties(abix-cmake-package-test PROPERTIES TIMEOUT 120)
             add_test(
                 NAME amc-rust-test

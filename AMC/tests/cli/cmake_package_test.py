@@ -26,6 +26,11 @@ def main() -> int:
     parser.add_argument("build_dir", help="Configured ABIX build directory")
     parser.add_argument("source_root", help="ABIX source root")
     parser.add_argument("--cxx", help="C++ compiler for the consumer")
+    parser.add_argument(
+        "--fmt-dir",
+        default=os.environ.get("fmt_DIR", ""),
+        help="fmt CMake package directory used by the ABIX build",
+    )
     parser.add_argument("--keep-artifacts", action="store_true")
     args = parser.parse_args()
 
@@ -65,6 +70,8 @@ def main() -> int:
                      f"-DCMAKE_PREFIX_PATH={prefix}"]
         if args.cxx:
             configure.append(f"-DCMAKE_CXX_COMPILER={args.cxx}")
+        if args.fmt_dir:
+            configure.append(f"-Dfmt_DIR={args.fmt_dir}")
         run(configure)
         run([cmake, "--build", os.path.join(consumer, "build")])
         result = run([os.path.join(consumer, "build",
