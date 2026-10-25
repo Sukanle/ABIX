@@ -30,6 +30,7 @@ ABIX releases are project stages, not feature lists. Each release stage carries 
 ABIX 0.1.0 — Foundation + Toolchain  the ABI foundation exists and ABIX is usable in real engineering
 ABIX 0.2.0 — Cross-language          Rust / Zig frontends and cross-language bindings
 ABIX 0.2.1 — Maintenance             fix existing behavior, add tests/docs; no public ABI change
+ABIX 0.2.2 — Built-in type IDs       predefined canonical primitive TypeId constants
 ABIX 0.3.0 — Ecosystem               others build on top of ABIX
 ```
 
@@ -67,6 +68,20 @@ This release only fixes existing behavior and adds tests/documentation; it does 
 * The `.abix` format, `[[error]]` v1, `abix.error/1`, `TypeID` / `LayoutHash` / `ABIHash` are unchanged.
 
 Release notes: [`CHANGELOG.md`](../../CHANGELOG.md).
+
+### ABIX 0.2.2 — Built-in type IDs
+
+Adds predefined `TypeId` constants for the canonical primitive ABI descriptors:
+
+* void/bool and every fixed-width signed/unsigned integer;
+* pointer-width `isize` / `usize`;
+* IEEE binary16/32/64/128, x87 80-bit, PowerPC double-double and bf16;
+* `long double` mapped by `LDBL_MANT_DIG`;
+* target-defined plain `char` / `wchar_t` signedness, plus `schar` / `uchar` /
+  `char8` / `char16` / `char32`.
+
+These constants are compile-time entry points to existing canonical
+descriptors. They do not change any `TypeID`, `.abix` format or public ABI.
 
 ### ABIX 0.3.0 — Ecosystem (future)
 
@@ -153,6 +168,7 @@ ABIX uses standard SemVer tags, starting from the unstable `v0.1.0` line. The pr
 * `v0.1.0` — Foundation, self-hosting and toolchain (pre-1.0, unstable)
 * `v0.2.0` — Cross-language (pre-1.0, unstable)
 * `v0.2.1` — Maintenance (maintenance release)
+* `v0.2.2` — Built-in type IDs (predefined canonical primitive TypeIds)
 
 ## Explicitly out of scope
 

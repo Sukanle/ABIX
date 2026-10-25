@@ -1624,7 +1624,7 @@ std::string primitive_rust_type(uint32_t primitive_abi) {
                 case amc::FloatFormat::ieee32:            return "core::ffi::c_float";
                 case amc::FloatFormat::ieee64:            return "core::ffi::c_double";
                 case amc::FloatFormat::ieee16:            return "u16";
-                case amc::FloatFormat::bfloat16:          return "u16";
+                case amc::FloatFormat::bf16:              return "u16";
                 case amc::FloatFormat::ieee128:           return "u128";
                 case amc::FloatFormat::x87_80:            return "u128";
                 case amc::FloatFormat::ppc_double_double: return "u128";

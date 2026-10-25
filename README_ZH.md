@@ -550,6 +550,7 @@ ABIX 的发布按项目阶段划分，而不是功能清单：
 - **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (已发布，pre-1.0/unstable)
 - **ABIX 0.2.0 — Cross-language** (已发布；Rust provider 与 Zig backend 已交付)
 - **ABIX 0.2.1 — Maintenance** (维护版本；修复现有行为、补测试和文档，不改变公共 ABI)
+- **ABIX 0.2.2 — Built-in type IDs** (预定义 canonical primitive TypeId 常量)
 - **ABIX 0.3.0 — Ecosystem** (AMC Interface 去分派、LSP、包管理；MCP/Agent 高级工具待议)
 
 ```mermaid

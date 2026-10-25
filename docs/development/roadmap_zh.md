@@ -30,6 +30,7 @@ ABIX 的发布是项目阶段，而不是功能清单。每个发布阶段承载
 ABIX 0.1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于真实工程
 ABIX 0.2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
 ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档，不改变公共 ABI
+ABIX 0.2.2 — Built-in type IDs         预定义 canonical primitive TypeId 常量
 ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
@@ -67,6 +68,18 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * `.abix` 格式、`[[error]]` v1、`abix.error/1`、`TypeID` / `LayoutHash` / `ABIHash` 均不变。
 
 发布说明见 [`CHANGELOG.md`](../../CHANGELOG.md)。
+
+### ABIX 0.2.2 — Built-in type IDs
+
+为 canonical primitive ABI 描述符增加预定义 `TypeId` 常量：
+
+* void/bool、全部定宽有符号/无符号整数；
+* 指针宽度相关的 `isize` / `usize`；
+* IEEE binary16/32/64/128、x87 80-bit、PowerPC double-double 与 bf16；
+* `long double` 按 `LDBL_MANT_DIG` 映射到目标格式；
+* plain `char` / `wchar_t` 的目标有符号性，以及 `schar` / `uchar` / `char8` / `char16` / `char32`。
+
+这些常量只是既有 canonical 描述符的编译期入口，不改变任何 `TypeID`、`.abix` 格式或公共 ABI。
 
 ### ABIX 0.3.0 — Ecosystem（未来）
 
@@ -153,6 +166,7 @@ ABIX 使用标准 SemVer tag，从非稳定的 `v0.1.0` 线开始。项目阶段
 * `v0.1.0` — Foundation, self-hosting and toolchain（pre-1.0，非稳定）
 * `v0.2.0` — Cross-language（pre-1.0，非稳定）
 * `v0.2.1` — Maintenance（维护版本）
+* `v0.2.2` — Built-in type IDs（预定义 canonical primitive TypeId）
 
 ## 明确不在范围内
 
