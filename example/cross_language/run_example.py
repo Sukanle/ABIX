@@ -115,7 +115,7 @@ def main() -> int:
     shutil.copyfile(HERE / "zig_consumer.zig", BUILD / "zig_consumer.zig")
 
     run([cxx, "-std=c++17", "-O2", str(HERE / "cpp_consumer.cpp"),
-         f"-I{HERE}", f"-I{BUILD}", f"-I{ROOT}", f"-L{BUILD}", "-lshapes",
+         f"-I{HERE}", f"-I{BUILD}", f"-I{ROOT / 'include'}", f"-L{BUILD}", "-lshapes",
          "-o", str(BUILD / exe_name("cpp_consumer"))],
         label="compiling cpp_consumer.cpp")
     run([rustc, "--edition", "2021", "-O", str(BUILD / "rust_consumer.rs"),

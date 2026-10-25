@@ -496,7 +496,7 @@ class TestRunner:
                 self.bin_path("amc"),
                 "build",
                 "-c",
-                os.path.join(SOURCE_ROOT, "/include/SKL/ABIX/self.abic.toml"),
+                os.path.join(SOURCE_ROOT, "include/SKL/ABIX/self.abic.toml"),
                 "-B",
                 self_build,
             ]
@@ -2441,7 +2441,7 @@ int main() {
         check_dir = os.path.join(self.build_dir, "abi-check")
         os.makedirs(check_dir, exist_ok=True)
         include = [
-            "-I" + SOURCE_ROOT + "include",
+            "-I" + os.path.join(SOURCE_ROOT, "include"),
             "-I" + self.gen_separate,
             "-I" + self.fixtures_dir,
         ]

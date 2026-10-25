@@ -8,10 +8,11 @@ version = "0.1.0"
 language = "cpp"
 flags = [
     "-std=c++17",
-    "-I", "..",
-    "-I", "../mics",
+    "-I", "../..",
+    "-I", "../../../MICS/include",
+    "-I", "../../../MICS/HLMD",
 ]
-files = ["../src/self_types.cpp"]
+files = ["../../../src/SKL/ABIX/self_types.cpp"]
 symbols = [
     "skl::abix::Hash128",
     "skl::abix::model::TypeLayout",
