@@ -1,5 +1,5 @@
 ---
-applyTo: "ABIX/**"
+applyTo: "SKL/ABIX/**"
 ---
 
 # Runtime instructions
@@ -7,8 +7,8 @@ applyTo: "ABIX/**"
 Source of truth: [`ARCHITECTURE.md`](../../.agents/ARCHITECTURE.md) and
 [`docs/architecture/runtime.md`](../../docs/architecture/runtime.md).
 
-`applyTo` uses the `ABIX/` prefix, which now matches the git index: the layer
-directories were renamed to upper case, so a fresh clone sees `ABIX/` on every
+`applyTo` uses the `SKL/ABIX/` prefix, which now matches the git index: the layer
+directories were renamed to upper case, so a fresh clone sees `SKL/ABIX/` on every
 filesystem.
 
 - The runtime **consumes** ABI; it must never become a second ABI authority.

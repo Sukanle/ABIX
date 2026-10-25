@@ -1,16 +1,16 @@
-#include "AMC/Core/Core.h"
+#include "SKL/AMC/Core/Core.h"
 #include <cassert>
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <algorithm>
 
 namespace {
@@ -335,6 +335,85 @@ void test_validate_function_no_name(TestResult &r) {
     m.functions.push_back(fn);
     std::string e;
     AMC_TEST(r, !amc::validate(m, e), "function with empty name rejected");
+}
+
+void test_error_contract_validation(TestResult &r) {
+    std::cerr << "[error_contract_validation]\n";
+
+    amc::AbiModule m;
+    m.package_name = "error_contract";
+    auto i32 = make_primitive("int", 4, 4);
+    auto result = make_record("ResultI32", 8, 4, 0, 2);
+    m.types = {i32, result};
+
+    amc::Field status = make_field("status", i32.id, 0);
+    status.owner_type = result.id;
+    amc::Field value = make_field("value", i32.id, 4);
+    value.owner_type = result.id;
+    m.fields = {status, value};
+
+    auto div = make_func("div", i32.id,
+        {
+            {  "a", i32.id, 0},
+            {  "b", i32.id, 0},
+            {"out", i32.id, 0}
+    });
+    auto div_result = make_func("div_result", result.id,
+        {
+            {"a", i32.id, 0},
+            {"b", i32.id, 0}
+    });
+    m.functions = {div, div_result};
+
+    std::string error;
+    amc::ErrorContract contract;
+    contract.function_index = 0;
+    contract.status_source = amc::StatusSource::return_value;
+    contract.success_value = 0;
+    contract.value_parameter = 2;
+    m.errors = {contract};
+    AMC_TEST(r, amc::validate(m, error), "return_value error contract validates");
+
+    contract.function_index = 2;
+    m.errors = {contract};
+    AMC_TEST(r, !amc::validate(m, error), "error contract with unknown function is rejected");
+    AMC_TEST(r, error.find("unknown function") != std::string::npos, "unknown-function error is descriptive");
+
+    contract.function_index = 0;
+    contract.value_parameter = 3;
+    m.errors = {contract};
+    AMC_TEST(r, !amc::validate(m, error), "error contract with out-of-range value parameter is rejected");
+    AMC_TEST(r, error.find("out of range") != std::string::npos, "parameter-range error is descriptive");
+
+    amc::ErrorContract field_contract;
+    field_contract.function_index = 1;
+    field_contract.status_source = amc::StatusSource::return_field;
+    field_contract.status_parameter = 0;
+    field_contract.value_parameter = 1;
+    field_contract.success_value = 0;
+    m.errors = {field_contract};
+    AMC_TEST(r, amc::validate(m, error), "return_field error contract validates");
+
+    field_contract.value_parameter = 2;
+    m.errors = {field_contract};
+    AMC_TEST(r, !amc::validate(m, error), "return_field with out-of-range value field is rejected");
+
+    contract.function_index = 0;
+    contract.status_source = amc::StatusSource::return_value;
+    contract.value_parameter = 2;
+    m.errors = {contract};
+    const auto path = tmp_path("error_contract.abix");
+    cleanup(path);
+    AMC_TEST(r, amc::write_abix(m, path, error), "write error contract");
+    amc::AbiModule loaded;
+    AMC_TEST(r, amc::read_abix(path, loaded, error), "read error contract");
+    AMC_CHECK(r, loaded.errors.size(), size_t(1), "error contract round-trip count");
+    if (!loaded.errors.empty()) {
+        AMC_CHECK(r, loaded.errors[0].function_index, uint32_t(0), "error contract function index round-trip");
+        AMC_CHECK(r, loaded.errors[0].success_value, int64_t(0), "error contract success value round-trip");
+        AMC_CHECK(r, loaded.errors[0].value_parameter, uint32_t(2), "error contract value parameter round-trip");
+    }
+    cleanup(path);
 }
 
 void test_abix_roundtrip_primitive(TestResult &r) {
@@ -984,7 +1063,7 @@ static std::string cpp_name(std::string s) {
 
 std::string generate_projection(const amc::AbiModule &m) {
     std::ostringstream o;
-    o << "#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace amc_generated {\n";
+    o << "#pragma once\n#include <stddef.h>\n#include <stdint.h>\nnamespace amc_generated {\n";
     for (auto &t : m.types) {
         o
             << "struct "
@@ -1456,6 +1535,7 @@ int main() {
     test_validate_field_ref_unknown_type(r);
     test_validate_function_ref_unknown_type(r);
     test_validate_function_no_name(r);
+    test_error_contract_validation(r);
 
     test_abix_roundtrip_primitive(r);
     test_abix_roundtrip_enum(r);

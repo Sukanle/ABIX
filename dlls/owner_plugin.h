@@ -6,7 +6,7 @@
 #ifndef SKL_ABIX_DLLS_OWNER_PLUGIN_H
 #define SKL_ABIX_DLLS_OWNER_PLUGIN_H
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 // Shared between the owner/interface plugin and its consumer test.
 namespace owner_plugin {

@@ -66,11 +66,17 @@ function(amc_add_abi)
     set_source_files_properties("${_amc_cpp}" PROPERTIES GENERATED TRUE)
     target_sources(${AMC_TARGET} PRIVATE "${_amc_cpp}")
     target_include_directories(${AMC_TARGET} PRIVATE "${_amc_cpp_dir}")
-    # The generated projection includes the public ABIX descriptor headers.
-    # Keep this explicit so consumers do not need to duplicate ABIX include
-    # path setup just to use an AMC-generated header.
-    target_include_directories(${AMC_TARGET} PRIVATE
-      "${_AMC_MODULE_ROOT}")
+    # The generated projection includes the public ABIX descriptor headers and
+    # MICS headers. Keep this explicit so consumers do not need to duplicate the
+    # source-tree include setup just to use an AMC-generated header.
+    foreach(_amc_include_dir
+            "${_AMC_MODULE_ROOT}/include"
+            "${_AMC_MODULE_ROOT}/MICS/include"
+            "${_AMC_MODULE_ROOT}/MICS/HLMD")
+      if(EXISTS "${_amc_include_dir}")
+        target_include_directories(${AMC_TARGET} PRIVATE "${_amc_include_dir}")
+      endif()
+    endforeach()
   endif()
 
   set(_amc_target "${AMC_TARGET}_amc")

@@ -10,22 +10,22 @@
 
 - [Architecture Overview](#architecture-overview)
 - [ABI Metadata Runtime and AMC](#abi-metadata-runtime-and-amc)
-- [1. `ABIX/Util/Config.h` — Platform Detection & Core Enums](#1-abixutilconfigh--platform-detection--core-enums)
-- [2. `ABIX/Runtime/Type.h` — Core Types](#2-abixruntimetypeh--core-types)
-- [3. `ABIX/DLL/Export.h` — Registration Macros](#3-abixdllexporth--registration-macros)
-- [4. `ABIX/DLL/Object.h` — DLL Module Wrapper](#4-abixdllobjecth--dll-module-wrapper)
-- [5. `ABIX/DLL/Function.h` — Typed Function Handles](#5-abixdllfunctionh--typed-function-handles)
-- [6. `ABIX/DLL/FnSig.h` — Compile-time Signature Hashing](#6-abixdllfnsigh--compile-time-signature-hashing)
-- [7. `ABIX/Runtime/TypeSig.h` — Type Signature Hashing](#7-abixruntimetypesigh--type-signature-hashing)
-- [8. `ABIX/Runtime/Search.h` — Table Search Functions](#8-abixruntimesearchh--table-search-functions)
-- [9. `ABIX/Runtime/Function.h` — Cross-Boundary Closure](#9-abixruntimefunctionh--cross-boundary-closure)
-- [10. Smart Pointers (`ABIX/DLL/DLLPtr.h`)](#10-smart-pointers-abixdlldllptrh)
-- [11. `ABIX/Bridge/Refl.h` — Dynamic mics Integration](#11-abixbridgereflh--dynamic-mics-integration)
+- [1. `SKL/ABIX/Util/Config.h` — Platform Detection & Core Enums](#1-abixutilconfigh--platform-detection--core-enums)
+- [2. `SKL/ABIX/Runtime/Type.h` — Core Types](#2-abixruntimetypeh--core-types)
+- [3. `SKL/ABIX/DLL/Export.h` — Registration Macros](#3-abixdllexporth--registration-macros)
+- [4. `SKL/ABIX/DLL/Object.h` — DLL Module Wrapper](#4-abixdllobjecth--dll-module-wrapper)
+- [5. `SKL/ABIX/DLL/Function.h` — Typed Function Handles](#5-abixdllfunctionh--typed-function-handles)
+- [6. `SKL/ABIX/DLL/FnSig.h` — Compile-time Signature Hashing](#6-abixdllfnsigh--compile-time-signature-hashing)
+- [7. `SKL/ABIX/Runtime/TypeSig.h` — Type Signature Hashing](#7-abixruntimetypesigh--type-signature-hashing)
+- [8. `SKL/ABIX/Runtime/Search.h` — Table Search Functions](#8-abixruntimesearchh--table-search-functions)
+- [9. `SKL/ABIX/Runtime/Function.h` — Cross-Boundary Closure](#9-abixruntimefunctionh--cross-boundary-closure)
+- [10. Smart Pointers (`SKL/ABIX/DLL/DLLPtr.h`)](#10-smart-pointers-abixdlldllptrh)
+- [11. `SKL/ABIX/Bridge/Refl.h` — Dynamic mics Integration](#11-abixbridgereflh--dynamic-mics-integration)
 - [12. Complete Usage Example](#12-complete-usage-example)
 
 </details>
 
-This document covers the ABIX cross-DLL function calling library (`ABIX/`).
+This document covers the ABIX cross-DLL function calling library (`SKL/ABIX/`).
 
 ## Architecture Overview
 
@@ -88,7 +88,7 @@ amc-dump diff old.abix new.abix --json compatibility.json
 
 ### `runtime::Registry`
 
-Headers: `ABIX/Metadata/Descriptor.h`, `ABIX/Runtime/Registry.h`.
+Headers: `SKL/ABIX/Metadata/Descriptor.h`, `SKL/ABIX/Runtime/Registry.h`.
 
 `ModuleDescriptor` is the generated, static view of one metadata module. `runtime::Registry<Capacity>::register_module()` first validates the entire module, including type references and duplicate IDs, then registers it atomically from the caller's perspective. The registry retains canonical `model::TypeDesc`/`TypeLayout` views alongside generated descriptors. Registration is keyed by `(TypeID, version)`: a repeated `TypeID` within the same version must carry an identical `LayoutHash` (Boundary #1), while a later version may carry a different layout and coexists as its own entry.
 
@@ -119,7 +119,7 @@ if (registry.register_module(amc_generated::amc_module) ==
 
 ABIX Runtime and AMC core metadata are covered by reproducible self-description tests. This is metadata self-hosting, not C++ compiler-source self-hosting: AMC's C++ provider continues to depend on Clang/LLVM semantic analysis.
 
-## 1. `ABIX/Util/Config.h` — Platform Detection & Core Enums
+## 1. `SKL/ABIX/Util/Config.h` — Platform Detection & Core Enums
 
 **Namespace:** `skl::abix`
 
@@ -133,7 +133,7 @@ ABIX Runtime and AMC core metadata are covered by reproducible self-description 
 | `SKL_ABIX_DLL_EXPORT`   | `__declspec(dllexport)` or visibility attribute | Provider-side export for fixed C module entries (`abi_get_table`, `abix_module_query_v1`, provider handles). ABIX has no shared core library to import. |
 | `SKL_ABIX_MAGIC64`      | `0xFDFDFDFDFDFDFDFDULL`                         | Magic number for control blocks                                                                                                                         |
 
-## 2. `ABIX/Runtime/Type.h` — Core Types
+## 2. `SKL/ABIX/Runtime/Type.h` — Core Types
 
 **Namespace:** `skl::abix::runtime`
 
@@ -188,7 +188,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 
 Creates a static `Table` from a compile-time entry array. Used internally by `SKL_ABIX_DEFINE_TABLE`.
 
-## 3. `ABIX/DLL/Export.h` — Registration Macros
+## 3. `SKL/ABIX/DLL/Export.h` — Registration Macros
 
 **Namespace:** `skl::abix`
 
@@ -211,7 +211,7 @@ Creates a static `Table` from a compile-time entry array. Used internally by `SK
 
 ### Memory Allocation
 
-Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
+Internal allocator, declared in `SKL/ABIX/Util/Mem.h` (`skl::abix::mem`):
 
 | Function                        | Description                                                     |
 | ------------------------------- | --------------------------------------------------------------- |
@@ -222,7 +222,7 @@ Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
 | `mem::dealloc(p)`               | Free memory from `alloc` / `zalloc` / `alloc_array`             |
 | `mem::dealloc_aligned(p)`       | Free memory from `alloc_aligned`                                |
 
-## 4. `ABIX/DLL/Object.h` — DLL Module Wrapper
+## 4. `SKL/ABIX/DLL/Object.h` — DLL Module Wrapper
 
 **Namespace:** `skl::abix::dll`
 
@@ -248,7 +248,7 @@ Internal allocator, declared in `ABIX/Util/Mem.h` (`skl::abix::mem`):
 inline dll::CallError &last_error() noexcept;
 ```
 
-Returns a reference to the thread-local last error code. Thread-safe (each thread has its own error state).
+Returns a reference to the thread-local last error code. Each thread has its own error state; because the function is defined in a header, each DSO may also have its own copy. Do not use `last_error()` as a cross-module error channel; pass an explicit return value or `[[error]]` contract instead.
 
 ### `dll::Object`
 
@@ -317,7 +317,7 @@ int result = add(2, 3);  // operator() auto-calls enter_read/exit_read
 lib.unload();  // retires the old image -> synchronize -> reclaim
 ```
 
-### `rcu::Domain` (`ABIX/RCU/Domain.h`)
+### `rcu::Domain` (`SKL/ABIX/RCU/Domain.h`)
 
 **Namespace:** `skl::abix::rcu`
 
@@ -347,11 +347,11 @@ lib.unload();  // retires the old image -> synchronize -> reclaim
 - **Two reclaim delays**: the batched class (default 8 synchronizations) keeps a swapped-out image mapped so that alternating hot reloads still hit the loader's already-resident path; the eager class (next synchronization) makes a swapped-out index buffer reusable by the next `build`. Each class has its own watermark, so one cannot swallow the other's safe epoch.
 - **Advancement ownership**: a thread that takes the advancement owns `sync` and clears it on every path out; a thread that finds `sync` taken waits, retries, or times out, and never clears a `sync` it does not own.
 - **Cache-line isolation**: the epoch block is `alignas(SKL_ABIX_RCU_CACHE_LINE_SIZE)` and sits apart from the writer lock.
-- **Zero `<atomic>` dependency**: all atomics come from `ABIX/Util/Atomic.h`.
+- **Zero `<atomic>` dependency**: all atomics come from `SKL/ABIX/Util/Atomic.h`.
 
 ### Bounding a Grace-Period Wait
 
-`rcu::Deadline` (`ABIX/RCU/Deadline.h`) says _how long_ to wait, never what to do when the wait runs out:
+`rcu::Deadline` (`SKL/ABIX/RCU/Deadline.h`) says _how long_ to wait, never what to do when the wait runs out:
 
 ```cpp
 namespace skl::abix::rcu {
@@ -424,7 +424,7 @@ There is no automatic policy on top of that: no forced unload on timeout (a time
 - Manual `enter_read()` / `exit_read()` pairs carry the same obligation; use `rcu::LockGuard` where the section spans anything that can throw or return early.
 - A thread that has left is kept in the reader list with epoch 0 (never blocking), so leaving does not unregister anything; the list only grows with the number of threads that ever entered.
 
-**State machine** (`ABIX/RCU/Config.h`, `rcu::State`):
+**State machine** (`SKL/ABIX/RCU/Config.h`, `rcu::State`):
 
 ```
 control created            -> zombie   (is_loaded() == false, calls refused)
@@ -453,7 +453,7 @@ unload() / force_unload()  -> zombie   (image detached, later reclaimed)
 
 Enabling a bound is an explicit trade, as described under "Bounding a Grace-Period Wait": the wait then asks for a real grace period on every operation instead of sharing the batched one, so the alternating-reload cost of ~4.97x applies to the Objects that opt in. A deferral is not a leak: once a grace period can be proven, the next operation reclaims every pending image — the same pull-based mechanism that already expresses "reclaim later".
 
-### Logging (`ABIX/Util/Log.h`)
+### Logging (`SKL/ABIX/Util/Log.h`)
 
 **Namespace:** `skl::abix::util`
 
@@ -473,7 +473,7 @@ Enabling a bound is an explicit trade, as described under "Bounding a Grace-Peri
 | `ABIX_LOG_WARNING(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
 | `ABIX_LOG_ERROR(fmt, ...)`   | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
 
-## 5. `ABIX/DLL/Function.h` — Typed Function Handles
+## 5. `SKL/ABIX/DLL/Function.h` — Typed Function Handles
 
 **Namespace:** `skl::abix::dll`
 
@@ -535,7 +535,7 @@ if (!add.valid()) {
 }
 ```
 
-## 6. `ABIX/DLL/FnSig.h` — Compile-time Signature Hashing
+## 6. `SKL/ABIX/DLL/FnSig.h` — Compile-time Signature Hashing
 
 **Namespace:** `skl::abix::dll`
 
@@ -578,7 +578,7 @@ constexpr sig_t mul_sig = FnSigV<double(double, double)>;
 constexpr sig_t int_sig = type_sig<int>();
 ```
 
-## 7. `ABIX/Runtime/TypeSig.h` — Type Signature Hashing
+## 7. `SKL/ABIX/Runtime/TypeSig.h` — Type Signature Hashing
 
 **Namespace:** `skl::abix` (+ `skl::abix::runtime::detail`)
 
@@ -604,7 +604,7 @@ Specialized for ABIX smart pointer types and `runtime::Function`:
 
 Register a custom type tag for user type `T`, enabling stable cross-compiler type hashing.
 
-## 8. `ABIX/Runtime/Search.h` — Table Search Functions
+## 8. `SKL/ABIX/Runtime/Search.h` — Table Search Functions
 
 **Namespace:** `skl::abix::runtime`
 
@@ -721,7 +721,7 @@ Runtime hash index for large tables. Built once at DLL load time.
 | `SKL_ABIX_HASH_THRESHOLD` | `64`          | Tables with fewer entries use linear scan; tables with ≥ 64 entries use HashIndex |
 | `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | Sentinel value for empty hash slots                                               |
 
-## 9. `ABIX/Runtime/Function.h` — Cross-Boundary Closure
+## 9. `SKL/ABIX/Runtime/Function.h` — Cross-Boundary Closure
 
 **Namespace:** `skl::abix::runtime`
 
@@ -766,7 +766,7 @@ auto reg = dll::Function<void(runtime::Function<void(int)>)>(lib, "register_call
 reg(std::move(cb));
 ```
 
-## 10. Smart Pointers (`ABIX/DLL/DLLPtr.h`)
+## 10. Smart Pointers (`SKL/ABIX/DLL/DLLPtr.h`)
 
 **Namespace:** `skl::abix::dll`
 
@@ -862,7 +862,7 @@ Non-owning observer for `dll::SharedPtr<T>`. Does not prevent resource destructi
 | `lock()`                                 | `dll::SharedPtr<T>` | Promote to a `dll::SharedPtr` (if alive)        |
 | `use_count()`                            | `uint32_t`          | Current strong count of the underlying resource |
 
-## 11. `ABIX/Bridge/Refl.h` — Dynamic mics Integration
+## 11. `SKL/ABIX/Bridge/Refl.h` — Dynamic mics Integration
 
 **Namespace:** `skl::abix::bridge`
 
@@ -931,7 +931,7 @@ Registers all entries from an ABIX export table into the dynamic mics registry.
 ## 12. Complete Usage Example
 
 ```cpp
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 using namespace skl::abix;
 

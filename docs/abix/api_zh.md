@@ -10,22 +10,22 @@
 
 - [架构概览](#架构概览)
 - [ABI 元数据运行时与 AMC](#abi-元数据运行时与-amc)
-- [1. `ABIX/Util/Config.h` — 平台检测与核心枚举](#1-abixutilconfigh--平台检测与核心枚举)
-- [2. `ABIX/Runtime/Type.h` — 核心类型](#2-abixruntimetypeh--核心类型)
-- [3. `ABIX/DLL/Export.h` — 注册宏](#3-abixdllexporth--注册宏)
-- [4. `ABIX/DLL/Object.h` — DLL 模块包装器](#4-abixdllobjecth--dll-模块包装器)
-- [5. `ABIX/DLL/Function.h` — 类型化函数句柄](#5-abixdllfunctionh--类型化函数句柄)
-- [6. `ABIX/DLL/FnSig.h` — 编译期签名哈希](#6-abixdllfnsigh--编译期签名哈希)
-- [7. `ABIX/Runtime/TypeSig.h` — 类型签名哈希](#7-abixruntimetypesigh--类型签名哈希)
-- [8. `ABIX/Runtime/Search.h` — 表查找函数](#8-abixruntimesearchh--表查找函数)
-- [9. `ABIX/Runtime/Function.h` — 跨边界闭包](#9-abixruntimefunctionh--跨边界闭包)
-- [10. 智能指针（`ABIX/DLL/DLLPtr.h`）](#10-智能指针abixdlldllptrh)
-- [11. `ABIX/Bridge/Refl.h` — 动态反射集成](#11-abixbridgereflh--动态反射集成)
+- [1. `SKL/ABIX/Util/Config.h` — 平台检测与核心枚举](#1-abixutilconfigh--平台检测与核心枚举)
+- [2. `SKL/ABIX/Runtime/Type.h` — 核心类型](#2-abixruntimetypeh--核心类型)
+- [3. `SKL/ABIX/DLL/Export.h` — 注册宏](#3-abixdllexporth--注册宏)
+- [4. `SKL/ABIX/DLL/Object.h` — DLL 模块包装器](#4-abixdllobjecth--dll-模块包装器)
+- [5. `SKL/ABIX/DLL/Function.h` — 类型化函数句柄](#5-abixdllfunctionh--类型化函数句柄)
+- [6. `SKL/ABIX/DLL/FnSig.h` — 编译期签名哈希](#6-abixdllfnsigh--编译期签名哈希)
+- [7. `SKL/ABIX/Runtime/TypeSig.h` — 类型签名哈希](#7-abixruntimetypesigh--类型签名哈希)
+- [8. `SKL/ABIX/Runtime/Search.h` — 表查找函数](#8-abixruntimesearchh--表查找函数)
+- [9. `SKL/ABIX/Runtime/Function.h` — 跨边界闭包](#9-abixruntimefunctionh--跨边界闭包)
+- [10. 智能指针（`SKL/ABIX/DLL/DLLPtr.h`）](#10-智能指针abixdlldllptrh)
+- [11. `SKL/ABIX/Bridge/Refl.h` — 动态反射集成](#11-abixbridgereflh--动态反射集成)
 - [12. 完整使用示例](#12-完整使用示例)
 
 </details>
 
-本文档涵盖 ABIX 跨 DLL 函数调用库（`ABIX/`）。
+本文档涵盖 ABIX 跨 DLL 函数调用库（`SKL/ABIX/`）。
 
 ## 架构概览
 
@@ -88,7 +88,7 @@ amc-dump diff old.abix new.abix --json compatibility.json
 
 ### `runtime::Registry`
 
-头文件：`ABIX/Metadata/Descriptor.h`、`ABIX/Runtime/Registry.h`。
+头文件：`SKL/ABIX/Metadata/Descriptor.h`、`SKL/ABIX/Runtime/Registry.h`。
 
 `ModuleDescriptor` 是一个 metadata module 的生成静态视图。`runtime::Registry<Capacity>::register_module()` 会先校验完整 module（包括 type 引用和重复 ID），随后从调用者视角原子地完成注册。Registry 同时保留 canonical 的 `model::TypeDesc`/`TypeLayout` 视图和生成 descriptor。注册以 `(TypeID, version)` 为键：同一 version 内重复的 `TypeID` 必须具有相同的 `LayoutHash`（Boundary #1）；而更新的 version 可以携带不同 layout，作为独立 entry 共存。
 
@@ -119,7 +119,7 @@ if (registry.register_module(amc_generated::amc_module) ==
 
 ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。这是 metadata 自举，而非 C++ 编译器源码自举：AMC 的 C++ provider 仍依赖 Clang/LLVM 的语义分析。
 
-## 1. `ABIX/Util/Config.h` — 平台检测与核心枚举
+## 1. `SKL/ABIX/Util/Config.h` — 平台检测与核心枚举
 
 **命名空间：** `skl::abix`
 
@@ -133,7 +133,7 @@ ABIX Runtime 和 AMC core metadata 均有可重复的 self-description 测试。
 | `SKL_ABIX_DLL_EXPORT`   | `__declspec(dllexport)` 或可见性属性 | provider 侧固定 C 模块入口（`abi_get_table`、`abix_module_query_v1`、provider handle）的导出标记。ABIX 没有需要导入的共享核心库。 |
 | `SKL_ABIX_MAGIC64`      | `0xFDFDFDFDFDFDFDFDULL`              | 控制块的魔数                                                                                                                      |
 
-## 2. `ABIX/Runtime/Type.h` — 核心类型
+## 2. `SKL/ABIX/Runtime/Type.h` — 核心类型
 
 **命名空间：** `skl::abix`
 
@@ -188,7 +188,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 
 从编译期条目数组创建静态 `Table`。由 `SKL_ABIX_DEFINE_TABLE` 内部使用。
 
-## 3. `ABIX/DLL/Export.h` — 注册宏
+## 3. `SKL/ABIX/DLL/Export.h` — 注册宏
 
 **命名空间：** `skl::abix`
 
@@ -211,7 +211,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 
 ### 内存分配
 
-内部分配器，声明于 `ABIX/Util/Mem.h`（`skl::abix::mem`）：
+内部分配器，声明于 `SKL/ABIX/Util/Mem.h`（`skl::abix::mem`）：
 
 | 函数                            | 说明                                                           |
 | ------------------------------- | -------------------------------------------------------------- |
@@ -222,7 +222,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 | `mem::dealloc(p)`               | 释放 `alloc` / `zalloc` / `alloc_array` 的内存                 |
 | `mem::dealloc_aligned(p)`       | 释放 `alloc_aligned` 的内存                                    |
 
-## 4. `ABIX/DLL/Object.h` — DLL 模块包装器
+## 4. `SKL/ABIX/DLL/Object.h` — DLL 模块包装器
 
 **命名空间：** `skl::abix`
 
@@ -248,7 +248,7 @@ inline const Table *make_table(const Entry (&arr)[N]) noexcept;
 inline dll::CallError &last_error() noexcept;
 ```
 
-返回线程局部最近错误码的引用。线程安全（每个线程拥有独立的错误状态）。
+返回线程局部最近错误码的引用。每个线程拥有独立的错误状态；由于该函数定义在 header 中，每个 DSO 也可能持有自己的副本，因此不要把 `last_error()` 当作跨模块错误通道。需要跨模块传递错误时，使用显式的返回值/`[[error]]` 契约，而不是读取另一个模块的 `last_error()`。
 
 ### `dll::Object`
 
@@ -339,7 +339,7 @@ lib.unload();  // retire 旧 image → synchronize → 回收
 - 手工的 `enter_read()` / `exit_read()` 对同样有此义务；临界区若跨越可能抛异常或提前返回的代码，请使用 `rcu::LockGuard`。
 - 线程离开后会以 epoch = 0 留在读者链表中（永不阻塞宽限期），因此"退出"不会注销任何东西；链表只随"曾经进入过临界区的线程数"增长。
 
-**状态机**（`ABIX/RCU/Config.h` 的 `rcu::State`）：
+**状态机**（`SKL/ABIX/RCU/Config.h` 的 `rcu::State`）：
 
 ```
 创建 Control            -> zombie   （is_loaded() == false，调用被拒）
@@ -368,7 +368,7 @@ unload() / force_unload() -> zombie （image 已摘除，稍后回收）
 
 启用上限是一笔**显式取舍**（见上文"给宽限期设上限"）：此后每次操作都要求一次真实宽限期，而不是共享批量推进，因此 **~4.97×** 的交替重载成本会落在**主动启用**的 Object 上。延迟回收不是泄漏：一旦宽限期可被证明，下一次操作就会回收所有待回收 image——这正是既有的、拉取式的"稍后回收"机制。
 
-### `rcu::Domain`（`ABIX/RCU/Domain.h`）
+### `rcu::Domain`（`SKL/ABIX/RCU/Domain.h`）
 
 **命名空间：** `skl::abix::rcu`
 
@@ -400,11 +400,11 @@ unload() / force_unload() -> zombie （image 已摘除，稍后回收）
 - **两类回收延迟**：批量类（默认 8 次同步）让换出的 image 保持 mapped，使 a/b 交替热重载仍走 loader 的"已驻留"快路径；即时类（下一次同步）让换出的索引缓冲立刻可被下一次 `build` 复用。两者各自维护"已回收至"水位，互不吞并对方的安全 epoch。
 - **推进权归属**：取得推进权的线程拥有 `sync`，且**所有退出路径都必须清理它**；发现 `sync` 被占的线程只能等待、重试或超时返回，**绝不清除不属于自己的 `sync`**。
 - **Cache-line 隔离**：`_epoch` 结构体与 `_writer_lock` 位于不同 cache line，避免 false sharing。
-- **零 `<atomic>` 依赖**：全部使用编译器内建原子操作（`ABIX/Util/Atomic.h`）。
+- **零 `<atomic>` 依赖**：全部使用编译器内建原子操作（`SKL/ABIX/Util/Atomic.h`）。
 
 ### 给宽限期设上限
 
-`rcu::Deadline`（`ABIX/RCU/Deadline.h`）只说明**等待多久**，从不说明"等到超时要做什么"：
+`rcu::Deadline`（`SKL/ABIX/RCU/Deadline.h`）只说明**等待多久**，从不说明"等到超时要做什么"：
 
 ```cpp
 namespace skl::abix::rcu {
@@ -468,7 +468,7 @@ domain.retire(old_object, [](void *p) { delete static_cast<MyType *>(p); });
 domain.synchronize();
 ```
 
-### 日志系统（`ABIX/Util/Log.h`）
+### 日志系统（`SKL/ABIX/Util/Log.h`）
 
 **命名空间：** `skl::abix`
 
@@ -488,7 +488,7 @@ domain.synchronize();
 | `ABIX_LOG_WARNING(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
 | `ABIX_LOG_ERROR(fmt, ...)`   | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
 
-## 5. `ABIX/DLL/Function.h` — 类型化函数句柄
+## 5. `SKL/ABIX/DLL/Function.h` — 类型化函数句柄
 
 **命名空间：** `skl::abix`
 
@@ -550,7 +550,7 @@ if (!add.valid()) {
 }
 ```
 
-## 6. `ABIX/DLL/FnSig.h` — 编译期签名哈希
+## 6. `SKL/ABIX/DLL/FnSig.h` — 编译期签名哈希
 
 **命名空间：** `skl::abix`
 
@@ -593,7 +593,7 @@ constexpr sig_t mul_sig = FnSigV<double(double, double)>;
 constexpr sig_t int_sig = type_sig<int>();
 ```
 
-## 7. `ABIX/Runtime/TypeSig.h` — 类型签名哈希
+## 7. `SKL/ABIX/Runtime/TypeSig.h` — 类型签名哈希
 
 **命名空间：** `skl::abix`
 
@@ -619,7 +619,7 @@ constexpr sig_t int_sig = type_sig<int>();
 
 为用户类型 `T` 注册自定义类型标签，实现稳定的跨编译器类型哈希。
 
-## 8. `ABIX/Runtime/Search.h` — 表查找函数
+## 8. `SKL/ABIX/Runtime/Search.h` — 表查找函数
 
 **命名空间：** `skl::abix`
 
@@ -736,7 +736,7 @@ struct runtime::HashIndex {
 | `SKL_ABIX_HASH_THRESHOLD` | `64`          | 少于 64 条目的表使用线性扫描；≥ 64 条目的表使用 HashIndex |
 | `SKL_ABIX_HASHSLOT_EMPTY` | `~index_t{0}` | 空哈希槽位的哨兵值                                        |
 
-## 9. `ABIX/Runtime/Function.h` — 跨边界闭包
+## 9. `SKL/ABIX/Runtime/Function.h` — 跨边界闭包
 
 **命名空间：** `skl::abix`
 
@@ -779,7 +779,7 @@ auto reg = dll::Function<void(runtime::Function<void(int)>)>(lib, "register_call
 reg(std::move(cb));
 ```
 
-## 10. 智能指针（`ABIX/DLL/DLLPtr.h`）
+## 10. 智能指针（`SKL/ABIX/DLL/DLLPtr.h`）
 
 **命名空间：** `skl::abix`
 
@@ -875,7 +875,7 @@ struct dll::FnDeleter {
 | `lock()`                                 | `dll::SharedPtr<T>` | 提升为 `dll::SharedPtr`（若仍存活） |
 | `use_count()`                            | `uint32_t`          | 底层资源的当前强引用计数            |
 
-## 11. `ABIX/Bridge/Refl.h` — 动态反射集成
+## 11. `SKL/ABIX/Bridge/Refl.h` — 动态反射集成
 
 **命名空间：** `skl::abix::refl`（反射辅助工具），`skl::abix`（便捷类型）
 
@@ -944,7 +944,7 @@ inline void register_dll_table(const runtime::Table *t, const char *dll_name);
 ## 12. 完整使用示例
 
 ```cpp
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 using namespace skl::abix;
 

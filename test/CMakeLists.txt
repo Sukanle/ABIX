@@ -1,10 +1,10 @@
-set(TEST_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-set(TEST_INC_DIR ${SKL_ABIX_SRC_DIR})
+set(TEST_PROJ_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(TEST_INC_DIR ${SKL_ABIX_INC_DIR} ${TEST_PROJ_DIR})
 
 function(abi_add_test name)
-    add_executable(${name} ${TEST_SRC_DIR}/${name}.cpp)
-    target_include_directories(${name} PRIVATE ${TEST_INC_DIR} ${TEST_INC_DIR}/mics)
-    target_link_libraries(${name} PRIVATE Catch2::Catch2WithMain)
+    add_executable(${name} ${TEST_PROJ_DIR}/${name}.cpp)
+    target_include_directories(${name} PRIVATE ${TEST_INC_DIR})
+    target_link_libraries(${name} PRIVATE Catch2::Catch2WithMain MICS::MICS)
     set_target_properties(${name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                      "RelWithDebInfo"))
@@ -24,6 +24,7 @@ abi_add_test(version_test)
 abi_add_test(lookup_test)
 abi_add_test(reload_test)
 abi_add_test(edge_test)
+abi_add_test(error_test)
 abi_add_test(mics_test)
 abi_add_test(closed_test)
 abi_add_test(logging_test)
@@ -48,9 +49,9 @@ abi_add_test(binary_image_test)
 abi_add_test(pool_test)
 
 # --- Unity build: all tests in a single executable ---
-add_executable(test_all ${TEST_SRC_DIR}/test_all.cpp)
-target_include_directories(test_all PRIVATE ${TEST_INC_DIR} ${TEST_INC_DIR}/mics)
-target_link_libraries(test_all PRIVATE Catch2::Catch2WithMain)
+add_executable(test_all ${TEST_PROJ_DIR}/test_all.cpp)
+target_include_directories(test_all PRIVATE ${TEST_INC_DIR})
+target_link_libraries(test_all PRIVATE Catch2::Catch2WithMain MICS::MICS)
 set_target_properties(test_all PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 foreach(
     plugin

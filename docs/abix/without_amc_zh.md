@@ -6,7 +6,7 @@
 
 ABIX 和 AMC 的职责不同：
 
-- **ABIX**（`ABIX/`）是 header-only 运行时层。它没有任何 `.cpp`，也从不 include `AMC/...`。`libabix-runtime` 只是一个 CMake `INTERFACE` 目标，负责加 include 路径。
+- **ABIX**（`SKL/ABIX/`）是 header-only 运行时层。它没有任何 `.cpp`，也从不 include `AMC/...`。`libabix-runtime` 只是一个 CMake `INTERFACE` 目标，负责加 include 路径。
 - **AMC** 是构建期工具链（Clang/LLVM + `toml++`）：提取 C++ 语义、计算规范 ABI 身份、生成 `.abix` 产物，并生成 thunk、adapter 与 C++ 投影。
 
 因此，纯 C++ 项目可以只依赖 ABIX。AMC 从来不是运行时依赖——即使使用它，最终二进制也不链接AMC；而手写的 C++ 契约在构建期同样不需要它。
@@ -17,18 +17,18 @@ ABIX 和 AMC 的职责不同：
 
 | 能力                     | 头文件                                                                           | 需要 AMC？                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Interface 身份与方法签名 | `ABIX/Interface/Contract.h`                                                      | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
-| 手写 `Traits` 与代理     | `ABIX/Interface/Proxy.h`                                                         | 否——`UniqueInterfaceProxy<Traits>` 是 header-only                            |
+| Interface 身份与方法签名 | `SKL/ABIX/Interface/Contract.h`                                                      | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
+| 手写 `Traits` 与代理     | `SKL/ABIX/Interface/Proxy.h`                                                         | 否——`UniqueInterfaceProxy<Traits>` 是 header-only                            |
 | 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h`                                                 | 否                                                                           |
 | 动态库发现与租约         | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h`                         | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY`                   |
 | Owner ABI                | `Owner.h`                                                                        | 否                                                                           |
-| 运行时表 / descriptor    | `ABIX/Runtime/Registry.h`、`ABIX/Metadata/Descriptor.h`、`SKL_ABIX_DEFINE_TABLE` | 否——结构是公开的，可以手写                                                   |
-| ABIX 自己的类型/布局摘要 | `ABIX/Model/ABI.h`、`ABIX/Model/Compat.h`                                        | 否——`canonical_type_id`、`canonical_layout_hash`、`abi_signature_hash`       |
+| 运行时表 / descriptor    | `SKL/ABIX/Runtime/Registry.h`、`SKL/ABIX/Metadata/Descriptor.h`、`SKL_ABIX_DEFINE_TABLE` | 否——结构是公开的，可以手写                                                   |
+| ABIX 自己的类型/布局摘要 | `SKL/ABIX/Model/ABI.h`、`SKL/ABIX/Model/Compat.h`                                        | 否——`canonical_type_id`、`canonical_layout_hash`、`abi_signature_hash`       |
 
 一个最小的 C++-only 声明：
 
 ```cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix;
 using namespace skl::abix::poly;
@@ -36,13 +36,13 @@ using namespace skl::abix::poly;
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr mics::utils::array signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr mics::util::array signatures = {method_signature("area", i32, nullptr, 0)};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
     using Base = UniqueInterfaceProxy<ShapeTraits>;

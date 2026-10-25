@@ -32,8 +32,8 @@ include("${AMC_MODULE_DIR}/AMC.cmake")
 
 add_executable(self_consumer self_consumer.cpp)
 
-# self_consumer.cpp reaches for `AMC/Core/Core.h`, which lives outside the
-# include root amc_add_abi contributes (that root only serves `ABIX/...`).
+# self_consumer.cpp reaches for `SKL/AMC/Core/Core.h`, which lives outside the
+# include root amc_add_abi contributes (that root only serves `SKL/ABIX/...`).
 target_include_directories(self_consumer PRIVATE "${ABIX_SOURCE_ROOT}/AMC/include")
 
 amc_add_abi(
@@ -47,4 +47,4 @@ amc_add_abi(
     "${CMAKE_CURRENT_BINARY_DIR}/generated/amc_core.hpp"
     DEPENDS
     "${ABIX_SOURCE_ROOT}/AMC/self_types.cpp"
-    "${ABIX_SOURCE_ROOT}/AMC/include/AMC/Core/Core.h")
+    "${ABIX_SOURCE_ROOT}/AMC/include/SKL/AMC/Core/Core.h")

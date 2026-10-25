@@ -4,7 +4,7 @@
 > as current work.** Do not implement a future item just because it appears
 > here. See [`AGENTS.md`](AGENTS.md) §13 (scope discipline).
 
-## Current — ABIX 0.1.0 (Foundation, self-hosting and toolchain)
+## Foundation — ABIX 0.1.0 (released, self-hosting and toolchain)
 
 **Platform support:** Linux and macOS are supported today. Windows is **not
 available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
@@ -29,9 +29,9 @@ Established and maintained:
 - LLDB C++ plugin (`libabix_lldb.so`) and Python helper;
 - ELF metadata section test suite (`tools/run_test.py --elf-pe`).
 
-## Next — ABIX 0.2.0 (Cross-language)
+## Current — ABIX 0.2.0 (Cross-language, released)
 
-The next stage is **cross-language support**: ABIX IR becomes the common ABI
+The current stage is **cross-language support**: ABIX IR becomes the common ABI
 representation that other language frontends feed into and project out of.
 
 ### Main line — language plugins and cross-language bindings
@@ -67,9 +67,23 @@ contracts in an optional metadata-region extension directory) is complete.
 - documentation and examples;
 - external validation and adoption.
 
+## Patch — ABIX 0.2.1 (Maintenance)
+
+Maintenance release: fix existing behavior and add tests/documentation; no
+public ABI or error-protocol change.
+
+- `last_error()` is thread-local; its per-thread / per-DSO scope is documented;
+- existing error-status enums have explicit numeric values and stable
+  `to_string()` spellings;
+- added thread-isolation, cross-language error-propagation and `[[error]]`
+  negative tests;
+- Zig error-set/error-union projection remains a documented limitation.
+
+See [`CHANGELOG.md`](../CHANGELOG.md).
+
 ## Post-0.2.0 — toolchain and ecosystem follow-ups
 
-These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 ecosystem work.
+These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 work.
 
 ### P1 — broaden the toolchain
 
@@ -106,7 +120,9 @@ benchmark matrix.
 
 - package ecosystem;
 - broader debugger / editor integration;
-- AI-agent integration surface (MCP tools, token-cost studies).
+- **under discussion**: the AI-agent integration surface (advanced MCP tools,
+  workflows, token-cost studies) — decide whether these are premature; the
+  existing low-level `amc-mcp` queries remain supported.
 
 ## AI-native ABI toolchain
 

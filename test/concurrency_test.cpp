@@ -2,7 +2,7 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
-#include <cstdint>
+#include <stdint.h>
 
 TEST_CASE("32.rcu_concurrent_stress", "[rcu][stress][concurrent]") {
     log_info("Test 32: RCU concurrent stress — N readers + 1 writer, verify no crash/UAF");

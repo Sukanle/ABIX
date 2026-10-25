@@ -1,0 +1,50 @@
+# ABIX self-description: describes ABIX's own public ABI with its own model.
+# The artifact names form the public bootstrap contract.
+[package]
+name = "abix_runtime"
+version = "0.1.0"
+
+[[import]]
+language = "cpp"
+flags = [
+    "-std=c++17",
+    "-I", "../..",
+    "-I", "../../../MICS/include",
+    "-I", "../../../MICS/HLMD",
+]
+files = ["../../../src/SKL/ABIX/self_types.cpp"]
+symbols = [
+    "skl::abix::Hash128",
+    "skl::abix::model::TypeLayout",
+    "skl::abix::model::TypeDesc",
+    "skl::abix::model::Field",
+    "skl::abix::model::Function",
+    "skl::abix::model::Symbol",
+    "skl::abix::model::MapInfo",
+    "skl::abix::model::Compat",
+    "skl::abix::model::ABIIdentity",
+    "skl::abix::model::Target",
+    "skl::abix::model::BootRecord",
+    "skl::abix::model::WireRecord",
+    "skl::abix::model::BootImage",
+    "skl::abix::metadata::Bootstrap",
+    "skl::abix::metadata::RegistryEntry",
+    "skl::abix::metadata::LayoutInfo",
+    "skl::abix::metadata::FieldDescriptor",
+    "skl::abix::metadata::TypeDescriptor",
+    "skl::abix::metadata::ParameterDescriptor",
+    "skl::abix::metadata::FunctionDescriptor",
+    "skl::abix::metadata::SymbolDescriptor",
+    "skl::abix::metadata::ModuleDescriptor",
+    "skl::abix::runtime::RegistryEntry",
+    "skl::abix::model::Operation",
+    "skl::abix::runtime::LookupResult",
+    "skl::abix::rcu::Domain",
+    "skl::abix::rcu::ThreadState",
+    "skl::abix::rcu::RetiredNode",
+    "skl::abix::rcu::RetiredBatch",
+    "skl::abix::rcu::Epoch"
+]
+
+[[export]]
+output = "build/abix_runtime.abix"

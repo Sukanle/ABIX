@@ -1,7 +1,7 @@
 #include <benchmark/benchmark.h>
 #include <atomic>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 // --- u32 load baseline ---
 static uint32_t g_raw_load_u32 = 42;

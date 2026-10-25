@@ -17,6 +17,7 @@ symbols = [
     "demo_vec2_create",
     "demo_vec2_destroy",
     "demo_div",
+    "demo_div_unknown",
     "demo_live_count",
     "demo_numbers",
     "demo_sum",
@@ -143,6 +144,13 @@ at_accessor = "demo_set_at"
 # result through parameter 2.
 [[error]]
 function = "demo_div"
+success = 0
+value = 2
+
+# The same contract shape with a status outside the known set (99): the Rust
+# projection must preserve the numeric code instead of mapping it to an enum.
+[[error]]
+function = "demo_div_unknown"
 success = 0
 value = 2
 

@@ -131,9 +131,9 @@ Hash 算法明确记录在 Header 中，而非隐含在实现里，从而使 `.a
 
 已实现的 string 引用一律为 `(offset, length)`；Identity record 还携带 package name 和 package version 的该引用。读者会拒绝错误目录范围、错误 required entry size、越界字符串引用、非法 TypeKind/SymbolKind，以及不满足 Core layout/type 引用不变量的 artifact。 Hash Table 已作为当前 required profile 实现；Compat、Map IR、Dependency 和目录项为 `{section_id, offset, byte_length, count, entry_size, flags}`。`flags.required` 要求 reader 认识该 section；未知 optional section 会被安全跳过。Compat、Map 和 MapOperation 当前是 optional section。Hash Cache sections 仍为后续扩展。
 
-运行时集成使用 `ABIX/Metadata/Descriptor.h` 的固定布局 descriptor。MICS Runtime 的 `TypeId` 与 ABIX `model::TypeId` 均为完整 Hash128；跨命名空间转换必须通过显式的 `ABIX/Bridge/MICS.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
+运行时集成使用 `SKL/ABIX/Metadata/Descriptor.h` 的固定布局 descriptor。MICS Runtime 的 `TypeId` 与 ABIX `model::TypeId` 均为完整 Hash128；跨命名空间转换必须通过显式的 `SKL/ABIX/Bridge/MICS.h` 函数完成，禁止将 ABI 身份截断为单个 `uint64_t`。
 
-`ABIX/Runtime/Registry.h` 提供 `runtime::Registry<Capacity>` bridge。它接收生成的 `ModuleDescriptor`，在写入前完成 module 级完整性检查、重复 TypeId 检查和字段/函数类型引用检查；失败时不会留下部分注册结果。成功后同时保留 runtime descriptor 指针和 canonical `metadata::Registry` entry，可按 Hash128 或名称查询。
+`SKL/ABIX/Runtime/Registry.h` 提供 `runtime::Registry<Capacity>` bridge。它接收生成的 `ModuleDescriptor`，在写入前完成 module 级完整性检查、重复 TypeId 检查和字段/函数类型引用检查；失败时不会留下部分注册结果。成功后同时保留 runtime descriptor 指针和 canonical `metadata::Registry` entry，可按 Hash128 或名称查询。
 
 ### Section Directory
 

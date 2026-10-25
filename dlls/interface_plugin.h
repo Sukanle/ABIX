@@ -6,7 +6,7 @@
 #ifndef SKL_ABIX_DLLS_INTERFACE_PLUGIN_H
 #define SKL_ABIX_DLLS_INTERFACE_PLUGIN_H
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 // Shared between the interface plugin and its consumer test: the interface
 // identity a provider advertises and a consumer queries. It is a content hash

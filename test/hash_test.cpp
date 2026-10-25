@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "ABIX/Util/Hash.h"
+#include "SKL/ABIX/Util/Hash.h"
 
 TEST_CASE("canonical hash is deterministic, domain separated and endian neutral") {
     constexpr char input[] = "Foo";

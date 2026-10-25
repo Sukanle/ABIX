@@ -4,7 +4,7 @@
   中文 · <a href="binary-image.md">English</a>
 </p>
 
-> **状态：已实现（第一版）。** 该层位于 `ABIX/Binary/`，已接入 AMC；下述能力已支持 ELF、Mach-O 与 PE。
+> **状态：已实现（第一版）。** 该层位于 `SKL/ABIX/Binary/`，已接入 AMC；下述能力已支持 ELF、Mach-O 与 PE。
 
 <details>
 
@@ -25,14 +25,14 @@
 
 ABIX **不**试图把 `Elf64_Ehdr`、`mach_header_64` 与 `IMAGE_NT_HEADERS` 塞进同一个 "二进制头"结构。这些容器描述的东西各不相同——ELF 的程序头/节头、Mach-O 的段与加载命令模型、PE 的 COFF 头、节表与数据目录——强行合并只会变成一堆 `#ifdef`。
 
-ABIX 统一的是**"向一个二进制模块提问"的能力**：这是什么格式、它描述什么 target、某个命名 region 在哪里、它导出哪些符号。每个 adapter 把自身的原生结构翻译成这套共享模型；`ABIX/Binary/` 之上再也看不到任何容器头。
+ABIX 统一的是**"向一个二进制模块提问"的能力**：这是什么格式、它描述什么 target、某个命名 region 在哪里、它导出哪些符号。每个 adapter 把自身的原生结构翻译成这套共享模型；`SKL/ABIX/Binary/` 之上再也看不到任何容器头。
 
 > **格式是实现，能力是接口。**
 
 ## 分层
 
 ```text
-                    BinaryImage (ABIX/Binary/BinaryImage.h)
+                    BinaryImage (SKL/ABIX/Binary/BinaryImage.h)
                               │
               ┌───────────────┼───────────────┐
              ELF.h          MachO.h          PE.h          （adapter）
@@ -42,7 +42,7 @@ ABIX 统一的是**"向一个二进制模块提问"的能力**：这是什么格
   这条线之上，消费方只看到：Target · Section · Export · Region
 ```
 
-核心 runtime（`ABIX/Runtime`、`ABIX/Interface`、`ABIX/Metadata`）永远不包含 `<elf.h>`、`<mach-o/...>` 或 `<windows.h>`；各 adapter 无依赖，按文档化字节偏移读取。
+核心 runtime（`SKL/ABIX/Runtime`、`SKL/ABIX/Interface`、`SKL/ABIX/Metadata`）永远不包含 `<elf.h>`、`<mach-o/...>` 或 `<windows.h>`；各 adapter 无依赖，按文档化字节偏移读取。
 
 ## 格式、操作系统与架构是彼此独立的轴
 
@@ -93,9 +93,9 @@ bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &image, st
 
 | Adapter | 读取 | 导出符号来源 |
 |---------|-------|--------------|
-| `ABIX/Binary/ELF.h` | ELF64 小端 | `.dynsym`（GLOBAL/WEAK 且已定义） |
-| `ABIX/Binary/MachO.h` | 32/64 位小端 Mach-O | `LC_SYMTAB`（外部、`N_SECT`） |
-| `ABIX/Binary/PE.h` | PE32 / PE32+ | `IMAGE_EXPORT_DIRECTORY` |
+| `SKL/ABIX/Binary/ELF.h` | ELF64 小端 | `.dynsym`（GLOBAL/WEAK 且已定义） |
+| `SKL/ABIX/Binary/MachO.h` | 32/64 位小端 Mach-O | `LC_SYMTAB`（外部、`N_SECT`） |
+| `SKL/ABIX/Binary/PE.h` | PE32 / PE32+ | `IMAGE_EXPORT_DIRECTORY` |
 
 每个 adapter 暴露一个廉价的 `is_*` magic 检查和一个填充 `ParseResult` 的 `detail::parse_*`。PE 另需把 RVA 解析为文件偏移（用于导出名/函数数组），并计算 `address = image_base + RVA`。
 

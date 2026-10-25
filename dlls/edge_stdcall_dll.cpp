@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ABIX/ABIX.h"   // IWYU pragma: keep
+#include "SKL/ABIX/ABIX.h"   // IWYU pragma: keep
 
 extern "C" SKL_ABIX_CALL_STDCALL int compute_std(int a, int b) { return a * b; }
 

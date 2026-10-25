@@ -61,23 +61,25 @@
 // held is not starvation: it is a shared blocker.
 // ============================================================
 
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <new>
 #include <string>
 #include <thread>
 #include <vector>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 #include "dlls/plugin_path.h"
 
 #if defined(_WIN32)
+#  define NOMINMAX
 #  define ABIX_POPEN _popen
 #  define ABIX_PCLOSE _pclose
 #else
@@ -433,9 +435,9 @@ bool run_child(const char *exe, const Options &opt, int writers, RunResult &out,
 
     char line[2'048];
     bool got = false;
-    while (std::fgets(line, sizeof(line), pipe)) {
+    while (fgets(line, sizeof(line), pipe)) {
         child_output += line;
-        if (std::strncmp(line, "RESULT ", 7) == 0) got = parse_result_line(line + 7, out);
+        if (strncmp(line, "RESULT ", 7) == 0) got = parse_result_line(line + 7, out);
     }
     ABIX_PCLOSE(pipe);
     out.writers = writers;
@@ -601,34 +603,34 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         const char *a = argv[i];
         const bool has_next = (i + 1) < argc;
-        if (std::strcmp(a, "--help") == 0) {
+        if (strcmp(a, "--help") == 0) {
             print_help();
             return 0;
-        } else if (std::strcmp(a, "--writers") == 0 && has_next) {
+        } else if (strcmp(a, "--writers") == 0 && has_next) {
             opt.writers = std::atoi(argv[++i]);
-        } else if (std::strcmp(a, "--readers") == 0 && has_next) {
+        } else if (strcmp(a, "--readers") == 0 && has_next) {
             opt.readers = std::atoi(argv[++i]);
-        } else if (std::strcmp(a, "--hold-us") == 0 && has_next) {
+        } else if (strcmp(a, "--hold-us") == 0 && has_next) {
             opt.hold_us = std::strtoull(argv[++i], nullptr, 10);
-        } else if (std::strcmp(a, "--deadline-ms") == 0 && has_next) {
+        } else if (strcmp(a, "--deadline-ms") == 0 && has_next) {
             opt.deadline_ms = std::strtoull(argv[++i], nullptr, 10);
-        } else if (std::strcmp(a, "--duration-ms") == 0 && has_next) {
+        } else if (strcmp(a, "--duration-ms") == 0 && has_next) {
             opt.duration_ms = std::strtoull(argv[++i], nullptr, 10);
-        } else if (std::strcmp(a, "--sample-ms") == 0 && has_next) {
+        } else if (strcmp(a, "--sample-ms") == 0 && has_next) {
             opt.sample_ms = std::strtoull(argv[++i], nullptr, 10);
-        } else if (std::strcmp(a, "--retire-per-call") == 0 && has_next) {
+        } else if (strcmp(a, "--retire-per-call") == 0 && has_next) {
             opt.retire_per_call = std::strtoull(argv[++i], nullptr, 10);
-        } else if (std::strcmp(a, "--max-backlog") == 0 && has_next) {
+        } else if (strcmp(a, "--max-backlog") == 0 && has_next) {
             opt.max_backlog = std::strtoull(argv[++i], nullptr, 10);
-        } else if (std::strcmp(a, "--repeat") == 0 && has_next) {
+        } else if (strcmp(a, "--repeat") == 0 && has_next) {
             opt.repeat = std::atoi(argv[++i]);
-        } else if (std::strcmp(a, "--sweep") == 0) {
+        } else if (strcmp(a, "--sweep") == 0) {
             opt.sweep = true;
             if (has_next && argv[i + 1][0] != '-') parse_int_list(argv[++i], opt.sweep_list);
-        } else if (std::strcmp(a, "--reload") == 0) {
+        } else if (strcmp(a, "--reload") == 0) {
             opt.reload = true;
             if (has_next && argv[i + 1][0] != '-') opt.plugin = argv[++i];
-        } else if (std::strcmp(a, "--run-one") == 0) {
+        } else if (strcmp(a, "--run-one") == 0) {
             opt.run_one = true;
         } else {
             fmt::print(stderr, "unknown option: {} (try --help)\n", a);

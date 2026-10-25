@@ -30,15 +30,15 @@
 #include <lldb/API/SBThread.h>
 #include <lldb/API/SBValue.h>
 
-#include "AMC/Core/Core.h"
-#include "AMC/Core/ELF.h"
-#include "AMC/Core/Metadata.h"
-#include "AMC/Core/Query.h"
-#include "AMC/Core/Symbol.h"
-#include "AMC/Core/Verify.h"
+#include "SKL/AMC/Core/Core.h"
+#include "SKL/AMC/Core/ELF.h"
+#include "SKL/AMC/Core/Metadata.h"
+#include "SKL/AMC/Core/Query.h"
+#include "SKL/AMC/Core/Symbol.h"
+#include "SKL/AMC/Core/Verify.h"
 
-#include <cstdio>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -49,7 +49,7 @@ namespace {
 
 std::string hash_hex(amc::Hash128 value) {
     char buffer[40];
-    std::snprintf(buffer, sizeof(buffer), "0x%016llx%016llx", static_cast<unsigned long long>(value.hi),
+    snprintf(buffer, sizeof(buffer), "0x%016llx%016llx", static_cast<unsigned long long>(value.hi),
         static_cast<unsigned long long>(value.lo));
     return buffer;
 }
@@ -144,26 +144,26 @@ std::string decode_field(char kind, const uint8_t *raw, unsigned width) {
     char buffer[64];
     if (kind == 'i') {
         long long value = 0;
-        std::memcpy(&value, raw, width);
-        std::snprintf(buffer, sizeof(buffer), "%lld", value);
+        memcpy(&value, raw, width);
+        snprintf(buffer, sizeof(buffer), "%lld", value);
     } else if (kind == 'u') {
         unsigned long long value = 0;
-        std::memcpy(&value, raw, width);
-        std::snprintf(buffer, sizeof(buffer), "%llu", value);
+        memcpy(&value, raw, width);
+        snprintf(buffer, sizeof(buffer), "%llu", value);
     } else if (kind == 'f') {
         double value = 0;
         if (width == 4) {
             float single = 0;
-            std::memcpy(&single, raw, 4);
+            memcpy(&single, raw, 4);
             value = single;
         } else {
-            std::memcpy(&value, raw, 8);
+            memcpy(&value, raw, 8);
         }
-        std::snprintf(buffer, sizeof(buffer), "%g", value);
+        snprintf(buffer, sizeof(buffer), "%g", value);
     } else {
         unsigned long long value = 0;
-        std::memcpy(&value, raw, 8);
-        std::snprintf(buffer, sizeof(buffer), "0x%llx", value);
+        memcpy(&value, raw, 8);
+        snprintf(buffer, sizeof(buffer), "0x%llx", value);
     }
     return buffer;
 }
@@ -427,7 +427,7 @@ void run_cast(lldb::SBDebugger &debugger, const std::string &expression, const s
     const size_t read = process.ReadMemory(address, data.data(), data.size(), error);
     if (read != data.size() || !error.Success()) {
         char message[128];
-        std::snprintf(message, sizeof(message), "abix cast: cannot read %u bytes at 0x%llx", type.size,
+        snprintf(message, sizeof(message), "abix cast: cannot read %u bytes at 0x%llx", type.size,
             static_cast<unsigned long long>(address));
         result.SetError(message);
         return;

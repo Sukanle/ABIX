@@ -1,7 +1,7 @@
 #include "test_common.hpp"
 #include <thread>
 #include <atomic>
-#include <cstring>
+#include <string.h>
 #include <chrono>
 #include <vector>
 
@@ -332,7 +332,7 @@ TEST_CASE("9d.concurrent calls through a cached handle", "[reload][threads][prom
     log_info("8 threads x 20000 calls through the cached path: 0 wrong results");
 }
 
-// The slot-buffer pool in ABIX/Runtime/Search.h only retains a buffer for tables
+// The slot-buffer pool in SKL/ABIX/Runtime/Search.h only retains a buffer for tables
 // at or above SKL_ABIX_HASH_POOL_MIN_SLOTS (4096 slots = 2048 entries), and the
 // largest test module (hotcache_dll, 1020 entries -> 2048 slots) sits just below
 // that. So this case is the lifecycle guard *around* the pool - the module really
@@ -371,7 +371,7 @@ TEST_CASE("43.reload_an_indexed_module_under_concurrent_calls", "[reload][pool][
         readers.emplace_back([&lib, &hot, &wrong, &stop, t] {
             const int n = 100 + t;
             char name[16];
-            std::snprintf(name, sizeof(name), "e_%04d", n);
+            snprintf(name, sizeof(name), "e_%04d", n);
             while (!stop.load(std::memory_order_relaxed)) {
                 // The cached call path: `hot` names an entry of this module, so
                 // after a same-path swap it must still reach that entry.

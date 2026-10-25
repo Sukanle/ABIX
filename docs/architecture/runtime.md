@@ -98,7 +98,7 @@ After binding, the call goes through a plain native function pointer. There is n
 ### DLL Side (Provider)
 
 ```cpp
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double a, double b) { return a * b; }
@@ -112,7 +112,7 @@ SKL_ABIX_DEFINE_TABLE(
 ### Host Side (Consumer)
 
 ```cpp
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 using namespace skl::abix;
 

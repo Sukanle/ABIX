@@ -263,7 +263,8 @@ def main() -> int:
             else:
                 src = work / "binding_check.cpp"
                 src.write_text(f'#include "{header.name}"\nint main() {{ return 0; }}\n', encoding="utf-8")
-                compile_result = run([cxx, "-std=c++17", f"-I{header.parent}", f"-I{source_root}",
+                compile_result = run([cxx, "-std=c++17", f"-I{header.parent}",
+                                      f"-I{source_root / 'include'}", f"-I{source_root}",
                                       str(src), "-o", str(work / "binding_check")])
                 if compile_result.returncode == 0:
                     report.ok("the generated C++ binding compiles")

@@ -11,8 +11,8 @@
 #include "Aue/Aue.h"
 
 #include <chrono>
-#include <cstdio>
-#include <cstdint>
+#include <stdint.h>
+#include <fmt/format.h>
 
 namespace {
 
@@ -77,7 +77,7 @@ int main() {
 
     lua_State *l0 = nullptr, *l1 = nullptr;
     if (!prepare(false, &l0) || !prepare(true, &l1)) {
-        std::fprintf(stderr, "abix-bench: could not initialise the Lua state\n");
+        fmt::print(stderr, "abix-bench: could not initialise the Lua state\n");
         return 1;
     }
 
@@ -88,7 +88,7 @@ int main() {
     lua_close(l0);
     lua_close(l1);
 
-    std::printf(
-        "abix-bench: l0_call=%.1fns l1_call_warm=%.1fns l1_call_cold=%.1fns\n", l0_call, l1_call_warm, l1_call_cold);
+    fmt::print("abix-bench: l0_call={:.1f}ns l1_call_warm={:.1f}ns l1_call_cold={:.1f}ns\n", l0_call, l1_call_warm,
+        l1_call_cold);
     return 0;
 }

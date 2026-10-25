@@ -81,4 +81,5 @@ Zig 消费方链接与 C++、Rust 消费方相同的原生库；它不需要 C �
 - 导出面仍必须能用原生 ABI 表达；Zig 内部类型与 allocator 留在模块内部。
 - 记录的 ABI 是 target 相关的；Zig 消费方必须按与 provider 相同的 target 与 C ABI 构建。
 - `[*c]` 指针保留 C 指针语义，`extern struct` 与 `comptime` 检查则把布局钉死。
+- 错误边界尚未投影为 Zig error set / 错误联合；当前只保留普通 status/payload 参数。
 - ABIX IR 中没有加入任何 Zig 专属概念；投影完全由 artifact 推导。

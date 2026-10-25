@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-4C8C4A.svg" alt="Platforms: Linux | macOS | Windows">
-  <img src="https://img.shields.io/badge/status-0.1.0-orange.svg" alt="Status: 0.1.0 (unstable)">
+  <img src="https://img.shields.io/badge/status-0.2.0-orange.svg" alt="Status: 0.2.0 (unstable)">
 </p>
 
 <p align="center">
@@ -61,7 +61,7 @@ graph TD
     F --> H[Native binding<br>Native execution<br>ABI adaptation]
 ```
 
-ABIX is currently implemented with **C++ as its first host language**; the Rust provider and Zig backend are available as 0.2.0 previews, and the ABI model itself is designed to stay language-independent.
+ABIX is currently implemented with **C++ as its first host language**; the Rust provider and Zig backend ship with 0.2.0, and the ABI model itself is designed to stay language-independent.
 
 ---
 
@@ -201,13 +201,13 @@ using namespace skl::abix::poly;
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr skl::mics::util::array signatures = {method_signature("area", i32, nullptr, 0)};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
@@ -379,7 +379,7 @@ For details see [docs/ecosystem/ecosystem.md](docs/ecosystem/ecosystem.md). For 
 
 ```text
 ABIX
-├── ABIX/                  header-only ABI model and runtime
+├── include/SKL/ABIX/      header-only ABI model and runtime
 │   ├── Model/             Model.h ABI.h Bootstrap.h Map.h Compat.h
 │   ├── Metadata/          Metadata.h Registry.h Descriptor.h
 │   ├── Runtime/           Runtime.h Registry.h Type.h TypeSig.h Search.h Function.h
@@ -403,7 +403,7 @@ ABIX
 ├── scripts/               developer scripts (git hooks, Markdown reflow)
 ├── src/                   self-hosting ABI inputs
 ├── docs/                  specification, guides, API, architecture, AI, benchmarks
-└── mics/                  reflection submodule (MICS / HLMD)
+└── MICS/                  reflection submodule (MICS / HLMD)
 ```
 
 ---
@@ -430,6 +430,30 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
+
+### CMake package
+
+Install ABIX and consume it with `find_package(ABIX CONFIG REQUIRED)`:
+
+```bash
+cmake --install build/Release --prefix /opt/abix
+```
+
+```cmake
+find_package(ABIX 0.2 CONFIG REQUIRED)
+
+add_executable(app main.cpp)
+target_link_libraries(app PRIVATE ABIX::ABIX)
+```
+
+The aggregate target `ABIX::ABIX` provides the header-only runtime plus the
+`.abix` format, ABI verification, metadata and tools libraries. Finer-grained
+targets are also available: `ABIX::runtime`, `ABIX::format`, `ABIX::abi`,
+`ABIX::metadata` and `ABIX::tools`.
+
+ABIX installs its bundled MICS package by default. Set
+`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately; in both
+cases the installed config resolves `MICS` and `fmt` with `find_dependency()`.
 
 ### Try it
 
@@ -500,7 +524,7 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 
 ## Current Status
 
-**ABIX 0.1.0** — an unstable, pre-1.0 foundation preview. The ABI model, the canonical `.abix` artifact, the AMC toolchain and the header-only runtime are usable in real engineering:
+**ABIX 0.2.0** — an unstable, pre-1.0 cross-language preview. The ABI model, the canonical `.abix` artifact, the AMC toolchain and the header-only runtime are usable in real engineering:
 
 - **ABI model and artifact**: `TypeID` / `LayoutHash` / `ABIHash`, canonical hashing, canonical layout encoding, and the `.abix` v4 reader/writer.
 - **ABI workflow**: inspection, query, context, diff, compatibility classification, verification, adapter generation and `.abic.toml` configuration.
@@ -508,10 +532,10 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 - **Runtime**: type/function registry, native DLL binding, RCU hot reload, and the BinaryImage capability layer.
 - **Interface**: non-intrusive contracts, proxies, static/dynamic discovery, leases and the Owner ABI.
 - **AI tooling**: `amc context --format llm`, `amc-mcp`, structured `abix.error/1` errors, and an optional LLDB plugin.
-- **Language providers**: C++ frontend/backend, Rust frontend/backend, and a Zig backend-only projection (the 0.2.0 preview).
+- **Language providers**: C++ frontend/backend, Rust frontend/backend, and a Zig backend-only projection (0.2.0).
 - **Aue**: an experimental Lua boundary layer with differential conformance tests.
 
-`ABIX 0.2.0 — Cross-language` is in progress: the `amc-rust` provider and the C++ → ABIX → Rust closed loop are delivered, `amc-zig` is backend-only, and the Rust/Zig interop suite builds one native library and runs both consumers. The remaining work is broader cross-language bindings, stabilization and external validation.
+`ABIX 0.2.0 — Cross-language` is released: the `amc-rust` provider and the C++ → ABIX → Rust closed loop are delivered, `amc-zig` is backend-only, and the Rust/Zig interop suite builds one native library and runs both consumers. Maintenance and broader cross-language bindings move to 0.3.0.
 
 Current focus:
 
@@ -528,9 +552,10 @@ Current focus:
 
 ABIX releases are project stages, not feature lists:
 
-- **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (current, pre-1.0/unstable)
-- **ABIX 0.2.0 — Cross-language** (in progress; the Rust provider and Zig backend are delivered)
-- **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, AI/agent integration, LSP, package management)
+- **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (released, pre-1.0/unstable)
+- **ABIX 0.2.0 — Cross-language** (released; the Rust provider and Zig backend are delivered)
+- **ABIX 0.2.1 — Maintenance** (fix existing behavior, add tests/docs; no public ABI change)
+- **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
 
 ```mermaid
 graph LR
@@ -564,3 +589,12 @@ If ABIX is useful to you: star the repository, open issues and discussions, shar
 ## License
 
 See [`LICENSE`](LICENSE).
+
+## Third-Party Notices
+
+ABIX uses third-party components under their respective licenses:
+
+- **ljson** — MIT License, Copyright (c) 2019 lengjingzju. Vendored under `AMC/include/ljson/` and `AMC/src/ljson/`; see `AMC/include/ljson/LICENSE`.
+- **{fmt}** — MIT License, Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors.
+
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full notices.

@@ -5,7 +5,7 @@
 
 #include <benchmark/benchmark.h>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 #include <type_traits>
 

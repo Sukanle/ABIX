@@ -24,15 +24,16 @@ The roadmap prioritises interoperability and real-world usage over adding runtim
 
 ## Version Roadmap
 
-ABIX releases are project stages, not feature lists. Each major version marks a phase, so the version number itself carries the product story.
+ABIX releases are project stages, not feature lists. Each release stage carries the product story; patch releases are for stabilization and preparation.
 
 ```text
 ABIX 0.1.0 — Foundation + Toolchain  the ABI foundation exists and ABIX is usable in real engineering
 ABIX 0.2.0 — Cross-language          Rust / Zig frontends and cross-language bindings
+ABIX 0.2.1 — Maintenance             fix existing behavior, add tests/docs; no public ABI change
 ABIX 0.3.0 — Ecosystem               others build on top of ABIX
 ```
 
-### ABIX 0.1.0 — Foundation, self-hosting and toolchain (current, pre-1.0/unstable)
+### ABIX 0.1.0 — Foundation, self-hosting and toolchain (released, pre-1.0/unstable)
 
 * ABI specification, metadata format, core runtime.
 * Bootstrap and self-hosting: ABIX describes and verifies its own public ABI.
@@ -42,7 +43,7 @@ ABIX 0.3.0 — Ecosystem               others build on top of ABIX
 * ELF / Mach-O binary inspection.
 * Build-system and CI integration, runtime stability, benchmark baseline.
 
-### ABIX 0.2.0 — Cross-language (next)
+### ABIX 0.2.0 — Cross-language (released, pre-1.0/unstable)
 
 The main line: ABIX IR as the common ABI representation across languages.
 
@@ -55,11 +56,23 @@ Delivered: the `amc-rust` provider (`frontend` + `backend`) and the C++ → ABIX
 
 Build-system / package-manager integration and deeper debugger integration are post-0.2.0 goals, tracked with the 0.3.0 ecosystem work; they are not part of the 0.2.0 release gate.
 
+### ABIX 0.2.1 — Maintenance
+
+This release only fixes existing behavior and adds tests/documentation; it does not change the public ABI or error protocol.
+
+* Fix the thread-local implementation of `last_error()` and document its per-thread / per-DSO scope.
+* Add explicit numeric values and stable `to_string()` for existing error-status enums; do not renumber.
+* Add thread-isolation, error-string, cross-language error-propagation and `[[error]]` negative tests.
+* Document that Zig does not project error sets / error unions yet.
+* The `.abix` format, `[[error]]` v1, `abix.error/1`, `TypeID` / `LayoutHash` / `ABIHash` are unchanged.
+
+Release notes: [`CHANGELOG.md`](../../CHANGELOG.md).
+
 ### ABIX 0.3.0 — Ecosystem (future)
 
 Target areas, not hard commitments:
 
-* AI / Agent integration (MCP, TROI).
+* **Under discussion: AI / Agent integration (advanced MCP tools, TROI, workflows)** — we need to decide whether advanced tools and workflows are premature; the existing low-level `amc-mcp` queries remain.
 * LSP, plugin ecosystem, package management and build-system integration.
 * Deeper debugger / editor integration (LLDB go-to-definition, Source Origin).
 * Application areas.
@@ -123,7 +136,7 @@ Current and planned work:
 * Unified structured JSON errors across all tools.
 * `amc verify` — contract-vs-implementation consistency checking.
 * ABIX Metadata Region — versioned, mappable metadata image.
-* `amc query` and the `amc-mcp` server — agent-facing ABI queries.
+* `amc query` and the `amc-mcp` server — delivered low-level ABI queries; whether more advanced agent tools/workflows enter v0.3.0 is under discussion.
 * Aue (experimental) — Lua boundary layer with L0/L1 diff consistency.
 
 ## Research / experimental
@@ -138,6 +151,8 @@ Current and planned work:
 ABIX uses standard SemVer tags, starting from the unstable `v0.1.0` line. The project stage is named in the release title (for example, `ABIX 0.1.0 — Foundation, self-hosting and toolchain`).
 
 * `v0.1.0` — Foundation, self-hosting and toolchain (pre-1.0, unstable)
+* `v0.2.0` — Cross-language (pre-1.0, unstable)
+* `v0.2.1` — Maintenance (maintenance release)
 
 ## Explicitly out of scope
 

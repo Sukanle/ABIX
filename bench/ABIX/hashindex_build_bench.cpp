@@ -1,7 +1,7 @@
 // ============================================================
 // Probe: how should HashIndex::build be built?
 //
-// `HashIndex::build` (ABIX/Runtime/Search.h) runs on every load/reload for tables
+// `HashIndex::build` (SKL/ABIX/Runtime/Search.h) runs on every load/reload for tables
 // at or above SKL_ABIX_HASH_THRESHOLD:
 //   capacity = next_pow2(count * 2) slots of {hash32, index32} (8 B)
 //   + an O(capacity) pass writing `hash = 0; index = EMPTY` to every slot
@@ -45,13 +45,13 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <new>
 #include <vector>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "bench_fmt.hpp"
 
 #if defined(_WIN32)
@@ -145,7 +145,7 @@ struct IndexBase {
         uint32_t pos = nh & mask;
         probes = 1;
         while (slots[pos].index != SKL_ABIX_HASHSLOT_EMPTY) {
-            if (slots[pos].hash == nh && std::strcmp(names->entries[slots[pos].index].name, name) == 0)
+            if (slots[pos].hash == nh && strcmp(names->entries[slots[pos].index].name, name) == 0)
                 return slots[pos].index;
             pos = (pos + 1) & mask;
             ++probes;
@@ -185,7 +185,7 @@ struct IndexZero {
             capacity = want;
             mask = want - 1;
         }
-        std::memset(slots, 0, sizeof(ZeroSlot) * capacity);   // one bulk pass
+        memset(slots, 0, sizeof(ZeroSlot) * capacity);   // one bulk pass
         for (index_t i = 0; i < t.count; ++i) {
             const Entry &e = t.entries[i];
             uint32_t pos = e.name_hash & mask;
@@ -200,7 +200,7 @@ struct IndexZero {
         probes = 1;
         while (slots[pos].index_plus1 != 0) {
             const index_t i = slots[pos].index_plus1 - 1;
-            if (slots[pos].hash == nh && std::strcmp(names->entries[i].name, name) == 0) return i;
+            if (slots[pos].hash == nh && strcmp(names->entries[i].name, name) == 0) return i;
             pos = (pos + 1) & mask;
             ++probes;
         }
@@ -241,7 +241,7 @@ struct IndexGen {
         const uint32_t want = next_pow2(t.count * 2);
         if (slots == nullptr || capacity != want) reset(want);
         if (++gen == 0) {
-            std::memset(slots, 0, sizeof(GenSlot) * capacity);
+            memset(slots, 0, sizeof(GenSlot) * capacity);
             gen = 1;
         }
         for (index_t i = 0; i < t.count; ++i) {
@@ -256,7 +256,7 @@ struct IndexGen {
         uint32_t pos = nh & mask;
         probes = 1;
         while (slots[pos].gen == gen) {
-            if (slots[pos].hash == nh && std::strcmp(names->entries[slots[pos].index].name, name) == 0)
+            if (slots[pos].hash == nh && strcmp(names->entries[slots[pos].index].name, name) == 0)
                 return slots[pos].index;
             pos = (pos + 1) & mask;
             ++probes;
@@ -358,7 +358,7 @@ inline void free_image_token(void *p) noexcept { delete static_cast<skl::abix::d
 // The module load/unload is represented by an empty image token: it is identical
 // in both variants and is not what this measures.
 void reload_loop(const char *mode, uint32_t size, int steps, int rounds) {
-    const bool eager = std::strcmp(mode, "eager") == 0;
+    const bool eager = strcmp(mode, "eager") == 0;
     Fixture fix(size);
     auto &dom = skl::abix::rcu::Domain::instance();
 
@@ -551,7 +551,7 @@ PatternResult pattern_round(const Fixture &fix, uint32_t size, int mode, int ste
         } else {
             buf = static_cast<ZeroSlot *>(std::malloc(sizeof(ZeroSlot) * want));
         }
-        std::memset(buf, 0, sizeof(ZeroSlot) * want);
+        memset(buf, 0, sizeof(ZeroSlot) * want);
         for (index_t i = 0; i < fix.table.count; ++i) {
             const Entry &e = fix.table.entries[i];
             uint32_t pos = e.name_hash & mask;
@@ -593,10 +593,10 @@ PatternResult pattern_round(const Fixture &fix, uint32_t size, int mode, int ste
 // process's first allocations and page faults), `warm` is the median of the rest.
 int pattern_one(const char *mode, uint32_t size, int steps, int rounds) {
     Fixture fix(size);
-    const int m = std::strcmp(mode, "alloc") == 0      ? 0
-                : std::strcmp(mode, "pooled") == 0     ? 1
-                : std::strcmp(mode, "pooled_all") == 0 ? 2
-                                                       : 3;
+    const int m = strcmp(mode, "alloc") == 0      ? 0
+                : strcmp(mode, "pooled") == 0     ? 1
+                : strcmp(mode, "pooled_all") == 0 ? 2
+                                                  : 3;
 
     std::vector<double> samples;
     samples.reserve(static_cast<size_t>(rounds));
@@ -645,18 +645,18 @@ int pattern_spawn(const char *self, int processes) {
                             + std::to_string(steps)
                             + " "
                             + std::to_string(rounds);
-            std::FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
+            FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
             if (!pipe) {
                 fmt::print(stderr, "cannot spawn: {}\n", cmd);
                 return 2;
             }
             char line[256] = {};
-            while (std::fgets(line, sizeof(line), pipe)) {
-                if (std::strncmp(line, "PATTERN", 7) != 0) continue;
+            while (fgets(line, sizeof(line), pipe)) {
+                if (strncmp(line, "PATTERN", 7) != 0) continue;
                 char m[32] = {};
                 unsigned sz = 0;
                 double cold = 0, warm = 0, hits = 0;
-                if (std::sscanf(line, "PATTERN %31s %u %lf %lf %lf", m, &sz, &cold, &warm, &hits) == 5) {
+                if (sscanf(line, "PATTERN %31s %u %lf %lf %lf", m, &sz, &cold, &warm, &hits) == 5) {
                     c.colds.push_back(cold);
                     c.warms.push_back(warm);
                     c.hits.push_back(hits);
@@ -679,12 +679,12 @@ int pattern_spawn(const char *self, int processes) {
         for (Combo &c : combos) {
             if (c.size != size || c.warms.empty()) continue;
             const double w = median(c.warms);
-            if (std::strcmp(c.mode, "alloc") == 0) {
+            if (strcmp(c.mode, "alloc") == 0) {
                 alloc_w = w;
-            } else if (std::strcmp(c.mode, "pooled") == 0) {
+            } else if (strcmp(c.mode, "pooled") == 0) {
                 pool_w = w;
                 hits = median(c.hits);
-            } else if (std::strcmp(c.mode, "pooled_all") == 0) {
+            } else if (strcmp(c.mode, "pooled_all") == 0) {
                 all_w = w;
             } else {
                 prod_w = w;
@@ -715,9 +715,9 @@ int run_one(const char *variant, uint32_t size, int rounds) {
     IndexBase base;
     IndexZero zero;
     IndexGen gen;
-    const bool is_base = std::strcmp(variant, "A_alloc") == 0 || std::strcmp(variant, "A_pool") == 0;
-    const bool is_zero = std::strcmp(variant, "B_alloc") == 0 || std::strcmp(variant, "B_pool") == 0;
-    const bool pooled = std::strstr(variant, "_pool") != nullptr;
+    const bool is_base = strcmp(variant, "A_alloc") == 0 || strcmp(variant, "A_pool") == 0;
+    const bool is_zero = strcmp(variant, "B_alloc") == 0 || strcmp(variant, "B_pool") == 0;
+    const bool pooled = strstr(variant, "_pool") != nullptr;
 
     if (is_base && pooled) {
         base.adopt(static_cast<BaseSlot *>(std::malloc(sizeof(BaseSlot) * want)), want);
@@ -802,18 +802,18 @@ int spawn_all(const char *self) {
                             + std::to_string(c.size)
                             + " "
                             + std::to_string(rounds);
-            std::FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
+            FILE *pipe = ABIX_POPEN(cmd.c_str(), "r");
             if (!pipe) {
                 fmt::print(stderr, "cannot spawn: {}\n", cmd);
                 return 2;
             }
             char line[256] = {};
-            while (std::fgets(line, sizeof(line), pipe)) {
-                if (std::strncmp(line, "RESULT", 6) != 0) continue;
+            while (fgets(line, sizeof(line), pipe)) {
+                if (strncmp(line, "RESULT", 6) != 0) continue;
                 char v[32] = {};
                 unsigned sz = 0;
                 double cold = 0, warm = 0, best = 0;
-                if (std::sscanf(line, "RESULT %31s %u %lf %lf %lf", v, &sz, &cold, &warm, &best) == 5) {
+                if (sscanf(line, "RESULT %31s %u %lf %lf %lf", v, &sz, &cold, &warm, &best) == 5) {
                     c.colds.push_back(cold);
                     c.warms.push_back(warm);
                 }
@@ -845,8 +845,8 @@ int spawn_all(const char *self) {
         double alloc_warm = 0, pool_warm = 0;
         for (Combo &c : combos) {
             if (c.size != size) continue;
-            if (std::strcmp(c.variant, "B_alloc") == 0) alloc_warm = median(c.warms);
-            if (std::strcmp(c.variant, "B_pool") == 0) pool_warm = median(c.warms);
+            if (strcmp(c.variant, "B_alloc") == 0) alloc_warm = median(c.warms);
+            if (strcmp(c.variant, "B_pool") == 0) pool_warm = median(c.warms);
         }
         fmt::print("{:<6} | {:>14.1f} {:>14.1f} {:>8.2f}\n", size, alloc_warm, pool_warm, alloc_warm / pool_warm);
     }
@@ -854,27 +854,27 @@ int spawn_all(const char *self) {
 }
 
 int main(int argc, char **argv) {
-    if (argc >= 5 && std::strcmp(argv[1], "--run-one") == 0) {
+    if (argc >= 5 && strcmp(argv[1], "--run-one") == 0) {
         return run_one(argv[2], static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10)),
             static_cast<int>(std::strtol(argv[4], nullptr, 10)));
     }
-    if (argc >= 2 && std::strcmp(argv[1], "--spawn") == 0) return spawn_all(argv[0]);
-    if (argc >= 2 && std::strcmp(argv[1], "--reclaim") == 0) {
+    if (argc >= 2 && strcmp(argv[1], "--spawn") == 0) return spawn_all(argv[0]);
+    if (argc >= 2 && strcmp(argv[1], "--reclaim") == 0) {
         reclaim_cadence(argc >= 3 ? static_cast<int>(std::strtol(argv[2], nullptr, 10)) : 10,
             argc >= 4 ? static_cast<int>(std::strtol(argv[3], nullptr, 10)) : 20'000,
             argc >= 5 ? static_cast<int>(std::strtol(argv[4], nullptr, 10)) : 0,
             argc >= 6 ? static_cast<int>(std::strtol(argv[5], nullptr, 10)) : 40);
         return 0;
     }
-    if (argc >= 6 && std::strcmp(argv[1], "--reload-loop") == 0) {
+    if (argc >= 6 && strcmp(argv[1], "--reload-loop") == 0) {
         reload_loop(argv[2], static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10)),
             static_cast<int>(std::strtol(argv[4], nullptr, 10)), static_cast<int>(std::strtol(argv[5], nullptr, 10)));
         return 0;
     }
-    if (argc >= 2 && std::strcmp(argv[1], "--pattern") == 0) {
+    if (argc >= 2 && strcmp(argv[1], "--pattern") == 0) {
         return pattern_spawn(argv[0], argc >= 3 ? static_cast<int>(std::strtol(argv[2], nullptr, 10)) : 5);
     }
-    if (argc >= 6 && std::strcmp(argv[1], "--pattern-one") == 0) {
+    if (argc >= 6 && strcmp(argv[1], "--pattern-one") == 0) {
         return pattern_one(argv[2], static_cast<uint32_t>(std::strtoul(argv[3], nullptr, 10)),
             static_cast<int>(std::strtol(argv[4], nullptr, 10)), static_cast<int>(std::strtol(argv[5], nullptr, 10)));
     }

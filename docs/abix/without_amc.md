@@ -6,7 +6,7 @@
 
 ABIX and AMC have different jobs:
 
-- **ABIX** (`ABIX/`) is a header-only runtime layer. It contains no `.cpp` files and never includes `AMC/...`. `libabix-runtime` is a CMake `INTERFACE` target that only adds the include root.
+- **ABIX** (`SKL/ABIX/`) is a header-only runtime layer. It contains no `.cpp` files and never includes `AMC/...`. `libabix-runtime` is a CMake `INTERFACE` target that only adds the include root.
 - **AMC** is a build-time toolchain (Clang/LLVM + `toml++`) that extracts C++ semantics, computes canonical ABI identities, writes `.abix` artifacts and generates thunks, adapters and C++ projections.
 
 A C++-only project can therefore depend on ABIX alone. AMC is never a runtime dependency — even when it is used, the produced binaries do not link it — and a hand-written C++ contract does not need it at build time either.
@@ -17,18 +17,18 @@ The trade-off is that the contract becomes manual: you write the adapter tables 
 
 | Capability                               | Header                                                                           | AMC required?                                                                   |
 | ---------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Interface identity and method signatures | `ABIX/Interface/Contract.h`                                                      | No — `interface_id`, `method_signature` and `canonical_type_id` are `constexpr` |
-| Hand-written `Traits` and proxies        | `ABIX/Interface/Proxy.h`                                                         | No — `UniqueInterfaceProxy<Traits>` is header-only                              |
+| Interface identity and method signatures | `SKL/ABIX/Interface/Contract.h`                                                      | No — `interface_id`, `method_signature` and `canonical_type_id` are `constexpr` |
+| Hand-written `Traits` and proxies        | `SKL/ABIX/Interface/Proxy.h`                                                         | No — `UniqueInterfaceProxy<Traits>` is header-only                              |
 | In-process register / resolve / call     | `Registry.h`, `Ref.h`, `Proxy.h`                                                 | No                                                                              |
 | Dynamic-library discovery and leases     | `Module.h`, `ModuleRegistry.h`, `Discovery.h`, `Lease.h`                         | No — write the `ModuleManifest` by hand and use `SKL_ABIX_DEFINE_MODULE_QUERY`  |
 | Owner ABI                                | `Owner.h`                                                                        | No                                                                              |
-| Runtime table / descriptors              | `ABIX/Runtime/Registry.h`, `ABIX/Metadata/Descriptor.h`, `SKL_ABIX_DEFINE_TABLE` | No — the structures are public and can be written by hand                       |
-| ABIX's own type/layout digests           | `ABIX/Model/ABI.h`, `ABIX/Model/Compat.h`                                        | No — `canonical_type_id`, `canonical_layout_hash`, `abi_signature_hash`         |
+| Runtime table / descriptors              | `SKL/ABIX/Runtime/Registry.h`, `SKL/ABIX/Metadata/Descriptor.h`, `SKL_ABIX_DEFINE_TABLE` | No — the structures are public and can be written by hand                       |
+| ABIX's own type/layout digests           | `SKL/ABIX/Model/ABI.h`, `SKL/ABIX/Model/Compat.h`                                        | No — `canonical_type_id`, `canonical_layout_hash`, `abi_signature_hash`         |
 
 A minimal C++-only declaration:
 
 ```cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix;
 using namespace skl::abix::poly;
@@ -36,13 +36,13 @@ using namespace skl::abix::poly;
 constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr mics::utils::array signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr mics::util::array signatures = {method_signature("area", i32, nullptr, 0)};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
     using Base = UniqueInterfaceProxy<ShapeTraits>;

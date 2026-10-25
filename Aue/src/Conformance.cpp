@@ -6,8 +6,10 @@
 // unchanged; only the dispatch backend differs.
 #include "Aue/Aue.h"
 
-#include <cstdio>
+#include <stdio.h>
 #include <string>
+
+#include <fmt/base.h>
 
 namespace {
 
@@ -116,37 +118,37 @@ int main(int argc, char **argv) {
             else if (value == "l2")
                 requested = aue::Level::l2;
             else {
-                std::fprintf(stderr, "abix-conformance: unknown level '%s'\n", value.c_str());
+                fmt::print(stderr, "abix-conformance: unknown level '{}'\n", value);
                 return 2;
             }
         } else if (script == nullptr) {
             script = argv[i];
         } else {
-            std::fprintf(stderr, "usage: abix-conformance <script.lua> [--requested l0|l1|l2]\n");
+            fmt::print(stderr, "usage: abix-conformance <script.lua> [--requested l0|l1|l2]\n");
             return 2;
         }
     }
     if (script == nullptr) {
-        std::fprintf(stderr, "usage: abix-conformance <script.lua> [--requested l0|l1|l2]\n");
+        fmt::print(stderr, "usage: abix-conformance <script.lua> [--requested l0|l1|l2]\n");
         return 2;
     }
 
     aue::Level golden_level = aue::Level::l0, selected = aue::Level::l0;
     std::string golden, actual, error;
     if (!run_layer(script, aue::Level::l0, golden_level, golden, error)) {
-        std::fprintf(stderr, "abix-conformance: L0 failed: %s\n", error.c_str());
+        fmt::print(stderr, "abix-conformance: L0 failed: {}\n", error);
         return 1;
     }
     if (!run_layer(script, requested, selected, actual, error)) {
-        std::fprintf(stderr, "abix-conformance: %s failed: %s\n", aue::level_name(requested), error.c_str());
+        fmt::print(stderr, "abix-conformance: {} failed: {}\n", aue::level_name(requested), error);
         return 1;
     }
     if (golden != actual) {
-        std::fprintf(stderr, "abix-conformance: L0 != %s\n--- L0 ---\n%s--- %s ---\n%s", aue::level_name(selected),
-            golden.c_str(), aue::level_name(selected), actual.c_str());
+        fmt::print(stderr, "abix-conformance: L0 != {}\n--- L0 ---\n{}--- {} ---\n{}", aue::level_name(selected),
+            golden, aue::level_name(selected), actual);
         return 1;
     }
-    std::printf("abix-conformance: l0 == %s (requested=%s selected=%s%s) (%zu bytes)\n%s", aue::level_name(selected),
+    fmt::print("abix-conformance: l0 == {} (requested={} selected={}{}) ({} bytes)\n{}", aue::level_name(selected),
         aue::level_name(requested), aue::level_name(selected), selected != requested ? ", degraded" : "", golden.size(),
         golden.c_str());
     return 0;

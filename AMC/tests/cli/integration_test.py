@@ -269,7 +269,7 @@ class TestRunner:
         cmd = [
             "clang++",
             "-std=c++17",
-            f"-I{SOURCE_ROOT}",
+            f"-I{SOURCE_ROOT}/include",
             "-fsyntax-only",
             header,
         ]
@@ -415,7 +415,7 @@ class TestRunner:
                 [
                     "clang++",
                     "-std=c++17",
-                    f"-I{SOURCE_ROOT}",
+                    f"-I{SOURCE_ROOT}/include",
                     f"-I{self.build_dir}",
                     consumer_src,
                     "-o",
@@ -496,7 +496,7 @@ class TestRunner:
                 self.bin_path("amc"),
                 "build",
                 "-c",
-                os.path.join(SOURCE_ROOT, "ABIX/self.abic.toml"),
+                os.path.join(SOURCE_ROOT, "include/SKL/ABIX/self.abic.toml"),
                 "-B",
                 self_build,
             ]
@@ -547,8 +547,8 @@ class TestRunner:
                 [
                     "clang++",
                     "-std=c++17",
-                    f"-I{SOURCE_ROOT}",
-                    f"-I{SOURCE_ROOT}/mics",
+                    f"-I{SOURCE_ROOT}/include",
+                    f"-I{SOURCE_ROOT}/MICS/include",
                     f"-I{self.build_dir}",
                     consumer_src,
                     "-o",
@@ -638,7 +638,7 @@ class TestRunner:
                 [
                     "clang++",
                     "-std=c++17",
-                    f"-I{SOURCE_ROOT}",
+                    f"-I{SOURCE_ROOT}/include",
                     f"-I{SOURCE_ROOT}/AMC/include",
                     f"-I{self.build_dir}",
                     consumer_src,
@@ -916,7 +916,7 @@ class TestRunner:
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",
@@ -976,7 +976,7 @@ class TestRunner:
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",
@@ -1151,7 +1151,7 @@ class TestRunner:
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",
@@ -1417,7 +1417,7 @@ class TestRunner:
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",
@@ -1556,7 +1556,7 @@ class TestRunner:
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{SOURCE_ROOT}/Aue/include",
                 f"-I{out}",
                 source,
@@ -1638,7 +1638,7 @@ int main() {
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{SOURCE_ROOT}/Aue/include",
                 f"-I{gen}",
                 source,
@@ -1822,7 +1822,7 @@ int main() {
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",
@@ -2004,7 +2004,7 @@ int main() {
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",
@@ -2102,7 +2102,7 @@ int main() {
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 f"-I{fixtures}",
                 source,
@@ -2317,7 +2317,7 @@ int main() {
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{build}",
                 typed_source,
                 "-o",
@@ -2377,7 +2377,7 @@ int main() {
                 "-std=c++17",
                 "-shared",
                 "-fPIC",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 shim_cpp,
                 "-o",
                 library,
@@ -2441,7 +2441,7 @@ int main() {
         check_dir = os.path.join(self.build_dir, "abi-check")
         os.makedirs(check_dir, exist_ok=True)
         include = [
-            "-I" + SOURCE_ROOT,
+            "-I" + os.path.join(SOURCE_ROOT, "include"),
             "-I" + self.gen_separate,
             "-I" + self.fixtures_dir,
         ]
@@ -2469,7 +2469,7 @@ int main() {
         drift_header = os.path.join(check_dir, "abi_check_drift.hpp")
         with open(drift_header, "w", encoding="utf-8") as handle:
             handle.write(
-                "#pragma once\n#include <cstdint>\n"
+                "#pragma once\n#include <stdint.h>\n"
                 "struct AmcTestFoo { int32_t x; double y; int32_t z; };\n"
                 "struct AmcTestBar { int32_t a; double b; int32_t c; };\n"
                 "enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n"
@@ -2502,7 +2502,7 @@ int main() {
         width_header = os.path.join(check_dir, "abi_check_width.hpp")
         with open(width_header, "w", encoding="utf-8") as handle:
             handle.write(
-                "#pragma once\n#include <cstdint>\n"
+                "#pragma once\n#include <stdint.h>\n"
                 "struct AmcTestFoo { int64_t x; double y; };\n"
                 "struct AmcTestBar { int32_t a; double b; int32_t c; };\n"
                 "enum class AmcTestColor : int32_t { Red = 0, Green = 1, Blue = 2 };\n"
@@ -2635,7 +2635,7 @@ int main() {
             [
                 "clang++",
                 "-std=c++17",
-                f"-I{SOURCE_ROOT}",
+                f"-I{SOURCE_ROOT}/include",
                 f"-I{self.gen_separate}",
                 consumer_src,
                 "-o",

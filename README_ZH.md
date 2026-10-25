@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C.svg" alt="C++17">
   <img src="https://img.shields.io/badge/CMake-3.20%2B-064F8C.svg" alt="CMake 3.20+">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-4C8C4A.svg" alt="Platforms: Linux | macOS | Windows">
-  <img src="https://img.shields.io/badge/status-0.1.0-orange.svg" alt="Status: 0.1.0 (unstable)">
+  <img src="https://img.shields.io/badge/status-0.2.0-orange.svg" alt="Status: 0.2.0 (unstable)">
 </p>
 
 <p align="center">
@@ -61,7 +61,7 @@ graph TD
     F --> H[原生绑定<br>原生执行<br>ABI 适配]
 ```
 
-ABIX 目前以 **C++ 作为第一个宿主语言**实现；Rust provider 与 Zig backend 已作为 0.2.0 预览交付，ABI 模型本身保持语言无关。
+ABIX 目前以 **C++ 作为第一个宿主语言**实现；Rust provider 与 Zig backend 已随 0.2.0 交付，ABI 模型本身保持语言无关。
 
 ---
 
@@ -201,13 +201,13 @@ using namespace skl::abix::poly;
 constexpr auto i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {method_signature("area", i32, nullptr, 0)};
+    static constexpr skl::mics::util::array signatures = {method_signature("area", i32, nullptr, 0)};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
@@ -379,7 +379,7 @@ AMC 围绕 ABIX 提供工具链，更高层次的应用可以独立构建，覆�
 
 ```text
 ABIX
-├── ABIX/                  纯头文件 ABI 模型与运行时
+├── SKL/ABIX/                  纯头文件 ABI 模型与运行时
 │   ├── Model/             Model.h ABI.h Bootstrap.h Map.h Compat.h
 │   ├── Metadata/          Metadata.h Registry.h Descriptor.h
 │   ├── Runtime/           Runtime.h Registry.h Type.h TypeSig.h Search.h Function.h
@@ -403,7 +403,7 @@ ABIX
 ├── scripts/               开发脚本 (git hooks、Markdown 重排)
 ├── src/                   自举 ABI 输入
 ├── docs/                  规范、指南、API、架构、AI、基准
-└── mics/                  反射子模块 (MICS / HLMD)
+└── MICS/                  反射子模块 (MICS / HLMD)
 ```
 
 ---
@@ -430,6 +430,25 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
+
+### CMake 包
+
+安装 ABIX 后即可用 `find_package(ABIX CONFIG REQUIRED)` 消费：
+
+```bash
+cmake --install build/Release --prefix /opt/abix
+```
+
+```cmake
+find_package(ABIX 0.2 CONFIG REQUIRED)
+
+add_executable(app main.cpp)
+target_link_libraries(app PRIVATE ABIX::ABIX)
+```
+
+`ABIX::ABIX` 聚合了 header-only runtime 以及 `.abix` format、ABI 校验、metadata 和 tools 库；也可以按需链接 `ABIX::runtime`、`ABIX::format`、`ABIX::abi`、`ABIX::metadata` 或 `ABIX::tools`。
+
+ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。安装后的 config 会用 `find_dependency()` 解析 `MICS` 与 `fmt`。
 
 ### 试用
 
@@ -500,7 +519,7 @@ ctest --test-dir build/Release --output-on-failure
 
 ## 当前状态
 
-**ABIX 0.1.0** — 非稳定、pre-1.0 的基础预览。ABI 模型、规范化 `.abix` artifact、AMC 工具链与 header-only 运行时已经可用于真实工程：
+**ABIX 0.2.0** — 非稳定、pre-1.0 的跨语言预览。ABI 模型、规范化 `.abix` artifact、AMC 工具链与 header-only 运行时已经可用于真实工程：
 
 - **ABI 模型与 artifact**：`TypeID` / `LayoutHash` / `ABIHash`、规范化哈希、规范化布局编码，以及 `.abix` v4 读写。
 - **ABI 工作流**：inspect、query、context、diff、兼容性分类、verify、adapter 生成与 `.abic.toml` 配置。
@@ -508,10 +527,10 @@ ctest --test-dir build/Release --output-on-failure
 - **Runtime**：类型/函数 registry、原生 DLL 绑定、RCU 热重载与 BinaryImage 能力层。
 - **Interface**：非侵入式契约、代理、静态/动态发现、租约与 Owner ABI。
 - **AI 工具**：`amc context --format llm`、`amc-mcp`、结构化 `abix.error/1` 错误，以及可选的 LLDB 插件。
-- **语言 provider**：C++ 前端/后端、Rust 前端/后端，以及 backend-only 的 Zig 投影 (0.2.0 预览)。
+- **语言 provider**：C++ 前端/后端、Rust 前端/后端，以及 backend-only 的 Zig 投影 (0.2.0)。
 - **Aue**：实验性 Lua 边界层与差分一致性测试。
 
-`ABIX 0.2.0 — Cross-language` 正在进行：`amc-rust` provider 与 C++ → ABIX → Rust 闭环已经交付，`amc-zig` 仅有 backend，Rust/Zig 互操作测试会构建同一个原生库并运行两个消费者。剩余工作是更广泛的跨语言绑定、稳定性与外部验证。
+`ABIX 0.2.0 — Cross-language` 已发布：`amc-rust` provider 与 C++ → ABIX → Rust 闭环已经交付，`amc-zig` 仅有 backend，Rust/Zig 互操作测试会构建同一个原生库并运行两个消费者。后续维护与更广泛的跨语言绑定进入 0.3.0。
 
 当前重点：
 
@@ -528,9 +547,10 @@ ctest --test-dir build/Release --output-on-failure
 
 ABIX 的发布按项目阶段划分，而不是功能清单：
 
-- **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (当前，pre-1.0/unstable)
-- **ABIX 0.2.0 — Cross-language** (进行中；Rust provider 与 Zig backend 已交付)
-- **ABIX 0.3.0 — Ecosystem** (AMC Interface 去分派优化、AI/Agent 集成、LSP、包管理)
+- **ABIX 0.1.0 — Foundation, self-hosting and toolchain** (已发布，pre-1.0/unstable)
+- **ABIX 0.2.0 — Cross-language** (已发布；Rust provider 与 Zig backend 已交付)
+- **ABIX 0.2.1 — Maintenance** (维护版本；修复现有行为、补测试和文档，不改变公共 ABI)
+- **ABIX 0.3.0 — Ecosystem** (AMC Interface 去分派、LSP、包管理；MCP/Agent 高级工具待议)
 
 ```mermaid
 graph LR
@@ -564,3 +584,12 @@ graph LR
 ## 许可证
 
 见 [`LICENSE`](LICENSE)。
+
+## 第三方声明
+
+ABIX 使用以下第三方组件，其版权归各自作者所有，并遵循相应许可证：
+
+- **ljson** — MIT 许可证，Copyright (c) 2019 lengjingzju。源码位于 `AMC/include/ljson/` 与 `AMC/src/ljson/`；完整许可证见 `AMC/include/ljson/LICENSE`。
+- **{fmt}** — MIT 许可证，Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors。
+
+完整声明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

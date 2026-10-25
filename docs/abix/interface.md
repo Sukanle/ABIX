@@ -6,7 +6,7 @@
 
 The ABIX Interface layer defines the **cross-language interface contract** and the **method dispatch** mechanism. It is a layer of ABIX, not of any compiler's object model: an interface is an independent contract, and a provider type is never modified to implement it.
 
-It lives in `ABIX/Interface/` (namespace `skl::abix::poly`) and is exposed by `ABIX/ABIX.h`.
+It lives in `SKL/ABIX/Interface/` (namespace `skl::abix::poly`) and is exposed by `SKL/ABIX/ABIX.h`.
 
 ## Why an interface ABI, not a vtable ABI
 
@@ -33,7 +33,7 @@ The same task — three shapes each computing an area, then one polymorphic call
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -60,7 +60,7 @@ int main() {
     Rectangle rectangle{2, 6};
     Triangle triangle{4, 5};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
+    for (const Shape *shape : shapes) printf("area=%d\n", total(*shape));
     return 0;
 }
 ```
@@ -69,8 +69,8 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
-#include "ABIX/Interface/Interface.h"
+#include <stdio.h>
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
@@ -80,13 +80,13 @@ constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
 
 // Interface class: Traits describes the contract; Shape only adds methods.
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {area_sig};
+    static constexpr skl::mics::util::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
     using Base = UniqueInterfaceProxy<ShapeTraits>;
@@ -151,7 +151,7 @@ int main() {
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         if (!shape.valid()) return 1;
-        std::printf("area=%d\n", shape.area());
+        printf("area=%d\n", shape.area());
     }
     return 0;
 }
@@ -203,7 +203,7 @@ Both examples below use their library's macro form and both return `area == 12`.
 <td valign="top" markdown="1">
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
+#include "SKL/ABIX/Interface/Declaration.h"
 
 using namespace skl::abix::poly;
 constexpr auto i32 =
@@ -316,7 +316,7 @@ The native virtual baseline is compiled with `-fno-devirtualize`. This matters: 
 | ABIX `SharedInterfaceProxy`                  |    0.75 |                   1.0x |
 | ngcpp/proxy `pro::proxy`                     |    0.75 |                   1.0x |
 
-The non-intrusive proxies match a true vtable dispatch in this microbenchmark. ABIX's unique and shared layouts and ngcpp/proxy all converge at roughly the same cost; the indirect call dominates, and the extra table load in shared mode is not separately visible. The remaining gap is to **direct/devirtualised** calls: when the compiler can prove the dynamic type, it can eliminate the dispatch entirely. ABIX/proxy cannot do that because the implementation is selected at run time (or erased at compile time). This is the price of not owning the object model (registration, type erasure, cross-DLL/cross-language contracts); it is not a per-call registry lookup.
+The non-intrusive proxies match a true vtable dispatch in this microbenchmark. ABIX's unique and shared layouts and ngcpp/proxy all converge at roughly the same cost; the indirect call dominates, and the extra table load in shared mode is not separately visible. The remaining gap is to **direct/devirtualised** calls: when the compiler can prove the dynamic type, it can eliminate the dispatch entirely. SKL/ABIX/proxy cannot do that because the implementation is selected at run time (or erased at compile time). This is the price of not owning the object model (registration, type erasure, cross-DLL/cross-language contracts); it is not a per-call registry lookup.
 
 **Footprint** (64-bit; `N` = number of interface methods):
 
@@ -351,9 +351,9 @@ SharedShape second(table, &b);  // 24 bytes, same table
 Three steps: **register** (record "this concrete type implements this interface" in the registry) → **resolve** (look the binding up once and cache the adapter entries) → **call** (a plain native indirect call). The complete program below needs no shared library.
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
@@ -384,7 +384,7 @@ int main() {
     if (ref.resolve(registry, &v, vec2_id, ivec, 1) != InterfaceStatus::ok) return 1;
 
     const auto axis = ref.method<AxisFn>(0);
-    std::printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
+    printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
 }
 ```
 
@@ -395,7 +395,7 @@ int main() {
 The runtime facility is deliberately a _binding-time_ one. `InterfaceRegistry` holds "this concrete type implements this interface" records. `InterfaceRef` resolves once and caches the adapter pointers by slot; every call afterwards is a plain native indirect call. The runtime never becomes a generic dispatch loop.
 
 ```cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 
@@ -465,7 +465,7 @@ Rules:
 Interface ABI says how to call an object; the owner ABI says who owns it and who releases it. Only three modes are formalised — **borrowed**, **owned**, **copied** — and release always returns to the creator's allocation domain: a consumer never `free()`s or `delete`s the pointer, and never infers a deallocator from the address or the layout.
 
 ```cpp
-#include "ABIX/Interface/Owner.h"
+#include "SKL/ABIX/Interface/Owner.h"
 
 // The provider returns a POD handle; the destroy entry lives in the module.
 ABIX_OWNER handle = make_owned(new Renderer, &destroy_renderer, control.id);
@@ -489,7 +489,7 @@ The contract lives in a shared header: `Traits` carries the interface identity, 
 ```cpp
 // shape.h — the shared contract
 #pragma once
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace demo {
 
@@ -501,7 +501,7 @@ using skl::abix::poly::method_signature;
 inline constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {
+    static constexpr skl::mics::util::array signatures = {
         method_signature("area", i32, nullptr, 0),
         method_signature("perimeter", i32, nullptr, 0),
     };
@@ -511,7 +511,7 @@ struct ShapeTraits {
         uint32_t area;
         uint32_t perimeter;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public skl::abix::poly::UniqueInterfaceProxy<ShapeTraits> {
@@ -533,7 +533,7 @@ On the provider side, three plain implementations; each method has one adapter w
 ```cpp
 // shapes.cpp
 // Build: c++ -std=c++17 -I<abix_root> shapes.cpp -o shapes
-#include <cstdio>
+#include <stdio.h>
 
 #include "shape.h"
 
@@ -641,7 +641,7 @@ int main() {
     for (const auto &instance : instances) {
         demo::Shape shape;
         if (shape.bind(registry, instance.object, instance.type) != InterfaceStatus::ok) return 1;
-        std::printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
+        printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
     }
     return 0;
 }
@@ -669,7 +669,7 @@ The provider and the consumer share one contract-constant header (the interface 
 ```cpp
 // canvas_interface.h
 #pragma once
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace canvas {
 inline constexpr skl::abix::poly::InterfaceId kInterface{0x51, 0x00};
@@ -683,7 +683,7 @@ The provider builds to `libcanvas.so` and exposes only the fixed entry and its o
 ```cpp
 // canvas_plugin.cpp
 // build: c++ -std=c++17 -shared -fPIC -I<abix_root> -o libcanvas.so canvas_plugin.cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 #include "canvas_interface.h"
 
 namespace canvas {
@@ -717,10 +717,10 @@ The consumer loads, discovers, binds once, calls, then unloads:
 ```cpp
 // canvas_host.cpp
 // build: c++ -std=c++17 -I<abix_root> canvas_host.cpp -ldl -o canvas_host
-#include <cstdio>
+#include <stdio.h>
 
-#include "ABIX/DLL/Object.h"
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/DLL/Object.h"
+#include "SKL/ABIX/Interface/Interface.h"
 #include "canvas_interface.h"
 
 using namespace skl::abix::poly;
@@ -747,7 +747,7 @@ int main() {
         auto bound = bind_interface(*binding, object);   // acquires the module lease
         if (!bound.valid()) return 1;
         const auto width = bound.ref.method<canvas::WidthFn>(0);
-        std::printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
+        printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
     }   // bound destructs: releases the lease
 
     registry.unregister_module(control.id);   // the lease is gone: unload completes
@@ -763,7 +763,7 @@ The point: `discover_module` consults the export table for the single symbol `ab
 Without a shared library, register several providers' `ModuleManifest`s directly:
 
 ```cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 
@@ -803,9 +803,9 @@ skl::abix::owner::handle owner_counter_create(int base) {
 The consumer adopts the handle and holds a lease, destroying exactly once when it goes out of scope (continues Example 2's `lib` / `control` / `binding`):
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
-#include "ABIX/Interface/Owner.h"
+#include "SKL/ABIX/Interface/Owner.h"
 
 using namespace skl::abix::poly;
 using AddFn = int (*)(const void *, int);
@@ -823,7 +823,7 @@ if (!skl::abix::owner::valid(raw)) return 1;
 
     auto bound = bind_interface(*binding, object.object());
     const auto add = bound.ref.method<AddFn>(0);
-    std::printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
+    printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
 }   // object destructs: calls the creator's destroy, then drops the lease
 
 registry.unregister_module(control.id);   // now it can unload
@@ -831,20 +831,20 @@ registry.unregister_module(control.id);   // now it can unload
 
 ## API reference
 
-The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace `skl::abix::poly` except the owner ABI (`skl::abix::owner`). To pull in the whole layer on its own, `#include "ABIX/Interface/Interface.h"`.
+The symbols below come from `SKL/ABIX/ABIX.h`. Everything lives in namespace `skl::abix::poly` except the owner ABI (`skl::abix::owner`). To pull in the whole layer on its own, `#include "SKL/ABIX/Interface/Interface.h"`.
 
 | Header                            | Contents                                                                                                                 |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `ABIX/Interface/Contract.h`       | Interface identity, `InterfaceMethod` / `InterfaceImplementation`, `InterfaceStatus`, `interface_entry`                  |
-| `ABIX/Interface/Registry.h`       | `InterfaceRegistry` — binding-time registration and resolution                                                           |
-| `ABIX/Interface/Ref.h`            | `InterfaceRef` — resolve once, call natively through a slot cache                                                        |
-| `ABIX/Interface/Module.h`         | The fixed entry `abix_module_query_v1`, `ModuleManifest`, `validate_manifest`                                            |
-| `ABIX/Interface/Lease.h`          | The `ModuleControl` state machine and the RAII `ModuleLease`                                                             |
-| `ABIX/Interface/ModuleRegistry.h` | `ModuleRegistry` — register and query discovered module interfaces                                                       |
-| `ABIX/Interface/Discovery.h`      | `discover_module` — load → validate → register                                                                           |
-| `ABIX/Interface/Owner.h`          | Owner ABI — borrow/own/copy semantics for `handle` / `ref`                                                               |
-| `ABIX/Interface/Proxy.h`          | C++ proxy API — `UniqueInterfaceProxy<Traits>`, `bind`/`call`, signature checks                                          |
-| `ABIX/Interface/Declaration.h`    | declaration sugar — `SKL_ABIX_INTERFACE_DECLARE`; version helpers `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
+| `SKL/ABIX/Interface/Contract.h`       | Interface identity, `InterfaceMethod` / `InterfaceImplementation`, `InterfaceStatus`, `interface_entry`                  |
+| `SKL/ABIX/Interface/Registry.h`       | `InterfaceRegistry` — binding-time registration and resolution                                                           |
+| `SKL/ABIX/Interface/Ref.h`            | `InterfaceRef` — resolve once, call natively through a slot cache                                                        |
+| `SKL/ABIX/Interface/Module.h`         | The fixed entry `abix_module_query_v1`, `ModuleManifest`, `validate_manifest`                                            |
+| `SKL/ABIX/Interface/Lease.h`          | The `ModuleControl` state machine and the RAII `ModuleLease`                                                             |
+| `SKL/ABIX/Interface/ModuleRegistry.h` | `ModuleRegistry` — register and query discovered module interfaces                                                       |
+| `SKL/ABIX/Interface/Discovery.h`      | `discover_module` — load → validate → register                                                                           |
+| `SKL/ABIX/Interface/Owner.h`          | Owner ABI — borrow/own/copy semantics for `handle` / `ref`                                                               |
+| `SKL/ABIX/Interface/Proxy.h`          | C++ proxy API — `UniqueInterfaceProxy<Traits>`, `bind`/`call`, signature checks                                          |
+| `SKL/ABIX/Interface/Declaration.h`    | declaration sugar — `SKL_ABIX_INTERFACE_DECLARE`; version helpers `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
 
 ### `Contract.h` — interface identity and methods
 
@@ -852,8 +852,8 @@ The symbols below come from `ABIX/ABIX.h`. Everything lives in namespace `skl::a
 | -------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `InterfaceId`                                            | `Hash128`              | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)`                                                                          |
 | `InterfaceMethodHash`                                    | `model::SignatureHash` | One method's ABI signature hash                                                                                                                                                                                                                          |
-| `interface_id(name, version, signatures)`                | `InterfaceId`          | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `mics::utils::array` or a variadic `InterfaceMethodHash` list |
-| `InterfaceMethodKey`                                     | `{signature, slot}`    | A signature paired with its slot, for the `interface_id` `mics::utils::array` overload to sort before hashing                                                                                                                                            |
+| `interface_id(name, version, signatures)`                | `InterfaceId`          | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `mics::util::array` or a variadic `InterfaceMethodHash` list |
+| `InterfaceMethodKey`                                     | `{signature, slot}`    | A signature paired with its slot, for the `interface_id` `mics::util::array` overload to sort before hashing                                                                                                                                            |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash`  | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`)                  |
 | `interface_entry<Fn>(fn)`                                | `uintptr_t`            | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way                                                                                                                                        |
 | `to_string(status)`                                      | `const char*`          | Readable name for an `InterfaceStatus`                                                                                                                                                                                                                   |
@@ -1062,7 +1062,7 @@ An interface proxy is a lightweight handle over "an object handle plus resolved 
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`            | The `InterfaceId` (computed by AMC)                                                                                                                   |
 | `version`       | The interface version                                                                                                                                 |
-| `signatures`    | The `mics::utils::array` of expected signatures, one per slot; its size is also the proxy's slot capacity. A zero hash means "do not check this slot" |
+| `signatures`    | The `mics::util::array` of expected signatures, one per slot; its size is also the proxy's slot capacity. A zero hash means "do not check this slot" |
 | `slots`         | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)`                                             |
 
 `UniqueInterfaceProxy<Traits>`:
@@ -1142,7 +1142,7 @@ struct ShapeTraits {
     static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // The method signature is generated too; the return/parameter TypeIDs must
     // match the provider.
-    static constexpr skl::mics::utils::array sigs = {
+    static constexpr skl::mics::util::array sigs = {
         method_signature("area", i32, nullptr, 0),
         method_signature("size", i32, nullptr, 0),
     };
@@ -1152,7 +1152,7 @@ struct ShapeTraits {
         uint32_t area;
         uint32_t size;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, sigs.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, sigs.size(), 0>();
 };
 ```
 
@@ -1176,11 +1176,11 @@ The parameter list can be passed in three equivalent, allocation-free forms:
 ```cpp
 constexpr TypeId params[] = {i32, i32};
 method_signature("resize", v, params, 2);                 // pointer + count
-method_signature("resize", v, mics::utils::array{i32, i32});     // inline fixed array
+method_signature("resize", v, mics::util::array{i32, i32});     // inline fixed array
 method_signature("resize", v, i32, i32);                  // variadic
 ```
 
-`mics::utils::array` is the minimal fixed-size type in `mics/utils/array.h`; its deduction guide makes `mics::utils::array{i32, i32}` name its own type. All three forms hash the same bytes and allocate nothing.
+`mics::util::array` is the minimal fixed-size type in `SKL/MICS/Util/Array.h`; its deduction guide makes `mics::util::array{i32, i32}` name its own type. All three forms hash the same bytes and allocate nothing.
 
 A signature mentions **TypeIDs**, not C++ types. For name-based identities, `model::canonical_type_id(canonical_name)` reproduces AMC's value:
 
@@ -1241,7 +1241,7 @@ constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
 constexpr model::TypeId move_params[] = {point};
 constexpr model::TypeId open_params[] = {text};
 
-static constexpr mics::utils::array sigs = {
+static constexpr mics::util::array sigs = {
     method_signature("draw",  v,    nullptr,     0),
     method_signature("move",  v,    move_params, 1),
     method_signature("label", text, nullptr,     0),
@@ -1279,7 +1279,7 @@ Left: C++ virtual functions; middle: ABIX manual registration (a hand-written ad
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -1305,7 +1305,7 @@ int main() {
     Rectangle rectangle{4, 6};
     Triangle triangle{6, 4};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", shape->area());
+    for (const Shape *shape : shapes) printf("area=%d\n", shape->area());
     return 0;
 }
 ```
@@ -1314,8 +1314,8 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
-#include "ABIX/Interface/Interface.h"
+#include <stdio.h>
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
@@ -1375,7 +1375,7 @@ int main() {
         InterfaceRef<2> ref;
         if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
         const auto area = ref.method<AreaFn>(0);
-        std::printf("area=%d\n", area(ref.object()));
+        printf("area=%d\n", area(ref.object()));
     }
     return 0;
 }
@@ -1387,13 +1387,13 @@ int main() {
 ```cpp
 // contract, adapters, method tables and registration as in the middle column
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {area_sig};
+    static constexpr skl::mics::util::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
     using Base = UniqueInterfaceProxy<ShapeTraits>;
@@ -1414,7 +1414,7 @@ int main() {
     const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
-        std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+        printf("area=%d\n", shape.valid() ? shape.area() : -1);
     }
     return 0;
 }
@@ -1481,7 +1481,7 @@ Notes:
 #### 2. One-line Traits and proxy
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
+#include "SKL/ABIX/Interface/Declaration.h"
 
 SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 ```
@@ -1516,9 +1516,9 @@ Its expansion is, in essence:
 struct Shape;
 
 struct ShapeTraits {
-    static constexpr auto signatures = skl::mics::utils::array{
-        skl::abix::poly::method_signature("area", i32, skl::mics::utils::array{}),
-        skl::abix::poly::method_signature("resize", i32, skl::mics::utils::array{i32, i32}),
+    static constexpr auto signatures = skl::mics::util::array{
+        skl::abix::poly::method_signature("area", i32, skl::mics::util::array{}),
+        skl::abix::poly::method_signature("resize", i32, skl::mics::util::array{i32, i32}),
     };
     static constexpr auto version = 1;
     static constexpr auto id = skl::abix::poly::interface_id("Shape", version, signatures);
@@ -1528,7 +1528,7 @@ struct ShapeTraits {
         uint32_t resize;
     };
     alignas(8) static constexpr Slots slots =
-        skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+        skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 struct Shape : public skl::abix::poly::UniqueInterfaceProxy<ShapeTraits> {
@@ -1582,7 +1582,7 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS, SHAPE_API);
 
 Be clear about the scope: ABIX Interface is header-only. `ShapeTraits` / `Shape` are normally compile-time types with inline forwarding methods, and **do not need DLL import/export decoration in the normal case**. Use the attribute only when the generated type is genuinely part of a Windows DLL boundary and you accept MSVC's rules for imported classes with inline/static members.
 
-`SKL_ABIX_DLL_EXPORT` (from `ABIX/Util/Config.h`) is a different concern: it marks provider-side fixed C entries such as:
+`SKL_ABIX_DLL_EXPORT` (from `SKL/ABIX/Util/Config.h`) is a different concern: it marks provider-side fixed C entries such as:
 
 ```cpp
 extern "C" SKL_ABIX_DLL_EXPORT const void *shape_instance(void);
@@ -1694,7 +1694,7 @@ registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, box_id, 0));
 
 `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` expands the list into a
 named `interface##Methods` (`ShapeMethods` here), a
-`mics::utils::array<InterfaceMethod, N>`. `SKL_ABIX_INTERFACE_IMPLEMENTATION`
+`mics::util::array<InterfaceMethod, N>`. `SKL_ABIX_INTERFACE_IMPLEMENTATION`
 combines `interface##Traits`, that table and the concrete type's `TypeId`
 expression, so the example reads `ShapeTraits::id`, `box_id`, `ShapeMethods`
 and `ShapeTraits::version`.
@@ -1735,7 +1735,7 @@ Rules and limitations:
 The macro only declares. The provider still supplies adapters and registers the generated `id` / `signatures` / `slots` with `InterfaceRegistry`:
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
+#include "SKL/ABIX/Interface/Declaration.h"
 
 namespace demo {
 
@@ -1881,12 +1881,12 @@ These are normally not used directly, but they explain expansion errors:
 
 | Macro                                                       | Effect                                                                                                              |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | Emits one `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` entry                                 |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | Emits one `method_signature(#fn, reg_ret_t, mics::util::array __VA_ARGS__),` entry                                 |
 | `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | Emits `uint32_t fn;` inside `Slots`                                                                                 |
 | `SKL_ABIX_INTERFACE_SLOTS(list)`                            | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | Emits the direct-return and `InterfaceStatus` checked overloads                                                     |
 | `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`     |
-| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | Emits a named `interface##Methods` `mics::utils::array<InterfaceMethod, N>` from a list of `MEMBER_ENTRY` entries   |
+| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | Emits a named `interface##Methods` `mics::util::array<InterfaceMethod, N>` from a list of `MEMBER_ENTRY` entries   |
 | `SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)` | Emits an `InterfaceImplementation` initializer from `interface##Traits`, `interface##Methods`, the type ID and flags |
 | `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
 | `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                    |

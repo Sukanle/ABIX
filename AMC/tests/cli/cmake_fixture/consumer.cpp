@@ -1,5 +1,5 @@
 #include "amc_metadata.hpp"
-#include "ABIX/Runtime/Registry.h"
+#include "SKL/ABIX/Runtime/Registry.h"
 
 int amc_cmake_fixture() {
     skl::abix::runtime::Registry<16> registry;

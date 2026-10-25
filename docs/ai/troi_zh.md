@@ -17,7 +17,7 @@
 - [现状](#现状)
 - [当前测量手段: `abix_token_cost.py`](#当前测量手段-abix_token_costpy)
 - [规划:amc agent benchmark](#规划amc-agent-benchmark)
-- [与 ABIX/AMC 定位的关系](#与-abixamc-定位的关系)
+- [与 SKL/ABIX/AMC 定位的关系](#与-abixamc-定位的关系)
 
 </details>
 
@@ -241,7 +241,7 @@ Build Reduction:   62.5%
 | Agent + AMC | 结构化 ABI 查询 |
 | Agent + AMC + ABIX | 跨模块 ABI 知识库 |
 
-## 与 ABIX/AMC 定位的关系
+## 与 SKL/ABIX/AMC 定位的关系
 
 ```mermaid
 graph LR

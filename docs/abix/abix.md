@@ -133,9 +133,9 @@ All implemented string references use `(offset, length)`; Identity records also 
 
 Directory entries use `{section_id, offset, byte_length, count, entry_size, flags}`. `flags.required` requires the reader to understand that section; unknown optional sections can be safely skipped. Compat, Map, and MapOperation are currently optional sections. Hash Cache sections remain a future extension.
 
-Runtime integration uses the fixed-layout descriptors from `ABIX/Metadata/Descriptor.h`. MICS Runtime's `TypeId` and ABIX `model::TypeId` are both full Hash128; cross-namespace conversion must go through explicit `ABIX/Bridge/MICS.h` functions; truncating ABI identity to a single `uint64_t` is forbidden.
+Runtime integration uses the fixed-layout descriptors from `SKL/ABIX/Metadata/Descriptor.h`. MICS Runtime's `TypeId` and ABIX `model::TypeId` are both full Hash128; cross-namespace conversion must go through explicit `SKL/ABIX/Bridge/MICS.h` functions; truncating ABI identity to a single `uint64_t` is forbidden.
 
-`ABIX/Runtime/Registry.h` provides a `runtime::Registry<Capacity>` bridge. It receives the generated `ModuleDescriptor`, performs module-level integrity checks, duplicate TypeId checks, and field/function type reference checks before writing; failure leaves no partial registration results. On success, it retains both runtime descriptor pointers and canonical `metadata::Registry` entries, queryable by either Hash128 or name.
+`SKL/ABIX/Runtime/Registry.h` provides a `runtime::Registry<Capacity>` bridge. It receives the generated `ModuleDescriptor`, performs module-level integrity checks, duplicate TypeId checks, and field/function type reference checks before writing; failure leaves no partial registration results. On success, it retains both runtime descriptor pointers and canonical `metadata::Registry` entries, queryable by either Hash128 or name.
 
 ### Section Directory
 

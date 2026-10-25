@@ -54,6 +54,8 @@ endfunction()
 
 if(NOT TARGET abix-conformance)
     add_executable(abix-conformance src/Layers.cpp src/Counter.cpp src/Conformance.cpp)
+    target_include_directories(abix-conformance PRIVATE ${SKL_ABIX_INC_DIR} FMT::FMT)
+    target_link_libraries(abix-conformance PUBLIC fmt::fmt)
     aue_configure_target(abix-conformance)
 
     if(BUILD_TESTING)
@@ -66,6 +68,8 @@ if(NOT TARGET abix-conformance)
     endif()
 
     add_executable(abix-bench src/Layers.cpp src/Counter.cpp src/Bench.cpp)
+    target_include_directories(abix-bench PRIVATE ${SKL_ABIX_INC_DIR})
+    target_link_libraries(abix-bench PUBLIC fmt::fmt)
     aue_configure_target(abix-bench)
 
     if(BUILD_TESTING)

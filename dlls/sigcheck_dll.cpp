@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 extern "C" void process(int value) { (void)value; }
 extern "C" int process_int(int value) { return value * 2; }

@@ -17,7 +17,7 @@
 - [Status](#status)
 - [Current measurement: abix_token_cost.py](#current-measurement-abix_token_costpy)
 - [Planned: amc agent benchmark](#planned-amc-agent-benchmark)
-- [Relation to ABIX/AMC positioning](#relation-to-abixamc-positioning)
+- [Relation to SKL/ABIX/AMC positioning](#relation-to-abixamc-positioning)
 
 </details>
 
@@ -242,7 +242,7 @@ Comparison ladder (proposal):
 | Agent + AMC | structured ABI queries |
 | Agent + AMC + ABIX | cross-module ABI knowledge base |
 
-## Relation to ABIX/AMC positioning
+## Relation to SKL/ABIX/AMC positioning
 
 ```mermaid
 graph LR

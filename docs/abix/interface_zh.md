@@ -6,7 +6,7 @@
 
 ABIX Interface 层定义**跨语言接口契约**与**方法分派**机制。它是 ABIX 的一层，而不是任何编译器对象模型的一部分：接口是一份独立契约，实现方类型不需要为它做任何修改。
 
-它位于 `ABIX/Interface/`（命名空间 `skl::abix::poly`），由 `ABIX/ABIX.h` 暴露。
+它位于 `SKL/ABIX/Interface/`（命名空间 `skl::abix::poly`），由 `SKL/ABIX/ABIX.h` 暴露。
 
 ## 为什么统一 Interface，而不是统一 vtable
 
@@ -33,7 +33,7 @@ C++ 虚调用并不只是从对象取出一个函数指针：它可能涉及多�
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -60,7 +60,7 @@ int main() {
     Rectangle rectangle{2, 6};
     Triangle triangle{4, 5};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", total(*shape));
+    for (const Shape *shape : shapes) printf("area=%d\n", total(*shape));
     return 0;
 }
 ```
@@ -69,8 +69,8 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
-#include "ABIX/Interface/Interface.h"
+#include <stdio.h>
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
@@ -80,13 +80,13 @@ constexpr auto area_sig = method_signature("area", i32, nullptr, 0);
 
 // 接口类：Traits 描述契约，Shape 只补方法。
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {area_sig};
+    static constexpr skl::mics::util::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
     using Base = UniqueInterfaceProxy<ShapeTraits>;
@@ -150,7 +150,7 @@ int main() {
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
         if (!shape.valid()) return 1;
-        std::printf("area=%d\n", shape.area());
+        printf("area=%d\n", shape.area());
     }
     return 0;
 }
@@ -202,7 +202,7 @@ ABIX Interface 建模的是**独立、带版本、跨语言的接口契约**：`
 <td valign="top" markdown="1">
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
+#include "SKL/ABIX/Interface/Declaration.h"
 
 using namespace skl::abix::poly;
 constexpr auto i32 =
@@ -315,7 +315,7 @@ int main() {
 | ABIX `SharedInterfaceProxy`            |  0.75 |               1.0x |
 | ngcpp/proxy `pro::proxy`               |  0.75 |               1.0x |
 
-在这个微基准里，非侵入式 proxy 与真实 vtable 分派基本同速。ABIX 的 unique/shared 布局与 ngcpp/proxy 都收敛在相同成本；主导因素是间接调用，shared 模式多出的一次表加载没有单独显现。剩下的差距来自**直接/去虚化**调用：编译器能证明动态类型时可以完全消除分派。ABIX/proxy 无法做到这一点，因为实现是运行期选择（或在编译期被擦除）。这是不接管对象模型（注册、类型擦除、跨 DLL/跨语言契约）的代价，而不是每次调用都查 registry。
+在这个微基准里，非侵入式 proxy 与真实 vtable 分派基本同速。ABIX 的 unique/shared 布局与 ngcpp/proxy 都收敛在相同成本；主导因素是间接调用，shared 模式多出的一次表加载没有单独显现。剩下的差距来自**直接/去虚化**调用：编译器能证明动态类型时可以完全消除分派。SKL/ABIX/proxy 无法做到这一点，因为实现是运行期选择（或在编译期被擦除）。这是不接管对象模型（注册、类型擦除、跨 DLL/跨语言契约）的代价，而不是每次调用都查 registry。
 
 **体积**（64 位；`N` = 接口方法数）：
 
@@ -350,9 +350,9 @@ SharedShape second(table, &b);  // 24 字节，同一张表
 三步：**注册**（把「某具体类型实现某接口」写入注册表）→ **解析**（一次性查表并缓存适配器入口） → **调用**（普通原生间接调用）。下面的完整程序不需要动态库。
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
@@ -382,7 +382,7 @@ int main() {
     if (ref.resolve(registry, &v, vec2_id, ivec, 1) != InterfaceStatus::ok) return 1;
 
     const auto axis = ref.method<AxisFn>(0);
-    std::printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
+    printf("x=%d y=%d\n", axis(ref.object(), 0), axis(ref.object(), 1));   // x=2 y=3
 }
 ```
 
@@ -393,7 +393,7 @@ int main() {
 运行时设施刻意是*绑定期*的。`InterfaceRegistry` 保存「该具体类型实现了该接口」的记录；`InterfaceRef` 只解析一次并按 slot 缓存适配器入口，之后每次调用都是普通原生间接调用。runtime 不会变成通用 dispatch loop。
 
 ```cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 
@@ -463,7 +463,7 @@ registry.unregister_module(control.id);           // 租约未释放前返回 bu
 Interface ABI 说明「怎么调用对象」，Owner ABI 说明「谁拥有、谁释放」。只正式化三种语义—— **borrowed / owned / copied**——且释放必须回到创建方的分配域：消费者不得 `free()`/`delete` 指针，也不得按地址或布局推断析构方式。
 
 ```cpp
-#include "ABIX/Interface/Owner.h"
+#include "SKL/ABIX/Interface/Owner.h"
 
 // 生产者返回 POD handle；销毁入口位于该模块内。
 skl::abix::owner::handle h = make_owned(new Renderer, &destroy_renderer, control.id);
@@ -487,7 +487,7 @@ Owner handle 会在释放前保持其创建模块处于加载状态，因此长�
 ```cpp
 // shape.h
 #pragma once
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace demo {
 
@@ -499,7 +499,7 @@ using skl::abix::poly::method_signature;
 inline constexpr TypeId i32 = skl::abix::model::canonical_type_id("prim:i32");
 
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {
+    static constexpr skl::mics::util::array signatures = {
         method_signature("area", i32, nullptr, 0),
         method_signature("perimeter", i32, nullptr, 0),
     };
@@ -509,7 +509,7 @@ struct ShapeTraits {
         uint32_t area;
         uint32_t perimeter;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 class Shape : public skl::abix::poly::UniqueInterfaceProxy<ShapeTraits> {
@@ -531,7 +531,7 @@ Provider 侧：三个普通实现类，每个方法一个适配器（首参是�
 ```cpp
 // shapes.cpp
 // 构建：c++ -std=c++17 -I<abix_root> shapes.cpp -o shapes
-#include <cstdio>
+#include <stdio.h>
 
 #include "shape.h"
 
@@ -635,7 +635,7 @@ int main() {
     for (const auto &instance : instances) {
         demo::Shape shape;
         if (shape.bind(registry, instance.object, instance.type) != InterfaceStatus::ok) return 1;
-        std::printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
+        printf("%-9s area=%d perimeter=%d\n", instance.name, shape.area(), shape.perimeter());
     }
     return 0;
 }
@@ -663,7 +663,7 @@ Provider 与 consumer 共享一份契约常量头（接口身份与版本必须�
 ```cpp
 // canvas_interface.h
 #pragma once
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 namespace canvas {
 inline constexpr skl::abix::poly::InterfaceId kInterface{0x51, 0x00};
@@ -677,7 +677,7 @@ Provider 编译为 `libcanvas.so`，只暴露固定入口与自己的对象句�
 ```cpp
 // canvas_plugin.cpp
 // 构建：c++ -std=c++17 -shared -fPIC -I<abix_root> -o libcanvas.so canvas_plugin.cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 #include "canvas_interface.h"
 
 namespace canvas {
@@ -711,10 +711,10 @@ Consumer 加载、发现、绑定一次并调用，最后卸载：
 ```cpp
 // canvas_host.cpp
 // 构建：c++ -std=c++17 -I<abix_root> canvas_host.cpp -ldl -o canvas_host
-#include <cstdio>
+#include <stdio.h>
 
-#include "ABIX/DLL/Object.h"
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/DLL/Object.h"
+#include "SKL/ABIX/Interface/Interface.h"
 #include "canvas_interface.h"
 
 using namespace skl::abix::poly;
@@ -740,7 +740,7 @@ int main() {
         auto bound = bind_interface(*binding, object);   // 取模块租约
         if (!bound.valid()) return 1;
         const auto width = bound.ref.method<canvas::WidthFn>(0);
-        std::printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
+        printf("width=%d\n", width(bound.ref.object(), 0));   // width=1920
     }   // bound 析构：释放租约
 
     registry.unregister_module(control.id);   // 租约已释放，完成卸载
@@ -756,7 +756,7 @@ int main() {
 不经过动态库时，直接把多个 provider 的 `ModuleManifest` 注册进 `ModuleRegistry`：
 
 ```cpp
-#include "ABIX/Interface/Interface.h"
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 
@@ -796,9 +796,9 @@ skl::abix::owner::handle owner_counter_create(int base) {
 Consumer 收养句柄并持有租约，离开作用域时恰好销毁一次（承接示例 2 的 `lib` / `control` / `binding`）：
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
-#include "ABIX/Interface/Owner.h"
+#include "SKL/ABIX/Interface/Owner.h"
 
 using namespace skl::abix::poly;
 using AddFn = int (*)(const void *, int);
@@ -815,7 +815,7 @@ if (!skl::abix::owner::valid(raw)) return 1;
 
     auto bound = bind_interface(*binding, object.object());
     const auto add = bound.ref.method<AddFn>(0);
-    std::printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
+    printf("add(2)=%d\n", add(bound.ref.object(), 2));   // add(2)=42
 }   // object 析构：调用创建方 destroy，然后归还租约
 
 registry.unregister_module(control.id);   // 现在可以卸载
@@ -823,20 +823,20 @@ registry.unregister_module(control.id);   // 现在可以卸载
 
 ## API 参考
 
-以下符号由 `ABIX/ABIX.h` 引入；除 Owner ABI（`skl::abix::owner`）外，其余都在命名空间 `skl::abix::poly`。要单独引入整层，`#include "ABIX/Interface/Interface.h"`。
+以下符号由 `SKL/ABIX/ABIX.h` 引入；除 Owner ABI（`skl::abix::owner`）外，其余都在命名空间 `skl::abix::poly`。要单独引入整层，`#include "SKL/ABIX/Interface/Interface.h"`。
 
 | 头文件                            | 内容                                                                                                      |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `ABIX/Interface/Contract.h`       | 接口身份、`InterfaceMethod` / `InterfaceImplementation`、`InterfaceStatus`、`interface_entry`             |
-| `ABIX/Interface/Registry.h`       | `InterfaceRegistry` —— 绑定期实现的注册与解析                                                             |
-| `ABIX/Interface/Ref.h`            | `InterfaceRef` —— 一次解析、按槽位缓存的原生调用句柄                                                      |
-| `ABIX/Interface/Module.h`         | 固定入口 `abix_module_query_v1`、`ModuleManifest`、`validate_manifest`                                    |
-| `ABIX/Interface/Lease.h`          | `ModuleControl` 状态机与 RAII `ModuleLease`                                                               |
-| `ABIX/Interface/ModuleRegistry.h` | `ModuleRegistry` —— 动态发现模块的接口登记与查询                                                          |
-| `ABIX/Interface/Discovery.h`      | `discover_module` —— 加载 → 校验 → 注册                                                                   |
-| `ABIX/Interface/Owner.h`          | Owner ABI —— `handle` / `ref` 的借用/拥有/复制语义                                                        |
-| `ABIX/Interface/Proxy.h`          | C++ 代理 API —— `UniqueInterfaceProxy<Traits>`、`bind`/`call`、签名校验                                   |
-| `ABIX/Interface/Declaration.h`    | 声明糖 —— `SKL_ABIX_INTERFACE_DECLARE`；版本辅助宏 `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
+| `SKL/ABIX/Interface/Contract.h`       | 接口身份、`InterfaceMethod` / `InterfaceImplementation`、`InterfaceStatus`、`interface_entry`             |
+| `SKL/ABIX/Interface/Registry.h`       | `InterfaceRegistry` —— 绑定期实现的注册与解析                                                             |
+| `SKL/ABIX/Interface/Ref.h`            | `InterfaceRef` —— 一次解析、按槽位缓存的原生调用句柄                                                      |
+| `SKL/ABIX/Interface/Module.h`         | 固定入口 `abix_module_query_v1`、`ModuleManifest`、`validate_manifest`                                    |
+| `SKL/ABIX/Interface/Lease.h`          | `ModuleControl` 状态机与 RAII `ModuleLease`                                                               |
+| `SKL/ABIX/Interface/ModuleRegistry.h` | `ModuleRegistry` —— 动态发现模块的接口登记与查询                                                          |
+| `SKL/ABIX/Interface/Discovery.h`      | `discover_module` —— 加载 → 校验 → 注册                                                                   |
+| `SKL/ABIX/Interface/Owner.h`          | Owner ABI —— `handle` / `ref` 的借用/拥有/复制语义                                                        |
+| `SKL/ABIX/Interface/Proxy.h`          | C++ 代理 API —— `UniqueInterfaceProxy<Traits>`、`bind`/`call`、签名校验                                   |
+| `SKL/ABIX/Interface/Declaration.h`    | 声明糖 —— `SKL_ABIX_INTERFACE_DECLARE`；版本辅助宏 `SKL_ABIX_VERSION_NUMBER` / `SKL_ABIX_VERSION_EXTRACT` |
 
 ### `Contract.h` —— 接口身份与方法
 
@@ -844,8 +844,8 @@ registry.unregister_module(control.id);   // 现在可以卸载
 | -------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `InterfaceId`                                            | `Hash128`              | 接口身份：对接口名、版本与有序方法签名计算的内容哈希。不是类名，也不是 vtable 地址；可用 `interface_id(...)` 自动生成                                                      |
 | `InterfaceMethodHash`                                    | `model::SignatureHash` | 单个方法的 ABI 签名哈希                                                                                                                                                    |
-| `interface_id(name, version, signatures)`                | `InterfaceId`          | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `mics::utils::array` 或变参 `InterfaceMethodHash` 列表      |
-| `InterfaceMethodKey`                                     | `{signature, slot}`    | 与槽位配对的签名，供 `interface_id` 的 `mics::utils::array` 重载排序后计算身份                                                                                             |
+| `interface_id(name, version, signatures)`                | `InterfaceId`          | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `mics::util::array` 或变参 `InterfaceMethodHash` 列表      |
+| `InterfaceMethodKey`                                     | `{signature, slot}`    | 与槽位配对的签名，供 `interface_id` 的 `mics::util::array` 重载排序后计算身份                                                                                             |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash`  | 编译期从方法名与返回/参数 TypeID 算出方法签名；复刻 `AMC::signature_hash`（`[[interface]]` 路径，参数名不参与哈希）。TypeID 可由 `model::canonical_type_id`（`ABI.h`）得到 |
 | `interface_entry<Fn>(fn)`                                | `uintptr_t`            | 把函数指针拷入不透明的 `entry` 槽位；生成代码与调用方共用同一拼写                                                                                                          |
 | `to_string(status)`                                      | `const char*`          | `InterfaceStatus` 的可读名                                                                                                                                                 |
@@ -1053,7 +1053,7 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 | ------------- | ---------------------------------------------------------------------------------------------------- |
 | `id`          | `InterfaceId`，接口身份（由 AMC 计算）                                                               |
 | `version`     | 接口版本                                                                                             |
-| `signatures`  | 按 slot 排列的期望签名 `mics::utils::array`；其大小同时是 proxy 的槽位容量。零哈希表示该 slot 不校验 |
+| `signatures`  | 按 slot 排列的期望签名 `mics::util::array`；其大小同时是 proxy 的槽位容量。零哈希表示该 slot 不校验 |
 | `slots`       | 类型化零基槽位表：`Traits::slots.<method>` 就是代理 `call(...)` 使用的 slot 值                       |
 
 `UniqueInterfaceProxy<Traits>`：
@@ -1132,7 +1132,7 @@ struct ShapeTraits {
     // AMC 的 int32_t TypeID 是 ABI key，不是 C++ 拼写。
     static constexpr model::TypeId i32 = model::canonical_type_id("prim:i32");
     // 方法签名也由函数生成；返回/参数 TypeID 必须与 provider 一致。
-    static constexpr skl::mics::utils::array sigs = {
+    static constexpr skl::mics::util::array sigs = {
         method_signature("area", i32, nullptr, 0),
         method_signature("size", i32, nullptr, 0),
     };
@@ -1142,7 +1142,7 @@ struct ShapeTraits {
         uint32_t area;
         uint32_t size;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, sigs.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, sigs.size(), 0>();
 };
 ```
 
@@ -1166,11 +1166,11 @@ name + decimal(return_type.lo) + decimal(return_type.hi)
 ```cpp
 constexpr TypeId params[] = {i32, i32};
 method_signature("resize", v, params, 2);                 // 指针 + 数量
-method_signature("resize", v, mics::utils::array{i32, i32});     // 内联定长数组
+method_signature("resize", v, mics::util::array{i32, i32});     // 内联定长数组
 method_signature("resize", v, i32, i32);                  // 变参
 ```
 
-`mics::utils::array` 是 `mics/utils/array.h` 里的最小定长类型；其 deduction guide 让 `mics::utils::array{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
+`mics::util::array` 是 `SKL/MICS/Util/Array.h` 里的最小定长类型；其 deduction guide 让 `mics::util::array{i32, i32}` 自己推导类型。三种写法哈希相同的字节，且都不分配内存。
 
 签名里是 **TypeID**，不是 C++ 类型。对基于名字的身份，`model::canonical_type_id(规范名)` 可以复刻 AMC 的值：
 
@@ -1231,7 +1231,7 @@ constexpr model::TypeId text  = model::canonical_type_id("abix_str_utf8");
 constexpr model::TypeId move_params[] = {point};
 constexpr model::TypeId open_params[] = {text};
 
-static constexpr mics::utils::array sigs = {
+static constexpr mics::util::array sigs = {
     method_signature("draw",  v,    nullptr,     0),
     method_signature("move",  v,    move_params, 1),
     method_signature("label", text, nullptr,     0),
@@ -1269,7 +1269,7 @@ amc-dump module.abix                       # 完整 section dump
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
+#include <stdio.h>
 
 struct Shape {
     virtual ~Shape() = default;
@@ -1295,7 +1295,7 @@ int main() {
     Rectangle rectangle{4, 6};
     Triangle triangle{6, 4};
     const Shape *shapes[] = {&square, &rectangle, &triangle};
-    for (const Shape *shape : shapes) std::printf("area=%d\n", shape->area());
+    for (const Shape *shape : shapes) printf("area=%d\n", shape->area());
     return 0;
 }
 ```
@@ -1304,8 +1304,8 @@ int main() {
 <td valign="top" markdown="1">
 
 ```cpp
-#include <cstdio>
-#include "ABIX/Interface/Interface.h"
+#include <stdio.h>
+#include "SKL/ABIX/Interface/Interface.h"
 
 using namespace skl::abix::poly;
 using skl::abix::model::TypeId;
@@ -1365,7 +1365,7 @@ int main() {
         InterfaceRef<2> ref;
         if (ref.resolve(registry, c.object, c.type, kShape, 1) != InterfaceStatus::ok) return 1;
         const auto area = ref.method<AreaFn>(0);
-        std::printf("area=%d\n", area(ref.object()));
+        printf("area=%d\n", area(ref.object()));
     }
     return 0;
 }
@@ -1377,13 +1377,13 @@ int main() {
 ```cpp
 // 契约、适配器、方法表与注册同中栏
 struct ShapeTraits {
-    static constexpr skl::mics::utils::array signatures = {area_sig};
+    static constexpr skl::mics::util::array signatures = {area_sig};
     static constexpr InterfaceId id = interface_id("Shape", 1, signatures);
     static constexpr uint32_t version = 1;
     struct alignas(8) Slots {
         uint32_t area;
     };
-    alignas(8) static constexpr Slots slots = skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+    alignas(8) static constexpr Slots slots = skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 class Shape : public UniqueInterfaceProxy<ShapeTraits> {
     using Base = UniqueInterfaceProxy<ShapeTraits>;
@@ -1404,7 +1404,7 @@ int main() {
     const Case cases[] = {{&square, square_id}, {&rectangle, rectangle_id}, {&triangle, triangle_id}};
     for (const Case &c : cases) {
         Shape shape(registry, c.object, c.type);
-        std::printf("area=%d\n", shape.valid() ? shape.area() : -1);
+        printf("area=%d\n", shape.valid() ? shape.area() : -1);
     }
     return 0;
 }
@@ -1472,7 +1472,7 @@ X(method_name, cxx_return_type, return_type_id, {parameter_type_ids...})
 #### 2. 一行生成 Traits 和代理
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
+#include "SKL/ABIX/Interface/Declaration.h"
 
 SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 ```
@@ -1507,9 +1507,9 @@ SKL_ABIX_INTERFACE_DECLARE(UNIQUE, Shape, SHAPE_METHODS, 1);
 struct Shape;
 
 struct ShapeTraits {
-    static constexpr auto signatures = skl::mics::utils::array{
-        skl::abix::poly::method_signature("area", i32, skl::mics::utils::array{}),
-        skl::abix::poly::method_signature("resize", i32, skl::mics::utils::array{i32, i32}),
+    static constexpr auto signatures = skl::mics::util::array{
+        skl::abix::poly::method_signature("area", i32, skl::mics::util::array{}),
+        skl::abix::poly::method_signature("resize", i32, skl::mics::util::array{i32, i32}),
     };
     static constexpr auto version = 1;
     static constexpr auto id = skl::abix::poly::interface_id("Shape", version, signatures);
@@ -1519,7 +1519,7 @@ struct ShapeTraits {
         uint32_t resize;
     };
     alignas(8) static constexpr Slots slots =
-        skl::mics::utils::make_iota<Slots, signatures.size(), 0>();
+        skl::mics::util::make_iota<Slots, signatures.size(), 0>();
 };
 
 struct Shape : public skl::abix::poly::UniqueInterfaceProxy<ShapeTraits> {
@@ -1573,7 +1573,7 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS, SHAPE_API);
 
 需要澄清的是：ABIX Interface 本身是 header-only 的，`ShapeTraits` / `Shape` 通常只是编译期类型和 inline 转发方法，**正常情况下不需要 DLL 导入/导出属性**。只有当你确实要把这个生成类型作为 DLL 边界的一部分、并接受 MSVC 对 imported class 的 inline/static 成员规则时才使用它。
 
-另外，`SKL_ABIX_DLL_EXPORT`（见 `ABIX/Util/Config.h`）用于 provider 的固定 C 入口，例如：
+另外，`SKL_ABIX_DLL_EXPORT`（见 `SKL/ABIX/Util/Config.h`）用于 provider 的固定 C 入口，例如：
 
 ```cpp
 extern "C" SKL_ABIX_DLL_EXPORT const void *shape_instance(void);
@@ -1685,7 +1685,7 @@ registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, box_id, 0));
 
 `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` 把列表展开为具名的
 `interface##Methods`（此处为 `ShapeMethods`），类型是
-`mics::utils::array<InterfaceMethod, N>`。`SKL_ABIX_INTERFACE_IMPLEMENTATION`
+`mics::util::array<InterfaceMethod, N>`。`SKL_ABIX_INTERFACE_IMPLEMENTATION`
 组合 `interface##Traits`、该表和具体类型的 `TypeId` 表达式，因此示例实际读取的是
 `ShapeTraits::id`、`box_id`、`ShapeMethods` 和 `ShapeTraits::version`。
 
@@ -1725,7 +1725,7 @@ int32_t invoke(const void *self, int32_t width, int32_t height);
 宏只生成声明；provider 仍要提供 adapter，并把生成的 `id` / `signatures` / `slots` 注册到 `InterfaceRegistry`：
 
 ```cpp
-#include "ABIX/Interface/Declaration.h"
+#include "SKL/ABIX/Interface/Declaration.h"
 
 namespace demo {
 
@@ -1871,12 +1871,12 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 
 | 宏                                                          | 作用                                                                                                           |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | 生成 `method_signature(#fn, reg_ret_t, mics::utils::array __VA_ARGS__),` 这一项                                |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | 生成 `method_signature(#fn, reg_ret_t, mics::util::array __VA_ARGS__),` 这一项                                |
 | `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | 在 `Slots` 中生成 `uint32_t fn;`                                                                               |
 | `SKL_ABIX_INTERFACE_SLOTS(list)`                            | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()`                                             |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式                                                            |
 | `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | 生成一条 `InterfaceMethod`，用 `member_adapter<member>::invoke` 适配现有成员函数                               |
-| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | 由一组 `MEMBER_ENTRY` 条目生成具名的 `interface##Methods`（`mics::utils::array<InterfaceMethod, N>`）          |
+| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | 由一组 `MEMBER_ENTRY` 条目生成具名的 `interface##Methods`（`mics::util::array<InterfaceMethod, N>`）          |
 | `SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)` | 由 `interface##Traits`、`interface##Methods`、类型 ID 和 flags 生成 `InterfaceImplementation` 初始化器        |
 | `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前         |
 | `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | 生成继承 `UniqueInterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前                 |

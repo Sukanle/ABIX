@@ -37,6 +37,28 @@ def exe_name(base: str) -> str:
     return base + ".exe" if sys.platform == "win32" else base
 
 
+def toml_path(path: str) -> str:
+    """Return a path safe to embed in a TOML string literal."""
+    return path.replace("\\", "/")
+
+
+def include_roots(source_root: str) -> tuple[str, ...]:
+    """Public include roots of the SKL-layout source tree."""
+    return (
+        os.path.join(source_root, "include"),
+        os.path.join(source_root, "MICS", "include"),
+        os.path.join(source_root, "MICS", "HLMD"),
+    )
+
+
+def include_flags(source_root: str) -> list[str]:
+    return ["-I" + root for root in include_roots(source_root)]
+
+
+def toml_include_flags(source_root: str) -> str:
+    return ", ".join('"-I%s"' % toml_path(root) for root in include_roots(source_root))
+
+
 def main() -> int:
     argv = [arg for arg in sys.argv[1:] if arg != "--keep-artifacts"]
     if not argv:
@@ -91,17 +113,32 @@ def main() -> int:
         if sys.platform == "win32":
             # Emit the import library rustc/zig link against alongside the DLL.
             implib = os.path.join(work, "libinterop_demo.dll.a")
-            result = run([cxx, "-std=c++17", "-shared", "-O2", demo_lib, "-o", lib,
+            result = run([cxx, "-std=c++17", "-shared", "-O2", demo_lib,
+                          *include_flags(source_root), "-o", lib,
                           f"-Wl,--out-implib,{implib}"])
         else:
-            result = run([cxx, "-std=c++17", "-shared", "-fPIC", "-O2", demo_lib, "-o", lib])
+            result = run([cxx, "-std=c++17", "-shared", "-fPIC", "-O2", demo_lib,
+                          *include_flags(source_root), "-o", lib])
         check(result.returncode == 0, "native demo library built",
               result.stderr.strip()[:2000])
 
-        # 2. AMC derives the ABI from the public header.
+        # 2. AMC derives the ABI from the public header. The import flags carry
+        #    the SKL include roots so the fixture resolves ABIX-STD headers from
+        #    the source tree instead of relying on the caller's environment.
+        shutil.copyfile(
+            os.path.join(SCRIPT_DIR, "demo_api.hpp"),
+            os.path.join(work, "demo_api.hpp"),
+        )
+        config = os.path.join(work, "interop_demo.abic.toml")
+        config_text = open(
+            os.path.join(SCRIPT_DIR, "interop_demo.abic.toml"), encoding="utf-8"
+        ).read().replace(
+            'flags = ["-std=c++17"]',
+            'flags = ["-std=c++17", ' + toml_include_flags(source_root) + "]",
+        )
+        open(config, "w", encoding="utf-8").write(config_text)
         abix_dir = os.path.join(work, "abix")
-        result = run([amc, "build", "-c", os.path.join(SCRIPT_DIR, "interop_demo.abic.toml"),
-                      "-B", abix_dir])
+        result = run([amc, "build", "-c", config, "-B", abix_dir])
         artifact = os.path.join(abix_dir, "interop_demo.abix")
         check(result.returncode == 0 and os.path.isfile(artifact),
               "amc build produced interop_demo.abix",
@@ -114,6 +151,16 @@ def main() -> int:
         check(result is not None and result.returncode == 0 and os.path.isfile(generated),
               "amc generate -l rust produced amc_generated.rs",
               (result.stderr.strip() if result else "skipped (no artifact)")[:2000])
+
+        if os.path.isfile(generated):
+            generated_text = open(generated, encoding="utf-8").read()
+            check("demo_div_result" in generated_text and "pub struct DemoDivError(pub" in generated_text,
+                  "Rust projection emits the error-boundary Result and an FFI-safe error newtype")
+            check("demo_div_unknown_result" in generated_text
+                  and "pub struct DemoDivUnknownError(pub" in generated_text,
+                  "Rust projection keeps an FFI-safe newtype for an unknown-status error boundary")
+            check("demo_add_result" not in generated_text,
+                  "Rust projection does not invent a Result wrapper for a function without an error contract")
 
         # 3b. The same artifact projects to a C++ header. The interface contract
         #     must surface its identity, version, typed slot table and adapter
@@ -129,7 +176,7 @@ def main() -> int:
                   and "uint32_t demo_scale;" in header,
                   "amc generate -l cpp emitted the typed slot table")
             check("alignas(8) static constexpr Slots slots" in header
-                  and "static constexpr ::skl::mics::utils::array signatures" in header,
+                  and "static constexpr ::skl::mics::util::array signatures" in header,
                   "amc generate -l cpp emitted the signature array and zero-based slot table")
             check("IVectorMath_demo_scale_fn" in header and "(*)(const struct DemoVec2*, double)" in header,
                   "amc generate -l cpp emitted the interface method typedefs")
@@ -167,8 +214,8 @@ def main() -> int:
         cpp_consumer_src = os.path.join(SCRIPT_DIR, "cpp_consumer.cpp")
         cpp_consumer = os.path.join(work, exe_name("cpp_consumer"))
         result = run([cxx, "-std=c++17", "-O2", cpp_consumer_src,
-                      "-I", work, "-I", source_root, "-L", work, "-linterop_demo",
-                      "-o", cpp_consumer])
+                      "-I", work, *include_flags(source_root),
+                      "-L", work, "-linterop_demo", "-o", cpp_consumer])
         check(result.returncode == 0, "C++ consumer compiled against the projection",
               result.stderr.strip()[:2000])
 

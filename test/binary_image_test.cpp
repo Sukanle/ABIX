@@ -1,9 +1,9 @@
 #include "test_common.hpp"
 
-#include "ABIX/Binary/BinaryImage.h"
+#include "SKL/ABIX/Binary/BinaryImage.h"
 
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
+#include <string.h>
 #include <string>
 #include <vector>
 
@@ -343,7 +343,7 @@ TEST_CASE("44.binary image never reads past a truncated PE header", "[binary]") 
     for (size_t tail = 0; tail < 20; ++tail) {
         GuardedBuffer bytes(kSize);
         REQUIRE(bytes.valid());
-        std::memset(bytes.data(), 0, kSize);
+        memset(bytes.data(), 0, kSize);
         bytes.data()[0] = 'M';
         bytes.data()[1] = 'Z';
         // Put the `PE\0\0` signature so that exactly `tail` bytes remain, i.e. the

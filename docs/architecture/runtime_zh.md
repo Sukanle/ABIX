@@ -98,7 +98,7 @@ sequenceDiagram
 ### DLL 端（提供方）
 
 ```cpp
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double a, double b) { return a * b; }
@@ -112,7 +112,7 @@ SKL_ABIX_DEFINE_TABLE(
 ### 宿主端（使用方）
 
 ```cpp
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 
 using namespace skl::abix;
 

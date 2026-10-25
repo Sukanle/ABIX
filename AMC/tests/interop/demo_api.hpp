@@ -2,11 +2,11 @@
 
 #include <stdint.h>
 
-#include "../../../ABIX/STD/Span.h"       // abix_span_i32 — the ABIX-STD borrowed span
-#include "../../../ABIX/STD/String.h"     // abix_str_utf8 — the ABIX-STD string view
-#include "../../../ABIX/STD/Optional.h"   // abix_optional_i32 — the ABIX-STD optional
-#include "../../../ABIX/STD/Result.h"     // abix_result_i32 — the ABIX-STD result
-#include "../../../ABIX/STD/Callback.h"   // abix_callback — the ABIX-STD callback
+#include "SKL/ABIX/STD/Span.h"       // abix_span_i32 — the ABIX-STD borrowed span
+#include "SKL/ABIX/STD/String.h"     // abix_str_utf8 — the ABIX-STD string view
+#include "SKL/ABIX/STD/Optional.h"   // abix_optional_i32 — the ABIX-STD optional
+#include "SKL/ABIX/STD/Result.h"     // abix_result_i32 — the ABIX-STD result
+#include "SKL/ABIX/STD/Callback.h"   // abix_callback — the ABIX-STD callback
 
 // Public C ABI of the interop demo.
 //
@@ -46,6 +46,10 @@ DEMO_API int32_t demo_vec2_destroy(struct DemoVec2 *v);
 
 // Error boundary: 0 on success, a non-zero error code on failure.
 DEMO_API int32_t demo_div(int32_t a, int32_t b, int32_t *out);
+
+// Error boundary with an unknown status: the Rust projection must preserve the
+// numeric code instead of collapsing it into a known enum variant.
+DEMO_API int32_t demo_div_unknown(int32_t a, int32_t b, int32_t *out);
 
 // Number of live handles currently owned by the library. A test aid that makes
 // the destruction contract observable across the boundary.

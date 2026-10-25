@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <mutex>
 
-#include "ABIX/ABIX.h"
+#include "SKL/ABIX/ABIX.h"
 #include "dlls/plugin_path.h"
 #include "dlls/plugin_types.h"
 
@@ -32,7 +32,7 @@ struct LogSinkInitializer {
                 case skl::abix::util::LogLevel::Warning: level_str = "WARNING"; break;
                 case skl::abix::util::LogLevel::Error:   level_str = "ERROR"; break;
             }
-            std::fprintf(stderr, "[ABIX_%s] %s\n", level_str, msg);
+            fprintf(stderr, "[ABIX_%s] %s\n", level_str, msg);
         });
     }
 };
@@ -53,23 +53,23 @@ double ns() {
 
 const char *hot_name(int i) {
     static char buf[16];
-    std::snprintf(buf, sizeof(buf), "h_%02d", i);
+    snprintf(buf, sizeof(buf), "h_%02d", i);
     return buf;
 }
 
 const char *cold_name(int i) {
     static char buf[16];
-    std::snprintf(buf, sizeof(buf), "e_%04d", i);
+    snprintf(buf, sizeof(buf), "e_%04d", i);
     return buf;
 }
 
 void log_info(const char *fmt, ...) {
-    std::printf("[log] ");
+    printf("[log] ");
     va_list ap;
     va_start(ap, fmt);
     std::vprintf(fmt, ap);
     va_end(ap);
-    std::printf("\n");
+    printf("\n");
 }
 
 struct TestVec3 {

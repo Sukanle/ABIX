@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "ABIX/ABIX.h"      // IWYU pragma: keep
-#include "plugin_types.h"   // IWYU pragma: keep
+#include "SKL/ABIX/ABIX.h"   // IWYU pragma: keep
+#include "plugin_types.h"    // IWYU pragma: keep
 
 extern "C" int add(int a, int b) { return a + b; }
 extern "C" double multiply(double x, double y) { return x * y; }

@@ -1,25 +1,23 @@
-#include "AMC/Core/Adapter.h"
-#include "AMC/Core/Cache.h"
-#include "AMC/Core/Context.h"
-#include "AMC/Core/Core.h"
-#include "AMC/Core/ELF.h"
-#include "AMC/Core/Error.h"
-#include "AMC/Core/Json.h"
-#include "AMC/Core/Lua.h"
-#include "AMC/Core/Materialize.h"
-#include "AMC/Core/Metadata.h"
-#include "AMC/Core/Query.h"
-#include "AMC/Core/Symbol.h"
-#include "AMC/Core/Verify.h"
+#include "SKL/AMC/Core/Adapter.h"
+#include "SKL/AMC/Core/Cache.h"
+#include "SKL/AMC/Core/Context.h"
+#include "SKL/AMC/Core/Core.h"
+#include "SKL/AMC/Core/ELF.h"
+#include "SKL/AMC/Core/Error.h"
+#include "SKL/AMC/Core/Json.h"
+#include "SKL/AMC/Core/Lua.h"
+#include "SKL/AMC/Core/Materialize.h"
+#include "SKL/AMC/Core/Metadata.h"
+#include "SKL/AMC/Core/Query.h"
+#include "SKL/AMC/Core/Symbol.h"
+#include "SKL/AMC/Core/Verify.h"
 
-#include "ABIX/Interface/Contract.h"
-#include "ABIX/Model/Compat.h"
-#include "ABIX/Runtime/Registry.h"
+#include "SKL/ABIX/Interface/Contract.h"
+#include "SKL/ABIX/Model/Compat.h"
+#include "SKL/ABIX/Runtime/Registry.h"
 
 #include <algorithm>
 #include <chrono>
-#include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -27,10 +25,14 @@
 #include <tuple>
 #include <vector>
 
+#define NOMINMAX
+
 #if !defined(_WIN32)
 #  include <sys/wait.h>
 #  include <unistd.h>
 #endif
+
+#include <fmt/base.h>
 
 namespace {
 
@@ -38,7 +40,7 @@ int failures = 0;
 
 void check(bool condition, const char *message) {
     if (!condition) {
-        std::fprintf(stderr, "  FAIL: %s\n", message);
+        fmt::print(stderr, "  FAIL: {}\n", message);
         ++failures;
     }
 }
@@ -66,7 +68,7 @@ bool keep_artifacts() {
 
 void cleanup_dir(const std::filesystem::path &root) {
     if (keep_artifacts()) {
-        std::printf("  [KEEP] retained artifacts: %s\n", root.string().c_str());
+        fmt::print("  [KEEP] retained artifacts: {}\n", root.string());
         return;
     }
     std::error_code ec;
@@ -1426,12 +1428,12 @@ int main() {
                 m.interface_methods[0].signature.lo, m.interface_methods[0].signature.hi};
             const skl::abix::poly::InterfaceMethodHash sig1{
                 m.interface_methods[1].signature.lo, m.interface_methods[1].signature.hi};
-            const skl::mics::utils::array keys = {
+            const skl::mics::util::array keys = {
                 skl::abix::poly::InterfaceMethodKey{sig1, 1},
                 skl::abix::poly::InterfaceMethodKey{sig0, 0},
             };
             const skl::abix::poly::InterfaceId by_slot = skl::abix::poly::interface_id("IRenderer", 1, keys);
-            const skl::mics::utils::array ordered = {sig0, sig1};
+            const skl::mics::util::array ordered = {sig0, sig1};
             const skl::abix::poly::InterfaceId by_signatures = skl::abix::poly::interface_id("IRenderer", 1, ordered);
             const skl::abix::poly::InterfaceId by_variadic = skl::abix::poly::interface_id("IRenderer", 1, sig0, sig1);
             check(by_slot.lo == iface.id.lo
@@ -1461,7 +1463,7 @@ int main() {
             const amc::Hash128 amc_fixed = amc::interface_identity("IRenderer", 1, fixed_signatures);
             check(amc_fixed.lo == 0xB25E9B1A9FDB63AFULL && amc_fixed.hi == 0xB903D3C743AFC513ULL,
                 "interface identity fixed vector (AMC)");
-            const skl::mics::utils::array abix_fixed = {
+            const skl::mics::util::array abix_fixed = {
                 skl::abix::poly::InterfaceMethodHash{0x1111111111111111ULL, 0x2222222222222222ULL},
                 skl::abix::poly::InterfaceMethodHash{0x3333333333333333ULL, 0x4444444444444444ULL},
             };
@@ -1705,7 +1707,7 @@ int main() {
             amc::InstantiationBuildInputs inputs;
             inputs.request = request;
             inputs.source_digest = amc::digest_text("source-v1", amc::digest_domain_source);
-            inputs.toolchain = amc::digest_text("clang-19", amc::digest_domain_toolchain);
+            inputs.toolchain = amc::digest_text("clang", amc::digest_domain_toolchain);
             inputs.build_options = amc::digest_text("-O2", amc::digest_domain_options);
             return inputs;
         };
@@ -1935,9 +1937,9 @@ int main() {
     }
 
     if (failures != 0) {
-        std::fprintf(stderr, "amc-core-test: %d failure(s)\n", failures);
+        fmt::print(stderr, "amc-core-test: {} failure(s)\n", failures);
         return 1;
     }
-    std::printf("amc-core-test: all checks passed\n");
+    fmt::print("amc-core-test: all checks passed\n");
     return 0;
 }

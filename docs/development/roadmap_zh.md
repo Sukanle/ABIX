@@ -24,15 +24,16 @@
 
 ## 版本路线
 
-ABIX 的发布是项目阶段，而不是功能清单。每个大版本代表一个阶段，版本号本身承载产品叙事。
+ABIX 的发布是项目阶段，而不是功能清单。每个发布阶段承载产品叙事，补丁版本只做稳定与准备。
 
 ```text
 ABIX 0.1.0 — Foundation + Toolchain    建立 ABI 基础，且 ABIX 可用于真实工程
 ABIX 0.2.0 — Cross-language            跨语言支持：Rust / Zig 前端与跨语言绑定
+ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档，不改变公共 ABI
 ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
-### ABIX 0.1.0 — Foundation, self-hosting and toolchain（当前，pre-1.0/非稳定）
+### ABIX 0.1.0 — Foundation, self-hosting and toolchain（已发布，pre-1.0/非稳定）
 
 * ABI 规范、metadata 格式、核心运行时。
 * 引导与自举：ABIX 用自身描述并校验其公开 ABI。
@@ -42,7 +43,7 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * ELF / Mach-O 二进制检查。
 * 构建系统与 CI 集成、运行时稳定性、benchmark 基线。
 
-### ABIX 0.2.0 — Cross-language（下一阶段）
+### ABIX 0.2.0 — Cross-language（已发布，pre-1.0/非稳定）
 
 主线：ABIX IR 作为跨语言的统一 ABI 表示。
 
@@ -55,11 +56,23 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 
 构建系统/包管理器集成与更深的调试器集成属于 0.2.0 之后的目标，随 0.3.0 生态工作跟踪；它们不属于 0.2.0 的发布门槛。
 
+### ABIX 0.2.1 — Maintenance（维护版本）
+
+本版本只修复现有行为、补测试和文档，不改变公共 ABI 或错误协议。
+
+* 修复 `last_error()` 的线程局部实现，明确 per-thread / per-DSO 语义。
+* 为现有错误状态枚举补充显式数值和稳定 `to_string()`，不重编号。
+* 增加线程隔离、错误字符串、跨语言错误传播和 `[[error]]` 负面测试。
+* 明确 Zig 尚未投影错误集/错误联合。
+* `.abix` 格式、`[[error]]` v1、`abix.error/1`、`TypeID` / `LayoutHash` / `ABIHash` 均不变。
+
+发布说明见 [`CHANGELOG.md`](../../CHANGELOG.md)。
+
 ### ABIX 0.3.0 — Ecosystem（未来）
 
 目标方向，而非硬性承诺：
 
-* AI / Agent 集成 (MCP、TROI)。
+* **待议：AI / Agent 集成（MCP 高级工具、TROI、工作流）**——需要评估是否过早引入高级工具与工作流；现有 `amc-mcp` 低层查询保持不变。
 * LSP、插件生态、包管理与构建系统集成。
 * 更深的调试器/编辑器集成 (LLDB go-to-definition、Source Origin)。
 * 应用领域。
@@ -123,7 +136,7 @@ ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI 
 * 所有工具统一的结构化 JSON 错误。
 * `amc verify` — 契约与实现一致性校验。
 * ABIX Metadata Region — 版本化、可 mmap 的 metadata image。
-* `amc query` 与 `amc-mcp` server — 面向 Agent 的 ABI 查询。
+* `amc query` 与 `amc-mcp` server — 已交付的低层 ABI 查询；更高级的 Agent 工具/工作流是否进入 v0.3.0 待议。
 * Aue（实验性）— Lua 边界层与 L0/L1 差分一致性框架。
 
 ## 研究 / 实验
@@ -138,6 +151,8 @@ ABIX 的发展方向之一是 AI-native ABI toolchain：显式 ABI 模型为 AI 
 ABIX 使用标准 SemVer tag，从非稳定的 `v0.1.0` 线开始。项目阶段在 release 标题中命名（例如 `ABIX 0.1.0 — Foundation, self-hosting and toolchain`）。
 
 * `v0.1.0` — Foundation, self-hosting and toolchain（pre-1.0，非稳定）
+* `v0.2.0` — Cross-language（pre-1.0，非稳定）
+* `v0.2.1` — Maintenance（维护版本）
 
 ## 明确不在范围内
 

@@ -1,7 +1,7 @@
 #include <array>
-#include <cstdint>
+#include <stdint.h>
 
-#include "ABIX/Model/Map.h"
+#include "SKL/ABIX/Model/Map.h"
 #include "amc_map.hpp"
 
 int main() {
