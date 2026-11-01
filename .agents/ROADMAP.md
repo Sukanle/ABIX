@@ -106,6 +106,13 @@ single-threaded/fixed-sink policy.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
+## Patch — ABIX 0.2.4 (No-exception/no-RTTI runtime build)
+
+ABIX runtime tests and DLL plugins are compiled with `-fno-exceptions -fno-rtti`
+by default through `ABIX_RUNTIME_NO_EXCEPTIONS` and `ABIX_RUNTIME_NO_RTTI`.
+AMC keeps C++ exceptions and RTTI for LLVM/Clang/fmt/toml++ and its `try/catch`
+paths. See [`CHANGELOG.md`](../CHANGELOG.md).
+
 ## Post-0.2.0 — toolchain and ecosystem follow-ups
 
 These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 work.

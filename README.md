@@ -431,6 +431,35 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
+### Runtime build contract: no exceptions, no RTTI
+
+ABIX runtime is built as an **explicit-control-flow layer**:
+
+- ABIX's own runtime tests and DLL plugins are compiled with
+  `-fno-exceptions -fno-rtti` by default (`ABIX_RUNTIME_NO_EXCEPTIONS=ON`,
+  `ABIX_RUNTIME_NO_RTTI=ON`; MSVC: `/EHs-c- /GR-`).
+- ABIX headers do not use `throw` / `catch`, `dynamic_cast` or `typeid`.
+  Failures are returned through `CallError` / status values, and logging is an
+  optional diagnostic sink.
+- ABIX runtime targets therefore carry no C++ exception landing pads or RTTI
+  metadata: control flow is explicit, with no exception/RTTI machinery on the
+  runtime path. Test executables still link Catch2, which may carry its own
+  RTTI/exception metadata; that is test-framework overhead, not ABIX runtime
+  code.
+- **AMC is different.** AMC is the LLVM/Clang/fmt/toml++ toolchain and keeps
+  C++ exceptions and RTTI enabled by default; its `try/catch` error handling
+  and LLVM integration are not part of the no-exception runtime contract.
+- `ABIX::runtime` is header-only and does not force compile flags on consumers.
+  The no-exception/no-RTTI contract is enforced for ABIX's own build targets;
+  a host application may choose its own policy.
+
+This is ABIX's **no-extra-overhead / explicit-control-flow contract**: runtime
+failures are ordinary return values, not hidden unwinding paths.
+
+Set `ABIX_RUNTIME_NO_EXCEPTIONS=OFF` or `ABIX_RUNTIME_NO_RTTI=OFF` only when
+debugging or integrating a toolchain that requires those features; doing so
+intentionally weakens the ABIX runtime contract.
+
 ### CMake package
 
 Install a runtime-only ABIX package and consume it with `find_package(ABIX CONFIG REQUIRED)`:
@@ -562,6 +591,7 @@ ABIX releases are project stages, not feature lists:
 - **ABIX 0.2.1 — Maintenance** (fix existing behavior, add tests/docs; no public ABI change)
 - **ABIX 0.2.2 — Built-in type IDs** (predefined canonical primitive TypeId constants)
 - **ABIX 0.2.3 — Runtime-only package** (installable `ABIX::runtime` without AMC/LLVM/fmt; host-owned diagnostics)
+- **ABIX 0.2.4 — No-exception runtime** (ABIX runtime without exceptions or RTTI; AMC keeps both)
 - **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
 
 ```mermaid

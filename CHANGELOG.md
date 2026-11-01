@@ -3,6 +3,31 @@
 All notable changes to ABIX are recorded here. Older releases are available in
 the GitHub release history.
 
+## v0.2.4 — No-exception/no-RTTI runtime build
+
+Build-contract release: ABIX runtime targets are compiled as an
+explicit-control-flow layer, without C++ exception handling or RTTI metadata.
+
+### Added
+
+- `ABIX_RUNTIME_NO_EXCEPTIONS=ON` and `ABIX_RUNTIME_NO_RTTI=ON` (both default)
+  apply `-fno-exceptions -fno-rtti` (MSVC `/EHs-c- /GR-`) to ABIX runtime tests
+  and DLL plugins.
+- The README documents the runtime contract and the AMC exception/RTTI boundary.
+
+### Changed
+
+- ABIX runtime tests/plugins no longer carry exception landing pads or RTTI
+  metadata in their generated objects.
+- AMC keeps the compiler defaults: C++ exceptions and RTTI remain enabled for
+  its LLVM/Clang/fmt/toml++ and `try/catch` paths.
+
+### Compatibility
+
+- No public ABI or `.abix` format change.
+- `ABIX::runtime` remains header-only and does not force flags on consumers.
+- AMC is not part of the no-exception/no-RTTI contract.
+
 ## v0.2.3 — Runtime-only package and diagnostics
 
 Packaging and diagnostics release: the header-only runtime and its CMake package

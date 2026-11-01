@@ -32,6 +32,7 @@ ABIX 0.2.0 — Cross-language          Rust / Zig frontends and cross-language b
 ABIX 0.2.1 — Maintenance             fix existing behavior, add tests/docs; no public ABI change
 ABIX 0.2.2 — Built-in type IDs       predefined canonical primitive TypeId constants
 ABIX 0.2.3 — Runtime-only package    installable runtime + host-owned diagnostics
+ABIX 0.2.4 — No-exception runtime    ABIX runtime without exceptions or RTTI
 ABIX 0.3.0 — Ecosystem               others build on top of ABIX
 ```
 
@@ -106,6 +107,21 @@ toolchain:
   policy.
 
 The `.abix` format, `TypeID` values and public ABI are unchanged.
+
+### ABIX 0.2.4 — No-exception/no-RTTI runtime build
+
+ABIX runtime targets are compiled as an explicit-control-flow layer:
+
+* ABIX runtime tests and DLL plugins use `-fno-exceptions -fno-rtti` by default
+  (`ABIX_RUNTIME_NO_EXCEPTIONS=ON`, `ABIX_RUNTIME_NO_RTTI=ON`).
+* ABIX headers avoid `throw`/`catch`, `dynamic_cast` and `typeid`; failures use
+  returned status/error values and logging stays optional.
+* AMC keeps exceptions and RTTI enabled by default because it integrates
+  LLVM/Clang/fmt/toml++ and uses `try/catch`.
+* The README documents the runtime contract and its deliberate boundary with
+  AMC.
+
+No public ABI or `.abix` format changes.
 
 ### ABIX 0.3.0 — Ecosystem (future)
 
@@ -194,6 +210,7 @@ ABIX uses standard SemVer tags, starting from the unstable `v0.1.0` line. The pr
 * `v0.2.1` — Maintenance (maintenance release)
 * `v0.2.2` — Built-in type IDs (predefined canonical primitive TypeIds)
 * `v0.2.3` — Runtime-only package (ABIX::runtime without AMC/LLVM/fmt)
+* `v0.2.4` — No-exception runtime (ABIX runtime without exceptions or RTTI)
 
 ## Explicitly out of scope
 

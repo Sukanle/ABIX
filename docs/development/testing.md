@@ -89,6 +89,8 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 ### A. Runtime & unit (Catch2, `test/`)
 
 - **Functionality** — the header-only ABI runtime, exercised against real shared libraries:
+    - ABIX runtime targets compile with `-fno-exceptions -fno-rtti` by default
+      (`ABIX_RUNTIME_NO_EXCEPTIONS`, `ABIX_RUNTIME_NO_RTTI`; AMC keeps both);
     - DLL load/resolve/call through the name+sig table;
     - hot reload; RCU unload/timeout/zombie lifecycle; logging;
     - edge/calling-convention cases;

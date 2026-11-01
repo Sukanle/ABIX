@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(AbiCrossDllTests VERSION 0.2.3 LANGUAGES C CXX)
+project(AbiCrossDllTests VERSION 0.2.4 LANGUAGES C CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(ABIX_IS_TOP_LEVEL ON)
@@ -83,6 +83,8 @@ option(AMC_BUILD "Build the AMC C++ frontend/backend tools" ${_abix_default_amc}
 option(ABIX_BUILD_RUNTIME_ONLY
        "Build and install only the header-only ABIX runtime; skip AMC, tests, benchmarks and DLLs" OFF)
 option(ABIX_INSTALL "Generate ABIX install rules" ${ABIX_IS_TOP_LEVEL})
+option(ABIX_RUNTIME_NO_EXCEPTIONS "Build ABIX runtime targets without C++ exceptions" ON)
+option(ABIX_RUNTIME_NO_RTTI "Build ABIX runtime targets without RTTI" ON)
 option(ABIX_ENABLE_QUILL_TEST "Build the optional Quill logging integration test" OFF)
 set(ABIX_QUILL_ROOT "" CACHE PATH "Quill source root for the optional logging integration test")
 option(ABIX_INSTALL_BUNDLED_MICS
@@ -141,6 +143,30 @@ endif()
 
 set(SKL_ABIX_PROJ_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(SKL_ABIX_INC_DIR ${SKL_ABIX_PROJ_DIR}/include)
+
+# ABIX's runtime is an explicit-control-flow layer: no exception landing pads
+# and no RTTI metadata. Apply this only to ABIX runtime tests/plugins; AMC keeps
+# the compiler defaults because it integrates LLVM/Clang/fmt/toml++ and uses
+# try/catch.
+function(abix_apply_runtime_contract target)
+    if(ABIX_RUNTIME_NO_EXCEPTIONS)
+        if(MSVC)
+            # /EHs-c- disables C++ exception handling; keep the STL in the same
+            # mode so its headers do not expect exception support.
+            target_compile_options(${target} PRIVATE /EHs-c-)
+            target_compile_definitions(${target} PRIVATE _HAS_EXCEPTIONS=0)
+        else()
+            target_compile_options(${target} PRIVATE -fno-exceptions)
+        endif()
+    endif()
+    if(ABIX_RUNTIME_NO_RTTI)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /GR-)
+        else()
+            target_compile_options(${target} PRIVATE -fno-rtti)
+        endif()
+    endif()
+endfunction()
 
 if(ABIX_IS_TOP_LEVEL)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -247,6 +273,7 @@ function(abi_add_dll name)
                    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/${name}
                    CXX_VISIBILITY_PRESET hidden
                    VISIBILITY_INLINES_HIDDEN ON)
+    abix_apply_runtime_contract(${name})
     if(NOT WIN32)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             target_link_options(${name} PRIVATE -Wl,--no-undefined)
