@@ -431,6 +431,12 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
+### Standalone AMC build (migration path)
+
+AMC now has a standalone CMake project that consumes an installed ABIX package
+instead of the ABIX source tree. See [`AMC/README.md`](AMC/README.md). The
+parent ABIX build keeps the monorepo integration during the transition.
+
 ### Runtime build contract: no exceptions, no RTTI
 
 ABIX runtime is built as an **explicit-control-flow layer**:

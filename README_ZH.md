@@ -431,6 +431,11 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
+### AMC 独立构建（迁移路径）
+
+AMC 现在有独立的 CMake 工程，使用已安装的 ABIX package，而不是 ABIX 源码树。
+见 [`AMC/README.md`](AMC/README.md)。过渡期间，父 ABIX 构建仍保留 monorepo 集成。
+
 ### Runtime 构建契约：无异常、无 RTTI
 
 ABIX runtime 以**显式控制流层**构建：

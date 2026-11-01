@@ -1,6 +1,9 @@
 include_guard(GLOBAL)
 
-set(_AMC_MODULE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+get_filename_component(_AMC_MODULE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+if(NOT EXISTS "${_AMC_MODULE_ROOT}/include/SKL/ABIX")
+    unset(_AMC_MODULE_ROOT)
+endif()
 
 # Adds AMC artifact generation to an existing CMake target.
 #
@@ -37,13 +40,19 @@ function(amc_add_abi)
   get_filename_component(_amc_build_dir "${_amc_abix}" DIRECTORY)
   get_filename_component(_amc_build_dir "${_amc_build_dir}" DIRECTORY)
 
-  if(DEFINED AMC_EXECUTABLE)
-    set(_amc_command "${AMC_EXECUTABLE}")
-  elseif(TARGET amc)
-    set(_amc_command "$<TARGET_FILE:amc>")
-  else()
-    find_program(_amc_command NAMES amc REQUIRED)
+  if(NOT DEFINED AMC_EXECUTABLE)
+    if(TARGET AMC::amc)
+      set(AMC_EXECUTABLE "$<TARGET_FILE:AMC::amc>")
+    elseif(TARGET amc)
+      set(AMC_EXECUTABLE "$<TARGET_FILE:amc>")
+    else()
+      find_program(AMC_EXECUTABLE NAMES amc)
+    endif()
   endif()
+  if(NOT AMC_EXECUTABLE)
+    message(FATAL_ERROR "AMC executable not found; set AMC_EXECUTABLE or add the AMC package to CMAKE_PREFIX_PATH")
+  endif()
+  set(_amc_command "${AMC_EXECUTABLE}")
 
   add_custom_command(
     OUTPUT "${_amc_abix}"
@@ -67,16 +76,39 @@ function(amc_add_abi)
     target_sources(${AMC_TARGET} PRIVATE "${_amc_cpp}")
     target_include_directories(${AMC_TARGET} PRIVATE "${_amc_cpp_dir}")
     # The generated projection includes the public ABIX descriptor headers and
-    # MICS headers. Keep this explicit so consumers do not need to duplicate the
-    # source-tree include setup just to use an AMC-generated header.
-    foreach(_amc_include_dir
-            "${_AMC_MODULE_ROOT}/include"
-            "${_AMC_MODULE_ROOT}/MICS/include"
-            "${_AMC_MODULE_ROOT}/MICS/HLMD")
-      if(EXISTS "${_amc_include_dir}")
-        target_include_directories(${AMC_TARGET} PRIVATE "${_amc_include_dir}")
+    # MICS headers. Consume the installed imported targets when available, with
+    # a source-tree fallback for the in-tree build.
+    set(_amc_include_dirs)
+    foreach(_amc_dep ABIX::runtime ABIX::format MICS::MICS)
+      if(TARGET ${_amc_dep})
+        get_target_property(_amc_dep_includes ${_amc_dep} INTERFACE_INCLUDE_DIRECTORIES)
+        if(_amc_dep_includes)
+          list(APPEND _amc_include_dirs ${_amc_dep_includes})
+        endif()
       endif()
     endforeach()
+    if(_AMC_MODULE_ROOT)
+      foreach(_amc_include_dir
+              "${_AMC_MODULE_ROOT}/include"
+              "${_AMC_MODULE_ROOT}/MICS/include"
+              "${_AMC_MODULE_ROOT}/MICS/HLMD")
+        if(EXISTS "${_amc_include_dir}")
+          list(APPEND _amc_include_dirs "${_amc_include_dir}")
+        endif()
+      endforeach()
+    endif()
+    list(REMOVE_DUPLICATES _amc_include_dirs)
+    if(_amc_include_dirs)
+      target_include_directories(${AMC_TARGET} PRIVATE ${_amc_include_dirs})
+    endif()
+    if(TARGET ABIX::runtime)
+      target_link_libraries(${AMC_TARGET} PRIVATE ABIX::runtime)
+    elseif(TARGET ABIX::format)
+      target_link_libraries(${AMC_TARGET} PRIVATE ABIX::format)
+    endif()
+    if(TARGET MICS::MICS)
+      target_link_libraries(${AMC_TARGET} PRIVATE MICS::MICS)
+    endif()
   endif()
 
   set(_amc_target "${AMC_TARGET}_amc")

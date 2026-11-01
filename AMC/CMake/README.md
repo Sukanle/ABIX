@@ -1,6 +1,16 @@
 # AMC CMake Integration
 
-Include `AMC.cmake` and attach an ABI configuration to an existing target:
+When AMC is installed as a package:
+
+```cmake
+find_package(AMC 0.1 CONFIG REQUIRED)
+```
+
+`AMCConfig.cmake` includes `AMC.cmake`, exports `AMC::amc` and the providers,
+and resolves ABIX/MICS include directories through the imported ABIX targets.
+For an in-tree checkout you can include `AMC.cmake` directly.
+
+Attach an ABI configuration to an existing target:
 
 ```cmake
 include(path/to/AMC.cmake)
