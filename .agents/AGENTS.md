@@ -343,14 +343,11 @@ Additional CMake options (see `CMakeLists.txt`):
 | `-DBUILD_BENCHMARKS=ON` | ON | Build benchmarks |
 | `-DSKL_ABIX_DEVELOPMENT=OFF` | OFF | Enable development-only diagnostics |
 | `-DSKL_ABIX_BUILD_DLL_VARIANTS=ON` | ON | Build cross-toolchain DLL variants |
-| `-DAMC_BUILD=ON` | ON | Build AMC toolchain (requires Clang/LLVM) |
 
-On macOS with Homebrew, `llvm` is keg-only: pass
-`-DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"` (the keg **root**, not `.../lib`)
-or the AMC tools are silently skipped. Do not export `LDFLAGS`/`CPPFLAGS` at an
-unversioned LLVM prefix — CMake caches them into the linker flags on first
-configure and the stale path then reaches every link. See
-[`CONTRIBUTING.md`](../CONTRIBUTING.md#locating-llvm-macos--homebrew).
+AMC is a separate project under `AMC/CMakeLists.txt`; it consumes an installed
+ABIX runtime package and owns its LLVM/Clang, fmt and toml++ dependencies. See
+[`AMC/README.md`](../AMC/README.md). On macOS with Homebrew, LLVM is keg-only for
+the AMC build: pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"`.
 
 ### Test & Run
 
@@ -369,8 +366,7 @@ For AMC changes, also exercise the CLI manually. For ABI changes, verify
 generation, serialization, deserialization, comparison, compatibility and
 runtime behaviour.
 
-`AMC/tests/cli/integration_test.py` is the CLI integration suite;
-`AMC/tests/unit/core_test.cpp` holds core assertions; `test/` uses Catch2.
+AMC's standalone suite is registered by `AMC/CMakeLists.txt`; `AMC/tests/unit/core_test.cpp` holds core assertions; ABIX runtime tests are under `test/`.
 
 Do not claim a test passed unless it was actually run.
 

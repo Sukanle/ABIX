@@ -1,5 +1,12 @@
 # Testing ABIX and AMC
 
+> **Repository split:** ABIX's root build now tests the header-only runtime only.
+> The AMC tiers below are owned and run by the standalone `AMC/CMakeLists.txt`
+> project; they are kept here as reference for the toolchain contract. The
+> monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` tiers were
+> retired; the standalone suite covers core/e2e/package/feature/provider/
+> interop/expose/cancellation/CMake integration.
+
 <p align="center">
   <a href="testing_zh.md">中文</a> · English
 </p>
@@ -203,7 +210,7 @@ The protocol also has a dedicated cooperative-cancellation test (`amc-cancellati
 The suites generate into a temporary directory and clean up. To inspect the artifacts, either run the steps by hand or keep the directories with [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#keeping-the-temporary-artifacts):
 
 ```bash
-AMC=build/Release/bin/amc.exe           # drop .exe on Linux/macOS
+AMC=build/AMC-standalone/bin/amc.exe           # drop .exe on Linux/macOS
 
 # parse source -> IR
 "$AMC" build -c AMC/tests/fixtures/amc_test.abic.toml -B build/amc-demo

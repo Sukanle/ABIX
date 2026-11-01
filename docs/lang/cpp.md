@@ -77,8 +77,8 @@ Build the interop demo and generate its C++ projection:
 cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 
-./build/Release/bin/amc build -c AMC/tests/interop/interop_demo.abic.toml -B build/demo
-./build/Release/bin/amc generate build/demo/interop_demo.abix -l cpp -o build/demo/gen
+./build/AMC-standalone/bin/amc build -c AMC/tests/interop/interop_demo.abic.toml -B build/demo
+./build/AMC-standalone/bin/amc generate build/demo/interop_demo.abix -l cpp -o build/demo/gen
 ```
 
 The generated header can then be included by a C++ consumer; `amc_abi_check.hpp` fails the build if the provider's layout drifted.

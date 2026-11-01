@@ -117,6 +117,15 @@ paths. See [`CHANGELOG.md`](../CHANGELOG.md).
 
 These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 work.
 
+### P0 — AMC repository split (in progress)
+
+- ABIX root is runtime-only; AMC builds from `AMC/CMakeLists.txt` against an
+  installed ABIX runtime package.
+- AMC owns `libabix-format/abi/metadata/tools` and exports them as `AMC::*`.
+- AMC has standalone core/e2e/package/feature/provider/interop/CMake tests.
+- Remaining: move the last monorepo-only assets, extract the AMC Git history,
+  and add AMC-owned cross-platform CI.
+
 ### P1 — broaden the toolchain
 
 - build-system / package-manager integration;

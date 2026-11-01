@@ -26,7 +26,7 @@ Or point at a specific toolchain:
 
 ```bash
 python3 example/cross_language/run_example.py \
-    --amc build/Release/bin/amc \
+    --amc build/AMC-standalone/bin/amc \
     --cxx clang++ \
     --rustc rustc \
     --zig zig

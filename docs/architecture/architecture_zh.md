@@ -64,15 +64,15 @@ sequenceDiagram
 
 > 运行时可以使用 ABI 模型的**投影**，但不得自行重新定义 ABI 语义。
 
-工具链拆分为多个库，使每个消费者只链接所需部分，同时共享唯一的 parser：
+ABIX 拥有 header-only runtime；AMC 仓库拥有 artifact 库，并在其工具之间共享唯一的 parser：
 
-| 库 | 职责 |
-|----|------|
-| `libabix-format` | `.abix` v4 读写、hash、canonical 形式、ELF reader |
-| `libabix-abi` | `TypeID`/`LayoutHash` 比较、兼容性 diff |
-| `libabix-metadata` | Metadata Region 序列化/解析/materialize、context、query |
-| `libabix-tools` | Lua 契约生成、symbol store |
-| `libabix-runtime` | header-only 注册/绑定层 |
+| 库 | 所有者 | 职责 |
+|----|--------|------|
+| `libabix-runtime` | ABIX | header-only 注册/绑定层 |
+| `libabix-format` | AMC | `.abix` v4 读写、hash、canonical 形式、ELF reader |
+| `libabix-abi` | AMC | `TypeID`/`LayoutHash` 比较、兼容性 diff |
+| `libabix-metadata` | AMC | Metadata Region 序列化/解析/materialize、context、query |
+| `libabix-tools` | AMC | Lua 契约生成、symbol store |
 
 ## 身份
 

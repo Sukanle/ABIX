@@ -320,7 +320,7 @@ The core architectural rule:
 
 > **There should be one source of ABI truth.** The runtime may use a projection of the ABI model, but must not independently redefine ABI semantics.
 
-Tooling is split into `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools`, plus the header-only `libabix-runtime`, so every consumer shares exactly one `.abix` / Metadata Region parser. The runtime layers stay independent: the ABI model and metadata projection, native DLL binding with RCU lifecycle, and the interface contract layer.
+The ABIX runtime is header-only (`libabix-runtime`). The AMC toolchain owns the `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools` artifact libraries, so every AMC consumer shares exactly one `.abix` / Metadata Region parser. The runtime layers stay independent: the ABI model and metadata projection, native DLL binding with RCU lifecycle, and the interface contract layer.
 
 ---
 
@@ -414,12 +414,15 @@ ABIX
 
 - C++17 or later
 - CMake 3.20+ and Ninja
-- LLVM / Clang tooling (`clang-cpp`) for the AMC C++ frontend
-- Python 3 for the AMC integration, feature and interop tests
-- optional: Rust (`rustc`) and Zig for the cross-language providers, Lua 5.4 for Aue, LLDB for the native plugin
+- Python 3 for the ABIX package/runtime tests
+- optional: Lua 5.4 for the Aue conformance prototype
 - a supported native toolchain
 
-> **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` so the AMC targets are built.
+The separate AMC project additionally requires LLVM/Clang (`clang-cpp`), fmt,
+toml++, Python, and optionally Rust/Zig for the cross-language providers. See
+[`AMC/README.md`](AMC/README.md).
+
+> **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` when building AMC.
 
 ### Build
 
@@ -434,8 +437,8 @@ ctest --test-dir build/Release --output-on-failure
 ### Standalone AMC build (migration path)
 
 AMC now has a standalone CMake project that consumes an installed ABIX package
-instead of the ABIX source tree. See [`AMC/README.md`](AMC/README.md). The
-parent ABIX build keeps the monorepo integration during the transition.
+instead of the ABIX source tree. See [`AMC/README.md`](AMC/README.md). The ABIX
+root no longer builds AMC or its artifact libraries.
 
 ### Runtime build contract: no exceptions, no RTTI
 
@@ -477,38 +480,42 @@ cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
+find_package(ABIX 0.3 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
-The runtime package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It
-does not require AMC, LLVM/Clang or fmt. The full package additionally provides
-`ABIX::ABIX` and `ABIX::format`, `ABIX::abi`, `ABIX::metadata` and
-`ABIX::tools`; those optional libraries use fmt. `ABIX::ABIX` is always
-available and is runtime-only when the optional libraries were not built.
+The package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It does not
+require AMC, LLVM/Clang, fmt or static libraries. `ABIX::ABIX` is a convenience
+aggregate for the runtime.
 
 ABIX installs its bundled MICS package by default. Set
-`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The
-runtime config only resolves `MICS`; fmt is resolved when a library component or
-the full aggregate is requested. `ABIX_INSTALL` defaults to ON for a top-level
-build and OFF when ABIX is added as a subproject.
+`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The package
+config resolves only `MICS`. `ABIX_INSTALL` defaults to ON for a top-level build
+and OFF when ABIX is added as a subproject.
+
+The artifact libraries (`format`/`abi`/`metadata`/`tools`) are owned by the
+standalone AMC package and are exported there as `AMC::format`, `AMC::abi`,
+`AMC::metadata` and `AMC::tools`.
 
 ### Try it
 
+Build AMC separately first (see [`AMC/README.md`](AMC/README.md)), then use the
+standalone build's `amc`:
+
 ```bash
 # Build an .abix artifact from the example config
-./build/Release/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
+./build/AMC-standalone/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
 
 # Inspect it
-./build/Release/bin/amc inspect build/demo/build/amc_test.abix
+./build/AMC-standalone/bin/amc inspect build/demo/build/amc_test.abix
 
 # Query a type and its layout
-./build/Release/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+./build/AMC-standalone/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM-friendly ABI context
-./build/Release/bin/amc context build/demo/build/amc_test.abix --format llm
+./build/AMC-standalone/bin/amc context build/demo/build/amc_test.abix --format llm
 ```
 
 For the first complete walkthrough see [`docs/getting-started/getting-started.md`](docs/getting-started/getting-started.md).
@@ -598,7 +605,7 @@ ABIX releases are project stages, not feature lists:
 - **ABIX 0.2.2 — Built-in type IDs** (predefined canonical primitive TypeId constants)
 - **ABIX 0.2.3 — Runtime-only package** (installable `ABIX::runtime` without AMC/LLVM/fmt; host-owned diagnostics)
 - **ABIX 0.2.4 — No-exception runtime** (ABIX runtime without exceptions or RTTI; AMC keeps both)
-- **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
+- **ABIX 0.3.0 — Ecosystem** (AMC split into an independent project, Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
 
 ```mermaid
 graph LR

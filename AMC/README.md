@@ -19,7 +19,7 @@ cmake --install build/AMC --prefix /opt/amc
 
 Required packages:
 
-- `ABIX 0.2` runtime and MICS
+- `ABIX 0.3` runtime and MICS
 - LLVM and Clang (`clang-cpp`)
 - fmt
 - toml++
@@ -33,10 +33,10 @@ AMC is the toolchain that needs LLVM/Clang and keeps its own exception/RTTI
 policy.
 
 The standalone CTest suite covers the C++ core/e2e tests, the installed package
-consumer, feature tests, Rust provider/panic tests, cancellation, interop and
-capability generation. The older `amc-integration-test` and
-`amc-cmake-integration-test` still reference ABIX monorepo-only assets and remain
-in the transition build until those assets move to AMC or are retired.
+consumer, feature tests, Rust provider/panic tests, cancellation, interop,
+capability generation and an independent CMake integration test. The old
+monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` were retired
+with the split.
 
 ## Installed package
 

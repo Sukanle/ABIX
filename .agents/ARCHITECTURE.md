@@ -93,9 +93,9 @@ plugins ──► ABIX IR ──► AMC ──► runtime
 
 - Plugins depend on ABIX IR, never on runtime internals.
 - The runtime depends on the ABI model, never on a language AST.
-- Tooling splits into `libabix-format` / `libabix-abi` / `libabix-metadata` /
-  `libabix-tools` (plus header-only `libabix-runtime`) so every consumer shares
-  one parser.
+- The AMC toolchain owns `libabix-format` / `libabix-abi` /
+  `libabix-metadata` / `libabix-tools`; ABIX owns header-only
+  `libabix-runtime`. AMC consumers share one parser.
 
 ## 6. Bootstrap Architecture
 

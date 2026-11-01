@@ -33,7 +33,7 @@ ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档
 ABIX 0.2.2 — Built-in type IDs         预定义 canonical primitive TypeId 常量
 ABIX 0.2.3 — Runtime-only package      不依赖 AMC/LLVM/fmt 的 runtime + 宿主日志
 ABIX 0.2.4 — No-exception runtime      ABIX runtime 无异常、无 RTTI
-ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
+ABIX 0.3.0 — Ecosystem                 AMC 拆分 + 其他项目建立在 ABIX 之上
 ```
 
 ### ABIX 0.1.0 — Foundation, self-hosting and toolchain（已发布，pre-1.0/非稳定）
@@ -114,6 +114,7 @@ ABIX runtime 目标以显式控制流层构建：
 
 目标方向，而非硬性承诺：
 
+* **AMC 拆分** —— AMC 成为独立 CMake 工程/包，消费 runtime-only ABIX；ABIX 根工程不再构建 AMC 及其 artifact 库。
 * **待议：AI / Agent 集成（MCP 高级工具、TROI、工作流）**——需要评估是否过早引入高级工具与工作流；现有 `amc-mcp` 低层查询保持不变。
 * LSP、插件生态、包管理与构建系统集成。
 * 更深的调试器/编辑器集成 (LLDB go-to-definition、Source Origin)。

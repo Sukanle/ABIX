@@ -320,7 +320,7 @@ graph TD
 
 > **ABI 事实只能有一个来源。** 运行时可以使用 ABI 模型的投影，但不得自行重新定义 ABI 语义。
 
-工具链拆分为 `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools`，外加 header-only 的 `libabix-runtime`，确保所有消费者共享唯一的 `.abix` / Metadata Region parser。运行时各层保持独立：ABI 模型与 metadata 投影、原生 DLL 绑定与 RCU 生命周期、接口契约层。
+ABIX runtime 是 header-only 的 `libabix-runtime`。AMC 工具链拥有 `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools` artifact 库，确保所有 AMC 消费者共享唯一的 `.abix` / Metadata Region parser。运行时各层保持独立：ABI 模型与 metadata 投影、原生 DLL 绑定与 RCU 生命周期、接口契约层。
 
 ---
 
@@ -414,12 +414,13 @@ ABIX
 
 - C++17 或更高
 - CMake 3.20+ 与 Ninja
-- LLVM / Clang 工具链 (`clang-cpp`，AMC C++ 前端需要)
-- Python 3 (AMC 集成、功能与互操作测试)
-- 可选：Rust (`rustc`) 与 Zig (跨语言 provider)、Lua 5.4 (Aue)、LLDB (原生插件)
+- Python 3（ABIX package/runtime 测试）
+- 可选：Lua 5.4（Aue 一致性原型）
 - 受支持的原生工具链
 
-> **平台支持：** 支持 Linux、macOS 与 **Windows**。Windows 上使用 MSYS2 UCRT64 工具链 (GCC 或 Clang) 构建；见 [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64)。macOS 上 Homebrew LLVM 是 keg-only，请传 `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"`，否则 AMC 目标会被跳过。
+独立的 AMC 工程额外需要 LLVM/Clang (`clang-cpp`)、fmt、toml++、Python，以及可选的 Rust/Zig 跨语言 provider。见 [`AMC/README.md`](AMC/README.md)。
+
+> **平台支持：** 支持 Linux、macOS 与 **Windows**。Windows 上使用 MSYS2 UCRT64 工具链 (GCC 或 Clang) 构建；见 [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64)。macOS 上 Homebrew LLVM 是 keg-only，构建 AMC 时请传 `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"`。
 
 ### 构建
 
@@ -434,7 +435,7 @@ ctest --test-dir build/Release --output-on-failure
 ### AMC 独立构建（迁移路径）
 
 AMC 现在有独立的 CMake 工程，使用已安装的 ABIX package，而不是 ABIX 源码树。
-见 [`AMC/README.md`](AMC/README.md)。过渡期间，父 ABIX 构建仍保留 monorepo 集成。
+见 [`AMC/README.md`](AMC/README.md)。ABIX 根工程不再构建 AMC 或其 artifact 库。
 
 ### Runtime 构建契约：无异常、无 RTTI
 
@@ -471,30 +472,34 @@ cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
+find_package(ABIX 0.3 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
-runtime 包会安装 `SKL/ABIX`、MICS/HLMD 和 CMake 包，不需要 AMC、LLVM/Clang 或 fmt。完整包额外提供 `ABIX::ABIX` 以及 `ABIX::format`、`ABIX::abi`、`ABIX::metadata`、`ABIX::tools`；这些可选库使用 fmt。`ABIX::ABIX` 始终可用，但未构建可选库时只包含 runtime。
+包会安装 `SKL/ABIX`、MICS/HLMD 和 CMake 包，不需要 AMC、LLVM/Clang、fmt 或静态库。`ABIX::ABIX` 是 runtime 的便利聚合目标。
 
-ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。runtime config 只解析 `MICS`；请求库 component 或完整聚合目标时才会解析 fmt。`ABIX_INSTALL` 在顶层构建时默认 ON，作为子项目时默认 OFF。
+ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。包配置只解析 `MICS`。`ABIX_INSTALL` 在顶层构建时默认 ON，作为子项目时默认 OFF。
+
+artifact 库（`format`/`abi`/`metadata`/`tools`）属于独立的 AMC package，在 AMC 中以 `AMC::format`、`AMC::abi`、`AMC::metadata`、`AMC::tools` 导出。
 
 ### 试用
 
+先独立构建 AMC（见 [`AMC/README.md`](AMC/README.md)），再使用 standalone 构建的 `amc`：
+
 ```bash
 # 从示例配置构建 .abix
-./build/Release/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
+./build/AMC-standalone/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
 
 # 查看
-./build/Release/bin/amc inspect build/demo/build/amc_test.abix
+./build/AMC-standalone/bin/amc inspect build/demo/build/amc_test.abix
 
 # 查询类型及其布局
-./build/Release/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+./build/AMC-standalone/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM 友好的 ABI 上下文
-./build/Release/bin/amc context build/demo/build/amc_test.abix --format llm
+./build/AMC-standalone/bin/amc context build/demo/build/amc_test.abix --format llm
 ```
 
 完整走查见 [`docs/getting-started/getting-started_zh.md`](docs/getting-started/getting-started_zh.md)。
@@ -584,7 +589,7 @@ ABIX 的发布按项目阶段划分，而不是功能清单：
 - **ABIX 0.2.2 — Built-in type IDs** (预定义 canonical primitive TypeId 常量)
 - **ABIX 0.2.3 — Runtime-only package** (不依赖 AMC/LLVM/fmt 的可安装 `ABIX::runtime`；宿主负责日志后端)
 - **ABIX 0.2.4 — No-exception runtime** (ABIX runtime 无异常、无 RTTI；AMC 保留两者)
-- **ABIX 0.3.0 — Ecosystem** (AMC Interface 去分派、LSP、包管理；MCP/Agent 高级工具待议)
+- **ABIX 0.3.0 — Ecosystem** (AMC 拆分为独立工程、Interface 去分派、LSP、包管理；MCP/Agent 高级工具待议)
 
 ```mermaid
 graph LR

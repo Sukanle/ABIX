@@ -28,5 +28,6 @@ filesystem.
   the same inputs.
 - `.abix` / Metadata Region layout changes are **ABI semantic changes** — update
   [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) and add serialization tests.
-- Exercise the CLI manually after changes; the integration suite lives in
-  `AMC/tests/cli/integration_test.py`.
+- Exercise the CLI manually after changes. The standalone suite lives under
+  `AMC/tests/` and is registered by `AMC/CMakeLists.txt` (feature, provider,
+  interop, package and CMake-integration tests).

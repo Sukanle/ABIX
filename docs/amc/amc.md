@@ -17,6 +17,9 @@
 
 AMC is the ABIX toolchain entry point. It extracts ABI information from a language AST, projects it into ABIX IR, and provides inspection, comparison, verification, generation and distribution tooling.
 
+> **Build:** AMC is a standalone CMake project under `AMC/` and consumes an
+> installed ABIX runtime package. See [`AMC/README.md`](../../AMC/README.md).
+
 ```mermaid
 graph TD
     A["AMC"] --> B["Parse"]

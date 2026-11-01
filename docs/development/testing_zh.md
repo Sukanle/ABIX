@@ -1,5 +1,11 @@
 # 测试 ABIX 与 AMC
 
+> **仓库拆分：** ABIX 根工程现在只测试 header-only runtime。下面的 AMC 层由独立的
+> `AMC/CMakeLists.txt` 工程拥有并运行；此处保留为工具链契约参考。仅存在于
+> monorepo 的 `amc-integration-test` 与 `amc-cmdly-interop-test` 已退役；
+> standalone 套件覆盖 core/e2e/package/feature/provider/interop/expose/
+> cancellation/CMake 集成。
+
 <p align="center">
   中文 · <a href="testing.md">English</a>
 </p>
@@ -200,7 +206,7 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 各套件在临时目录生成并在结束时清理。要查看产物，可以手动执行，也可以用 [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#保留临时产物) 保留目录：
 
 ```bash
-AMC=build/Release/bin/amc.exe           # Linux/macOS 去掉 .exe
+AMC=build/AMC-standalone/bin/amc.exe           # Linux/macOS 去掉 .exe
 
 # 解析源码 -> IR
 "$AMC" build -c AMC/tests/fixtures/amc_test.abic.toml -B build/amc-demo

@@ -66,6 +66,10 @@ ctest --test-dir build/Release --output-on-failure
 
 ## 3. Describe an ABI
 
+AMC is a separate project now. Build it as described in
+[`AMC/README.md`](../../AMC/README.md); the commands below assume its standalone
+build directory, `build/AMC-standalone`.
+
 ABI extraction is driven by an `.abic.toml` configuration. A minimal example:
 
 ```toml
@@ -94,7 +98,7 @@ int add(int a, int b);
 Build the metadata:
 
 ```bash
-./build/Release/bin/amc build -c math_api.abic.toml -B build
+./build/AMC-standalone/bin/amc build -c math_api.abic.toml -B build
 # -> build/build/math_api.abix
 # -> build/build/math_api.abix.meta
 ```
@@ -105,38 +109,38 @@ See [`abic.md`](../ABIX/abic.md) for the full configuration reference.
 
 ```bash
 # one-line summary
-./build/Release/bin/amc inspect build/build/math_api.abix
+./build/AMC-standalone/bin/amc inspect build/build/math_api.abix
 
 # a single type, with its physical layout
-./build/Release/bin/amc query build/build/math_api.abix --type math::Point --layout
+./build/AMC-standalone/bin/amc query build/build/math_api.abix --type math::Point --layout
 
 # a function signature
-./build/Release/bin/amc query build/build/math_api.abix --function math::add --format json
+./build/AMC-standalone/bin/amc query build/build/math_api.abix --function math::add --format json
 
 # an LLM-friendly ABI context (dense, index-addressable)
-./build/Release/bin/amc context build/build/math_api.abix --format llm
+./build/AMC-standalone/bin/amc context build/build/math_api.abix --format llm
 ```
 
 Every consumer also accepts a compiled binary: the generated C++ header embeds the ABI as an `.abix.metadata` section, so `amc inspect libfoo.so` works without the sidecar `.abix`:
 
 ```bash
-./build/Release/bin/amc query libfoo.so --type math::Point --layout
+./build/AMC-standalone/bin/amc query libfoo.so --type math::Point --layout
 ```
 
 ## 5. Compare and verify
 
 ```bash
 # compare two artifacts (source -> target)
-./build/Release/bin/amc diff v1.abix v2.abix
+./build/AMC-standalone/bin/amc diff v1.abix v2.abix
 
 # exit 1 when incompatible
-./build/Release/bin/amc compatibility v1.abix v2.abix
+./build/AMC-standalone/bin/amc compatibility v1.abix v2.abix
 
 # verify that current sources still match the frozen contract
-./build/Release/bin/amc verify -c math_api.abic.toml -B build
+./build/AMC-standalone/bin/amc verify -c math_api.abic.toml -B build
 
 # editor-consumable diagnostics
-./build/Release/bin/amc verify v1.abix v2.abix --format diagnostics
+./build/AMC-standalone/bin/amc verify v1.abix v2.abix --format diagnostics
 ```
 
 `amc verify` treats any difference — including added types or functions — as drift, because widening the ABI surface must be an explicit decision.
@@ -145,36 +149,36 @@ Every consumer also accepts a compiled binary: the generated C++ header embeds t
 
 ```bash
 # native C++17 projection (descriptors for runtime::Registry)
-./build/Release/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
+./build/AMC-standalone/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
 
 # Aue (Lua) boundary contract
-./build/Release/bin/amc generate build/build/math_api.abix -l lua -o aue_contract.hpp
+./build/AMC-standalone/bin/amc generate build/build/math_api.abix -l lua -o aue_contract.hpp
 ```
 
 ## 7. Metadata Region and symbol server
 
 ```bash
 # emit and verify the self-describing Metadata Region
-./build/Release/bin/amc metadata build/build/math_api.abix -o math_api.abixmeta
-./build/Release/bin/amc metadata --verify math_api.abixmeta
+./build/AMC-standalone/bin/amc metadata build/build/math_api.abix -o math_api.abixmeta
+./build/AMC-standalone/bin/amc metadata --verify math_api.abixmeta
 
 # scan the region embedded in a compiled binary
-./build/Release/bin/amc metadata --from-elf libfoo.so --format json
+./build/AMC-standalone/bin/amc metadata --from-elf libfoo.so --format json
 
 # local symbol server keyed by ELF GNU BuildID
-./build/Release/bin/amc publish libfoo.so --root ~/.abix/symbols
-./build/Release/bin/amc fetch libfoo.so -o libfoo.abixmeta
+./build/AMC-standalone/bin/amc publish libfoo.so --root ~/.abix/symbols
+./build/AMC-standalone/bin/amc fetch libfoo.so -o libfoo.abixmeta
 ```
 
 ## 8. AI agent integration
 
 ```bash
 # start the MCP server over stdio
-./build/Release/bin/amc-mcp build/build/math_api.abix
+./build/AMC-standalone/bin/amc-mcp build/build/math_api.abix
 
 # or drive it from a script
 python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
-        --amc-mcp ./build/Release/bin/amc-mcp
+        --amc-mcp ./build/AMC-standalone/bin/amc-mcp
 ```
 
 See [`MCP.md`](../ai/MCP.md) for the tool catalogue.

@@ -607,7 +607,11 @@ def run_elf_pe_tests(build_dir: Path, keep: bool = False) -> int:
     print("ELF/PE Metadata Section Verification")
     print("=" * 60)
 
-    amc = build_dir / "bin" / exe_name("amc")
+    external_amc = os.environ.get("AMC_BIN_DIR", "")
+    if not external_amc:
+        print("  [SKIP] AMC_BIN_DIR not set; ELF/PE metadata tests require standalone AMC")
+        return 0
+    amc = Path(external_amc) / exe_name("amc")
     fixture_dir = PROJECT_ROOT / "AMC" / "tests" / "fixtures"
     fixture_config = fixture_dir / "amc_test.abic.toml"
 
@@ -617,7 +621,7 @@ def run_elf_pe_tests(build_dir: Path, keep: bool = False) -> int:
 
     if not amc.exists():
         print(f"\033[31mError: AMC binary not found at {amc}\033[0m")
-        print("Build first: python tools/run_build.py")
+        print("Build AMC standalone and set AMC_BIN_DIR.")
         return 1
 
     total = TestResult()
@@ -744,18 +748,8 @@ def run_bootstrap_test(build_dir: Path, keep: bool = False) -> int:
             print(f"[FAIL] AMC_BIN_DIR must contain executable amc and amc-cpp: {amc_bin_dir}", file=sys.stderr)
             return 1
     else:
-        amc_bin_dir = build_dir / "bin"
-        amc = amc_bin_dir / exe_name("amc")
-        amc_cpp = amc_bin_dir / exe_name("amc-cpp")
-
-        print("[STEP] configure and build AMC")
-        cmake_cache = build_dir / "CMakeCache.txt"
-        if not cmake_cache.is_file():
-            run_cmd([
-                "cmake", "-S", str(PROJECT_ROOT), "-B", str(build_dir),
-                "-DCMAKE_BUILD_TYPE=Release",
-            ])
-        run_cmd(["cmake", "--build", str(build_dir), "--target", "amc", "amc-cpp", "--parallel"])
+        print("[SKIP] AMC_BIN_DIR not set; build standalone AMC first")
+        return 0
 
     if not amc.is_file() or not os.access(amc, os.X_OK):
         print(f"[FAIL] AMC executable was not produced: {amc}", file=sys.stderr)
@@ -870,7 +864,11 @@ def run_interop_tests(build_dir: Path, keep: bool = True, cmdly_root: str | None
         )
         return 1
 
-    amc_bin_dir = build_dir / "bin"
+    external_amc = os.environ.get("AMC_BIN_DIR", "")
+    if not external_amc:
+        print("  [SKIP] AMC_BIN_DIR not set; interop tests require standalone AMC")
+        return 0
+    amc_bin_dir = Path(external_amc)
     source_root = str(PROJECT_ROOT)
     interop_dir = PROJECT_ROOT / "AMC" / "tests" / "interop"
 

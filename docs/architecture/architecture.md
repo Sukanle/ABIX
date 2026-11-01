@@ -64,17 +64,19 @@ This diagram only shows "who talks to whom"; implementation details live in the 
 
 > The runtime may use a **projection** of the ABI model, but must not independently redefine ABI semantics.
 
-The same model drives every consumer. The toolchain is split into libraries so that each consumer links only what it needs while sharing exactly one parser:
+The same model drives every consumer. ABIX owns the header-only runtime; the
+AMC repository owns the artifact libraries and shares exactly one parser across
+its tools:
 
-| Library | Responsibility |
-|---------|----------------|
-| `libabix-format` | `.abix` v4 read/write, hashing, canonical form, ELF reader |
-| `libabix-abi` | `TypeID`/`LayoutHash` comparison, compatibility diff |
-| `libabix-metadata` | Metadata Region serialize/parse/materialize, context, query |
-| `libabix-tools` | Lua contract generation, symbol store |
-| `libabix-runtime` | header-only registry / binding layer |
+| Library | Owner | Responsibility |
+|---------|-------|----------------|
+| `libabix-runtime` | ABIX | header-only registry / binding layer |
+| `libabix-format` | AMC | `.abix` v4 read/write, hashing, canonical form, ELF reader |
+| `libabix-abi` | AMC | `TypeID`/`LayoutHash` comparison, compatibility diff |
+| `libabix-metadata` | AMC | Metadata Region serialize/parse/materialize, context, query |
+| `libabix-tools` | AMC | Lua contract generation, symbol store |
 
-`amc-core` is an aggregate over these for the executables.
+`amc-core` is an aggregate over the AMC libraries for the executables.
 
 ## Identity
 

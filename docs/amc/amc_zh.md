@@ -17,6 +17,8 @@
 
 AMC 是 ABIX 工具链入口：从语言 AST 提取 ABI、投影为 ABIX IR，并提供查看、比较、校验、生成与分发工具。
 
+> **构建：** AMC 是 `AMC/` 下的独立 CMake 工程，使用已安装的 ABIX runtime package。见 [`AMC/README.md`](../../AMC/README.md)。
+
 ```mermaid
 graph TD
     A["AMC"] --> B["解析"]

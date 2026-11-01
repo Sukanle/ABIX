@@ -24,7 +24,7 @@ option(AMC_BUILD_TESTS "Build AMC unit/e2e tests" ON)
 option(AMC_INSTALL "Generate AMC install rules" ON)
 option(AMC_ENABLE_LLDB_PLUGIN "Build the optional LLDB plugin" ON)
 
-find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
+find_package(ABIX 0.3 CONFIG REQUIRED COMPONENTS runtime)
 find_package(LLVM CONFIG REQUIRED)
 find_package(Clang CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
@@ -183,7 +183,7 @@ configure_file(${AMC_SOURCE_DIR}/providers.toml ${CMAKE_BINARY_DIR}/bin/amc-prov
 if(AMC_ENABLE_LLDB_PLUGIN)
     find_path(AMC_LLDB_INCLUDE_DIR NAMES lldb/API/LLDB.h)
     find_library(AMC_LLDB_LIBRARY NAMES lldb)
-    if(AMC_LLDB_INCLUDE_DIR AND AMC_LLDB_LIBRARY)
+    if(AMC_LLDB_INCLUDE_DIR AND AMC_LLDB_LIBRARY AND EXISTS ${AMC_SOURCE_DIR}/../tools/lldb_abix.cpp)
         add_library(amc-lldb MODULE ${AMC_SOURCE_DIR}/../tools/lldb_abix.cpp)
         target_include_directories(amc-lldb PRIVATE ${AMC_INCLUDE_DIR})
         target_include_directories(amc-lldb SYSTEM PRIVATE ${AMC_LLDB_INCLUDE_DIR})
@@ -285,7 +285,12 @@ if(AMC_BUILD_TESTS AND AMC_PYTHON_EXECUTABLE)
     add_test(NAME amc-expose-interop-test COMMAND ${AMC_PYTHON_EXECUTABLE}
                                                   ${AMC_SOURCE_DIR}/tests/interop/expose_test.py
                                                   ${CMAKE_BINARY_DIR}/bin ${AMC_SOURCE_DIR})
+    add_test(NAME amc-cmake-integration-test COMMAND ${AMC_PYTHON_EXECUTABLE}
+                                                     ${AMC_SOURCE_DIR}/tests/cli/cmake_integration_test.py
+                                                     ${CMAKE_BINARY_DIR}/bin ${AMC_SOURCE_DIR}
+                                                     --abix-include-dirs=${ABIX_INCLUDE_DIR})
 
     set_tests_properties(amc-feature-test amc-rust-test amc-rust-panic-test amc-cancellation-test
-                         amc-interop-test amc-expose-interop-test PROPERTIES ENVIRONMENT "${_amc_test_env}" TIMEOUT 180)
+                         amc-interop-test amc-expose-interop-test amc-cmake-integration-test
+                         PROPERTIES ENVIRONMENT "${_amc_test_env}" TIMEOUT 180)
 endif()

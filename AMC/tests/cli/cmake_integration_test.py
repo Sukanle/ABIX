@@ -20,7 +20,12 @@ import tempfile
 def main() -> None:
     parser = argparse.ArgumentParser(description="AMC CMake integration test")
     parser.add_argument("amc_bin_dir", help="Directory containing amc executable")
-    parser.add_argument("source_root", help="Root of the ABIX source tree")
+    parser.add_argument("source_root", help="Root of the AMC source tree")
+    parser.add_argument(
+        "--abix-include-dirs",
+        default=os.environ.get("ABIX_INCLUDE_DIRS", ""),
+        help="ABIX/MICS include roots, separated by the platform path separator",
+    )
     parser.add_argument(
         "--keep-artifacts",
         action="store_true",
@@ -40,18 +45,25 @@ def main() -> None:
     try:
         # Step 1: cmake configure
         print("  [INFO] Configuring CMake fixture...")
+        fixture = os.path.join(amc_root, "tests", "cli", "cmake_fixture")
+        module_dir = os.path.join(amc_root, "CMake")
+        fixture_dir = os.path.join(amc_root, "tests", "fixtures")
+        if not os.path.isdir(fixture):
+            fixture = os.path.join(amc_root, "AMC", "tests", "cli", "cmake_fixture")
+            module_dir = os.path.join(amc_root, "AMC", "CMake")
+            fixture_dir = os.path.join(amc_root, "AMC", "tests", "fixtures")
+        amc = os.path.join(amc_bin, "amc.exe" if sys.platform == "win32" else "amc")
         cmake_cmd = [
             "cmake",
-            "-S",
-            os.path.join(amc_root, "AMC/tests/cli/cmake_fixture"),
-            "-B",
-            build_dir,
-            "-G",
-            "Ninja",
-            f"-DAMC_MODULE_DIR={amc_root}/AMC/CMake",
-            f"-DAMC_FIXTURE_DIR={amc_root}/AMC/tests/fixtures",
-            f"-DAMC_EXECUTABLE={amc_bin}/amc",
+            "-S", fixture,
+            "-B", build_dir,
+            "-G", "Ninja",
+            f"-DAMC_MODULE_DIR={module_dir}",
+            f"-DAMC_FIXTURE_DIR={fixture_dir}",
+            f"-DAMC_EXECUTABLE={amc}",
         ]
+        if args.abix_include_dirs:
+            cmake_cmd.append(f"-DABIX_INCLUDE_DIRS={args.abix_include_dirs}")
         subprocess.run(cmake_cmd, check=True, capture_output=True, text=True)
 
         # Step 2: cmake build

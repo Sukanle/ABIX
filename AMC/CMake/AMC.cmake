@@ -79,6 +79,9 @@ function(amc_add_abi)
     # MICS headers. Consume the installed imported targets when available, with
     # a source-tree fallback for the in-tree build.
     set(_amc_include_dirs)
+    if(DEFINED ABIX_INCLUDE_DIRS)
+      list(APPEND _amc_include_dirs ${ABIX_INCLUDE_DIRS})
+    endif()
     foreach(_amc_dep ABIX::runtime ABIX::format MICS::MICS)
       if(TARGET ${_amc_dep})
         get_target_property(_amc_dep_includes ${_amc_dep} INTERFACE_INCLUDE_DIRECTORIES)

@@ -58,7 +58,7 @@ def run(command, env=None, label=None):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--amc", help="path to amc (default: AMC, build/Release/bin/amc, or PATH)")
+    parser.add_argument("--amc", help="path to amc (default: AMC, build/AMC-standalone/bin/amc, or PATH)")
     parser.add_argument("--cxx", help="C++ compiler")
     parser.add_argument("--rustc", help="Rust compiler")
     parser.add_argument("--zig", help="Zig compiler")
