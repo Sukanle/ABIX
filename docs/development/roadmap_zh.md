@@ -32,6 +32,7 @@ ABIX 0.2.0 — Cross-language            跨语言支持：Rust / Zig 前端与�
 ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档，不改变公共 ABI
 ABIX 0.2.2 — Built-in type IDs         预定义 canonical primitive TypeId 常量
 ABIX 0.2.3 — Runtime-only package      不依赖 AMC/LLVM/fmt 的 runtime + 宿主日志
+ABIX 0.2.4 — No-exception runtime      ABIX runtime 无异常、无 RTTI
 ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 ```
 
@@ -95,6 +96,19 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * 日志增加显式 `LogState`、ABIX 原子 sink/阈值注册、运行时过滤、带长度的 `LogRecord` 回调，以及回调 / 跨 DLL 所有权规则文档；`ABIX_LOG_THREAD_SAFE` 可选择默认线程安全配置或固定 sink/单线程策略。
 
 `.abix` 格式、`TypeID` 和公共 ABI 不变。
+
+### ABIX 0.2.4 — No-exception/no-RTTI runtime build
+
+ABIX runtime 目标以显式控制流层构建：
+
+* ABIX runtime 测试和 DLL 插件默认使用 `-fno-exceptions -fno-rtti`
+  （`ABIX_RUNTIME_NO_EXCEPTIONS=ON`、`ABIX_RUNTIME_NO_RTTI=ON`）。
+* ABIX 头文件不使用 `throw`/`catch`、`dynamic_cast` 和 `typeid`；失败通过返回的
+  status/error 值表达，日志保持可选。
+* AMC 默认保留异常和 RTTI，因为它集成 LLVM/Clang/fmt/toml++ 并使用 `try/catch`。
+* README 记录 runtime 契约及其与 AMC 的明确边界。
+
+不改变公共 ABI 或 `.abix` 格式。
 
 ### ABIX 0.3.0 — Ecosystem（未来）
 
@@ -183,6 +197,7 @@ ABIX 使用标准 SemVer tag，从非稳定的 `v0.1.0` 线开始。项目阶段
 * `v0.2.1` — Maintenance（维护版本）
 * `v0.2.2` — Built-in type IDs（预定义 canonical primitive TypeId）
 * `v0.2.3` — Runtime-only package（不依赖 AMC/LLVM/fmt 的 `ABIX::runtime`）
+* `v0.2.4` — No-exception runtime（ABIX runtime 无异常、无 RTTI）
 
 ## 明确不在范围内
 

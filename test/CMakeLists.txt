@@ -6,6 +6,9 @@ function(abi_add_test name)
     target_include_directories(${name} PRIVATE ${TEST_INC_DIR})
     target_link_libraries(${name} PRIVATE Catch2::Catch2WithMain MICS::MICS)
     set_target_properties(${name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    if(NOT (ARGC GREATER 1 AND ARGV1 STREQUAL "NO_RUNTIME_FLAGS"))
+        abix_apply_runtime_contract(${name})
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                      "RelWithDebInfo"))
         add_custom_command(
@@ -40,7 +43,7 @@ if(ABIX_ENABLE_QUILL_TEST)
         find_package(quill CONFIG QUIET)
     endif()
     if(TARGET quill::quill)
-        abi_add_test(logging_quill_test)
+        abi_add_test(logging_quill_test NO_RUNTIME_FLAGS)
         target_link_libraries(logging_quill_test PRIVATE quill::quill)
     else()
         message(WARNING "ABIX_ENABLE_QUILL_TEST=ON but quill::quill was not found; set ABIX_QUILL_ROOT")
@@ -72,6 +75,7 @@ add_executable(test_all ${TEST_PROJ_DIR}/test_all.cpp)
 target_include_directories(test_all PRIVATE ${TEST_INC_DIR})
 target_link_libraries(test_all PRIVATE Catch2::Catch2WithMain MICS::MICS)
 set_target_properties(test_all PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+abix_apply_runtime_contract(test_all)
 foreach(
     plugin
     math_dll

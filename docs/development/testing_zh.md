@@ -89,6 +89,8 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 ### A. 运行时与单元（Catch2，`test/`）
 
 - **功能** —— 纯头文件的 ABI 运行时，对真实动态库进行验证：
+    - ABIX runtime 目标默认使用 `-fno-exceptions -fno-rtti` 编译
+      （`ABIX_RUNTIME_NO_EXCEPTIONS`、`ABIX_RUNTIME_NO_RTTI`；AMC 保留两者）；
     - 经 name+sig 表加载/解析/调用 DLL；
     - 热重载 RCU 卸载/超时/zombie 生命周期、日志；
     - 日志策略：`logging_single_thread_test` 使用 `ABIX_LOG_THREAD_SAFE=0` 验证固定 sink 策略；
