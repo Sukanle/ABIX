@@ -27,7 +27,9 @@ def rust_compile(tool: str, projection: str, out_dir: str) -> subprocess.Complet
 
 
 def make_case(source_root: str) -> ProviderCase:
-    fixtures = os.path.join(source_root, "AMC", "tests", "fixtures")
+    fixtures = os.path.join(source_root, "tests", "fixtures")
+    if not os.path.isdir(fixtures):
+        fixtures = os.path.join(source_root, "AMC", "tests", "fixtures")
     return ProviderCase(
         language="rust",
         config=os.path.join(fixtures, "rust_demo.abic.toml"),

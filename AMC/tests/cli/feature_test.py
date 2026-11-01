@@ -68,7 +68,9 @@ def main() -> int:
 
     bin_dir = Path(argv[0]).resolve()
     source_root = Path(argv[1]).resolve() if len(argv) > 1 else bin_dir.parent.parent
-    fixtures = source_root / "AMC" / "tests" / "fixtures"
+    fixtures = source_root / "tests" / "fixtures"
+    if not fixtures.is_dir():
+        fixtures = source_root / "AMC" / "tests" / "fixtures"
     amc = bin_dir / exe_name("amc")
 
     def bin_path(name: str) -> str:
@@ -263,8 +265,14 @@ def main() -> int:
             else:
                 src = work / "binding_check.cpp"
                 src.write_text(f'#include "{header.name}"\nint main() {{ return 0; }}\n', encoding="utf-8")
-                compile_result = run([cxx, "-std=c++17", f"-I{header.parent}",
-                                      f"-I{source_root / 'include'}", f"-I{source_root}",
+                abix_includes = os.environ.get("ABIX_INCLUDE_DIRS")
+                if abix_includes:
+                    include_flags = [f"-I{path}" for path in abix_includes.split(os.pathsep) if path]
+                else:
+                    include_flags = [f"-I{source_root / 'include'}", f"-I{source_root}",
+                                     f"-I{source_root / 'MICS' / 'include'}",
+                                     f"-I{source_root / 'MICS' / 'HLMD'}"]
+                compile_result = run([cxx, "-std=c++17", f"-I{header.parent}", *include_flags,
                                       str(src), "-o", str(work / "binding_check")])
                 if compile_result.returncode == 0:
                     report.ok("the generated C++ binding compiles")

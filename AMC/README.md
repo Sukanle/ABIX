@@ -32,6 +32,12 @@ and namespace are AMC's `SKL/AMC/Core` API. ABIX runtime remains header-only;
 AMC is the toolchain that needs LLVM/Clang and keeps its own exception/RTTI
 policy.
 
+The standalone CTest suite covers the C++ core/e2e tests, the installed package
+consumer, feature tests, Rust provider/panic tests, cancellation, interop and
+capability generation. The older `amc-integration-test` and
+`amc-cmake-integration-test` still reference ABIX monorepo-only assets and remain
+in the transition build until those assets move to AMC or are retired.
+
 ## Installed package
 
 ```cmake

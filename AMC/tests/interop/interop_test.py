@@ -43,7 +43,10 @@ def toml_path(path: str) -> str:
 
 
 def include_roots(source_root: str) -> tuple[str, ...]:
-    """Public include roots of the SKL-layout source tree."""
+    """Public include roots, preferring the installed ABIX package."""
+    configured = os.environ.get("ABIX_INCLUDE_DIRS")
+    if configured:
+        return tuple(path for path in configured.split(os.pathsep) if path)
     return (
         os.path.join(source_root, "include"),
         os.path.join(source_root, "MICS", "include"),

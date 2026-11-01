@@ -141,6 +141,11 @@ add_executable(amc-zig ${AMC_SOURCE_DIR}/src/SKL/AMC/Lang/Zig/Zig.cpp
 target_include_directories(amc-zig PRIVATE ${AMC_INCLUDE_DIR})
 target_link_libraries(amc-zig PRIVATE amc-core amc-lang fmt::fmt)
 
+add_executable(amc-cancel-test-provider ${AMC_SOURCE_DIR}/tests/providers/cancellation/cancellation_provider.cpp)
+target_include_directories(amc-cancel-test-provider PRIVATE ${AMC_INCLUDE_DIR})
+target_link_libraries(amc-cancel-test-provider PRIVATE amc-lang fmt::fmt)
+set_target_properties(amc-cancel-test-provider PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_executable(amc ${AMC_SOURCE_DIR}/main.cpp
                    ${AMC_SOURCE_DIR}/src/SKL/AMC/CLI/CLI.cpp
                    ${AMC_SOURCE_DIR}/src/SKL/AMC/CLI/Context.cpp
@@ -260,4 +265,27 @@ if(AMC_BUILD_TESTS AND AMC_INSTALL AND AMC_PYTHON_EXECUTABLE)
     if(DEFINED ENV{KEEP_ARTIFACTS} AND "$ENV{KEEP_ARTIFACTS}" STREQUAL "1")
         set_tests_properties(amc-package-test PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
     endif()
+endif()
+
+if(AMC_BUILD_TESTS AND AMC_PYTHON_EXECUTABLE)
+    set(_amc_test_env "ABIX_INCLUDE_DIRS=${ABIX_INCLUDE_DIR}" "CXX=${CMAKE_CXX_COMPILER}")
+
+    add_test(NAME amc-feature-test COMMAND ${AMC_PYTHON_EXECUTABLE} ${AMC_SOURCE_DIR}/tests/cli/feature_test.py
+                                           ${CMAKE_BINARY_DIR}/bin ${AMC_SOURCE_DIR})
+    add_test(NAME amc-rust-test COMMAND ${AMC_PYTHON_EXECUTABLE}
+                                        ${AMC_SOURCE_DIR}/tests/providers/rust/conformance_test.py
+                                        ${CMAKE_BINARY_DIR}/bin ${AMC_SOURCE_DIR})
+    add_test(NAME amc-rust-panic-test COMMAND ${AMC_PYTHON_EXECUTABLE} ${AMC_SOURCE_DIR}/tests/interop/panic_test.py
+                                              ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME amc-cancellation-test COMMAND ${AMC_PYTHON_EXECUTABLE}
+                                                ${AMC_SOURCE_DIR}/tests/providers/cancellation/cancellation_test.py
+                                                ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME amc-interop-test COMMAND ${AMC_PYTHON_EXECUTABLE} ${AMC_SOURCE_DIR}/tests/interop/interop_test.py
+                                           ${CMAKE_BINARY_DIR}/bin ${AMC_SOURCE_DIR})
+    add_test(NAME amc-expose-interop-test COMMAND ${AMC_PYTHON_EXECUTABLE}
+                                                  ${AMC_SOURCE_DIR}/tests/interop/expose_test.py
+                                                  ${CMAKE_BINARY_DIR}/bin ${AMC_SOURCE_DIR})
+
+    set_tests_properties(amc-feature-test amc-rust-test amc-rust-panic-test amc-cancellation-test
+                         amc-interop-test amc-expose-interop-test PROPERTIES ENVIRONMENT "${_amc_test_env}" TIMEOUT 180)
 endif()
