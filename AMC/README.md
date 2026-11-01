@@ -19,14 +19,18 @@ cmake --install build/AMC --prefix /opt/amc
 
 Required packages:
 
-- `ABIX 0.2` with `format`, `abi`, `metadata` and `tools` components
+- `ABIX 0.2` runtime and MICS
 - LLVM and Clang (`clang-cpp`)
 - fmt
 - toml++
 - Catch2 v3 for the C++ tests (optional)
 
-The ABIX package remains header-only for runtime consumers; AMC is the toolchain
-that needs LLVM/Clang and keeps its own exception/RTTI policy.
+AMC owns the artifact-layer libraries (`format`, `abi`, `metadata`, `tools`) and
+exports them as `AMC::format`, `AMC::abi`, `AMC::metadata` and `AMC::tools`. They
+are compiled here rather than borrowed from ABIX, because their public headers
+and namespace are AMC's `SKL/AMC/Core` API. ABIX runtime remains header-only;
+AMC is the toolchain that needs LLVM/Clang and keeps its own exception/RTTI
+policy.
 
 ## Installed package
 
@@ -41,9 +45,10 @@ amc_add_abi(
   CPP_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/contract_metadata.hpp")
 ```
 
-`AMC::amc`, the language providers, `AMC::amc-dump` and `AMC::amc-mcp` are
-exported targets. `amc_add_abi` is installed with the package and resolves the
-ABIX include directories through the imported ABIX targets.
+`AMC::amc`, the language providers, `AMC::amc-dump`, `AMC::amc-mcp` and the
+artifact libraries `AMC::format` / `AMC::abi` / `AMC::metadata` / `AMC::tools`
+are exported targets. `amc_add_abi` is installed with the package and resolves
+the ABIX include directories through the imported ABIX targets.
 
 This is the first migration step: the parent ABIX build still contains the
 monorepo integration for the transition period, while this standalone project

@@ -147,6 +147,16 @@ jobs:
           grep -qx rust installed-languages.txt
           grep -qx zig installed-languages.txt
 
+      - name: Build standalone AMC against installed ABIX
+        run: |
+          LLVM_PREFIX="/usr/lib/llvm-${LLVM_VERSION}"
+          cmake -S AMC -B build/AMC-standalone -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DABIX_DIR="$RUNNER_TEMP/abix-install/lib/cmake/ABIX" \
+            -DCMAKE_PREFIX_PATH="$LLVM_PREFIX;$RUNNER_TEMP/fmt;$RUNNER_TEMP/abix-install"
+          cmake --build build/AMC-standalone --parallel 2
+          ctest --test-dir build/AMC-standalone --output-on-failure --timeout 180
+
       - name: Upload test logs
         if: failure()
         uses: actions/upload-artifact@v4

@@ -9,8 +9,8 @@ project(AMC VERSION 0.1.0 LANGUAGES C CXX)
 #     -DABIX_DIR=<prefix>/lib/cmake/ABIX \
 #     -DCMAKE_PREFIX_PATH=<prefix>;/path/to/llvm
 #
-# The ABIX runtime remains header-only; AMC uses the optional ABIX artifact
-# libraries (format/abi/metadata/tools) and keeps its own exception/RTTI policy.
+# The ABIX runtime remains header-only. AMC owns the artifact libraries
+# (format/abi/metadata/tools) and keeps its own exception/RTTI policy.
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -24,7 +24,7 @@ option(AMC_BUILD_TESTS "Build AMC unit/e2e tests" ON)
 option(AMC_INSTALL "Generate AMC install rules" ON)
 option(AMC_ENABLE_LLDB_PLUGIN "Build the optional LLDB plugin" ON)
 
-find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS format abi metadata tools)
+find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
 find_package(LLVM CONFIG REQUIRED)
 find_package(Clang CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
@@ -44,21 +44,83 @@ if(NOT AMC_CLANG_RESOURCE_DIR)
     message(WARNING "Could not detect the Clang resource directory; amc-cpp may not find built-in headers")
 endif()
 
+# AMC owns the artifact-layer libraries (`format`, `abi`, `metadata`, `tools`).
+# They are compiled in this project; ABIX supplies only the runtime headers and
+# MICS. This keeps the AMC release independent without splitting the AMC core
+# headers/namespaces across two repositories.
+add_library(
+    libabix-format STATIC
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Core.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Error.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/ELF.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Json.cpp
+    ${AMC_SOURCE_DIR}/src/ljson/json.c
+    ${AMC_SOURCE_DIR}/src/ljson/jnum.c
+    ${AMC_SOURCE_DIR}/src/ljson/grisu2.c
+    ${AMC_SOURCE_DIR}/src/ljson/dragonbox.c)
+target_include_directories(
+    libabix-format
+    PUBLIC $<BUILD_INTERFACE:${AMC_INCLUDE_DIR}> $<BUILD_INTERFACE:${AMC_SOURCE_DIR}/include/ljson>
+           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(libabix-format PUBLIC ABIX::runtime fmt::fmt MICS::MICS)
+target_compile_features(libabix-format PUBLIC cxx_std_17)
+set_target_properties(libabix-format PROPERTIES EXPORT_NAME format C_STANDARD 23 C_STANDARD_REQUIRED ON
+                                               POSITION_INDEPENDENT_CODE ON OUTPUT_NAME abix-format)
+target_compile_definitions(
+    libabix-format
+    PRIVATE JSON_PARSE_SKIP_COMMENT=1
+            JSON_PARSE_LAST_COMMA=1
+            JSON_PARSE_SPECIAL_CHAR=1
+            JSON_PARSE_SPECIAL_QUOTES=0
+            JSON_PARSE_HEX_NUM=0
+            JSON_PARSE_SPECIAL_NUM=0
+            JSON_PARSE_SPECIAL_DOUBLE=0
+            JSON_PARSE_SINGLE_VALUE=1
+            JSON_PARSE_FINISHED_CHAR=0
+            JSON_ERROR_PRINT_ENABLE=0)
+
+add_library(libabix-abi STATIC ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Verify.cpp)
+target_link_libraries(libabix-abi PUBLIC libabix-format)
+set_target_properties(libabix-abi PROPERTIES EXPORT_NAME abi POSITION_INDEPENDENT_CODE ON OUTPUT_NAME abix-abi)
+
+add_library(
+    libabix-metadata STATIC
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Metadata.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Materialize.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Context.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Query.cpp)
+target_link_libraries(libabix-metadata PUBLIC libabix-abi)
+set_target_properties(libabix-metadata PROPERTIES EXPORT_NAME metadata POSITION_INDEPENDENT_CODE ON
+                                                    OUTPUT_NAME abix-metadata)
+
+add_library(
+    libabix-tools STATIC
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Adapter.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Lua.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Symbol.cpp
+    ${AMC_SOURCE_DIR}/src/SKL/AMC/Core/Cache.cpp)
+target_link_libraries(libabix-tools PUBLIC libabix-metadata)
+set_target_properties(libabix-tools PROPERTIES EXPORT_NAME tools POSITION_INDEPENDENT_CODE ON OUTPUT_NAME abix-tools)
+
+add_library(AMC::format ALIAS libabix-format)
+add_library(AMC::abi ALIAS libabix-abi)
+add_library(AMC::metadata ALIAS libabix-metadata)
+add_library(AMC::tools ALIAS libabix-tools)
+
 # AMC helpers (hex/name rendering, JSON text helpers and the structured error
-# envelope). The sources are part of AMC, while ABIX supplies the artifact
-# parser and ABI verification targets.
+# envelope).
 add_library(amc-util STATIC ${AMC_SOURCE_DIR}/src/SKL/AMC/Util/Names.cpp
                             ${AMC_SOURCE_DIR}/src/SKL/AMC/Util/Json.cpp
                             ${AMC_SOURCE_DIR}/src/SKL/AMC/Util/Error.cpp)
 target_include_directories(amc-util PUBLIC ${AMC_INCLUDE_DIR})
-target_link_libraries(amc-util PUBLIC ABIX::format fmt::fmt)
+target_link_libraries(amc-util PUBLIC libabix-format fmt::fmt)
 
 add_library(amc-lang STATIC ${AMC_SOURCE_DIR}/src/SKL/AMC/Lang/Lang.cpp)
 target_include_directories(amc-lang PUBLIC ${AMC_INCLUDE_DIR})
 target_link_libraries(amc-lang PUBLIC amc-util fmt::fmt tomlplusplus::tomlplusplus)
 
 add_library(amc-core INTERFACE)
-target_link_libraries(amc-core INTERFACE ABIX::format ABIX::abi ABIX::metadata ABIX::tools amc-util fmt::fmt)
+target_link_libraries(amc-core INTERFACE libabix-format libabix-abi libabix-metadata libabix-tools amc-util fmt::fmt)
 
 add_executable(amc-cpp ${AMC_SOURCE_DIR}/src/SKL/AMC/Lang/C++/C++.cpp
                        ${AMC_SOURCE_DIR}/src/SKL/AMC/Lang/C++/Frontend.cpp
@@ -155,6 +217,12 @@ if(AMC_INSTALL)
         TARGETS amc amc-cpp amc-rust amc-zig amc-dump amc-mcp
         EXPORT AMCTargets
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(
+        TARGETS libabix-format libabix-abi libabix-metadata libabix-tools
+        EXPORT AMCTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     install(FILES ${AMC_SOURCE_DIR}/providers.toml DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME amc-providers.toml)
     install(DIRECTORY ${AMC_SOURCE_DIR}/include/SKL/AMC DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
     install(DIRECTORY ${AMC_SOURCE_DIR}/include/ljson DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
@@ -179,4 +247,17 @@ if(AMC_INSTALL)
         FILES ${CMAKE_CURRENT_BINARY_DIR}/AMCConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/AMCConfigVersion.cmake
               ${AMC_SOURCE_DIR}/CMake/AMC.cmake
         DESTINATION ${AMC_CMAKE_INSTALL_DIR})
+endif()
+
+find_program(AMC_PYTHON_EXECUTABLE NAMES python3 python)
+if(AMC_BUILD_TESTS AND AMC_INSTALL AND AMC_PYTHON_EXECUTABLE)
+    add_test(
+        NAME amc-package-test
+        COMMAND ${AMC_PYTHON_EXECUTABLE} ${AMC_SOURCE_DIR}/tests/cli/amc_package_test.py
+                ${CMAKE_BINARY_DIR} ${AMC_SOURCE_DIR} --abix-dir=${ABIX_DIR} --fmt-dir=${fmt_DIR}
+                --cxx=${CMAKE_CXX_COMPILER})
+    set_tests_properties(amc-package-test PROPERTIES TIMEOUT 180)
+    if(DEFINED ENV{KEEP_ARTIFACTS} AND "$ENV{KEEP_ARTIFACTS}" STREQUAL "1")
+        set_tests_properties(amc-package-test PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
+    endif()
 endif()
