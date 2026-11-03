@@ -6,7 +6,7 @@
 > intentionally being changed (see [Precedence](#0-precedence)).
 
 Byte-level encoding lives in [`docs/abix.md`](../docs/abix/abix.md); the build
-configuration in [`docs/abic.md`](../docs/abix/abic.md).
+configuration in the AMC repository's [`docs/abic/abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md).
 
 ## 0. Precedence
 

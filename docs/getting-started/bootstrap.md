@@ -23,7 +23,7 @@
 
 ABIX is intended to describe its own internal types — `Registry`, `TypeInfo`, RCU/EBR state and the rest — with the same cross-ABI model it provides to users. Describing that machinery recursively raises a chicken-and-egg problem. The bootstrap route resolves it by splitting the work into four phases and placing a small, manually maintained kernel at the base.
 
-This page documents that route: the meta-model, the bootstrap kernel, the runtime dependency and state model, and the self-hosting closure it enables. The artifact format itself is specified in [`abix.md`](../ABIX/abix.md); the runtime API is in [`runtime.md`](../architecture/runtime.md).
+This page documents that route: the meta-model, the bootstrap kernel, the runtime dependency and state model, and the self-hosting closure it enables. The artifact format itself is specified in [`abix.md`](../abix/abix.md); the runtime API is in [`runtime.md`](../architecture/runtime.md).
 
 ## The problem
 
@@ -196,7 +196,7 @@ graph TD
     SymbolTable["Symbol Table"] --> SyT["count, entries (name, kind, type_id / function_id)"]
 ```
 
-The current implementation uses a Section Directory layout with a deduplicated String Table and offset/index references (including length, flags and optional sections), together with ABI Identity, Target, Hash Table and Symbol Table sections. The authoritative description is in [`abix.md`](../ABIX/abix.md).
+The current implementation uses a Section Directory layout with a deduplicated String Table and offset/index references (including length, flags and optional sections), together with ABI Identity, Target, Hash Table and Symbol Table sections. The authoritative description is in [`abix.md`](../abix/abix.md).
 
 ## Bootstrap kernel
 

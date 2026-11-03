@@ -130,5 +130,5 @@ Use (1) or (2) when the goal is "A C++ project that does not install AMC" ; use 
 ## Related
 
 - [`interface.md`](interface.md) — the Interface contract, proxies and `signatures`.
-- [`abic.md`](abic.md) — `[[interface]]` / `[[implements]]` build declarations.
+- [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md) — `[[interface]]` / `[[implements]]` build declarations.
 - [`std.md`](std.md) — ABIX-STD boundary types such as `StringView`.

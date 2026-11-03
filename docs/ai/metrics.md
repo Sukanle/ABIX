@@ -40,7 +40,7 @@
 
 </details>
 
-> This document defines the official ABIX quantitative metrics, their formulas, and how to report them. It is the **definition** document; actual measurements live in [`benchmark.md`](../benchmark/benchmark.md) and [`troi.md`](troi.md).
+> This document defines the official ABIX quantitative metrics, their formulas, and how to report them. It is the **definition** document; actual measurements live in [`benchmark.md`](../benchmark/benchmark.md) and [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md).
 
 ---
 
@@ -140,7 +140,7 @@ Tier 3 metrics must be computed by the adopting organization using their own his
 
 **Definition:** Token Return on Investment — AI-agent work accomplished per token when structured ABI knowledge is available through AMC/MCP, relative to a traditional flow.
 
-See [`troi.md`](troi.md) for the full definition, formula, and measurement method.
+See [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md) for the full definition, formula, and measurement method.
 
 ### Token Reduction Ratio (TRR)
 
@@ -431,7 +431,7 @@ O_type = 56 B/type
 O_binary = 1.17%
 ```
 
-See [`metadata_modes.md`](../ABIX/metadata_modes.md) for Debug/Release/RelWithDebInfo overhead details.
+See [`metadata_modes.md`](../abix/metadata_modes.md) for Debug/Release/RelWithDebInfo overhead details.
 
 ---
 
@@ -591,5 +591,5 @@ All numbers come from reproducible benchmarks on explicitly documented hardware 
 |----------|-------|
 | [`metrics.md`](metrics.md) | **This document.** Definitions, formulas, methodology. |
 | [`benchmark.md`](../benchmark/benchmark.md) | Actual measurements on specific hardware. |
-| [`troi.md`](troi.md) | Deep dive into TROI / token-efficiency for AI workflows. |
-| [`metadata_modes.md`](../ABIX/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |
+| [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md) | Deep dive into TROI / token-efficiency for AI workflows. |
+| [`metadata_modes.md`](../abix/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |

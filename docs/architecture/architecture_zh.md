@@ -34,8 +34,8 @@ graph TD
 ```
 
 * **ABIX IR** — 语言无关的 ABI 模型：类型、字段、函数、参数、符号、hash、兼容性与映射。
-* **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../ABIX/abix_zh.md)。
-* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](../amc/amc_zh.md) 与 [AMC 仓库](https://github.com/Sukanle/AMC)。
+* **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../abix/abix_zh.md)。
+* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) 与 [AMC 仓库](https://github.com/Sukanle/AMC)。
 * **ABIX Runtime** — 消费 ABI：注册、绑定、分派、适配，见 [`runtime_zh.md`](runtime_zh.md)。
 
 ## 运行时交互
@@ -95,7 +95,7 @@ graph TD
     B -->|materialize| C["Runtime Descriptor（pointer-rich，热路径）"]
 ```
 
-Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接近纯静态 ABI。见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
+Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接近纯静态 ABI。见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
 
 ## 执行模型
 

@@ -24,7 +24,7 @@
 
 > 本文记录基准套件的范围、方法，以及可以由当前源码复核的结论。第 5 节给出 **Windows 与 Linux 两个平台的对照**，两个平台是**同一台物理机**（双系统），因此差异只来自操作系统、工具链与构建，不含硬件差异。所有吞吐量都是特定平台上的观测值，不是跨机器承诺，也不应脱离平台、编译器与负载模型单独引用。
 
-Agent 效率基准（TROI）是另一项独立的关注，记录在 [troi_zh.md](../ai/troi_zh.md) 中。
+Agent 效率基准（TROI）是另一项独立的关注，记录在 AMC 仓库的 [troi_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md) 中。
 
 ## 1. 范围与概述
 

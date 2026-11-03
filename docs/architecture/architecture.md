@@ -34,8 +34,8 @@ graph TD
 ```
 
 * **ABIX IR** — the language-independent ABI model: types, fields, functions, parameters, symbols, hashes, compatibility and mapping records.
-* **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../ABIX/abix.md).
-* **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](../amc/amc.md) and the [AMC repository](https://github.com/Sukanle/AMC).
+* **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../abix/abix.md).
+* **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) and the [AMC repository](https://github.com/Sukanle/AMC).
 * **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation. See [`runtime.md`](runtime.md).
 
 ## Runtime Interaction
@@ -104,7 +104,7 @@ graph TD
 * The **Region** is offset-based and relocation-free; it can be shipped as a file, embedded in an ELF section, or mmap'd by an offline parser.
 * The **Runtime Descriptor** is a one-time materialization of the Region at initialization; after that the hot path is close to a static ABI.
 
-See [`metadata_modes.md`](../ABIX/metadata_modes.md).
+See [`metadata_modes.md`](../abix/metadata_modes.md).
 
 ## Execution model
 

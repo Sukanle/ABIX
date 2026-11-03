@@ -436,4 +436,4 @@ Failure to do so will cause search and community-discovery confusion.
 
 ---
 
-_See also: [AI theory](../ai/ai.md), [TROI metric](../ai/troi.md), [MCP tools](../ai/MCP.md)._
+_See also: [AI theory](../ai/ai.md), [TROI metric](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md), [MCP tools](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md)._

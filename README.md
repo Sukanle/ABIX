@@ -243,7 +243,7 @@ graph TD
 The IR focuses on ABI semantics rather than source-level detail. Its serialized form is the `.abix` artifact:
 
 - [`docs/abix/abix.md`](docs/abix/abix.md) — the canonical `.abix` artifact
-- [`docs/abix/abic.md`](docs/abix/abic.md) — the `.abic.toml` build configuration
+- [`docs/abic/abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md) — the `.abic.toml` build configuration (AMC repository)
 - [`docs/abix/metadata_modes.md`](docs/abix/metadata_modes.md) — the three metadata modes
 - [`docs/abix/interface.md`](docs/abix/interface.md) — the ABIX Interface layer (non-intrusive polymorphism)
 - [`docs/abix/std.md`](docs/abix/std.md) — ABIX-STD cross-language ABI primitives
@@ -527,7 +527,7 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 ### Core Concepts
 
 - [ABI Identity & Compat](docs/architecture/compatibility.md)
-- [`.abic` — ABI Configuration](docs/abix/abic.md)
+- [`.abic` — ABI Configuration](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md)
 - [Metadata Modes](docs/abix/metadata_modes.md)
 - [ABIX Interface](docs/abix/interface.md)
 - [ABIX-STD](docs/abix/std.md)
@@ -535,10 +535,10 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 
 ### Languages
 
-- [Cross-language ABI projections](docs/lang/README.md)
-- [C++](docs/lang/cpp.md)
-- [Rust](docs/lang/rust.md)
-- [Zig](docs/lang/zig.md)
+- [Cross-language ABI projections](https://github.com/Sukanle/AMC/blob/main/docs/lang/README.md)
+- [C++](https://github.com/Sukanle/AMC/blob/main/docs/lang/cpp.md)
+- [Rust](https://github.com/Sukanle/AMC/blob/main/docs/lang/rust.md)
+- [Zig](https://github.com/Sukanle/AMC/blob/main/docs/lang/zig.md)
 
 ### Runtime
 
@@ -548,9 +548,10 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 
 ### AMC Toolchain
 
-- [AMC](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md)
+- [AMC documentation](https://github.com/Sukanle/AMC/blob/main/docs/README.md)
+- [AMC toolchain and CLI](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md)
 - [Language Plugins](.agents/LANGUAGE-PLUGIN.md)
-- [MCP: ABI Metadata for AI agents](docs/ai/MCP.md)
+- [MCP: ABI Metadata for AI agents](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md)
 
 ### Project & Development
 

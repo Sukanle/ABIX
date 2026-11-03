@@ -243,7 +243,7 @@ graph TD
 IR 关注 ABI 语义，而非源码级实现细节。其序列化形式即 `.abix`：
 
 - [`docs/abix/abix_zh.md`](docs/abix/abix_zh.md) — 规范化的 `.abix` artifact
-- [`docs/abix/abic_zh.md`](docs/abix/abic_zh.md) — `.abic.toml` 构建配置
+- [`docs/abic/abic_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic_zh.md) — `.abic.toml` 构建配置（AMC 仓库）
 - [`docs/abix/metadata_modes_zh.md`](docs/abix/metadata_modes_zh.md) — 三种 metadata 模式
 - [`docs/abix/interface_zh.md`](docs/abix/interface_zh.md) — ABIX Interface 层 (非侵入式多态)
 - [`docs/abix/std_zh.md`](docs/abix/std_zh.md) — ABIX-STD 跨语言 ABI 原语
@@ -512,7 +512,7 @@ amc context build/demo/build/amc_test.abix --format llm
 ### 核心概念
 
 - [ABI 身份与兼容性](docs/architecture/compatibility_zh.md)
-- [`.abic` — ABI 配置](docs/abix/abic_zh.md)
+- [`.abic` — ABI 配置](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic_zh.md)
 - [Metadata 三种模式](docs/abix/metadata_modes_zh.md)
 - [ABIX Interface](docs/abix/interface_zh.md)
 - [ABIX-STD](docs/abix/std_zh.md)
@@ -520,10 +520,10 @@ amc context build/demo/build/amc_test.abix --format llm
 
 ### 语言
 
-- [跨语言 ABI 投影](docs/lang/README_zh.md)
-- [C++](docs/lang/cpp_zh.md)
-- [Rust](docs/lang/rust_zh.md)
-- [Zig](docs/lang/zig_zh.md)
+- [跨语言 ABI 投影](https://github.com/Sukanle/AMC/blob/main/docs/lang/README_zh.md)
+- [C++](https://github.com/Sukanle/AMC/blob/main/docs/lang/cpp_zh.md)
+- [Rust](https://github.com/Sukanle/AMC/blob/main/docs/lang/rust_zh.md)
+- [Zig](https://github.com/Sukanle/AMC/blob/main/docs/lang/zig_zh.md)
 
 ### 运行时
 
@@ -533,9 +533,10 @@ amc context build/demo/build/amc_test.abix --format llm
 
 ### AMC 工具链
 
-- [AMC](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md)
+- [AMC 文档](https://github.com/Sukanle/AMC/blob/main/docs/README_zh.md)
+- [AMC 工具链与 CLI](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md)
 - [语言插件](.agents/LANGUAGE-PLUGIN.md)
-- [MCP：面向 AI Agent 的 ABI Metadata](docs/ai/MCP_zh.md)
+- [MCP：面向 AI Agent 的 ABI Metadata](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP_zh.md)
 
 ### 项目与开发
 

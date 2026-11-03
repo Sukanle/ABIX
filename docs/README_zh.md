@@ -23,17 +23,17 @@ graph TD
 
 ## 选择你的路径
 
-| 我想要 … | 去这里 |
-|----------|--------|
-| **安装并试用 ABIX** | [快速开始](getting-started/) |
-| **理解 ABI 模型** | [ABIX](abix/) |
-| **使用 AMC 工具链** | [AMC](https://github.com/Sukanle/AMC) |
-| **跨语言工作** | [语言](lang/) |
-| **了解内部架构** | [架构](architecture/) |
-| **集成 AI / Agent 工作流** | [AI](ai/) |
-| **查看基准测试和指标** | [基准测试](benchmark/) |
-| **贡献或了解设计** | [开发](development/) |
-| **在项目中采用 ABIX** | [生态](ecosystem/) |
+| 我想要 …                   | 去这里                                                                  |
+| -------------------------- | ----------------------------------------------------------------------- |
+| **安装并试用 ABIX**        | [快速开始](getting-started/)                                            |
+| **理解 ABI 模型**          | [ABIX](abix/)                                                           |
+| **使用 AMC 工具链**        | [AMC](https://github.com/Sukanle/AMC)                                   |
+| **跨语言工作**             | [语言](https://github.com/Sukanle/AMC/blob/main/docs/lang/README_zh.md) |
+| **了解内部架构**           | [架构](architecture/)                                                   |
+| **集成 AI / Agent 工作流** | [AI](ai/)                                                               |
+| **查看基准测试和指标**     | [基准测试](benchmark/)                                                  |
+| **贡献或了解设计**         | [开发](development/)                                                    |
+| **在项目中采用 ABIX**      | [生态](ecosystem/)                                                      |
 
 ---
 
@@ -41,14 +41,14 @@ graph TD
 
 位于仓库根目录，是事实来源。
 
-| 文档 | 回答 |
-|------|------|
-| [ABI-SPEC.md](../.agents/ABI-SPEC.md) | 合法的 ABIX ABI 是什么 |
-| [ARCHITECTURE.md](../.agents/ARCHITECTURE.md) | 系统如何构建，以及不变量 |
-| [LANGUAGE-PLUGIN.md](../.agents/LANGUAGE-PLUGIN.md) | 如何添加语言 |
-| [AGENTS.md](../.agents/AGENTS.md) | AI Agent 应如何工作 |
-| [ROADMAP.md](../.agents/ROADMAP.md) | 当前范围 |
-| [CONTRIBUTING.md](../CONTRIBUTING.md) | 贡献工作流 |
+| 文档                                                | 回答                     |
+| --------------------------------------------------- | ------------------------ |
+| [ABI-SPEC.md](../.agents/ABI-SPEC.md)               | 合法的 ABIX ABI 是什么   |
+| [ARCHITECTURE.md](../.agents/ARCHITECTURE.md)       | 系统如何构建，以及不变量 |
+| [LANGUAGE-PLUGIN.md](../.agents/LANGUAGE-PLUGIN.md) | 如何添加语言             |
+| [AGENTS.md](../.agents/AGENTS.md)                   | AI Agent 应如何工作      |
+| [ROADMAP.md](../.agents/ROADMAP.md)                 | 当前范围                 |
+| [CONTRIBUTING.md](../CONTRIBUTING.md)               | 贡献工作流               |
 
 ---
 
@@ -56,94 +56,91 @@ graph TD
 
 如果你是 ABIX 新手，从这里开始。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [getting-started_zh.md](getting-started/getting-started_zh.md) | [getting-started.md](getting-started/getting-started.md) | 构建 + 首次演练 |
-| [bootstrap_zh.md](getting-started/bootstrap_zh.md) | [bootstrap.md](getting-started/bootstrap.md) | 引导模型和里程碑 |
-| [self-hosting_zh.md](getting-started/self-hosting_zh.md) | [self-hosting.md](getting-started/self-hosting.md) | 引导 ABI 和自描述循环 |
+| 文档                                                           | English                                                  | 描述                  |
+| -------------------------------------------------------------- | -------------------------------------------------------- | --------------------- |
+| [getting-started_zh.md](getting-started/getting-started_zh.md) | [getting-started.md](getting-started/getting-started.md) | 构建 + 首次演练       |
+| [bootstrap_zh.md](getting-started/bootstrap_zh.md)             | [bootstrap.md](getting-started/bootstrap.md)             | 引导模型和里程碑      |
+| [self-hosting_zh.md](getting-started/self-hosting_zh.md)       | [self-hosting.md](getting-started/self-hosting.md)       | 引导 ABI 和自描述循环 |
 
 ## ABIX
 
 核心 ABI 模型、格式和 API 文档。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [abix_zh.md](abix/abix_zh.md) | [abix.md](abix/abix.md) | 规范的 `.abix` 产物格式 |
-| [abic_zh.md](abix/abic_zh.md) | [abic.md](abix/abic.md) | `.abic.toml` 配置参考 |
-| [api_zh.md](abix/api_zh.md) | [api.md](abix/api.md) | 完整的 C++ API 参考 |
-| [interface_zh.md](abix/interface_zh.md) | [interface.md](abix/interface.md) | Interface 层：契约、代理、发现与 Owner ABI |
-| [std_zh.md](abix/std_zh.md) | [std.md](abix/std.md) | ABIX-STD 跨语言 ABI 原语 |
+| 文档                                              | English                                     | 描述                                             |
+| ------------------------------------------------- | ------------------------------------------- | ------------------------------------------------ |
+| [abix_zh.md](abix/abix_zh.md)                     | [abix.md](abix/abix.md)                     | 规范的 `.abix` 产物格式                          |
+| [api_zh.md](abix/api_zh.md)                       | [api.md](abix/api.md)                       | 完整的 C++ API 参考                              |
+| [interface_zh.md](abix/interface_zh.md)           | [interface.md](abix/interface.md)           | Interface 层：契约、代理、发现与 Owner ABI       |
+| [std_zh.md](abix/std_zh.md)                       | [std.md](abix/std.md)                       | ABIX-STD 跨语言 ABI 原语                         |
 | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
 
 ## 语言
 
-跨语言投影与各语言指南。
+跨语言投影由 AMC 的 language provider 实现，因此各语言指南位于 AMC 仓库：
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [README_zh.md](lang/README_zh.md) | [README.md](lang/README.md) | ABIX 与 bind 式 FFI 的区别；投影模型 |
-| [cpp_zh.md](lang/cpp_zh.md) | [cpp.md](lang/cpp.md) | C++ 前端/后端、生成的布局检查、接口层 |
-| [rust_zh.md](lang/rust_zh.md) | [rust.md](lang/rust.md) | Rust provider、`repr(C)` 投影、所有权/`Result` 包装 |
-| [zig_zh.md](lang/zig_zh.md) | [zig.md](lang/zig.md) | Zig backend-only 投影、`extern` / `comptime` 检查 |
+- [投影模型](https://github.com/Sukanle/AMC/blob/main/docs/lang/README_zh.md) · [English](https://github.com/Sukanle/AMC/blob/main/docs/lang/README.md)
+- [C++](https://github.com/Sukanle/AMC/blob/main/docs/lang/cpp_zh.md) · [Rust](https://github.com/Sukanle/AMC/blob/main/docs/lang/rust_zh.md) · [Zig](https://github.com/Sukanle/AMC/blob/main/docs/lang/zig_zh.md)
 
 ## AMC
 
 AMC 工具链是独立仓库，其文档也位于该仓库。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [amc_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) | [amc.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) | AMC 工具链和 CLI |
+| 文档                                                                        | English                                                               | 描述                                        |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------- |
+| [AMC 文档索引](https://github.com/Sukanle/AMC/blob/main/docs/README_zh.md)  | [English](https://github.com/Sukanle/AMC/blob/main/docs/README.md)    | CLI、`.abic.toml`、语言 provider、MCP、TROI |
+| [amc_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md)    | [amc.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md)    | AMC 工具链和 CLI                            |
+| [abic_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic_zh.md) | [abic.md](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md) | `.abic.toml` 配置参考                       |
 
 ## 架构
 
 ABIX 和 AMC 内部工作原理。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [architecture_zh.md](architecture/architecture_zh.md) | [architecture.md](architecture/architecture.md) | 系统概览、设计地图、不变量 |
-| [runtime_zh.md](architecture/runtime_zh.md) | [runtime.md](architecture/runtime.md) | 运行时职责、注册表、执行模型 |
-| [compatibility_zh.md](architecture/compatibility_zh.md) | [compatibility.md](architecture/compatibility.md) | TypeID / LayoutHash / BuildID / MetadataID |
+| 文档                                                      | English                                             | 描述                                         |
+| --------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
+| [architecture_zh.md](architecture/architecture_zh.md)     | [architecture.md](architecture/architecture.md)     | 系统概览、设计地图、不变量                   |
+| [runtime_zh.md](architecture/runtime_zh.md)               | [runtime.md](architecture/runtime.md)               | 运行时职责、注册表、执行模型                 |
+| [compatibility_zh.md](architecture/compatibility_zh.md)   | [compatibility.md](architecture/compatibility.md)   | TypeID / LayoutHash / BuildID / MetadataID   |
 | [elf-inspection_zh.md](architecture/elf-inspection_zh.md) | [elf-inspection.md](architecture/elf-inspection.md) | 在 ELF / Mach-O 二进制中检查 ABIX 元数据节区 |
-| [pe-inspection_zh.md](architecture/pe-inspection_zh.md) | [pe-inspection.md](architecture/pe-inspection.md) | Windows PE 镜像的 ABIX 私有头设计 |
-| [binary-image_zh.md](architecture/binary-image_zh.md) | [binary-image.md](architecture/binary-image.md) | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
+| [pe-inspection_zh.md](architecture/pe-inspection_zh.md)   | [pe-inspection.md](architecture/pe-inspection.md)   | Windows PE 镜像的 ABIX 私有头设计            |
+| [binary-image_zh.md](architecture/binary-image_zh.md)     | [binary-image.md](architecture/binary-image.md)     | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
 
 ## AI
 
 AI 和 Agent 集成。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [ai_zh.md](ai/ai_zh.md) | [ai.md](ai/ai.md) | ABIX 在 AI Vibe Coding 中的作用 — 理论基础 |
-| [MCP_zh.md](ai/MCP_zh.md) | [MCP.md](ai/MCP.md) | MCP 服务器和 ABIX 工具目录 |
-| [troi_zh.md](ai/troi_zh.md) | [troi.md](ai/troi.md) | AMC/MCP Agent 工作流的 TROI token 效率度量 |
-| [metrics_zh.md](ai/metrics_zh.md) | [metrics.md](ai/metrics.md) | 定量评估框架和指标定义 |
+| 文档                              | English                     | 描述                                       |
+| --------------------------------- | --------------------------- | ------------------------------------------ |
+| [ai_zh.md](ai/ai_zh.md)           | [ai.md](ai/ai.md)           | ABIX 在 AI Vibe Coding 中的作用 — 理论基础 |
+| [metrics_zh.md](ai/metrics_zh.md) | [metrics.md](ai/metrics.md) | 定量评估框架和指标定义                     |
+
+MCP 服务器与 TROI 度量属于 AMC：见 [MCP 指南](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP_zh.md) 与 [TROI](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)。
 
 ## 基准测试
 
 定量评估。
 
-| 文档 | English | 描述 |
-|------|---------|------|
+| 文档                                         | English                                | 描述     |
+| -------------------------------------------- | -------------------------------------- | -------- |
 | [benchmark_zh.md](benchmark/benchmark_zh.md) | [benchmark.md](benchmark/benchmark.md) | 性能测量 |
 
 ## 开发
 
 项目设计、对比和路线图。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [design-notes_zh.md](development/design-notes_zh.md) | [design-notes.md](development/design-notes.md) | 设计原则和项目历史 |
-| [logging_zh.md](development/logging_zh.md) | [logging.md](development/logging.md) | 诊断回调契约、错误/日志边界与跨 DLL 所有权 |
-| [type-model_zh.md](development/type-model_zh.md) | [type-model.md](development/type-model.md) | ABI 事实与源语言类型的边界，以及逐 target 生成模型 |
-| [competitors_zh.md](development/competitors_zh.md) | [competitors.md](development/competitors.md) | 竞品分析 |
-| [roadmap_zh.md](development/roadmap_zh.md) | [roadmap.md](development/roadmap.md) | 范围与排期 |
-| [testing_zh.md](development/testing_zh.md) | [testing.md](development/testing.md) | 完整测试流程、各层目的与预期结果 |
+| 文档                                                 | English                                        | 描述                                               |
+| ---------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------- |
+| [design-notes_zh.md](development/design-notes_zh.md) | [design-notes.md](development/design-notes.md) | 设计原则和项目历史                                 |
+| [logging_zh.md](development/logging_zh.md)           | [logging.md](development/logging.md)           | 诊断回调契约、错误/日志边界与跨 DLL 所有权         |
+| [type-model_zh.md](development/type-model_zh.md)     | [type-model.md](development/type-model.md)     | ABI 事实与源语言类型的边界，以及逐 target 生成模型 |
+| [competitors_zh.md](development/competitors_zh.md)   | [competitors.md](development/competitors.md)   | 竞品分析                                           |
+| [roadmap_zh.md](development/roadmap_zh.md)           | [roadmap.md](development/roadmap.md)           | 范围与排期                                         |
+| [testing_zh.md](development/testing_zh.md)           | [testing.md](development/testing.md)           | 完整测试流程、各层目的与预期结果                   |
 
 ## 生态
 
 采用、应用和可持续性。
 
-| 文档 | English | 描述 |
-|------|---------|------|
-| [ecosystem_zh.md](ecosystem/ecosystem_zh.md) | [ecosystem.md](ecosystem/ecosystem.md) | 生态、采用与应用方向 |
+| 文档                                                   | English                                          | 描述                   |
+| ------------------------------------------------------ | ------------------------------------------------ | ---------------------- |
+| [ecosystem_zh.md](ecosystem/ecosystem_zh.md)           | [ecosystem.md](ecosystem/ecosystem.md)           | 生态、采用与应用方向   |
 | [sustainability_zh.md](ecosystem/sustainability_zh.md) | [sustainability.md](ecosystem/sustainability.md) | 项目可持续性与社区资助 |

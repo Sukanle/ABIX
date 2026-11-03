@@ -145,7 +145,7 @@ ABIX:
 
 ABIX must not know what `foo.cpp:37` is.
 
-Constraint: names are stripped, and the metadata modes (Debug / RelWithDebInfo / Release) exist to keep `.abix` from inflating into DWARF. Any proposal to add source locations, template instantiation paths or macro expansion history to `.abix` is rejected. See [`metadata_modes.md`](../ABIX/metadata_modes.md).
+Constraint: names are stripped, and the metadata modes (Debug / RelWithDebInfo / Release) exist to keep `.abix` from inflating into DWARF. Any proposal to add source locations, template instantiation paths or macro expansion history to `.abix` is rejected. See [`metadata_modes.md`](../abix/metadata_modes.md).
 
 ### Principle 5: Single Source of ABI Truth
 
@@ -301,7 +301,7 @@ ABI truth should exist independently of any language and compiler, as a persista
 * **`.abix` v2 binary.** Little-endian, magic `ABIX`, header, section directory, and string/identity/type/field/function/parameter/symbol/hash sections. Strings are deduplicated as `(offset, length)`; symbols use a `(kind, index)` typed index. The artifact is directly `mmap`-able, and `validate` covers truncation, bad magic and out-of-range references.
 * **`.abic` declarative configuration.** Build configuration is elevated to an ABI boundary declaration. `[[import]]` states where the ABI is taken from, and `[[export]]` states where `.abix` is written and which symbol subset is projected. Code generation is assigned to a separate `amc generate` step so that `.abix` stays language-independent.
 
-`.abix` is the single source of ABI truth. The runtime can consume it through `mmap`, and the same artifact can be projected into compile-time constants in several languages, uniting dynamic ABI with static performance. See [`abix.md`](../ABIX/abix.md) and [`abic.md`](../ABIX/abic.md).
+`.abix` is the single source of ABI truth. The runtime can consume it through `mmap`, and the same artifact can be projected into compile-time constants in several languages, uniting dynamic ABI with static performance. See [`abix.md`](../abix/abix.md) and [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md).
 
 ### Stage 5: AMC Metadata Compiler
 
@@ -314,7 +314,7 @@ ABI truth should exist independently of any language and compiler, as a persista
 * **CLI driver.** `build`, `frontend`, `backend`, `inspect` and `validate` subcommands. The CMake integration (`amc_add_abi`) attaches `.abic → .abix → optional header` to an existing target's incremental build graph.
 * **Bootstrap.** The ABI metamodel is frozen first (Phase 0); a minimal, static bootstrap kernel that uses neither ABIX, dynamic memory nor RCU acts as the equivalent trusted computing base, with strict DAG dependencies to avoid recursion.
 
-The loop `C++ header → Clang AST → AbiModule → .abix → projection code` is closed; round-trip tests and CTest keep the format stable, and `amc-dump` provides text and JSON summaries. See [`amc.md`](../amc/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
+The loop `C++ header → Clang AST → AbiModule → .abix → projection code` is closed; round-trip tests and CTest keep the format stable, and `amc-dump` provides text and JSON summaries. See [`amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
 
 ### Stage 6: Micro-RCU Performance Engineering
 

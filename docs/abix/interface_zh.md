@@ -1909,7 +1909,7 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 - 需要与编译器 AST 完全一致的复杂 ABI 签名；
 - 需要自动发现/生成 manifest 的 provider。
 
-这些情况直接使用 `amc generate -l cpp`，或按 [`Proxy.h`](../../ABIX/Interface/Proxy.h) 的约定手写 `Traits` 和代理类。AMC 具有 Clang AST，能拿到真实的 C++ 参数类型，生成的签名和 adapter typedef 不受宏的文本限制。
+这些情况直接使用 `amc generate -l cpp`，或按 [`Proxy.h`](https://github.com/Sukanle/ABIX/blob/main/include/SKL/ABIX/Interface/Proxy.h) 的约定手写 `Traits` 和代理类。AMC 具有 Clang AST，能拿到真实的 C++ 参数类型，生成的签名和 adapter typedef 不受宏的文本限制。
 
 ## 它不是什么
 
@@ -1921,6 +1921,6 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 
 - [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) —— 契约、扩展目录与 Interface 契约（身份/槽位稳定/签名校验）。
 - [`std.md`](std_zh.md) —— ABIX-STD 原语与 borrow/owned/copy 契约。
-- [`abic.md`](abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
+- [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
 - [`without_amc.md`](without_amc_zh.md) —— 只依赖 header-only ABIX、不使用 AMC 工具链。
 - [ngcpp/proxy](https://github.com/ngcpp/proxy) —— C++20 facade/指针式运行时多态库（见上文对比）。

@@ -23,7 +23,7 @@
 
 ABIX 希望用自身提供的跨 ABI 模型描述自己的内部类型——`Registry`、`TypeInfo`、 RCU/EBR 状态等。递归地描述这套机制会陷入鸡生蛋问题。自举路线通过把工作拆成四个阶段，并在最底层放置一个极小的、手工维护的内核来解决它。
 
-本文档记录这条路线：元模型、Bootstrap 内核、运行时依赖与状态模型，以及由此实现的自举闭环。artifact 格式本身见 [`abix_zh.md`](../ABIX/abix_zh.md)；运行时 API 见 [`runtime_zh.md`](../architecture/runtime_zh.md)。
+本文档记录这条路线：元模型、Bootstrap 内核、运行时依赖与状态模型，以及由此实现的自举闭环。artifact 格式本身见 [`abix_zh.md`](../abix/abix_zh.md)；运行时 API 见 [`runtime_zh.md`](../architecture/runtime_zh.md)。
 
 ## 核心问题
 
@@ -196,7 +196,7 @@ graph TD
     SymbolTable["Symbol Table"] --> SyT["count, entries (name, kind, type_id / function_id)"]
 ```
 
-当前实现采用 Section Directory 布局，配合去重的 String Table 与 offset/index 引用（包含 length、flags 与 optional section），并增加 ABI Identity、Target、Hash Table 和 Symbol Table section。权威描述见 [`abix_zh.md`](../ABIX/abix_zh.md)。
+当前实现采用 Section Directory 布局，配合去重的 String Table 与 offset/index 引用（包含 length、flags 与 optional section），并增加 ABI Identity、Target、Hash Table 和 Symbol Table section。权威描述见 [`abix_zh.md`](../abix/abix_zh.md)。
 
 ## Bootstrap 内核
 

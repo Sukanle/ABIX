@@ -28,15 +28,15 @@ This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI,
 
 > **Platform support:** Linux, macOS and Windows are supported; Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang). See [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md#windows-msys2-ucrt64).
 
-* C++17 or later
-* CMake 3.20+
-* LLVM / Clang tooling only if you also build AMC (its C++ frontend links `clang-cpp`)
-* a native toolchain (gcc/clang, GNU or Ninja)
+- C++17 or later
+- CMake 3.20+
+- LLVM / Clang tooling only if you also build AMC (its C++ frontend links `clang-cpp`)
+- a native toolchain (gcc/clang, GNU or Ninja)
 
 Optional but used by parts of the toolchain and tests:
 
-* Lua 5.4 — builds the experimental Aue boundary layer in the AMC repository
-* `readelf`, `strip`, `lldb`, `clang++` — used by integration tests
+- Lua 5.4 — builds the experimental Aue boundary layer in the AMC repository
+- `readelf`, `strip`, `lldb`, `clang++` — used by integration tests
 
 ## 2. Build
 
@@ -50,14 +50,14 @@ cmake --build build/Release --parallel
 ABIX builds the header-only runtime and its tests. AMC is a separate repository;
 its artifacts land in the AMC build's `bin/` directory:
 
-| Tool | Purpose |
-|------|---------|
-| `amc` | ABI toolchain driver (build / inspect / query / verify / generate / metadata / publish / fetch) |
-| `amc-cpp` | C++ frontend/backend provider (JSON-lines IPC) |
-| `amc-rust` | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency |
-| `amc-dump` | raw `.abix` dump (text / JSON) |
-| `amc-mcp` | MCP server exposing ABIX tools to AI agents |
-| `abix-conformance` | Aue L0/L1 differential runner in the standalone AMC build (when Lua is present) |
+| Tool               | Purpose                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `amc`              | ABI toolchain driver (build / inspect / query / verify / generate / metadata / publish / fetch) |
+| `amc-cpp`          | C++ frontend/backend provider (JSON-lines IPC)                                                  |
+| `amc-rust`         | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency                       |
+| `amc-dump`         | raw `.abix` dump (text / JSON)                                                                  |
+| `amc-mcp`          | MCP server exposing ABIX tools to AI agents                                                     |
+| `abix-conformance` | Aue L0/L1 differential runner in the standalone AMC build (when Lua is present)                 |
 
 Run the test suite:
 
@@ -103,7 +103,7 @@ amc build -c math_api.abic.toml -B build
 # -> build/build/math_api.abix.meta
 ```
 
-See [`abic.md`](../ABIX/abic.md) for the full configuration reference.
+See [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md) for the full configuration reference.
 
 ## 4. Inspect and query
 
@@ -181,13 +181,13 @@ python3 path/to/AMC/tests/cli/mcp_compat_test.py --host host.abix --plugin plugi
         --amc-mcp amc-mcp
 ```
 
-See [`MCP.md`](../ai/MCP.md) for the tool catalogue.
+See the AMC repository's [`MCP.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md) for the tool catalogue.
 
 ## Next steps
 
-* [`abix.md`](../ABIX/abix.md) — the `.abix` artifact format
-* [`compatibility.md`](../architecture/compatibility.md) — ABI identity and compatibility
-* [`amc.md`](../amc/amc.md) — the AMC toolchain
-* [`architecture.md`](../architecture/architecture.md) — how the pieces fit together
-* [`design-notes.md`](../development/design-notes.md) — design principles and history
-* [`bootstrap.md`](bootstrap.md) — bootstrap model and milestones
+- [`abix.md`](../abix/abix.md) — the `.abix` artifact format
+- [`compatibility.md`](../architecture/compatibility.md) — ABI identity and compatibility
+- [`amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) — the AMC toolchain
+- [`architecture.md`](../architecture/architecture.md) — how the pieces fit together
+- [`design-notes.md`](../development/design-notes.md) — design principles and history
+- [`bootstrap.md`](bootstrap.md) — bootstrap model and milestones
