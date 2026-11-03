@@ -6,6 +6,10 @@ language-specific compiler. This document is the contract for adding a language.
 Read [`ABI-SPEC.md`](ABI-SPEC.md) first. A plugin produces ABIX IR; it does not
 own ABI semantics.
 
+> **Repository:** plugins are implemented in the separate AMC repository
+> (<https://github.com/Sukanle/AMC>). Paths such as `src/Lang/Rust/` and
+> `tests/` below are relative to that checkout.
+
 ## 1. Goal
 
 Given a language's source, produce ABIX IR describing the ABI of the selected
