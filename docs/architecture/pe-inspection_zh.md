@@ -204,7 +204,7 @@ amc metadata app.abix -o region.abixmeta
 
 ## 测试
 
-测试套件 `tools/run_test.py --elf-pe` 在 ELF 与 Mach-O 之外同样覆盖 PE 路径，其 Windows 分支运行：
+AMC 的测试套件 `tests/cli/elf_pe_metadata_test.py`（CTest 名称 `amc-elf-pe-metadata-test`）在 ELF 与 Mach-O 之外同样覆盖 PE 路径，其 Windows 分支运行：
 
 1. `amc build` → `.abix` + `.abix.meta`
 2. `amc generate -l cpp` → 带 PE 节区属性的头文件

@@ -296,7 +296,7 @@ python tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 
 ## 工具脚本（`tools/`）
 
-这些脚本**不在 `ctest` 中注册**，需要手动运行。按用途分三类；其中只有第 2 类产生测试结论。
+这些脚本**不在 `ctest` 中注册**，需要手动运行。`run_test.py` 产生 ABIX Catch2 测试结论；AMC 工具链的测试套件位于 AMC 仓库。
 
 ### 构建与代码生成辅助
 
@@ -314,24 +314,27 @@ python tools/run.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Stu
 python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变体
 ```
 
-`run.py` 用 `--build-only` / `--test-only` / `--bench-only` / `--build-test` / `--build-bench` 选择阶段，其余参数转发给各阶段脚本（`run_build.py`、`run_test.py`、`run_bench.py`）。构建参数：`--clean`、`--build-type`、`--generator`、`--with-dev`、`--skip-variants`、`--skip-hotcache`；`--cmake-env KEY=VALUE` 与 `--cmake-var KEY=VALUE` 可重复，分别向 CMake 配置/构建注入环境变量、以及透传 `-DKEY=VALUE` 缓存变量。测试参数：`--catch2` / `--elf-pe` / `--bootstrap` / `--interop`（覆盖面见[测试分层](#测试分层)）。基准阶段已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**。
+`run.py` 用 `--build-only` / `--test-only` / `--bench-only` / `--build-test` / `--build-bench` 选择阶段，其余参数转发给各阶段脚本（`run_build.py`、`run_test.py`、`run_bench.py`）。构建参数：`--clean`、`--build-type`、`--generator`、`--with-dev`、`--skip-variants`、`--skip-hotcache`；`--cmake-env KEY=VALUE` 与 `--cmake-var KEY=VALUE` 可重复，分别向 CMake 配置/构建注入环境变量、以及透传 `-DKEY=VALUE` 缓存变量。测试阶段运行 ABIX Catch2 套件；AMC 的测试分层从 AMC 仓库运行。基准阶段已委托给 `run_bench.py`（每家族一个进程），用 `--bench-repetitions`、`--bench-out`、`--bench-min-time` 调节；`--bench-raw` 恢复旧的单进程 `bench_all` 跑法。注意它跑的是聚合可执行文件，**不等于 `ctest`**。
 
 ### 测试与验证
 
 | 脚本                    | 功能                                                                                                                                                                                                                                | 目的                                                                                                                            | 预期现象                                                                                                                                                     |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run_test.py --bootstrap` | 验证 AMC 自身核心 IR 的元数据自举：`amc_add_abi`（`AMC.cmake`）把 `amc/self.abic.toml` 接进 `tests/consumers` 的 CMake 构建图，一次 `cmake --build` 走完 `amc build` → `validate` → `generate` → 编译运行用生成的 C++ 投影经 `RuntimeRegistry::type_of<T>()` 取类型的消费者 | 证明「已编译的 AMC 阶段能描述自己的核心模型并消费其投影」，而不是靠人工描述（非编译源自举：`amc-cpp` 仍用 Clang 提取 C++ 语义）；`.abic.toml` 或其依赖改动会自动重跑整条流水线 | `[PASS] AMC core metadata bootstrap succeeded` 与 `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`；需要 `cmake` + `clang++`（`ninja` 存在时优选） |
-| `run_test.py --elf-pe`    | 9 阶段验证元数据段：`amc build` → `amc generate`（带平台段属性的 `amc_generated.hpp`）→ `clang++` 链出含 `.abix.metadata` 的原生二进制 → `readelf -S` → `objdump -s` → `amc metadata --from-elf` → `--verify` → 导出往返 → 错误用例 | 证明「段真的进了二进制并且能被读回」，而不只是在内存里往返                                                                      | 每个 `[Phase N]` 输出 `[PASS]`（含 `✓`）并在末尾给出汇总；Linux 需要 `readelf` / `objdump`，macOS 需要 `otool`，Windows 需要 `llvm-readobj` / `llvm-objcopy` |
-| `abix_mcp_compat.py`    | 以 stdio JSON-RPC 驱动 `amc-mcp`，回答「`plugin` 与 `host` 是否 ABI 兼容」，输出 JSON 报告                                                                                                                                          | 让 MCP 工具协议可在 CI 中验证——把 LLM 从链路中去掉，但传输与工具协议保持真实                                                    | stdout 为 JSON 报告；兼容时 stderr 打印 `COMPATIBLE`，否则 `INCOMPATIBLE: N difference(s)` 并返回非零                                                        |
-| `abix_token_cost.py`    | 比较「读源码」与「读 `amc context <file.abix> --format llm`」了解同一模块 ABI 的 token 数                                                                                                                                           | 给「元数据视图更省上下文」一个可复现的量级参考                                                                                  | stdout 为 `{"source_tokens", "metadata_tokens", "source_over_metadata"}`；用词法分词器估算，不是模型分词器，应视为**指标而非基准**                           |
+| `run_test.py`           | 运行 `build/<type>/bin/test_all`，即 ABIX Catch2 套件。AMC 的 metadata、bootstrap、MCP 与 interop 套件位于 AMC 仓库，并注册在它的 CTest 中 | ABIX 侧测试结论；需要逐用例报告时用 `ctest`                                                                                                                                 | `test_all` 全绿；二进制缺失时提示 `Build first: python tools/run_build.py`                                                                                   |
 | `run_bench.py` | 让每个基准**家族各占一个进程**运行并汇总（mean/stddev）。`--list` 列出将要运行的内容：它通过 `--benchmark_list_tests` 自动发现 `bench_all` 里的全部家族，且所有 Google Benchmark 套件都已并入 `bench_all`，默认不再单独运行可执行文件；可传显式过滤串缩小范围；跑前读取 `cpu0` 的 cpufreq governor，不是 `performance` 时打印切换命令；`--pin`（默认 `auto`）把每个子进程限制在最高频的核上，`--pin off` 关闭、`--pin 0-7` 指定列表                                                                                                                                                                                    | EBR/RCU 家族共享进程级 `rcu::Domain`，同一家族在别人跑完后测会慢数倍（`BM_EBR_SyncPhase/1T` 从约 6 ns 到约 1 us）；隔离后跨家族/跨机器才可比 | 逐个家族打印 `N benchmarks -> <json>`，末尾输出 `| family | benchmark | threads | mean ns | sd |` 表；产物为每家族一个 JSON |
 
 ```bash
-python tools/run_test.py --bootstrap                       # 可用 AMC_BIN_DIR=... 复用外部构建
-KEEP_ARTIFACTS=1 python tools/run_test.py --bootstrap       # 保留 amc-bootstrap.*
-python tools/run_test.py --elf-pe --keep                    # 保留 amc_elf_test_*
-python tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix
-python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
+python tools/run_test.py                                   # ABIX Catch2 套件
+python tools/run_test.py --build-dir build/Debug           # 非默认构建目录
+```
+
+AMC 侧的测试分层与分析脚本由 AMC 仓库维护：
+
+```bash
+ctest --test-dir <amc-build> -R amc-elf-pe-metadata-test --output-on-failure
+ctest --test-dir <amc-build> -R amc-bootstrap-test --output-on-failure
+python3 path/to/AMC/tests/cli/mcp_compat_test.py --host host.abix --plugin plugin.abix
+python3 path/to/AMC/scripts/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 ```
 
 ### 调试器集成

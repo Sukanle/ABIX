@@ -27,7 +27,7 @@ Established and maintained:
 - versioned TypeID registration — same TypeID across module ABI versions;
 - multi-module MCP knowledge base and field-width assertion;
 - LLDB C++ plugin (`libabix_lldb.so`) and Python helper;
-- ELF metadata section test suite (`tools/run_test.py --elf-pe`).
+- ELF metadata section test suite (`amc-elf-pe-metadata-test` in the AMC repository).
 
 ## Current — ABIX 0.2.0 (Cross-language, released)
 

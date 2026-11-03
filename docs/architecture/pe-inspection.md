@@ -205,7 +205,7 @@ amc metadata app.abix -o region.abixmeta
 
 ## Testing
 
-The harness `tools/run_test.py --elf-pe` covers the PE path alongside ELF and Mach-O. Its Windows branch runs:
+The AMC harness `tests/cli/elf_pe_metadata_test.py` (CTest: `amc-elf-pe-metadata-test`) covers the PE path alongside ELF and Mach-O. Its Windows branch runs:
 
 1. `amc build` → `.abix` + `.abix.meta`
 2. `amc generate -l cpp` → header with the PE section attributes

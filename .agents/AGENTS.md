@@ -401,7 +401,7 @@ regenerate. When generated output changes, verify it is reproducible
 
 Do not optimize from intuition when changing binding, registry lookup,
 synchronization, metadata lookup, call paths or type mapping. Prefer benchmarks
-(see `bench/`, the AMC repository's `Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
+(see `bench/`, the AMC repository's `Aue/abix-bench` and `scripts/abix_token_cost.py`). A performance
 optimization must not silently change ABI semantics.
 
 ---

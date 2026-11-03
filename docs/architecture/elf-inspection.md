@@ -122,11 +122,11 @@ After stripping, `amc metadata --from-elf` still works because it reads the meta
 
 ## Automated Testing
 
-The project includes a test suite that exercises the full pipeline on the host platform (readelf/objdump on ELF, otool on Mach-O):
+The AMC repository includes a test suite that exercises the full pipeline on the host platform (readelf/objdump on ELF, otool on Mach-O):
 
 ```bash
-python3 tools/run_test.py --elf-pe           # run and auto-cleanup
-python3 tools/run_test.py --elf-pe --keep    # keep temp files for inspection
+ctest --test-dir <amc-build> -R amc-elf-pe-metadata-test --output-on-failure
+KEEP_ARTIFACTS=1 ctest --test-dir <amc-build> -R amc-elf-pe-metadata-test --output-on-failure
 ```
 
 The suite runs 9 phases:

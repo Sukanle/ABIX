@@ -166,19 +166,19 @@ token 降低 80% 并不意味着开发成本降低 80%。token 只是成本的�
 
 ## 现状
 
-- 目前，[`tools/abix_token_cost.py`](../../tools/abix_token_cost.py) 可以对单个模块给出 TCR 式估算(见下文)。
+- 目前，AMC 仓库的 [`scripts/abix_token_cost.py`](https://github.com/Sukanle/AMC/blob/main/scripts/abix_token_cost.py) 可以对单个模块给出 TCR 式估算(见下文)。
 - 完整的 `Agent Efficiency Benchmark` (综合成本 `C`、多任务套件、成功率追踪) 属于**规划内容，尚未实现**。
 - 今天不存在 `amc agent benchmark` 命令；下文展示的 CLI 是提案。
 
 ## 当前测量手段: `abix_token_cost.py`
 
-`tools/abix_token_cost.py` 比较同一模块的两种视图:
+AMC 仓库的 `scripts/abix_token_cost.py` 比较同一模块的两种视图:
 
 - 源码视图:`Agent` 为推断 `ABI` 所要阅读的 `C/C++` 头文件；
 - metadata 视图:`amc context <file.abix> --format llm`。
 
 ```sh
-tools/abix_token_cost.py --abix module.abix --source a.hpp [b.hpp ...]
+python3 path/to/AMC/scripts/abix_token_cost.py --abix module.abix --source a.hpp [b.hpp ...]
 ```
 
 它报告 `source_tokens`、`metadata_tokens` 以及两者的比值 `source_over_metadata`(说明性输出):

@@ -177,7 +177,7 @@ amc fetch libfoo.so -o libfoo.abixmeta
 amc-mcp build/build/math_api.abix
 
 # or drive it from a script
-python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
+python3 path/to/AMC/tests/cli/mcp_compat_test.py --host host.abix --plugin plugin.abix \
         --amc-mcp amc-mcp
 ```
 

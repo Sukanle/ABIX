@@ -18,7 +18,7 @@ Usage:
 
 All build/test/bench options are forwarded to the respective scripts:
   - run_build.py:  --clean, --build-type, --generator, --with-dev, --cmake-var, ...
-  - run_test.py:   --catch2, --elf-pe, --bootstrap, --keep, ...
+  - run_test.py:   --build-dir (the ABIX Catch2 suite)
   - run_bench.py:  --bench-raw, --bench-pin, --bench-repetitions, ...
 """
 
@@ -51,7 +51,7 @@ def main() -> int:
         epilog="""\
 Pipeline stages:
   build     Configure, build, generate hotcache_dll, build DLL variants
-  test      Catch2 tests + ELF/PE metadata verification + AMC bootstrap
+  test      ABIX Catch2 tests (AMC suites live in the AMC repository)
   bench     Google Benchmark (one process per family)
 
 Examples:
@@ -61,7 +61,6 @@ Examples:
   python tools/run.py --bench-only           # bench only
   python tools/run.py --build-test           # build + test
   python tools/run.py --clean --build-type Debug
-  python tools/run.py --test-only --catch2   # Catch2 tests only
   python tools/run.py --bench-only --bench-raw
 """,
     )
@@ -125,30 +124,6 @@ Examples:
         build_group.add_argument(
             "--vs-path", default="", help="Visual Studio path (Windows)"
         )
-
-    # Test options (forwarded to run_test.py)
-    test_group = parser.add_argument_group("test options (forwarded to run_test.py)")
-    test_group.add_argument(
-        "--catch2", action="store_true", help="Run Catch2 tests only"
-    )
-    test_group.add_argument(
-        "--elf-pe", action="store_true", help="Run ELF/PE metadata tests only"
-    )
-    test_group.add_argument(
-        "--bootstrap", action="store_true", help="Run AMC bootstrap test only"
-    )
-    test_group.add_argument(
-        "--interop", action="store_true", help="Run cross-language interop tests only"
-    )
-    test_group.add_argument(
-        "--keep", action="store_true", help="Keep temporary test files"
-    )
-    test_group.add_argument(
-        "--cmdly-root",
-        default="",
-        metavar="PATH",
-        help="Path to the cmdly checkout for the interop cmdly comparison (sets CMDLY_ROOT)",
-    )
 
     # Bench options (forwarded to run_bench.py)
     bench_group = parser.add_argument_group("bench options (forwarded to run_bench.py)")
@@ -235,21 +210,7 @@ Examples:
         print("\n" + "=" * 70)
         print("  TEST STAGE")
         print("=" * 70)
-        test_args = []
-        if args.catch2:
-            test_args.append("--catch2")
-        if args.elf_pe:
-            test_args.append("--elf-pe")
-        if args.bootstrap:
-            test_args.append("--bootstrap")
-        if args.interop:
-            test_args.append("--interop")
-        if args.keep:
-            test_args.append("--keep")
-        if args.cmdly_root:
-            test_args.extend(["--cmdly-root", args.cmdly_root])
-        if args.build_type != "Release":
-            test_args.extend(["--build-dir", f"build/{args.build_type}"])
+        test_args = ["--build-dir", f"build/{args.build_type}"]
 
         rc = run_script("run_test.py", test_args)
         if rc != 0:

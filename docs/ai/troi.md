@@ -167,19 +167,19 @@ An 80% token reduction does not imply an 80% development-cost reduction. Tokens 
 
 ## Status
 
-- Today, [`tools/abix_token_cost.py`](../../tools/abix_token_cost.py) produces a TCR-style estimate for a single module (see below).
+- Today, [`scripts/abix_token_cost.py`](https://github.com/Sukanle/AMC/blob/main/scripts/abix_token_cost.py) in the AMC repository produces a TCR-style estimate for a single module (see below).
 - The full Agent Efficiency Benchmark (composite cost `C`, multi-task suites, success-rate tracking) is **planned, not implemented**.
 - There is no `amc agent benchmark` command today; the CLI shown below is a proposal.
 
 ## Current measurement: abix_token_cost.py
 
-`tools/abix_token_cost.py` compares two views of the same module:
+`scripts/abix_token_cost.py` in the AMC repository compares two views of the same module:
 
 - the source view: the C/C++ headers an agent would read to infer the ABI,
 - the metadata view: `amc context <file.abix> --format llm`.
 
 ```sh
-tools/abix_token_cost.py --abix module.abix --source a.hpp [b.hpp ...]
+python3 path/to/AMC/scripts/abix_token_cost.py --abix module.abix --source a.hpp [b.hpp ...]
 ```
 
 It reports `source_tokens`, `metadata_tokens`, and their ratio `source_over_metadata` (illustrative output):
