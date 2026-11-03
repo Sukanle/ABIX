@@ -153,7 +153,7 @@ Notes:
   (the variant script strips those entries explicitly).
 - `amc` embeds ABI metadata in a custom section: ELF `.abix.metadata` /
   `.abix.names`, Mach-O `__DATA,__abix_*` and PE `.abix` / `.abix.n` — see
-  [`docs/architecture/pe-inspection.md`](docs/architecture/pe-inspection.md).
+  the AMC repository's [`pe-inspection.md`](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md).
 - Optional integration tests use `llvm-readobj` / `llvm-objcopy` / `llvm-strip`
   (from the LLVM package) and a debugger; they are skipped when absent.
 
