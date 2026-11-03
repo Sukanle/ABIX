@@ -159,8 +159,7 @@ Typed mode (`amc adapter --typed`) generates `abix::adapter<Source, Target>`
 specializations for each compatible type pair. The primary template returns
 `false` so callers can fall back gracefully.
 
-See [`docs/amc.md`](../docs/amc.md) `amc adapter` section and
-the AMC repository's `src/SKL/AMC/Core/amc_adapter.h`.
+See the AMC repository's [`docs/amc/amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) `amc adapter` section and the AMC repository's `src/SKL/AMC/Core/amc_adapter.h`.
 
 ## 8. Extension Points
 

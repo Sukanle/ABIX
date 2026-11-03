@@ -27,7 +27,7 @@ graph TD
 |----------|--------|
 | **安装并试用 ABIX** | [快速开始](getting-started/) |
 | **理解 ABI 模型** | [ABIX](abix/) |
-| **使用 AMC 工具链** | [AMC](amc/) |
+| **使用 AMC 工具链** | [AMC](https://github.com/Sukanle/AMC) |
 | **跨语言工作** | [语言](lang/) |
 | **了解内部架构** | [架构](architecture/) |
 | **集成 AI / Agent 工作流** | [AI](ai/) |
@@ -88,11 +88,11 @@ graph TD
 
 ## AMC
 
-工具链文档。
+AMC 工具链是独立仓库，其文档也位于该仓库。
 
 | 文档 | English | 描述 |
 |------|---------|------|
-| [amc_zh.md](amc/amc_zh.md) | [amc.md](amc/amc.md) | AMC 工具链和 CLI |
+| [amc_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) | [amc.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) | AMC 工具链和 CLI |
 
 ## 架构
 

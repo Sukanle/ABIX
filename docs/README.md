@@ -27,7 +27,7 @@ graph TD
 |-------------|-------|
 | **install and try ABIX** | [Getting Started](getting-started/) |
 | **understand the ABI model** | [ABIX](abix/) |
-| **use the AMC toolchain** | [AMC](amc/) |
+| **use the AMC toolchain** | [AMC](https://github.com/Sukanle/AMC) |
 | **work across languages** | [Languages](lang/) |
 | **learn internal architecture** | [Architecture](architecture/) |
 | **integrate AI / Agent workflows** | [AI](ai/) |
@@ -88,11 +88,11 @@ Cross-language projections and per-language guides.
 
 ## AMC
 
-Toolchain documentation.
+The AMC toolchain is a separate repository; its documentation lives there.
 
 | Document | 中文 | Description |
 |----------|------|-------------|
-| [amc.md](amc/amc.md) | [amc_zh.md](amc/amc_zh.md) | the AMC toolchain and CLI |
+| [amc.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) | [amc_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) | the AMC toolchain and CLI |
 
 ## Architecture
 

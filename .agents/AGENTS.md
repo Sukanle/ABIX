@@ -226,7 +226,7 @@ performance-sensitive. Do not leak runtime details into the ABI specification.
 CLI command, AST extraction, ABI generation, code generation, diagnostics,
 frontend integration.
 
-Required: `docs/amc.md`, `LANGUAGE-PLUGIN.md` when the plugin boundary changes.
+Required: the AMC repository's `docs/amc/amc.md`, `LANGUAGE-PLUGIN.md` when the plugin boundary changes.
 
 ### E. Language plugin change
 

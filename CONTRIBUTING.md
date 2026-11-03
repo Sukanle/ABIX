@@ -41,7 +41,7 @@ Classify your change; it tells you what to update and test.
 | **ABI change**  | identity, layout, calling convention, `.abix` format | [`ABI-SPEC.md`](.agents/ABI-SPEC.md), compatibility analysis, regression test, migration note |
 | **IR change**   | new record/field, canonical encoding                 | [`ABI-SPEC.md`](.agents/ABI-SPEC.md), serialization + round-trip tests                        |
 | Runtime change  | registry, binding, caching, synchronization          | [`ARCHITECTURE.md`](.agents/ARCHITECTURE.md), `docs/runtime.md`, benchmark if hot-path        |
-| AMC change      | CLI, extraction, codegen, diagnostics                | `docs/amc.md`, CLI test                                                                       |
+| AMC change      | CLI, extraction, codegen, diagnostics                | the AMC repository's `docs/amc/amc.md`, CLI test                                              |
 | Language plugin | new language frontend/backend                        | [`LANGUAGE-PLUGIN.md`](.agents/LANGUAGE-PLUGIN.md), extraction + round-trip tests             |
 | Documentation   | guides, examples                                     | the matching `_zh` edition when user-visible                                                  |
 | Performance     | binding, lookup, call path                           | benchmark before/after; must not change ABI semantics                                         |

@@ -281,7 +281,7 @@ amc verify -c package.abic.toml -B build
 amc generate build/build/package.abix -l rust -o gen/
 ```
 
-AMC is an extensible toolchain, not a language-specific compiler: frontends extract ABI from a language AST, ABIX IR stays the common representation. The `amc-cpp` frontend/backend links Clang/LLVM; `amc-rust` provides a Rust provider (frontend + backend), and `amc-zig` is a backend-only projection. `amc-dump`, the optional LLDB plugin and `amc-mcp` expose the same artifact to debuggers and AI agents. See [`docs/amc/amc.md`](docs/amc/amc.md).
+AMC is an extensible toolchain, not a language-specific compiler: frontends extract ABI from a language AST, ABIX IR stays the common representation. The `amc-cpp` frontend/backend links Clang/LLVM; `amc-rust` provides a Rust provider (frontend + backend), and `amc-zig` is a backend-only projection. `amc-dump`, the optional LLDB plugin and `amc-mcp` expose the same artifact to debuggers and AI agents. See the AMC repository's [`docs/amc/amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md).
 
 ---
 
@@ -548,7 +548,7 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 
 ### AMC Toolchain
 
-- [AMC](docs/amc/amc.md)
+- [AMC](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md)
 - [Language Plugins](.agents/LANGUAGE-PLUGIN.md)
 - [MCP: ABI Metadata for AI agents](docs/ai/MCP.md)
 

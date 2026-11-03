@@ -281,7 +281,7 @@ amc verify -c package.abic.toml -B build
 amc generate build/build/package.abix -l rust -o gen/
 ```
 
-AMC 是可扩展工具链而非语言专用编译器：前端从语言 AST 提取 ABI，ABIX IR 始终是统一表示。`amc-cpp` 前端/后端链接 Clang/LLVM；`amc-rust` 提供 Rust provider (frontend + backend)，`amc-zig` 是 backend-only 投影；`amc-dump`、可选的 LLDB 插件与 `amc-mcp` 把同一份 artifact 暴露给调试器与 AI Agent。详见 [`docs/amc/amc_zh.md`](docs/amc/amc_zh.md)。
+AMC 是可扩展工具链而非语言专用编译器：前端从语言 AST 提取 ABI，ABIX IR 始终是统一表示。`amc-cpp` 前端/后端链接 Clang/LLVM；`amc-rust` 提供 Rust provider (frontend + backend)，`amc-zig` 是 backend-only 投影；`amc-dump`、可选的 LLDB 插件与 `amc-mcp` 把同一份 artifact 暴露给调试器与 AI Agent。详见 AMC 仓库的 [`docs/amc/amc_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md)。
 
 ---
 
@@ -533,7 +533,7 @@ amc context build/demo/build/amc_test.abix --format llm
 
 ### AMC 工具链
 
-- [AMC](docs/amc/amc_zh.md)
+- [AMC](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md)
 - [语言插件](.agents/LANGUAGE-PLUGIN.md)
 - [MCP：面向 AI Agent 的 ABI Metadata](docs/ai/MCP_zh.md)
 

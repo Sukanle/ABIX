@@ -116,4 +116,4 @@ graph TD
 - [Zig](zig_zh.md)
 - [ABIX Interface](../abix/interface_zh.md)
 - [ABIX-STD](../abix/std_zh.md)
-- [`amc generate`](../amc/amc_zh.md#amc-generate)
+- [`amc generate`](https://github.com/Sukanle/AMC/docs/amc/amc_zh.md#amc-generate)
