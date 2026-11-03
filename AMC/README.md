@@ -24,6 +24,7 @@ Required packages:
 - fmt
 - toml++
 - Catch2 v3 for the C++ tests (optional)
+- Lua 5.4 for the optional Aue conformance prototype
 
 AMC owns the artifact-layer libraries (`format`, `abi`, `metadata`, `tools`) and
 exports them as `AMC::format`, `AMC::abi`, `AMC::metadata` and `AMC::tools`. They
@@ -34,9 +35,10 @@ policy.
 
 The standalone CTest suite covers the C++ core/e2e tests, the installed package
 consumer, feature tests, Rust provider/panic tests, cancellation, interop,
-capability generation and an independent CMake integration test. The old
-monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` were retired
-with the split.
+capability generation and an independent CMake integration test. When Lua 5.4 is
+available, `AMC/Aue` also builds the L0/L1 conformance runner and its tests. The
+old monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` were
+retired with the split.
 
 ## Installed package
 

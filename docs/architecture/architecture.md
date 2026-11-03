@@ -123,7 +123,7 @@ ABIX
 ├── AMC/        AMC toolchain: core/, cpp/ frontend+backend, dump/, mcp/
 ├── test/       runtime + unit tests (Catch2)
 ├── bench/      benchmarks
-├── Aue/        experimental Lua boundary layer + conformance runner
+├── AMC/Aue/    experimental Lua boundary layer + conformance runner
 ├── tools/      helper scripts (MCP demo, token cost, LLDB command)
 └── docs/       specification and design
 ```

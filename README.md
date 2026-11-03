@@ -390,16 +390,14 @@ ABIX
 │   ├── Binary/            BinaryImage.h ELF.h MachO.h PE.h
 │   ├── STD/               String.h Span.h Optional.h Result.h Callback.h
 │   └── Util/              Util.h Config.h Log.h Atomic.h Hash.h Array.h Mem.h
-├── AMC/                   ABI toolchain
-│   ├── src/CLI/           build, inspect, query, context, diff, verify, generate, ...
-│   ├── src/Core/          .abix format, metadata, query, verify, adapter, symbol store
-│   ├── src/Lang/          C++ frontend/backend, Rust provider, Zig backend
-│   └── src/Tool/          dump and MCP server
-├── Aue/                   experimental Lua boundary layer and conformance runner
+├── AMC/                   standalone ABI toolchain
+│   ├── src/SKL/AMC/       CLI, core, language providers and tools
+│   ├── Aue/               experimental Lua boundary layer
+│   └── tools/             LLDB plugin and Python helper
 ├── test/                  Catch2 runtime and unit tests
 ├── bench/                 Google Benchmark suites
 ├── dlls/                  cross-DLL test plugins and fixtures
-├── tools/                 MCP demo, token-cost, LLDB and test runners
+├── tools/                 MCP demo, token-cost and test runners
 ├── scripts/               developer scripts (git hooks, Markdown reflow)
 ├── src/                   self-hosting ABI inputs
 ├── docs/                  specification, guides, API, architecture, AI, benchmarks
@@ -415,12 +413,11 @@ ABIX
 - C++17 or later
 - CMake 3.20+ and Ninja
 - Python 3 for the ABIX package/runtime tests
-- optional: Lua 5.4 for the Aue conformance prototype
 - a supported native toolchain
 
 The separate AMC project additionally requires LLVM/Clang (`clang-cpp`), fmt,
-toml++, Python, and optionally Rust/Zig for the cross-language providers. See
-[`AMC/README.md`](AMC/README.md).
+toml++, Python, optionally Rust/Zig for the cross-language providers, and Lua
+5.4 for the Aue conformance prototype. See [`AMC/README.md`](AMC/README.md).
 
 > **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` when building AMC.
 

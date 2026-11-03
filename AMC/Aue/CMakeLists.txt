@@ -1,6 +1,6 @@
 # Aue L0/L1 differential-conformance prototype.
 #
-# Built only when Lua is available (root CMake sets LUA_FOUND). L0 and L1 share
+# Built only when Lua is available (AMC CMake sets LUA_FOUND). L0 and L1 share
 # the same native module; `abix-conformance` proves their observable behaviour
 # is identical. When AMC is available the contract is generated from
 # `counter.abic.toml` at build time, so the runtime binds to real ABIX metadata.
@@ -54,11 +54,11 @@ endfunction()
 
 if(NOT TARGET abix-conformance)
     add_executable(abix-conformance src/Layers.cpp src/Counter.cpp src/Conformance.cpp)
-    target_include_directories(abix-conformance PRIVATE ${SKL_ABIX_INC_DIR} FMT::FMT)
-    target_link_libraries(abix-conformance PUBLIC fmt::fmt)
+    target_include_directories(abix-conformance PRIVATE ${SKL_ABIX_INC_DIR})
+    target_link_libraries(abix-conformance PUBLIC ABIX::runtime fmt::fmt)
     aue_configure_target(abix-conformance)
 
-    if(BUILD_TESTING)
+    if(AMC_BUILD_TESTS OR BUILD_TESTING)
         add_test(NAME aue-conformance COMMAND abix-conformance ${CMAKE_CURRENT_SOURCE_DIR}/Conformance.lua)
         add_test(NAME aue-conformance-edges COMMAND abix-conformance ${CMAKE_CURRENT_SOURCE_DIR}/Edges.lua)
         # Requesting L2 must degrade to the compiled-in L1 (downgrade only).
@@ -69,10 +69,10 @@ if(NOT TARGET abix-conformance)
 
     add_executable(abix-bench src/Layers.cpp src/Counter.cpp src/Bench.cpp)
     target_include_directories(abix-bench PRIVATE ${SKL_ABIX_INC_DIR})
-    target_link_libraries(abix-bench PUBLIC fmt::fmt)
+    target_link_libraries(abix-bench PUBLIC ABIX::runtime fmt::fmt)
     aue_configure_target(abix-bench)
 
-    if(BUILD_TESTING)
+    if(AMC_BUILD_TESTS OR BUILD_TESTING)
         add_test(NAME aue-bench COMMAND abix-bench)
     endif()
 endif()

@@ -97,7 +97,7 @@ AMC/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, 
            cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
-Aue/     experimental Lua boundary layer + differential conformance
+AMC/Aue/ experimental Lua boundary layer + differential conformance
 tools/   helper scripts (MCP demo, token cost, LLDB command, ELF test)
 docs/    specification and design
 ```
@@ -279,7 +279,7 @@ keep their existing, dependency-free output and diagnostics (`SKL/ABIX/Util/Log.
 reference implementation: a variadic logger built on the C library).
 
 Everything else in the repository is a facility and **may** use **fmt** for output
-formatting: `AMC/`, `test/`, `bench/`, `Aue/` and `tools/`. Within a facility, fmt is
+formatting: `AMC/`, `test/`, `bench/` and `tools/`. Within a facility, fmt is
 the formatter to use — `fmt::print` / `fmt::format` / `fmt::format_to_n` instead of the
 `printf` family — and new output should stay on it rather than mixing two styles.
 `bench/` already does, through `bench/bench_fmt.hpp`.
@@ -404,7 +404,7 @@ regenerate. When generated output changes, verify it is reproducible
 
 Do not optimize from intuition when changing binding, registry lookup,
 synchronization, metadata lookup, call paths or type mapping. Prefer benchmarks
-(see `bench/`, `Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
+(see `bench/`, `AMC/Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
 optimization must not silently change ABI semantics.
 
 ---

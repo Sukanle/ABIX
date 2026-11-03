@@ -35,7 +35,7 @@ This walkthrough builds ABIX, produces an `.abix` artifact from a small C++ ABI,
 
 Optional but used by parts of the toolchain and tests:
 
-* Lua 5.4 — builds the experimental Aue boundary layer (`Aue/`)
+* Lua 5.4 — builds the experimental Aue boundary layer in the standalone AMC project (`AMC/Aue/`)
 * `readelf`, `strip`, `lldb`, `clang++` — used by integration tests
 
 ## 2. Build
@@ -56,7 +56,7 @@ Artifacts land in `build/bin`, including:
 | `amc-rust` | Rust frontend/backend provider (JSON-lines IPC); no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools to AI agents |
-| `abix-conformance` | Aue L0/L1 differential runner (when Lua is present) |
+| `abix-conformance` | Aue L0/L1 differential runner in the standalone AMC build (when Lua is present) |
 
 Run the test suite:
 

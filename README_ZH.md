@@ -390,16 +390,14 @@ ABIX
 │   ├── Binary/            BinaryImage.h ELF.h MachO.h PE.h
 │   ├── STD/               String.h Span.h Optional.h Result.h Callback.h
 │   └── Util/              Util.h Config.h Log.h Atomic.h Hash.h Array.h Mem.h
-├── AMC/                   ABI 工具链
-│   ├── src/CLI/           build、inspect、query、context、diff、verify、generate 等
-│   ├── src/Core/          .abix 格式、metadata、query、verify、adapter、符号存储
-│   ├── src/Lang/          C++ 前端/后端、Rust provider、Zig backend
-│   └── src/Tool/          dump 与 MCP server
-├── Aue/                   实验性 Lua 边界层与一致性测试
+├── AMC/                   standalone ABI 工具链
+│   ├── src/SKL/AMC/       CLI、core、语言 provider 与 tools
+│   ├── Aue/               实验性 Lua 边界层
+│   └── tools/             LLDB 插件与 Python helper
 ├── test/                  Catch2 运行时与单元测试
 ├── bench/                 Google Benchmark 基准
 ├── dlls/                  跨 DLL 测试插件与 fixture
-├── tools/                 MCP demo、token 成本、LLDB 与测试运行脚本
+├── tools/                 MCP demo、token 成本与测试运行脚本
 ├── scripts/               开发脚本 (git hooks、Markdown 重排)
 ├── src/                   自举 ABI 输入
 ├── docs/                  规范、指南、API、架构、AI、基准
@@ -415,10 +413,9 @@ ABIX
 - C++17 或更高
 - CMake 3.20+ 与 Ninja
 - Python 3（ABIX package/runtime 测试）
-- 可选：Lua 5.4（Aue 一致性原型）
 - 受支持的原生工具链
 
-独立的 AMC 工程额外需要 LLVM/Clang (`clang-cpp`)、fmt、toml++、Python，以及可选的 Rust/Zig 跨语言 provider。见 [`AMC/README.md`](AMC/README.md)。
+独立的 AMC 工程额外需要 LLVM/Clang (`clang-cpp`)、fmt、toml++、Python、可选的 Rust/Zig 跨语言 provider，以及用于 Aue 一致性原型的 Lua 5.4。见 [`AMC/README.md`](AMC/README.md)。
 
 > **平台支持：** 支持 Linux、macOS 与 **Windows**。Windows 上使用 MSYS2 UCRT64 工具链 (GCC 或 Clang) 构建；见 [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64)。macOS 上 Homebrew LLVM 是 keg-only，构建 AMC 时请传 `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"`。
 

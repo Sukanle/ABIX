@@ -66,10 +66,11 @@ Requirements:
 
 - C++17 (the project builds as C++17; see `CMakeLists.txt`)
 - CMake 3.20+
-- optional: Lua 5.4 (Aue), `readelf`/`strip`/`lldb`/`clang++` (runtime tests)
+- optional: `readelf`/`strip`/`lldb`/`clang++` (runtime tests)
 
 AMC is a separate project under `AMC/`; it additionally needs LLVM/Clang, fmt,
-toml++, and optionally Rust/Zig. See [`AMC/README.md`](AMC/README.md).
+toml++, optionally Rust/Zig, and Lua 5.4 for Aue. See
+[`AMC/README.md`](AMC/README.md).
 
 ### Locating LLVM for AMC (macOS / Homebrew)
 

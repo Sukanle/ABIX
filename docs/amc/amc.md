@@ -299,5 +299,5 @@ amc validate missing.abix --error-format json
 | `amc-zig` | Zig backend-only provider (JSON-lines IPC); consumes the same IR, no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools; indexes multiple artifacts as a knowledge base ([MCP.md](../ai/MCP.md)) |
-| `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`tools/lldb_abix.cpp`](../../tools/lldb_abix.cpp)) |
+| `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`AMC/tools/lldb_abix.cpp`](../../AMC/tools/lldb_abix.cpp)) |
 | `abix-conformance` | Aue L0/L1 differential runner (when Lua is present) |

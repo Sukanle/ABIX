@@ -200,5 +200,5 @@ amc validate missing.abix --error-format json
 | `amc-zig` | Zig 仅后端 provider（JSON-lines IPC）；消费同一份 IR，不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | MCP server；可把多个 artifact 索引成 ABI 知识库（见 [MCP_zh.md](../ai/MCP_zh.md)） |
-| `libabix_lldb.so` | 原生 LLDB 命令插件（`abix ...`），直接链接 `libabix-*`（[`tools/lldb_abix.cpp`](../../tools/lldb_abix.cpp)） |
+| `libabix_lldb.so` | 原生 LLDB 命令插件（`abix ...`），直接链接 `libabix-*`（[`AMC/tools/lldb_abix.cpp`](../../AMC/tools/lldb_abix.cpp)） |
 | `abix-conformance` | Aue L0/L1 差分运行器（有 Lua 时构建） |

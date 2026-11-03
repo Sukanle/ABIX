@@ -33,7 +33,7 @@
 * LLVM / Clang 工具链（AMC C++ 前端链接 `clang-cpp`）
 * 原生工具链（gcc/clang、GNU make 或 Ninja）
 
-可选：Lua 5.4（Aue 实验模块）；`readelf`/`strip`/`lldb`/`clang++`（集成测试）。
+可选：Lua 5.4（AMC 的 Aue 实验模块）、`readelf`/`strip`/`lldb`/`clang++`（集成测试）。
 
 ## 2. 构建
 
@@ -53,7 +53,7 @@ cmake --build build/Release --parallel
 | `amc-rust` | Rust 前端/后端 provider（JSON-lines IPC）；不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | 面向 AI Agent 的 MCP server |
-| `abix-conformance` | Aue L0/L1 差分运行器（有 Lua 时构建） |
+| `abix-conformance` | standalone AMC 构建中的 Aue L0/L1 差分运行器（有 Lua 时构建） |
 
 运行测试：
 
