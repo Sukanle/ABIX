@@ -1,7 +1,11 @@
 # AMC
 
-AMC is the ABI Metadata Compiler/toolchain. This directory now has a standalone
-CMake project so it can move toward an independently released repository.
+> **Moved:** AMC now lives in its own repository. This directory is a temporary
+> mirror for the ABIX transition; the standalone repository is the source of
+> truth. It will be removed after the remaining docs/examples are migrated.
+
+AMC is the ABI Metadata Compiler/toolchain. The standalone CMake project consumes
+an installed ABIX runtime package.
 
 ## Standalone build
 
