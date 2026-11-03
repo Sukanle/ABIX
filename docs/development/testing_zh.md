@@ -1,7 +1,8 @@
 # 测试 ABIX 与 AMC
 
-> **仓库拆分：** ABIX 根工程现在只测试 header-only runtime。下面的 AMC 层由独立的
-> `AMC/CMakeLists.txt` 工程拥有并运行；此处保留为工具链契约参考。仅存在于
+> **仓库拆分：** ABIX 根工程只测试 header-only runtime。下面的 AMC 层由独立 AMC
+> 仓库（<https://github.com/Sukanle/AMC>）拥有并运行；此处保留为工具链契约参考。
+> 文中的 AMC 相对路径均相对于该 checkout。仅存在于
 > monorepo 的 `amc-integration-test` 与 `amc-cmdly-interop-test` 已退役；
 > standalone 套件覆盖 core/e2e/package/feature/provider/interop/expose/
 > cancellation/CMake 集成。
@@ -150,11 +151,11 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 ### E. AMC 功能集（`amc-feature-test`）
 
-跨平台测试（`AMC/tests/cli/feature_test.py`），直接断言 AMC 的五大能力：
+跨平台测试（`tests/cli/feature_test.py`），直接断言 AMC 的五大能力：
 
 | 方面         | 检查                                                                                                                                                                                                 |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 前后端分离   | `--list-languages`/`--describe-language` 由 `AMC/providers.toml` 驱动（cpp/lua/rust/zig）；`AMC_PROVIDERS_FILE` 覆盖；`amc-cpp`/`amc-rust` 的 `--ipc` **READY + CAPABILITIES** 与 `abix.plugin/1` envelope |
+| 前后端分离   | `--list-languages`/`--describe-language` 由 `providers.toml` 驱动（cpp/lua/rust/zig）；`AMC_PROVIDERS_FILE` 覆盖；`amc-cpp`/`amc-rust` 的 `--ipc` **READY + CAPABILITIES** 与 `abix.plugin/1` envelope |
 | 代码解析     | `amc build` 解析 **C++**（`amc-cpp`）与 **Rust**（`amc-rust`，内置前端，无需 `rustc`）→ `.abix`                                                                                                      |
 | 生成 IR      | `validate`、`inspect`、`query --layout`、`context --format json`                                                                                                                                     |
 | 原生语言绑定 | 同一 `.abix` → `generate -l cpp\|zig\|rust\|lua`；并**编译** C++ 与 **Rust** 绑定                                                                                                                    |
@@ -206,10 +207,10 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 各套件在临时目录生成并在结束时清理。要查看产物，可以手动执行，也可以用 [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#保留临时产物) 保留目录：
 
 ```bash
-AMC=build/AMC-standalone/bin/amc.exe           # Linux/macOS 去掉 .exe
+AMC=$(command -v amc)                           # 在 AMC checkout 中运行
 
 # 解析源码 -> IR
-"$AMC" build -c AMC/tests/fixtures/amc_test.abic.toml -B build/amc-demo
+"$AMC" build -c tests/fixtures/amc_test.abic.toml -B build/amc-demo
 
 # 一份 IR -> 四种语言绑定
 ABIX=build/amc-demo/build/amc_test.abix
@@ -231,8 +232,8 @@ ABIX=build/amc-demo/build/amc_test.abix
 
 fixture：
 
-- C++ `AMC/tests/fixtures/amc_test.abic.toml`；
-- Rust 前端 `AMC/tests/fixtures/rust_demo.abic.toml`。
+- C++ `tests/fixtures/amc_test.abic.toml`；
+- Rust 前端 `tests/fixtures/rust_demo.abic.toml`。
 
 ## 原生绑定（Rust）走查
 
@@ -240,11 +241,11 @@ interop 测试在临时目录正是这么做的：
 
 ```bash
 # 原生 C-ABI 动态库（Windows 需同时产出 rustc 链接用的导入库）
-clang++ -std=c++17 -shared -O2 AMC/tests/interop/demo_lib.cpp \
+clang++ -std=c++17 -shared -O2 tests/interop/demo_lib.cpp \
     -o /tmp/interop_demo.dll -Wl,--out-implib,/tmp/libinterop_demo.dll.a
 # Linux：clang++ -std=c++17 -shared -fPIC -O2 ... -o /tmp/libinterop_demo.so
 
-amc build -c AMC/tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
+amc build -c tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
 amc generate /tmp/abix/interop_demo.abix -l rust -o /tmp/gen           # -> /tmp/gen/amc_generated.rs
 
 # rust_consumer.rs 以 #[path = "gen/amc_generated.rs"] 引入投影
@@ -271,8 +272,8 @@ ctest --test-dir build/Release -R amc- --output-on-failure
 同样可以在不重新配置的情况下对单次运行生效：既可用环境变量，也可用各套件都接受的参数：
 
 ```bash
-KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .
-python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
+KEEP_ARTIFACTS=1 python tests/cli/feature_test.py build/Release/bin .
+python tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 ```
 
 保留位置（均在系统临时目录下）：
@@ -319,7 +320,7 @@ python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变
 
 | 脚本                    | 功能                                                                                                                                                                                                                                | 目的                                                                                                                            | 预期现象                                                                                                                                                     |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run_test.py --bootstrap` | 验证 AMC 自身核心 IR 的元数据自举：`amc_add_abi`（`AMC.cmake`）把 `amc/self.abic.toml` 接进 `AMC/tests/consumers` 的 CMake 构建图，一次 `cmake --build` 走完 `amc build` → `validate` → `generate` → 编译运行用生成的 C++ 投影经 `RuntimeRegistry::type_of<T>()` 取类型的消费者 | 证明「已编译的 AMC 阶段能描述自己的核心模型并消费其投影」，而不是靠人工描述（非编译源自举：`amc-cpp` 仍用 Clang 提取 C++ 语义）；`.abic.toml` 或其依赖改动会自动重跑整条流水线 | `[PASS] AMC core metadata bootstrap succeeded` 与 `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`；需要 `cmake` + `clang++`（`ninja` 存在时优选） |
+| `run_test.py --bootstrap` | 验证 AMC 自身核心 IR 的元数据自举：`amc_add_abi`（`AMC.cmake`）把 `amc/self.abic.toml` 接进 `tests/consumers` 的 CMake 构建图，一次 `cmake --build` 走完 `amc build` → `validate` → `generate` → 编译运行用生成的 C++ 投影经 `RuntimeRegistry::type_of<T>()` 取类型的消费者 | 证明「已编译的 AMC 阶段能描述自己的核心模型并消费其投影」，而不是靠人工描述（非编译源自举：`amc-cpp` 仍用 Clang 提取 C++ 语义）；`.abic.toml` 或其依赖改动会自动重跑整条流水线 | `[PASS] AMC core metadata bootstrap succeeded` 与 `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`；需要 `cmake` + `clang++`（`ninja` 存在时优选） |
 | `run_test.py --elf-pe`    | 9 阶段验证元数据段：`amc build` → `amc generate`（带平台段属性的 `amc_generated.hpp`）→ `clang++` 链出含 `.abix.metadata` 的原生二进制 → `readelf -S` → `objdump -s` → `amc metadata --from-elf` → `--verify` → 导出往返 → 错误用例 | 证明「段真的进了二进制并且能被读回」，而不只是在内存里往返                                                                      | 每个 `[Phase N]` 输出 `[PASS]`（含 `✓`）并在末尾给出汇总；Linux 需要 `readelf` / `objdump`，macOS 需要 `otool`，Windows 需要 `llvm-readobj` / `llvm-objcopy` |
 | `abix_mcp_compat.py`    | 以 stdio JSON-RPC 驱动 `amc-mcp`，回答「`plugin` 与 `host` 是否 ABI 兼容」，输出 JSON 报告                                                                                                                                          | 让 MCP 工具协议可在 CI 中验证——把 LLM 从链路中去掉，但传输与工具协议保持真实                                                    | stdout 为 JSON 报告；兼容时 stderr 打印 `COMPATIBLE`，否则 `INCOMPATIBLE: N difference(s)` 并返回非零                                                        |
 | `abix_token_cost.py`    | 比较「读源码」与「读 `amc context <file.abix> --format llm`」了解同一模块 ABI 的 token 数                                                                                                                                           | 给「元数据视图更省上下文」一个可复现的量级参考                                                                                  | stdout 为 `{"source_tokens", "metadata_tokens", "source_over_metadata"}`；用词法分词器估算，不是模型分词器，应视为**指标而非基准**                           |
@@ -338,7 +339,7 @@ python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 | 脚本            | 功能                                                                                              | 目的                                                                                                                                      | 预期现象                                                                                        |
 | --------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `lldb_abix.cpp` | 原生插件，由 CMake 目标 `abix-lldb` 构建（需找到 LLDB 头与库），产物 `build/<type>/bin/abix_lldb` | 在调试器里查询已加载二进制中嵌入的 `.abix.metadata`（`abix info` / `type` / `function` / `verify` / `check`）；解析与查询一律委托给 `amc` | LLDB 中 `plugin load build/Release/bin/abix_lldb` 后即可用 `abix …`；找不到 LLDB 时该目标不构建 |
-| `lldb_abix.py`  | 脚本版实现，功能同上                                                                              | 与原生插件二选一，覆盖没有 LLDB C++ 工具链的环境                                                                                          | `command script import AMC/tools/lldb_abix.py` 后用 `abix …`；`amc` 不在 PATH 时设 `ABIX_AMC`       |
+| `lldb_abix.py`  | 脚本版实现，功能同上                                                                              | 与原生插件二选一，覆盖没有 LLDB C++ 工具链的环境                                                                                          | `command script import tools/lldb_abix.py` 后用 `abix …`；`amc` 不在 PATH 时设 `ABIX_AMC`       |
 
 两者都遵循「LLDB 不自己写第二套 `.abix` / ELF 解析器」：`tools/__pycache__/` 只是 Python 缓存目录，不是脚本。
 

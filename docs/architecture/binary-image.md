@@ -119,7 +119,7 @@ Segments, imports and relocations are added only when a concrete ABIX workflow n
 
 ## Consumers
 
-- **AMC** — `amc metadata --from-elf`, `amc inspect`, `amc verify`, `amc publish` and the LLDB plugin go through a thin compatibility shim (`AMC/include/AMC/Core/ELF.h`) that now also handles PE.
+- **AMC** — `amc metadata --from-elf`, `amc inspect`, `amc verify`, `amc publish` and the LLDB plugin go through a thin compatibility shim (`include/SKL/AMC/Core/ELF.h`) that now also handles PE.
 - **Interface auto-discovery (planned)** — scan `exports()` for `abix_module_query_v1`, pair it with the embedded region, and register the interface without the runtime ever knowing the container:
 
   ```text

@@ -27,7 +27,7 @@ The C++ implementation of this boundary is `amc-cpp` (a provider speaking a
 JSON-lines IPC protocol) driven by `amc`. A new language may be implemented as a
 separate provider executable; it does not need to live inside `amc`.
 
-The second reference provider is `amc-rust` (`AMC/src/Lang/Rust/`). Unlike
+The second reference provider is `amc-rust` (`src/Lang/Rust/`). Unlike
 `amc-cpp` it does not link Clang/LLVM: its frontend is a source-level extractor
 for the Rust FFI subset (`#[repr(C)]` structs/enums and `extern "C"`
 functions), and its backend projects ABIX IR to Rust `repr(C)` types, using the
@@ -35,7 +35,7 @@ ABI-normalised primitive identity to select `core::ffi::c_*` aliases (§5). It i
 the working template for a provider that computes layout itself rather than
 delegating to a language compiler.
 
-`amc-zig` (`AMC/src/Lang/Zig/`) is a **backend-only** provider: it consumes the
+`amc-zig` (`src/Lang/Zig/`) is a **backend-only** provider: it consumes the
 same `.abix` and projects it to Zig (`extern struct` types, `extern fn`
 declarations, `[*c]` typed pointers and `comptime` `@sizeOf`/`@alignOf`/
 `@offsetOf` assertions). It exists to demonstrate that a backend needs no
@@ -45,7 +45,7 @@ library. There is no Zig frontend yet.
 
 ## 2.1 Provider manifest
 
-`AMC/providers.toml` is the source of truth for `amc --list-languages` and
+`providers.toml` is the source of truth for `amc --list-languages` and
 `amc --describe-language`. A provider entry declares its language, executable,
 roles, protocol and optional feature set; `amc` does not keep a second
 hard-coded language table.
@@ -101,7 +101,7 @@ messages in between.
 ```
 
 `DESCRIBE` returns the provider's own manifest-shaped description, which
-`amc --describe-language` can use to verify `AMC/providers.toml`. The legacy
+`amc --describe-language` can use to verify `providers.toml`. The legacy
 `{"type":"INIT","protocol":1}` handshake remains accepted during the transition,
 but new providers should send `HELLO` with an object `protocol`.
 
@@ -285,7 +285,7 @@ A plugin is not complete without:
 - **cross-check** — at least one consumer (`amc query` / runtime projection)
   works against the produced artifact.
 
-The reference coverage lives in `AMC/tests/`: `unit/` and `e2e/` (C++),
+The reference coverage lives in `tests/`: `unit/` and `e2e/` (C++),
 `cli/` (AMC CLI), `conformance/provider_harness.py` (the shared provider
 conformance harness), `providers/<language>/` (per-provider cases, for example
 `providers/rust/`) and `interop/` (the C++ → ABIX → Rust/Zig end-to-end test

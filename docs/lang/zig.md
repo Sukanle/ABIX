@@ -37,7 +37,7 @@ amc generate build/package.abix -l zig -o gen/
 - `ABIX_*` constants for type identity, size, align and field offsets;
 - a `comptime` block with `@sizeOf`, `@alignOf` and `@offsetOf` assertions.
 
-The same artifact that drives the Rust projection drives the Zig projection. `AMC/tests/interop/` builds one native library and runs both consumers against it; no Zig-specific information is added to AMC.
+The same artifact that drives the Rust projection drives the Zig projection. `tests/interop/` builds one native library and runs both consumers against it; no Zig-specific information is added to AMC.
 
 ## Layout checks
 

@@ -17,7 +17,9 @@
 
 AMC 是 ABIX 工具链入口：从语言 AST 提取 ABI、投影为 ABIX IR，并提供查看、比较、校验、生成与分发工具。
 
-> **构建：** AMC 是 `AMC/` 下的独立 CMake 工程，使用已安装的 ABIX runtime package。见 [`AMC/README.md`](../../AMC/README.md)。
+> **仓库：** AMC 是独立仓库 <https://github.com/Sukanle/AMC>。本页保留为工具链契约
+> 参考；文中相对路径均相对于 AMC 仓库根目录。AMC 优先使用已安装的 ABIX runtime
+> package，找不到时自动拉取 ABIX 到 `dependencies/`。
 
 ```mermaid
 graph TD
@@ -140,7 +142,7 @@ C++ provider 在写出 `amc_generated.hpp`（projection）的同时，会在同�
 
 Rust provider（`amc-rust`）写出 `amc_generated.rs`：`#[repr(C)]` 聚合类型、`extern "C"` 声明、`ABIX_*` 关联常量，以及 `const _: () = assert!(...)` 形式的 size/align/offset 检查。C-ABI 标量按其 ABI 归一化的 primitive identity 投影为 `core::ffi::c_*` 别名（`c_int`、`c_double` 等），而不是固定宽度拼写——别名本身编码了目标的 C ABI。Rust provider 直接读取语言 IR，因此 `[[import]] language = "rust"` 可从 `.rs` 文件解析 `#[repr(C)]` struct/enum 与 `extern "C"` 函数，且不需要编译 flag。
 
-Zig provider（`amc-zig`）是**仅后端**的同 IR 消费者：`amc generate -l zig` 写出 `amc_generated.zig`，包含 `extern struct` 类型、`extern fn` 声明、`[*c]` 有类型指针以及 `comptime` 的 `@sizeOf` / `@alignOf` / `@offsetOf` 断言。它不引入任何 Zig 专属模型，因此驱动 Rust 投影的同一份 `.abix` 也能驱动 Zig 投影；见 `AMC/tests/interop/`，两个消费者链接同一个原生库。
+Zig provider（`amc-zig`）是**仅后端**的同 IR 消费者：`amc generate -l zig` 写出 `amc_generated.zig`，包含 `extern struct` 类型、`extern fn` 声明、`[*c]` 有类型指针以及 `comptime` 的 `@sizeOf` / `@alignOf` / `@offsetOf` 断言。它不引入任何 Zig 专属模型，因此驱动 Rust 投影的同一份 `.abix` 也能驱动 Zig 投影；见 `tests/interop/`，两个消费者链接同一个原生库。
 
 ### 语言 provider
 
@@ -150,7 +152,7 @@ amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
 amc --describe-language zig       # zig backend protocol=jsonl-v1
 ```
 
-语言列表与描述来自 `AMC/providers.toml`，构建时复制为 `amc` 旁边的 `amc-providers.toml`。`AMC_PROVIDERS_FILE` 可覆盖 manifest 路径；每个条目声明语言、可执行文件、角色、协议和可选 feature 集。`AMC_DEFAULT_PROVIDERS_FILE` 是编译进 driver 的源码树回退路径；`cmake --install` 会把 `amc`、各 provider 与 manifest 一起安装到 `bin` 目录。
+语言列表与描述来自 `providers.toml`，构建时复制为 `amc` 旁边的 `amc-providers.toml`。`AMC_PROVIDERS_FILE` 可覆盖 manifest 路径；每个条目声明语言、可执行文件、角色、协议和可选 feature 集。`AMC_DEFAULT_PROVIDERS_FILE` 是编译进 driver 的源码树回退路径；`cmake --install` 会把 `amc`、各 provider 与 manifest 一起安装到 `bin` 目录。
 
 每个 `amc-<language>` 可执行文件都是独立 provider；`amc` 依据 manifest、`.abic.toml` 的 `language` 字段或 `generate` / `frontend` 的 `-l` 选择对应 provider。新增语言只是一个独立的 provider 进程，不改变 ABIX IR——见 [`LANGUAGE-PLUGIN.md`](../../.agents/LANGUAGE-PLUGIN.md)。
 
@@ -200,5 +202,5 @@ amc validate missing.abix --error-format json
 | `amc-zig` | Zig 仅后端 provider（JSON-lines IPC）；消费同一份 IR，不依赖 Clang/LLVM |
 | `amc-dump` | `.abix` 原始 dump（text/JSON） |
 | `amc-mcp` | MCP server；可把多个 artifact 索引成 ABI 知识库（见 [MCP_zh.md](../ai/MCP_zh.md)） |
-| `libabix_lldb.so` | 原生 LLDB 命令插件（`abix ...`），直接链接 `libabix-*`（[`AMC/tools/lldb_abix.cpp`](../../AMC/tools/lldb_abix.cpp)） |
+| `libabix_lldb.so` | 原生 LLDB 命令插件（`abix ...`），直接链接 `libabix-*`（[`tools/lldb_abix.cpp`](https://github.com/Sukanle/AMC/blob/main/tools/lldb_abix.cpp)） |
 | `abix-conformance` | Aue L0/L1 差分运行器（有 Lua 时构建） |

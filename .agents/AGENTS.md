@@ -93,12 +93,9 @@ SKL/ABIX/    header-only ABI model + runtime, organised by layer:
          RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
          Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h),
          Binary/ (BinaryImage.h + ELF/MachO/PE adapters — capability layer)
-AMC/     AMC: core/ (ELF/Mach-O reader, metadata, adapter, symbol store, query, verify),
-           cpp/ (Clang frontend+backend), dump/, mcp/
 test/    runtime + unit tests (Catch2)
 bench/   benchmarks
-AMC/Aue/ experimental Lua boundary layer + differential conformance
-tools/   helper scripts (MCP demo, token cost, LLDB command, ELF test)
+tools/   helper scripts (MCP demo, token cost, test runners)
 docs/    specification and design
 ```
 
@@ -111,12 +108,12 @@ docs/    specification and design
 | ABI runtime | `SKL/ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
 | DLL binding | `SKL/ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
 | Adapter dispatch | `SKL/ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
-| Binary reader | `SKL/ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by `AMC/core/` | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
-| Metadata Region | `AMC/core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
-| ABI adapter | `AMC/core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
-| Symbol store | `AMC/core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
-| MCP server | `AMC/mcp/` | AI-agent tool surface (`amc-mcp` binary) |
-| LLDB plugin | `AMC/dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
+| Binary reader | `SKL/ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by AMC | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
+| Metadata Region | AMC repository: `src/SKL/AMC/Core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
+| ABI adapter | AMC repository: `src/SKL/AMC/Core/amc_adapter.h` | `generate_adapter()` — field-level mapping from source to target memory |
+| Symbol store | AMC repository: `src/SKL/AMC/Core/amc_symbol_store.h` | Offline symbol resolution from `.abix` / Metadata Region |
+| MCP server | AMC repository: `src/SKL/AMC/Tool/MCP/` | AI-agent tool surface (`amc-mcp` binary) |
+| LLDB plugin | AMC repository: `src/SKL/AMC/Tool/Dump/` | C++ LLDB plugin (`libabix_lldb.so`) |
 | Versioned registry | `SKL/ABIX/Runtime/Registry.h` | `runtime::Registry::register_module(module, version)` — same TypeID across versions |
 
 Read [`README.md`](../README.md) for orientation, then the documents relevant to
@@ -279,14 +276,14 @@ keep their existing, dependency-free output and diagnostics (`SKL/ABIX/Util/Log.
 reference implementation: a variadic logger built on the C library).
 
 Everything else in the repository is a facility and **may** use **fmt** for output
-formatting: `AMC/`, `test/`, `bench/` and `tools/`. Within a facility, fmt is
+formatting: the AMC repository, `test/`, `bench/` and `tools/`. Within a facility, fmt is
 the formatter to use — `fmt::print` / `fmt::format` / `fmt::format_to_n` instead of the
 `printf` family — and new output should stay on it rather than mixing two styles.
 `bench/` already does, through `bench/bench_fmt.hpp`.
 
 "ABIX itself" means the `SKL/ABIX/` headers and the runtime target, not every target whose
-name starts with `abix`: the `libabix-*` static libraries are facilities (their sources
-live under `AMC/src/Core/`), so they keep using fmt.
+name starts with `abix`: the `libabix-*` static libraries live in the AMC repository,
+so they keep using fmt.
 
 `fmt` is an established project dependency (see `cmake/AbixDependencies.cmake`), so
 linking it into a facility target is not a new dependency — `bench/` requires it
@@ -344,10 +341,10 @@ Additional CMake options (see `CMakeLists.txt`):
 | `-DSKL_ABIX_DEVELOPMENT=OFF` | OFF | Enable development-only diagnostics |
 | `-DSKL_ABIX_BUILD_DLL_VARIANTS=ON` | ON | Build cross-toolchain DLL variants |
 
-AMC is a separate project under `AMC/CMakeLists.txt`; it consumes an installed
-ABIX runtime package and owns its LLVM/Clang, fmt and toml++ dependencies. See
-[`AMC/README.md`](../AMC/README.md). On macOS with Homebrew, LLVM is keg-only for
-the AMC build: pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"`.
+AMC is a separate repository (<https://github.com/Sukanle/AMC>); it consumes an
+installed ABIX runtime package (or fetches ABIX into its own `dependencies/`) and
+owns its LLVM/Clang, fmt and toml++ dependencies. On macOS with Homebrew, LLVM is
+keg-only for the AMC build: pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"`.
 
 ### Test & Run
 
@@ -366,7 +363,7 @@ For AMC changes, also exercise the CLI manually. For ABI changes, verify
 generation, serialization, deserialization, comparison, compatibility and
 runtime behaviour.
 
-AMC's standalone suite is registered by `AMC/CMakeLists.txt`; `AMC/tests/unit/core_test.cpp` holds core assertions; ABIX runtime tests are under `test/`.
+AMC's standalone suite is registered by its own `CMakeLists.txt`; `tests/unit/core_test.cpp` holds core assertions in the AMC repository. ABIX runtime tests are under `test/`.
 
 Do not claim a test passed unless it was actually run.
 
@@ -404,7 +401,7 @@ regenerate. When generated output changes, verify it is reproducible
 
 Do not optimize from intuition when changing binding, registry lookup,
 synchronization, metadata lookup, call paths or type mapping. Prefer benchmarks
-(see `bench/`, `AMC/Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
+(see `bench/`, the AMC repository's `Aue/abix-bench`, `tools/abix_token_cost.py`). A performance
 optimization must not silently change ABI semantics.
 
 ---

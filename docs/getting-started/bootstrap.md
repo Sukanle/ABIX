@@ -404,7 +404,7 @@ The bootstrap kernel is the trusted computing base (TCB). Like BIOS/firmware or 
 * `runtime::Registry` registration, `TypeId` lookup and the canonical registry bridge;
 * compatibility / map IR and the `MapPrivate` constexpr operation plan;
 * a separate provider process and JSON-lines IPC;
-* `AMC/self.abic.toml` generates `amc_core.abix` from a clean directory, and the generated C++ descriptors register into `runtime::Registry`; lookups for `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and `type_of<amc::CompatibilityRecord>()` resolve.
+* `self.abic.toml` generates `amc_core.abix` from a clean directory, and the generated C++ descriptors register into `runtime::Registry`; lookups for `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and `type_of<amc::CompatibilityRecord>()` resolve.
 
 ### Boundaries
 

@@ -127,20 +127,6 @@ jobs:
           cmake --install build/Release --prefix "$RUNNER_TEMP/abix-install"
           test -f "$RUNNER_TEMP/abix-install/lib/cmake/ABIX/ABIXConfig.cmake"
 
-      - name: Build standalone AMC against runtime-only ABIX
-        run: |
-          LLVM_PREFIX="/usr/lib/llvm-${LLVM_VERSION}"
-          cmake -S . -B build/runtime-only -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DABIX_BUILD_RUNTIME_ONLY=ON
-          cmake --install build/runtime-only --prefix "$RUNNER_TEMP/abix-runtime-install"
-          cmake -S AMC -B build/AMC-standalone -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DABIX_DIR="$RUNNER_TEMP/abix-runtime-install/lib/cmake/ABIX" \
-            -DCMAKE_PREFIX_PATH="$LLVM_PREFIX;$RUNNER_TEMP/fmt;$RUNNER_TEMP/abix-runtime-install"
-          cmake --build build/AMC-standalone --parallel 2
-          ctest --test-dir build/AMC-standalone --output-on-failure --timeout 180
-
       - name: Upload test logs
         if: failure()
         uses: actions/upload-artifact@v4

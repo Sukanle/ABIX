@@ -404,7 +404,7 @@ Bootstrap 内核是 TCB（可信计算基）。类似 BIOS/firmware 或 compiler
 * `runtime::Registry` 注册、`TypeId` 查询与 canonical registry bridge；
 * Compat / Map IR 与 `MapPrivate` constexpr 操作计划；
 * 独立 provider 进程与 JSON-lines IPC；
-* `AMC/self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor 注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()` 与 `type_of<amc::CompatibilityRecord>()` 均可查询。
+* `self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor 注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()` 与 `type_of<amc::CompatibilityRecord>()` 均可查询。
 
 ### 自举边界
 

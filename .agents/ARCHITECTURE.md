@@ -160,13 +160,13 @@ specializations for each compatible type pair. The primary template returns
 `false` so callers can fall back gracefully.
 
 See [`docs/amc.md`](../docs/amc.md) `amc adapter` section and
-[`AMC/core/amc_adapter.h`](../AMC/core/amc_adapter.h).
+the AMC repository's `src/SKL/AMC/Core/amc_adapter.h`.
 
 ## 8. Extension Points
 
 - **New language** → implement a frontend/plugin ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
 - **New artifact consumer** → link `libabix-*`, do not write a new parser.
-- **New tool** → build on `AMC/core` query/verify APIs; keep JSON schemas stable.
+- **New tool** → build on the AMC repository's core query/verify APIs; keep JSON schemas stable.
 - **New runtime capability** → extend the runtime projection, not the ABI model,
   unless it is a genuine ABI concept.
 - **ABI adaptation** → use `amc adapter` to generate field-level mapping code

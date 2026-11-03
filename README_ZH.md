@@ -390,10 +390,6 @@ ABIX
 │   ├── Binary/            BinaryImage.h ELF.h MachO.h PE.h
 │   ├── STD/               String.h Span.h Optional.h Result.h Callback.h
 │   └── Util/              Util.h Config.h Log.h Atomic.h Hash.h Array.h Mem.h
-├── AMC/                   standalone ABI 工具链
-│   ├── src/SKL/AMC/       CLI、core、语言 provider 与 tools
-│   ├── Aue/               实验性 Lua 边界层
-│   └── tools/             LLDB 插件与 Python helper
 ├── test/                  Catch2 运行时与单元测试
 ├── bench/                 Google Benchmark 基准
 ├── dlls/                  跨 DLL 测试插件与 fixture
@@ -415,7 +411,7 @@ ABIX
 - Python 3（ABIX package/runtime 测试）
 - 受支持的原生工具链
 
-独立的 AMC 工程额外需要 LLVM/Clang (`clang-cpp`)、fmt、toml++、Python、可选的 Rust/Zig 跨语言 provider，以及用于 Aue 一致性原型的 Lua 5.4。见 [`AMC/README.md`](AMC/README.md)。
+独立的 [AMC 工程](https://github.com/Sukanle/AMC) 额外需要 LLVM/Clang (`clang-cpp`)、fmt、toml++、Python、可选的 Rust/Zig 跨语言 provider，以及用于 Aue 一致性原型的 Lua 5.4。
 
 > **平台支持：** 支持 Linux、macOS 与 **Windows**。Windows 上使用 MSYS2 UCRT64 工具链 (GCC 或 Clang) 构建；见 [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64)。macOS 上 Homebrew LLVM 是 keg-only，构建 AMC 时请传 `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"`。
 
@@ -429,10 +425,11 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
-### AMC 独立构建（迁移路径）
+### AMC
 
-AMC 现在有独立的 CMake 工程，使用已安装的 ABIX package，而不是 ABIX 源码树。
-见 [`AMC/README.md`](AMC/README.md)。ABIX 根工程不再构建 AMC 或其 artifact 库。
+AMC 是独立仓库：<https://github.com/Sukanle/AMC>。它使用已安装的 ABIX runtime
+package（或自动把 ABIX 拉取到自己的 `dependencies/` 目录）。ABIX 根工程既不包含
+也不构建 AMC。
 
 ### Runtime 构建契约：无异常、无 RTTI
 
@@ -483,20 +480,20 @@ artifact 库（`format`/`abi`/`metadata`/`tools`）属于独立的 AMC package�
 
 ### 试用
 
-先独立构建 AMC（见 [`AMC/README.md`](AMC/README.md)），再使用 standalone 构建的 `amc`：
+先独立构建并安装 AMC（见 [AMC 仓库](https://github.com/Sukanle/AMC)），再使用 `amc`：
 
 ```bash
-# 从示例配置构建 .abix
-./build/AMC-standalone/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
+# 从 AMC 的示例配置构建 .abix（AMC_SOURCE_DIR 是 AMC checkout）
+amc build -c "$AMC_SOURCE_DIR/tests/fixtures/amc_test.abic.toml" -B build/demo
 
 # 查看
-./build/AMC-standalone/bin/amc inspect build/demo/build/amc_test.abix
+amc inspect build/demo/build/amc_test.abix
 
 # 查询类型及其布局
-./build/AMC-standalone/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM 友好的 ABI 上下文
-./build/AMC-standalone/bin/amc context build/demo/build/amc_test.abix --format llm
+amc context build/demo/build/amc_test.abix --format llm
 ```
 
 完整走查见 [`docs/getting-started/getting-started_zh.md`](docs/getting-started/getting-started_zh.md)。
@@ -625,7 +622,6 @@ graph LR
 
 ABIX 使用以下第三方组件，其版权归各自作者所有，并遵循相应许可证：
 
-- **ljson** — MIT 许可证，Copyright (c) 2019 lengjingzju。源码位于 `AMC/include/ljson/` 与 `AMC/src/ljson/`；完整许可证见 `AMC/include/ljson/LICENSE`。
 - **{fmt}** — MIT 许可证，Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors。
 
 完整声明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

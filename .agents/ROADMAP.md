@@ -54,7 +54,7 @@ Also delivered: a minimal `amc-zig` **backend-only** provider that consumes the
 same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]`
 typed pointers / `comptime` layout assertions). It validates that ABIX IR is
 reusable: the same artifact drives both the Rust and the Zig projection, and
-`AMC/tests/interop/` builds one native library and runs both consumers against
+`tests/interop/` builds one native library and runs both consumers against
 it. The C++ → ABIX → Rust closed loop (with ownership, error-boundary and target
 contracts in an optional metadata-region extension directory) is complete.
 
@@ -119,7 +119,7 @@ These are follow-up goals after the 0.2.0 cross-language milestone. They are not
 
 ### P0 — AMC repository split (in progress)
 
-- ABIX root is runtime-only; AMC builds from `AMC/CMakeLists.txt` against an
+- ABIX root is runtime-only; AMC builds from `CMakeLists.txt` against an
   installed ABIX runtime package.
 - AMC owns `libabix-format/abi/metadata/tools` and exports them as `AMC::*`.
 - AMC has standalone core/e2e/package/feature/provider/interop/CMake tests.

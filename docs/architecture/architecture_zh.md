@@ -35,7 +35,7 @@ graph TD
 
 * **ABIX IR** — 语言无关的 ABI 模型：类型、字段、函数、参数、符号、hash、兼容性与映射。
 * **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../ABIX/abix_zh.md)。
-* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](../AMC/amc_zh.md)。
+* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](../amc/amc_zh.md) 与 [AMC 仓库](https://github.com/Sukanle/AMC)。
 * **ABIX Runtime** — 消费 ABI：注册、绑定、分派、适配，见 [`runtime_zh.md`](runtime_zh.md)。
 
 ## 运行时交互
@@ -111,10 +111,8 @@ graph LR
 ```text
 ABIX
 ├── SKL/ABIX/      ABI 模型 + 运行时（header-only 注册表）
-├── AMC/       AMC 工具链：core/、cpp/ 前后端、dump/、mcp/
 ├── test/      运行时与单元测试（Catch2）
 ├── bench/     基准测试
-├── AMC/Aue/    实验性 Lua 边界层 + 一致性运行器
 ├── tools/     辅助脚本（MCP demo、token 成本、LLDB 命令）
 └── docs/      规范与设计
 ```

@@ -30,10 +30,10 @@
 
 * C++17 或更高
 * CMake 3.20+
-* LLVM / Clang 工具链（AMC C++ 前端链接 `clang-cpp`）
+* 仅在同时构建 AMC 时需要 LLVM / Clang 工具链（AMC C++ 前端链接 `clang-cpp`）
 * 原生工具链（gcc/clang、GNU make 或 Ninja）
 
-可选：Lua 5.4（AMC 的 Aue 实验模块）、`readelf`/`strip`/`lldb`/`clang++`（集成测试）。
+可选：Lua 5.4（AMC 仓库中的 Aue 实验模块）、`readelf`/`strip`/`lldb`/`clang++`（集成测试）。
 
 ## 2. 构建
 
@@ -44,7 +44,8 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 ```
 
-产物在 `build/bin`：
+ABIX 构建 header-only runtime 及其测试。AMC 是独立仓库；其产物位于 AMC
+构建目录的 `bin/`：
 
 | 工具 | 用途 |
 |------|------|
@@ -63,8 +64,8 @@ ctest --test-dir build/Release --output-on-failure
 
 ## 3. 描述一个 ABI
 
-AMC 现在是独立工程。请按 [`AMC/README.md`](../../AMC/README.md) 构建；下面的命令假定
-其 standalone 构建目录为 `build/AMC-standalone`。
+AMC 是独立仓库：<https://github.com/Sukanle/AMC>。请在 AMC 仓库中构建并安装；
+下面的命令假定 `amc` 已在 `PATH` 中。
 
 ABI 提取由 `.abic.toml` 驱动：
 
@@ -92,7 +93,7 @@ int add(int a, int b);
 ```
 
 ```bash
-./build/AMC-standalone/bin/amc build -c math_api.abic.toml -B build
+amc build -c math_api.abic.toml -B build
 # -> build/build/math_api.abix
 # -> build/build/math_api.abix.meta
 ```
@@ -102,25 +103,25 @@ int add(int a, int b);
 ## 4. 查看与查询
 
 ```bash
-./build/AMC-standalone/bin/amc inspect build/build/math_api.abix
-./build/AMC-standalone/bin/amc query build/build/math_api.abix --type math::Point --layout
-./build/AMC-standalone/bin/amc query build/build/math_api.abix --function math::add --format json
-./build/AMC-standalone/bin/amc context build/build/math_api.abix --format llm
+amc inspect build/build/math_api.abix
+amc query build/build/math_api.abix --type math::Point --layout
+amc query build/build/math_api.abix --function math::add --format json
+amc context build/build/math_api.abix --format llm
 ```
 
 所有消费者也能直接吃编译产物（生成头文件把 ABI 内嵌为 `.abix.metadata` 段）：
 
 ```bash
-./build/AMC-standalone/bin/amc query libfoo.so --type math::Point --layout
+amc query libfoo.so --type math::Point --layout
 ```
 
 ## 5. 对比与校验
 
 ```bash
-./build/AMC-standalone/bin/amc diff v1.abix v2.abix
-./build/AMC-standalone/bin/amc compatibility v1.abix v2.abix          # 不兼容退出 1
-./build/AMC-standalone/bin/amc verify -c math_api.abic.toml -B build   # 契约 vs 当前实现
-./build/AMC-standalone/bin/amc verify v1.abix v2.abix --format diagnostics
+amc diff v1.abix v2.abix
+amc compatibility v1.abix v2.abix          # 不兼容退出 1
+amc verify -c math_api.abic.toml -B build   # 契约 vs 当前实现
+amc verify v1.abix v2.abix --format diagnostics
 ```
 
 `amc verify` 把任何差异（包括新增类型/函数）都视为 drift。
@@ -128,26 +129,26 @@ int add(int a, int b);
 ## 6. 代码生成
 
 ```bash
-./build/AMC-standalone/bin/amc generate build/build/math_api.abix -l cpp -o generated.hpp
-./build/AMC-standalone/bin/amc generate build/build/math_api.abix -l lua -o aue_contract.hpp
+amc generate build/build/math_api.abix -l cpp -o generated.hpp
+amc generate build/build/math_api.abix -l lua -o aue_contract.hpp
 ```
 
 ## 7. Metadata Region 与 symbol server
 
 ```bash
-./build/AMC-standalone/bin/amc metadata build/build/math_api.abix -o math_api.abixmeta
-./build/AMC-standalone/bin/amc metadata --verify math_api.abixmeta
-./build/AMC-standalone/bin/amc metadata --from-elf libfoo.so --format json
-./build/AMC-standalone/bin/amc publish libfoo.so --root ~/.abix/symbols
-./build/AMC-standalone/bin/amc fetch libfoo.so -o libfoo.abixmeta
+amc metadata build/build/math_api.abix -o math_api.abixmeta
+amc metadata --verify math_api.abixmeta
+amc metadata --from-elf libfoo.so --format json
+amc publish libfoo.so --root ~/.abix/symbols
+amc fetch libfoo.so -o libfoo.abixmeta
 ```
 
 ## 8. AI Agent 集成
 
 ```bash
-./build/AMC-standalone/bin/amc-mcp build/build/math_api.abix
+amc-mcp build/build/math_api.abix
 python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
-        --amc-mcp ./build/AMC-standalone/bin/amc-mcp
+        --amc-mcp amc-mcp
 ```
 
 工具目录见 [`MCP_zh.md`](../ai/MCP_zh.md)。
@@ -156,5 +157,5 @@ python3 tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix \
 
 * [`abix_zh.md`](../ABIX/abix_zh.md) — `.abix` artifact 格式
 * [`compatibility_zh.md`](../architecture/compatibility_zh.md) — ABI 身份与兼容性
-* [`amc_zh.md`](../AMC/amc_zh.md) — AMC 工具链
+* [`amc_zh.md`](../amc/amc_zh.md) — AMC 工具链
 * [`architecture_zh.md`](../architecture/architecture_zh.md) — 整体架构

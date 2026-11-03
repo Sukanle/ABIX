@@ -119,7 +119,7 @@ Segment、import、relocation 只在出现具体 ABIX 工作流需要时才加�
 
 ## 消费方
 
-- **AMC** —— `amc metadata --from-elf`、`amc inspect`、`amc verify`、`amc publish` 以及 LLDB 插件都经由一层薄兼容垫片（`AMC/include/AMC/Core/ELF.h`），该垫片现在也支持 PE。
+- **AMC** —— `amc metadata --from-elf`、`amc inspect`、`amc verify`、`amc publish` 以及 LLDB 插件都经由一层薄兼容垫片（`include/SKL/AMC/Core/ELF.h`），该垫片现在也支持 PE。
 - **接口自动发现（规划中）** —— 扫描 `exports()` 找 `abix_module_query_v1`，与内嵌 region 配对，注册接口；runtime 全程不知道容器：
 
   ```text

@@ -58,6 +58,22 @@ REQUIRED_HEADERS = (
     MICS_HLMD_INCLUDE_DIR / "SKL" / "HLMD" / "HLMD.h",
 )
 
+
+def amc_source_dir() -> Path | None:
+    """Locate an AMC checkout for the optional AMC-driven tiers.
+
+    AMC is a separate repository. Prefer ``AMC_SOURCE_DIR``; fall back to a
+    sibling checkout named ``AMC`` next to this repository.
+    """
+    configured = os.environ.get("AMC_SOURCE_DIR", "")
+    if configured:
+        path = Path(configured).resolve()
+        return path if (path / "CMakeLists.txt").is_file() else None
+    sibling = PROJECT_ROOT.parent / "AMC"
+    if (sibling / "CMakeLists.txt").is_file():
+        return sibling
+    return None
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -612,7 +628,11 @@ def run_elf_pe_tests(build_dir: Path, keep: bool = False) -> int:
         print("  [SKIP] AMC_BIN_DIR not set; ELF/PE metadata tests require standalone AMC")
         return 0
     amc = Path(external_amc) / exe_name("amc")
-    fixture_dir = PROJECT_ROOT / "AMC" / "tests" / "fixtures"
+    amc_src = amc_source_dir()
+    if amc_src is None:
+        print("  [SKIP] AMC_SOURCE_DIR not set and no sibling AMC checkout found")
+        return 0
+    fixture_dir = amc_src / "tests" / "fixtures"
     fixture_config = fixture_dir / "amc_test.abic.toml"
 
     print(f"AMC binary: {amc}")
@@ -755,7 +775,11 @@ def run_bootstrap_test(build_dir: Path, keep: bool = False) -> int:
         print(f"[FAIL] AMC executable was not produced: {amc}", file=sys.stderr)
         return 1
 
-    fixture_src = PROJECT_ROOT / "AMC" / "tests" / "consumers"
+    amc_src = amc_source_dir()
+    if amc_src is None:
+        print("[SKIP] AMC_SOURCE_DIR not set and no sibling AMC checkout found")
+        return 0
+    fixture_src = amc_src / "tests" / "consumers"
     fixture_build = work_dir
     artifact = fixture_build / "build" / "amc_core.abix"
     header = fixture_build / "generated" / "amc_core.hpp"
@@ -771,7 +795,7 @@ def run_bootstrap_test(build_dir: Path, keep: bool = False) -> int:
         "-B", str(fixture_build),
         *generator,
         f"-DCMAKE_CXX_COMPILER={clangxx}",
-        f"-DAMC_MODULE_DIR={PROJECT_ROOT / 'AMC' / 'CMake'}",
+        f"-DAMC_MODULE_DIR={amc_src / 'CMake'}",
         f"-DABIX_SOURCE_ROOT={PROJECT_ROOT}",
         f"-DAMC_EXECUTABLE={amc}",
     ])
@@ -838,7 +862,7 @@ def run_bootstrap_test(build_dir: Path, keep: bool = False) -> int:
 def run_interop_tests(build_dir: Path, keep: bool = True, cmdly_root: str | None = None) -> int:
     """Run cross-language interop tests.
 
-    Calls the interop test scripts in AMC/tests/interop/:
+    Calls the interop test scripts in the AMC repository's tests/interop/:
       - interop_test.py:  C++ -> ABIX -> Rust/Zig
       - expose_test.py:   C++ -> ABIX -> Rust (automatic capability generation)
       - cmdly_test.py:    cmdly C++ library -> ABIX -> Rust
@@ -870,7 +894,11 @@ def run_interop_tests(build_dir: Path, keep: bool = True, cmdly_root: str | None
         return 0
     amc_bin_dir = Path(external_amc)
     source_root = str(PROJECT_ROOT)
-    interop_dir = PROJECT_ROOT / "AMC" / "tests" / "interop"
+    amc_src = amc_source_dir()
+    if amc_src is None:
+        print("  [SKIP] AMC_SOURCE_DIR not set and no sibling AMC checkout found")
+        return 0
+    interop_dir = amc_src / "tests" / "interop"
 
     scripts = [
         ("interop_test.py", "C++ -> ABIX -> Rust/Zig"),

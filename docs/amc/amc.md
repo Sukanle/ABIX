@@ -17,8 +17,11 @@
 
 AMC is the ABIX toolchain entry point. It extracts ABI information from a language AST, projects it into ABIX IR, and provides inspection, comparison, verification, generation and distribution tooling.
 
-> **Build:** AMC is a standalone CMake project under `AMC/` and consumes an
-> installed ABIX runtime package. See [`AMC/README.md`](../../AMC/README.md).
+> **Repository:** AMC is an independent repository:
+> <https://github.com/Sukanle/AMC>. This page is kept as a toolchain-contract
+> reference; relative paths below are relative to the AMC repository root. AMC
+> prefers an installed ABIX runtime package and otherwise fetches ABIX into
+> `dependencies/`.
 
 ```mermaid
 graph TD
@@ -181,7 +184,7 @@ Include the check header *after* the native declarations it names. It asserts `s
 
 The Rust provider (`amc-rust`) writes `amc_generated.rs`: `#[repr(C)]` aggregates, `extern "C"` declarations, associated `ABIX_*` constants and `const _: () = assert!(...)` size/align/offset checks. C-ABI scalars project to their `core::ffi::c_*` aliases (`c_int`, `c_double`, ...) derived from the ABI-normalised primitive identity, rather than to fixed-width spellings, so the alias encodes the target's C ABI. Because the Rust provider reads the language IR directly, `[[import]] language = "rust"` accepts `#[repr(C)]` structs/enums and `extern "C"` functions from `.rs` files without build flags.
 
-The Zig provider (`amc-zig`) is a **backend-only** consumer of the same IR: `amc generate -l zig` writes `amc_generated.zig` with `extern struct` types, `extern fn` declarations, `[*c]` typed pointers and `comptime` `@sizeOf` / `@alignOf` / `@offsetOf` assertions. It carries no Zig-specific model, so the same `.abix` that drives the Rust projection drives the Zig projection; see `AMC/tests/interop/`, where both consumers link the same native library.
+The Zig provider (`amc-zig`) is a **backend-only** consumer of the same IR: `amc generate -l zig` writes `amc_generated.zig` with `extern struct` types, `extern fn` declarations, `[*c]` typed pointers and `comptime` `@sizeOf` / `@alignOf` / `@offsetOf` assertions. It carries no Zig-specific model, so the same `.abix` that drives the Rust projection drives the Zig projection; see `tests/interop/`, where both consumers link the same native library.
 
 ### Language providers
 
@@ -191,7 +194,7 @@ amc --describe-language rust      # rust frontend backend protocol=jsonl-v1
 amc --describe-language zig       # zig backend protocol=jsonl-v1
 ```
 
-The list and descriptions come from `AMC/providers.toml`, copied next to the
+The list and descriptions come from `providers.toml`, copied next to the
 built `amc` as `amc-providers.toml`. `AMC_PROVIDERS_FILE` overrides the
 manifest path. Each entry declares its language, executable, roles, protocol
 and optional feature set; `AMC_DEFAULT_PROVIDERS_FILE` is the source-tree
@@ -299,5 +302,5 @@ amc validate missing.abix --error-format json
 | `amc-zig` | Zig backend-only provider (JSON-lines IPC); consumes the same IR, no Clang/LLVM dependency |
 | `amc-dump` | raw `.abix` dump (text / JSON) |
 | `amc-mcp` | MCP server exposing ABIX tools; indexes multiple artifacts as a knowledge base ([MCP.md](../ai/MCP.md)) |
-| `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`AMC/tools/lldb_abix.cpp`](../../AMC/tools/lldb_abix.cpp)) |
+| `libabix_lldb.so` | native LLDB command plugin (`abix ...`) linked against `libabix-*` ([`tools/lldb_abix.cpp`](https://github.com/Sukanle/AMC/blob/main/tools/lldb_abix.cpp)) |
 | `abix-conformance` | Aue L0/L1 differential runner (when Lua is present) |

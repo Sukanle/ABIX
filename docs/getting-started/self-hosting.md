@@ -72,8 +72,8 @@ Stage 0 is the initial hand-built loader; Stage 1 is the first version built by 
 ABIX describes its own core IR through its own configuration and validates the result:
 
 * `SKL/ABIX/self.abic.toml` — the ABIX runtime's public types
-* `AMC/self.abic.toml` — the AMC core IR
-* `src/self_types.cpp`, `AMC/self_types.cpp` — the inputs described
+* `self.abic.toml` — the AMC core IR
+* `src/self_types.cpp`, `self_types.cpp` — the inputs described
 
 The integration suite builds these artifacts, validates them, generates a native projection and compiles a consumer that uses `runtime::Registry::type_of<T>()` — proving the bootstrap loop is intact.
 

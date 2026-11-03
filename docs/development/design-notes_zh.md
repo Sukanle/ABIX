@@ -314,7 +314,7 @@ ABI 真相应独立于任何语言与编译器存在，作为可持久化、可�
 * **CLI Driver。** `build`、`frontend`、`backend`、`inspect`、`validate` 子命令。CMake 集成（`amc_add_abi`）把 `.abic → .abix → 可选 header` 挂进既有 target 的增量构建图。
 * **Bootstrap。** 先冻结 ABI 元模型（Phase 0）；再用一个极小、静态、不用 ABIX、不用动态内存、不用 RCU 的 bootstrap kernel 作为等价可信计算基（TCB），严格 DAG 依赖避免递归。
 
-`C++ 头文件 → Clang AST → AbiModule → .abix → 投影代码` 的闭环被打通；round-trip 测试与 CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh.md`](../AMC/amc_zh.md) 与 [`self-hosting_zh.md`](../getting-started/self-hosting_zh.md)。
+`C++ 头文件 → Clang AST → AbiModule → .abix → 投影代码` 的闭环被打通；round-trip 测试与 CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh.md`](../amc/amc_zh.md) 与 [`self-hosting_zh.md`](../getting-started/self-hosting_zh.md)。
 
 ### 阶段六 · Micro-RCU 性能工程
 

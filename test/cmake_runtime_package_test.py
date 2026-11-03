@@ -95,7 +95,7 @@ def main() -> int:
         print("  [PASS] runtime-only ABIX package configured, built and ran without fmt")
 
         # The same runtime target must be consumable from a parent project via
-        # add_subdirectory, without installing or building AMC/tests/DLLs.
+        # add_subdirectory, without installing or building AMC or its tests/DLLs.
         subproject = os.path.join(work, "subproject")
         os.makedirs(subproject)
         with open(os.path.join(subproject, "CMakeLists.txt"), "w", encoding="utf-8") as handle:

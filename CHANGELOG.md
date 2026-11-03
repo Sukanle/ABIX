@@ -5,14 +5,17 @@ the GitHub release history.
 
 ## v0.3.0 — AMC split and runtime-only ABIX
 
-AMC is now a standalone CMake project and package. ABIX keeps the header-only
-runtime and no longer builds the AMC toolchain or its artifact libraries.
+AMC is now an independent repository and package. ABIX keeps the header-only
+runtime and no longer contains or builds the AMC toolchain, its artifact
+libraries, Aue, or the LLDB plugin.
 
 ### Changed
 
-- Removed AMC targets, tests, headers, tools and artifact-library sources from
-  the ABIX root build. AMC is built from `AMC/CMakeLists.txt` against an
-  installed runtime-only ABIX package.
+- Removed the `AMC/` directory, including its targets, tests, headers, tools,
+  Aue and artifact-library sources. AMC is developed in
+  <https://github.com/Sukanle/AMC> and consumes an installed runtime-only ABIX
+  package; when no package is found it fetches ABIX into its own
+  `dependencies/` directory.
 - `AMC::format`, `AMC::abi`, `AMC::metadata` and `AMC::tools` now belong to the
   AMC package. ABIX no longer exports `ABIX::format/abi/metadata/tools`.
 - ABIX package configuration is runtime-only: `ABIX::runtime`, `ABIX::ABIX`
@@ -20,8 +23,8 @@ runtime and no longer builds the AMC toolchain or its artifact libraries.
 - Removed the monorepo-only AMC integration tests. AMC now has standalone core,
   e2e, package, feature, Rust provider/panic, cancellation, interop and
   capability-generation tests, plus an independent CMake integration test.
-- Aue remains an experimental consumer in the ABIX tree for now; AMC-specific
-  tooling is no longer required to build ABIX runtime and its tests.
+- Aue moved to the AMC repository; AMC-specific tooling is no longer required
+  to build the ABIX runtime and its tests.
 
 ### Compatibility
 

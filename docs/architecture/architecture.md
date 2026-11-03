@@ -35,7 +35,7 @@ graph TD
 
 * **ABIX IR** — the language-independent ABI model: types, fields, functions, parameters, symbols, hashes, compatibility and mapping records.
 * **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../ABIX/abix.md).
-* **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](../AMC/amc.md).
+* **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](../amc/amc.md) and the [AMC repository](https://github.com/Sukanle/AMC).
 * **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation. See [`runtime.md`](runtime.md).
 
 ## Runtime Interaction
@@ -120,10 +120,8 @@ graph LR
 ```text
 ABIX
 ├── SKL/ABIX/      ABI model + runtime (header-only registry)
-├── AMC/        AMC toolchain: core/, cpp/ frontend+backend, dump/, mcp/
 ├── test/       runtime + unit tests (Catch2)
 ├── bench/      benchmarks
-├── AMC/Aue/    experimental Lua boundary layer + conformance runner
 ├── tools/      helper scripts (MCP demo, token cost, LLDB command)
 └── docs/       specification and design
 ```

@@ -390,10 +390,6 @@ ABIX
 │   ├── Binary/            BinaryImage.h ELF.h MachO.h PE.h
 │   ├── STD/               String.h Span.h Optional.h Result.h Callback.h
 │   └── Util/              Util.h Config.h Log.h Atomic.h Hash.h Array.h Mem.h
-├── AMC/                   standalone ABI toolchain
-│   ├── src/SKL/AMC/       CLI, core, language providers and tools
-│   ├── Aue/               experimental Lua boundary layer
-│   └── tools/             LLDB plugin and Python helper
 ├── test/                  Catch2 runtime and unit tests
 ├── bench/                 Google Benchmark suites
 ├── dlls/                  cross-DLL test plugins and fixtures
@@ -415,9 +411,9 @@ ABIX
 - Python 3 for the ABIX package/runtime tests
 - a supported native toolchain
 
-The separate AMC project additionally requires LLVM/Clang (`clang-cpp`), fmt,
-toml++, Python, optionally Rust/Zig for the cross-language providers, and Lua
-5.4 for the Aue conformance prototype. See [`AMC/README.md`](AMC/README.md).
+The separate [AMC project](https://github.com/Sukanle/AMC) additionally requires
+LLVM/Clang (`clang-cpp`), fmt, toml++, Python, optionally Rust/Zig for the
+cross-language providers, and Lua 5.4 for the Aue conformance prototype.
 
 > **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` when building AMC.
 
@@ -431,11 +427,11 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
-### Standalone AMC build (migration path)
+### AMC
 
-AMC now has a standalone CMake project that consumes an installed ABIX package
-instead of the ABIX source tree. See [`AMC/README.md`](AMC/README.md). The ABIX
-root no longer builds AMC or its artifact libraries.
+AMC is an independent repository: <https://github.com/Sukanle/AMC>. It consumes
+an installed ABIX runtime package (or fetches ABIX automatically into its own
+`dependencies/` directory). The ABIX root neither contains nor builds AMC.
 
 ### Runtime build contract: no exceptions, no RTTI
 
@@ -498,21 +494,21 @@ standalone AMC package and are exported there as `AMC::format`, `AMC::abi`,
 
 ### Try it
 
-Build AMC separately first (see [`AMC/README.md`](AMC/README.md)), then use the
-standalone build's `amc`:
+Build and install AMC separately first (see the
+[AMC repository](https://github.com/Sukanle/AMC)), then use `amc`:
 
 ```bash
-# Build an .abix artifact from the example config
-./build/AMC-standalone/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
+# Build an .abix artifact from an AMC fixture (AMC_SOURCE_DIR is an AMC checkout)
+amc build -c "$AMC_SOURCE_DIR/tests/fixtures/amc_test.abic.toml" -B build/demo
 
 # Inspect it
-./build/AMC-standalone/bin/amc inspect build/demo/build/amc_test.abix
+amc inspect build/demo/build/amc_test.abix
 
 # Query a type and its layout
-./build/AMC-standalone/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM-friendly ABI context
-./build/AMC-standalone/bin/amc context build/demo/build/amc_test.abix --format llm
+amc context build/demo/build/amc_test.abix --format llm
 ```
 
 For the first complete walkthrough see [`docs/getting-started/getting-started.md`](docs/getting-started/getting-started.md).
@@ -641,7 +637,6 @@ See [`LICENSE`](LICENSE).
 
 ABIX uses third-party components under their respective licenses:
 
-- **ljson** — MIT License, Copyright (c) 2019 lengjingzju. Vendored under `AMC/include/ljson/` and `AMC/src/ljson/`; see `AMC/include/ljson/LICENSE`.
 - **{fmt}** — MIT License, Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors.
 
 See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full notices.

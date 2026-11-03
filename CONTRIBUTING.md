@@ -68,20 +68,20 @@ Requirements:
 - CMake 3.20+
 - optional: `readelf`/`strip`/`lldb`/`clang++` (runtime tests)
 
-AMC is a separate project under `AMC/`; it additionally needs LLVM/Clang, fmt,
-toml++, optionally Rust/Zig, and Lua 5.4 for Aue. See
-[`AMC/README.md`](AMC/README.md).
+AMC is a separate repository: <https://github.com/Sukanle/AMC>. It additionally
+needs LLVM/Clang, fmt, toml++, optionally Rust/Zig, and Lua 5.4 for Aue. See the
+AMC repository's README for its build instructions.
 
 ### Locating LLVM for AMC (macOS / Homebrew)
 
-The standalone AMC project locates LLVM with `find_package(LLVM CONFIG)`. On
+The AMC project locates LLVM with `find_package(LLVM CONFIG)`. On
 Homebrew, `llvm` is **keg-only**: installing `llvm@22` creates
 `/opt/homebrew/opt/llvm@22`, and the unversioned
 `/opt/homebrew/opt/llvm` symlink does **not** exist. Point `CMAKE_PREFIX_PATH`
 at the keg root:
 
 ```bash
-cmake -S AMC -B build/AMC-standalone -G Ninja \
+cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DABIX_DIR=.../lib/cmake/ABIX \
   -DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22);..."
@@ -89,8 +89,8 @@ cmake -S AMC -B build/AMC-standalone -G Ninja \
 
 `CMAKE_PREFIX_PATH` must be the keg **root**. `.../llvm@22/lib` and
 `.../llvm@22/lib/cmake/llvm` both fail to resolve. If LLVM is not found, the
-standalone AMC configure fails; build and install ABIX runtime first, then
-configure `AMC/`.
+AMC configure fails; build and install the ABIX runtime package first, then
+configure AMC.
 
 Avoid exporting `LDFLAGS` / `CPPFLAGS` pointing at an unversioned LLVM prefix.
 CMake copies them into `CMAKE_EXE_LINKER_FLAGS` (and the shared/module
@@ -112,7 +112,7 @@ cannot find built-in headers, which breaks AMC feature/self-description tests.
 Clear the stale detection results to let CMake re-run `clang -print-resource-dir`:
 
 ```bash
-cmake -S AMC -B build/AMC-standalone -U AMC_CLANG_EXECUTABLE -U AMC_CLANG_RESOURCE_DIR
+cmake -S . -B build -U AMC_CLANG_EXECUTABLE -U AMC_CLANG_RESOURCE_DIR
 ```
 
 ### Windows (MSYS2 UCRT64)
@@ -215,9 +215,9 @@ ctest --test-dir build/Release --output-on-failure
 ## Guidelines
 
 - Keep the build green: run `ctest` before opening a pull request.
-- Add tests for behaviour changes. AMC's standalone suite is registered by
-  `AMC/CMakeLists.txt`; core assertions live in `AMC/tests/unit/core_test.cpp`;
-  ABIX runtime tests use Catch2 in `test/`.
+- Add tests for behaviour changes. AMC's standalone suite is registered by its
+  own `CMakeLists.txt`; core assertions live in `tests/unit/core_test.cpp` in
+  the AMC repository. ABIX runtime tests use Catch2 in `test/`.
 - Keep ABI semantics in one place: extend the AMC artifact libraries rather than
   duplicating a parser in a consumer.
 - Update the relevant `docs/` page (and its `_zh` edition when you can) for

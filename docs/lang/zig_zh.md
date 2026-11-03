@@ -37,7 +37,7 @@ amc generate build/package.abix -l zig -o gen/
 - 类型身份、大小、对齐与字段 offset 的 `ABIX_*` 常量；
 - 带 `@sizeOf`、`@alignOf` 与 `@offsetOf` 断言的 `comptime` 块。
 
-驱动 Rust 投影的同一份 artifact 也驱动 Zig 投影。`AMC/tests/interop/` 会构建同一个原生库，并让两个消费者都对它运行；AMC 中没有加入任何 Zig 专属信息。
+驱动 Rust 投影的同一份 artifact 也驱动 Zig 投影。`tests/interop/` 会构建同一个原生库，并让两个消费者都对它运行；AMC 中没有加入任何 Zig 专属信息。
 
 ## 布局检查
 

@@ -1,8 +1,9 @@
 # Testing ABIX and AMC
 
-> **Repository split:** ABIX's root build now tests the header-only runtime only.
-> The AMC tiers below are owned and run by the standalone `AMC/CMakeLists.txt`
-> project; they are kept here as reference for the toolchain contract. The
+> **Repository split:** ABIX's root build tests the header-only runtime only.
+> The AMC tiers below are owned and run by the standalone AMC repository
+> (<https://github.com/Sukanle/AMC>); they are kept here as reference for the
+> toolchain contract. AMC-relative paths below resolve inside that checkout. The
 > monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` tiers were
 > retired; the standalone suite covers core/e2e/package/feature/provider/
 > interop/expose/cancellation/CMake integration.
@@ -154,11 +155,11 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 
 ### E. AMC feature set (`amc-feature-test`)
 
-A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AMC capabilities directly:
+A cross-platform test (`tests/cli/feature_test.py`) that asserts the five AMC capabilities directly:
 
 | Aspect                  | Checks                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Front/back separation   | `--list-languages`/`--describe-language` from `AMC/providers.toml` (cpp/lua/rust/zig); `AMC_PROVIDERS_FILE` override; `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** and `abix.plugin/1` envelope |
+| Front/back separation   | `--list-languages`/`--describe-language` from `providers.toml` (cpp/lua/rust/zig); `AMC_PROVIDERS_FILE` override; `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** and `abix.plugin/1` envelope |
 | Code parsing            | `amc build` parses **C++** (`amc-cpp`) and **Rust** (`amc-rust`, a built-in frontend — no `rustc` needed) into `.abix`                                                                                    |
 | IR generation           | `validate`, `inspect`, `query --layout`, `context --format json`                                                                                                                                          |
 | Native language binding | one `.abix` → `generate -l cpp\|zig\|rust\|lua`; the **C++** and **Rust** bindings are compiled                                                                                                           |
@@ -210,10 +211,10 @@ The protocol also has a dedicated cooperative-cancellation test (`amc-cancellati
 The suites generate into a temporary directory and clean up. To inspect the artifacts, either run the steps by hand or keep the directories with [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#keeping-the-temporary-artifacts):
 
 ```bash
-AMC=build/AMC-standalone/bin/amc.exe           # drop .exe on Linux/macOS
+AMC=$(command -v amc)                           # run from an AMC checkout
 
 # parse source -> IR
-"$AMC" build -c AMC/tests/fixtures/amc_test.abic.toml -B build/amc-demo
+"$AMC" build -c tests/fixtures/amc_test.abic.toml -B build/amc-demo
 
 # one IR -> four language bindings
 ABIX=build/amc-demo/build/amc_test.abix
@@ -235,8 +236,8 @@ ABIX=build/amc-demo/build/amc_test.abix
 
 Fixtures:
 
-- C++ `AMC/tests/fixtures/amc_test.abic.toml`;
-- Rust frontend `AMC/tests/fixtures/rust_demo.abic.toml`.
+- C++ `tests/fixtures/amc_test.abic.toml`;
+- Rust frontend `tests/fixtures/rust_demo.abic.toml`.
 
 ## Native binding (Rust) walkthrough
 
@@ -244,11 +245,11 @@ The interop test performs exactly this in a temp directory:
 
 ```bash
 # native C-ABI library (Windows also emits the import library rustc links against)
-clang++ -std=c++17 -shared -O2 AMC/tests/interop/demo_lib.cpp \
+clang++ -std=c++17 -shared -O2 tests/interop/demo_lib.cpp \
     -o /tmp/interop_demo.dll -Wl,--out-implib,/tmp/libinterop_demo.dll.a
 # Linux: clang++ -std=c++17 -shared -fPIC -O2 ... -o /tmp/libinterop_demo.so
 
-amc build -c AMC/tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
+amc build -c tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
 amc generate /tmp/abix/interop_demo.abix -l rust -o /tmp/gen           # -> /tmp/gen/amc_generated.rs
 
 # rust_consumer.rs includes the projection via #[path = "gen/amc_generated.rs"]
@@ -275,8 +276,8 @@ ctest --test-dir build/Release -R amc- --output-on-failure
 The same switch works for one run without reconfiguring, either through the environment variable or the flag every suite accepts:
 
 ```bash
-KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .
-python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
+KEEP_ARTIFACTS=1 python tests/cli/feature_test.py build/Release/bin .
+python tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 ```
 
 Retained locations (all under the platform temp directory):
@@ -323,7 +324,7 @@ python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC v
 
 | Script                  | What                                                                                                                                                                                                                                                                                                         | Purpose                                                                                                                                                                     | Expected                                                                                                                                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run_test.py --bootstrap` | Verifies AMC's metadata bootstrap for its own core IR: `amc_add_abi` (`AMC.cmake`) attaches `amc/self.abic.toml` to the `AMC/tests/consumers` CMake build graph, so one `cmake --build` runs `amc build` -> `validate` -> `generate` -> compiles and runs the consumer that reads types back through `RuntimeRegistry::type_of<T>()` in the generated C++ projection | Shows the compiled AMC stage can describe its core model and consume its projection (not compiler-source self-hosting: `amc-cpp` still uses Clang to extract C++ semantics); editing the `.abic.toml` or one of its declared dependencies re-runs the whole pipeline | `[PASS] AMC core metadata bootstrap succeeded` and `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`; needs `cmake` + `clang++` (and prefers `ninja` when it is installed) |
+| `run_test.py --bootstrap` | Verifies AMC's metadata bootstrap for its own core IR: `amc_add_abi` (`AMC.cmake`) attaches `amc/self.abic.toml` to the `tests/consumers` CMake build graph, so one `cmake --build` runs `amc build` -> `validate` -> `generate` -> compiles and runs the consumer that reads types back through `RuntimeRegistry::type_of<T>()` in the generated C++ projection | Shows the compiled AMC stage can describe its core model and consume its projection (not compiler-source self-hosting: `amc-cpp` still uses Clang to extract C++ semantics); editing the `.abic.toml` or one of its declared dependencies re-runs the whole pipeline | `[PASS] AMC core metadata bootstrap succeeded` and `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`; needs `cmake` + `clang++` (and prefers `ninja` when it is installed) |
 | `run_test.py --elf-pe`    | Nine phases over the metadata section: `amc build` -> `amc generate` (a `amc_generated.hpp` with the platform section attribute) -> `clang++` links a native binary carrying `.abix.metadata` -> `readelf -S` -> `objdump -s` -> `amc metadata --from-elf` -> `--verify` -> export round-trip -> error cases | Shows the section really lands in the binary and can be read back, rather than round-tripping in memory only                                                                | Each `[Phase N]` prints `[PASS]` (with a `✓`) and the run ends with a summary; needs `readelf` / `objdump` on Linux, `otool` on macOS and `llvm-readobj` / `llvm-objcopy` on Windows |
 | `abix_mcp_compat.py`    | Drives `amc-mcp` over stdio JSON-RPC to answer "is `plugin` ABI-compatible with `host`?" and prints a JSON report                                                                                                                                                                                            | Makes the MCP tool protocol verifiable in CI: the LLM is removed from the loop while the transport and tool protocol stay real                                              | JSON report on stdout; stderr prints `COMPATIBLE`, otherwise `INCOMPATIBLE: N difference(s)` with a non-zero exit                                                                                  |
 | `abix_token_cost.py`    | Compares the token cost of learning one module's ABI from source against `amc context <file.abix> --format llm`                                                                                                                                                                                              | Gives a reproducible order-of-magnitude for "the metadata view is cheaper"                                                                                                  | `{"source_tokens", "metadata_tokens", "source_over_metadata"}` on stdout; the counts come from a lexical tokenizer, not a model tokenizer, so treat the ratio as an **indicator, not a benchmark** |
@@ -342,7 +343,7 @@ python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 | File            | What                                                                                                                                  | Purpose                                                                                                                                                                            | Expected                                                                                                                  |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `lldb_abix.cpp` | Native plugin built by the CMake target `abix-lldb` (when LLDB headers and library are found), producing `build/<type>/bin/abix_lldb` | Queries the `.abix.metadata` embedded in the loaded binary from the debugger (`abix info` / `type` / `function` / `verify` / `check`); parsing and querying are delegated to `amc` | `plugin load build/Release/bin/abix_lldb` in an LLDB session, then `abix …`; the target is skipped when LLDB is not found |
-| `lldb_abix.py`  | Script implementation of the same commands                                                                                            | Alternative to the native plugin, for environments without an LLDB C++ toolchain                                                                                                   | `command script import AMC/tools/lldb_abix.py`, then `abix …`; set `ABIX_AMC` when `amc` is not on PATH                       |
+| `lldb_abix.py`  | Script implementation of the same commands                                                                                            | Alternative to the native plugin, for environments without an LLDB C++ toolchain                                                                                                   | `command script import tools/lldb_abix.py`, then `abix …`; set `ABIX_AMC` when `amc` is not on PATH                       |
 
 Both follow "LLDB never grows a second `.abix`/ELF parser". `tools/__pycache__/` is just the Python cache directory, not a script.
 

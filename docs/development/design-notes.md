@@ -314,7 +314,7 @@ ABI truth should exist independently of any language and compiler, as a persista
 * **CLI driver.** `build`, `frontend`, `backend`, `inspect` and `validate` subcommands. The CMake integration (`amc_add_abi`) attaches `.abic → .abix → optional header` to an existing target's incremental build graph.
 * **Bootstrap.** The ABI metamodel is frozen first (Phase 0); a minimal, static bootstrap kernel that uses neither ABIX, dynamic memory nor RCU acts as the equivalent trusted computing base, with strict DAG dependencies to avoid recursion.
 
-The loop `C++ header → Clang AST → AbiModule → .abix → projection code` is closed; round-trip tests and CTest keep the format stable, and `amc-dump` provides text and JSON summaries. See [`amc.md`](../AMC/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
+The loop `C++ header → Clang AST → AbiModule → .abix → projection code` is closed; round-trip tests and CTest keep the format stable, and `amc-dump` provides text and JSON summaries. See [`amc.md`](../amc/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
 
 ### Stage 6: Micro-RCU Performance Engineering
 

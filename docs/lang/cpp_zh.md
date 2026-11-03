@@ -77,8 +77,8 @@ provider 保留自己的 class、虚函数与布局。适配器是唯一的桥�
 cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 
-./build/AMC-standalone/bin/amc build -c AMC/tests/interop/interop_demo.abic.toml -B build/demo
-./build/AMC-standalone/bin/amc generate build/demo/interop_demo.abix -l cpp -o build/demo/gen
+amc build -c tests/interop/interop_demo.abic.toml -B build/demo
+amc generate build/demo/interop_demo.abix -l cpp -o build/demo/gen
 ```
 
 生成的 header 可以被 C++ 消费方直接 include；如果 provider 布局发生漂移，`amc_abi_check.hpp` 会让构建失败。
