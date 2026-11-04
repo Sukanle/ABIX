@@ -28,6 +28,20 @@ abi_add_test(lookup_test)
 abi_add_test(reload_test)
 abi_add_test(edge_test)
 abi_add_test(error_test)
+abi_add_test(error_code_test)
+abi_add_test(error_flow_test)
+
+# Optional EPCD compatibility test. ABIX never depends on EPCD at runtime; this
+# target only checks that the shared error identity stays binarily compatible.
+find_path(
+    SKL_ABIX_EPCD_INCLUDE_DIR NAMES SKL/EPCD/Core/ErrorCode.h
+    HINTS ENV EPCD_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/../EPCD/include")
+if(SKL_ABIX_EPCD_INCLUDE_DIR)
+    abi_add_test(epcd_compat_test)
+    target_include_directories(epcd_compat_test PRIVATE ${SKL_ABIX_EPCD_INCLUDE_DIR})
+else()
+    message(STATUS "EPCD headers not found; skipping optional epcd_compat_test")
+endif()
 abi_add_test(builtin_types_test)
 abi_add_test(mics_test)
 abi_add_test(closed_test)

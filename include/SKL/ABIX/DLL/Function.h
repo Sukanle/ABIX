@@ -68,6 +68,13 @@ public:
     }
 
     void resolve(Object &lib, const char *name, runtime::version_t ver = 0) noexcept {
+        last_error() = try_resolve(lib, name, ver);
+    }
+
+    // Explicit form: returns the resolve result and does not read or write
+    // last_error(). Use this when the failure must be propagated at a module or
+    // binding boundary.
+    [[nodiscard]] CallError try_resolve(Object &lib, const char *name, runtime::version_t ver = 0) noexcept {
         release_lib();
         _control = lib.control();
         _name = name;
@@ -77,22 +84,13 @@ public:
         _name_hash = runtime::name_hash(name);
         _index = ~runtime::index_t{0};
         _valid = false;
-        if (!_control) {
-            last_error() = CallError::load_failed;
-            return;
-        }
+        if (!_control) return CallError::load_failed;
 
         rcu::LockGuard guard(rcu::Domain::instance());
         Image *image = util::load_acquire(&_control->image);
-        if (!image) {
-            last_error() = CallError::not_loaded;
-            return;
-        }
+        if (!image) return CallError::not_loaded;
         const runtime::Table *t = image->export_table;
-        if (!t) {
-            last_error() = CallError::not_loaded;
-            return;
-        }
+        if (!t) return CallError::not_loaded;
 
         runtime::index_t idx = ~runtime::index_t{0};
         runtime::LookupResult r = find_index(*t, image->index, name, _name_hash, _sig, ver, idx);
@@ -100,15 +98,11 @@ public:
             case runtime::LookupResult::ok:
                 _index = idx;
                 _valid = true;
-                last_error() = CallError::none;
-                break;
-            case runtime::LookupResult::sig_mismatch:
-                _index = idx;
-                last_error() = CallError::sig_mismatch;
-                break;
-            case runtime::LookupResult::version_mismatch: last_error() = CallError::version_mismatch; break;
-            case runtime::LookupResult::not_found:        last_error() = CallError::not_found; break;
-            default:                                      last_error() = CallError::load_failed; break;
+                return CallError::none;
+            case runtime::LookupResult::sig_mismatch:     _index = idx; return CallError::sig_mismatch;
+            case runtime::LookupResult::version_mismatch: return CallError::version_mismatch;
+            case runtime::LookupResult::not_found:        return CallError::not_found;
+            default:                                      return CallError::load_failed;
         }
     }
 

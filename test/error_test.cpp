@@ -1,5 +1,4 @@
 #include "test_common.hpp"
-#include "error_abi_prototype.h"
 
 #include <string>
 #include <thread>
@@ -65,52 +64,4 @@ TEST_CASE("error.status_strings_are_stable", "[error][interface]") {
     CHECK(std::string(skl::abix::poly::to_string(ModuleStatus::duplicate_interface)) == "duplicate_interface");
     CHECK(std::string(skl::abix::poly::to_string(ModuleStatus::busy)) == "busy");
     CHECK(std::string(skl::abix::poly::to_string(static_cast<ModuleStatus>(255))) == "unknown");
-}
-
-TEST_CASE("error.error_abi_prototype_layout_and_mapping", "[error][abi]") {
-    using namespace skl::abix::error_abi::prototype;
-
-    static_assert(sizeof(ErrorCode) == 16);
-    static_assert(alignof(ErrorCode) == 8);
-    static_assert(std::is_trivial_v<ErrorCode>);
-    static_assert(std::is_standard_layout_v<ErrorCode>);
-
-    const ErrorCode call_ok = to_error_code(skl::abix::dll::CallError::none);
-    CHECK(call_ok.domain == domain_call_error);
-    CHECK(call_ok.code == 0);
-    CHECK(call_ok.flags == 0);
-    CHECK(is_success(call_ok));
-
-    const ErrorCode call_error = to_error_code(skl::abix::dll::CallError::not_found);
-    CHECK(call_error.domain == domain_call_error);
-    CHECK(call_error.code == static_cast<uint32_t>(skl::abix::dll::CallError::not_found));
-    CHECK(!is_success(call_error));
-
-    const ErrorCode interface_ok = to_error_code(skl::abix::poly::InterfaceStatus::ok);
-    CHECK(interface_ok.domain == domain_interface_status);
-    CHECK(interface_ok.code == 0);
-    CHECK(is_success(interface_ok));
-
-    const ErrorCode interface_error = to_error_code(skl::abix::poly::InterfaceStatus::signature_mismatch);
-    CHECK(interface_error.domain == domain_interface_status);
-    CHECK(interface_error.code == static_cast<uint32_t>(skl::abix::poly::InterfaceStatus::signature_mismatch));
-    CHECK(!is_success(interface_error));
-
-    const ErrorCode unknown_call = to_error_code(static_cast<skl::abix::dll::CallError>(255));
-    CHECK(unknown_call.domain == domain_call_error);
-    CHECK(unknown_call.code == 255);
-    CHECK((unknown_call.flags & flag_unknown) != 0);
-    CHECK(!is_success(unknown_call));
-
-    const ErrorCode unknown_interface = to_error_code(static_cast<skl::abix::poly::InterfaceStatus>(255));
-    CHECK(unknown_interface.domain == domain_interface_status);
-    CHECK(unknown_interface.code == 255);
-    CHECK((unknown_interface.flags & flag_unknown) != 0);
-    CHECK(!is_success(unknown_interface));
-
-    const ErrorCode unknown_domain{99, 0, 0};
-    CHECK(!is_success(unknown_domain));
-
-    const ErrorCode unknown_code{domain_call_error, code_unknown, 0};
-    CHECK(!is_success(unknown_code));
 }

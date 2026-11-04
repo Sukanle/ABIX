@@ -230,15 +230,27 @@ public:
         : _c(make_control()) {}
     // The destructor must complete, so it waits for the writer lock unconditionally
     // (unload() itself honours a configured reclaim timeout).
-    ~Object() { unload_impl(/*bounded=*/false); }
+    ~Object() { unload_impl(/*bounded=*/false, &last_error()); }
     Object(const Object &) = delete;
     Object &operator=(const Object &) = delete;
 
     SharedPtr<Control> control() const noexcept { return _c; }
 
+    // Diagnostic-compatible form: reports through last_error() as before.
     bool load(const char *path) noexcept {
+        CallError error = CallError::none;
+        const bool ok = load(path, error);
+        last_error() = error;
+        return ok;
+    }
+
+    // Explicit form: reports the result through `error` and does not read or write
+    // last_error(). Prefer this at a module boundary; last_error() stays a
+    // thread-local, per-DSO diagnostic convenience.
+    bool load(const char *path, CallError &error) noexcept {
+        error = CallError::none;
         if (!_c) {
-            last_error() = CallError::load_failed;
+            error = CallError::load_failed;
             return false;
         }
         // The new module is loaded and indexed with no lock held, and the writer lock
@@ -249,7 +261,7 @@ public:
         Image *new_img = load_image(path);
         if (!new_img) {
             ABIX_LOG_ERROR("Object::load: failed to load module '%s'", path);
-            last_error() = CallError::load_failed;
+            error = CallError::load_failed;
             return false;
         }
         // Read the entry count before publishing: once published, another operation
@@ -257,16 +269,24 @@ public:
         const uint32_t entries = new_img->export_table ? new_img->export_table->count : 0u;
         if (!publish_image(new_img, rcu::State::active)) {
             discard_image(new_img);
-            last_error() = CallError::lock_timeout;
+            error = CallError::lock_timeout;
             return false;
         }
-        last_error() = CallError::none;
         _path = path;
         ABIX_LOG_INFO("Object::load: loaded '%s' (%u entries)", path, entries);
         return true;
     }
 
-    bool unload() noexcept { return unload_impl(/*bounded=*/true); }
+    bool unload() noexcept {
+        CallError error = CallError::none;
+        const bool ok = unload_impl(/*bounded=*/true, &error);
+        last_error() = error;
+        return ok;
+    }
+
+    // Explicit unload. On failure `error` names the reason and the object is
+    // unchanged; on success it is CallError::none.
+    bool unload(CallError &error) noexcept { return unload_impl(/*bounded=*/true, &error); }
 
     void force_unload() noexcept {
         if (!_c) return;
@@ -285,8 +305,17 @@ public:
     }
 
     bool reload(const char *path) noexcept {
+        CallError error = CallError::none;
+        const bool ok = reload(path, error);
+        last_error() = error;
+        return ok;
+    }
+
+    // Explicit reload; does not read or write last_error().
+    bool reload(const char *path, CallError &error) noexcept {
+        error = CallError::none;
         if (!_c) {
-            last_error() = CallError::load_failed;
+            error = CallError::load_failed;
             return false;
         }
         ABIX_LOG_INFO("Object::reload: loading new module, then swap and retire old");
@@ -294,7 +323,7 @@ public:
         Image *new_img = load_image(path);
         if (!new_img) {
             ABIX_LOG_ERROR("Object::reload: failed to load module '%s'", path);
-            last_error() = CallError::load_failed;
+            error = CallError::load_failed;
             return false;
         }
         // Read the entry count before publishing: once published, another operation
@@ -302,10 +331,9 @@ public:
         const uint32_t entries = new_img->export_table ? new_img->export_table->count : 0u;
         if (!publish_image(new_img, rcu::State::active)) {
             discard_image(new_img);
-            last_error() = CallError::lock_timeout;
+            error = CallError::lock_timeout;
             return false;
         }
-        last_error() = CallError::none;
         _path = path;
         ABIX_LOG_INFO("Object::reload: reloaded '%s' (%u entries)", path, entries);
         return true;
@@ -454,15 +482,16 @@ private:
     // Detaches the image under the writer lock and retires it outside. `bounded`
     // selects whether a configured reclaim timeout also bounds the lock wait; the
     // destructor passes false because it must complete.
-    bool unload_impl(bool bounded) noexcept {
+    bool unload_impl(bool bounded, CallError *error) noexcept {
+        if (error) *error = CallError::none;
         if (!_c) return false;
         if (_c.use_count() > 1) {
             ABIX_LOG_WARNING("Object::unload: %u live handles, cannot unload", _c.use_count() - 1);
-            last_error() = CallError::stale_handle;
+            if (error) *error = CallError::stale_handle;
             return false;
         }
         if (!lock_writer(bounded)) {
-            last_error() = CallError::lock_timeout;
+            if (error) *error = CallError::lock_timeout;
             return false;
         }
         Image *old = util::exchange_acq_rel(&_c->image, nullptr);
@@ -472,7 +501,6 @@ private:
             detail::retire_image(_c.get(), old);
             ABIX_LOG_INFO("Object::unload: unloaded");
         }
-        last_error() = CallError::none;
         return true;
     }
 
