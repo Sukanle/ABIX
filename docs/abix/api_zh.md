@@ -21,7 +21,8 @@
 - [9. `SKL/ABIX/Runtime/Function.h` — 跨边界闭包](#9-abixruntimefunctionh--跨边界闭包)
 - [10. 智能指针（`SKL/ABIX/DLL/DLLPtr.h`）](#10-智能指针abixdlldllptrh)
 - [11. `SKL/ABIX/Bridge/Refl.h` — 动态反射集成](#11-abixbridgereflh--动态反射集成)
-- [12. 完整使用示例](#12-完整使用示例)
+- [12. `SKL/ABIX/Error/` — 错误身份](#12-abixerror--错误身份)
+- [13. 完整使用示例](#13-完整使用示例)
 
 </details>
 
@@ -250,14 +251,38 @@ inline dll::CallError &last_error() noexcept;
 
 返回线程局部最近错误码的引用。每个线程拥有独立的错误状态；由于该函数定义在 header 中，每个 DSO 也可能持有自己的副本，因此不要把 `last_error()` 当作跨模块错误通道。需要跨模块传递错误时，使用显式的返回值/`[[error]]` 契约，而不是读取另一个模块的 `last_error()`。
 
+### 显式错误上报
+
+DLL 的初始化操作提供显式错误输出重载。这些形式不读、不写 `last_error()`：
+
+```cpp
+CallError error = CallError::none;
+if (!lib.load(path, error)) {
+    // error 给出原因；lib 保持原状
+}
+
+if (!lib.reload(path, error)) {
+    // error == load_failed；之前的 image 仍然加载
+}
+
+if (!lib.unload(error)) {
+    // 仍有 Function 句柄存活时 error == stale_handle
+}
+```
+
+`dll::Function::try_resolve()` 是对应的符号解析显式形式。原有 `load` / `reload` / `unload` / `resolve` 签名保留为写入 `last_error()` 的兼容包装。`operator()` 的热路径调用仍通过 `last_error()` 上报；调用需要返回状态时，使用带 `InterfaceStatus` 的 checked 接口路径。
+
 ### `dll::Object`
 
 | 方法                         | 返回值                  | 说明                                                                                                                                                 |
 | ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `load(path)`                 | `bool`                  | 加载 DLL/SO，解析 `abi_get_table()`，校验魔数/版本并建索引——**全程不持锁**，最后在写锁下发布 image。加载失败时**保留**原 image（与 `reload()` 一致） |
+| `load(path, error)`          | `bool`                  | 显式形式；写入 `CallError`，不触碰 `last_error()`                                                                                                    |
 | `unload()`                   | `bool`                  | 标记卸载 → 等待 RCU 读者 → 若 `ref_count() == 0` 则卸载；若有活跃句柄则返回 `false` 并设置 `stale_handle`                                            |
+| `unload(error)`              | `bool`                  | 显式形式；写入 `CallError`，不触碰 `last_error()`                                                                                                    |
 | `force_unload()`             | `void`                  | 无条件卸载，忽略引用计数（绕过 RCU，调用者需保证无并发读者）                                                                                         |
 | `reload(path)`               | `bool`                  | 在锁外加载新模块并建索引，原子换入，再退休旧 image（受 EBR 保护，**不是** `force_unload()` + `load(path)`）                                          |
+| `reload(path, error)`        | `bool`                  | 显式形式；写入 `CallError`，不触碰 `last_error()`                                                                                                    |
 | `is_loaded()`                | `bool`                  | 模块当前是否已加载且未处于卸载中                                                                                                                     |
 | `get_table()`                | `const runtime::Table*` | 获取已校验的导出表指针                                                                                                                               |
 | `module()`                   | `module_handle`         | 原始操作系统模块句柄（Windows 上为 `HMODULE`，POSIX 上为 `void*`）                                                                                   |
@@ -521,7 +546,8 @@ sink 只观察诊断事件：它在调用线程执行，ABIX 不持有锁；回�
 
 | 方法                      | 返回值     | 说明                                                                                                                                                                  |
 | ------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve(lib, name, ver)` | `void`     | 按名称和可选版本解析函数                                                                                                                                              |
+| `resolve(lib, name, ver)` | `void`     | 按名称和可选版本解析函数；写入 `last_error()`（兼容形式）                                                                                                            |
+| `try_resolve(lib, name, ver)` | `CallError` | 显式解析；返回结果，不触碰 `last_error()`                                                                                                                        |
 | `valid()`                 | `bool`     | 句柄是否有效且库已加载                                                                                                                                                |
 | `operator bool()`         | `bool`     | 同 `valid()`                                                                                                                                                          |
 | `index()`                 | `index_t`  | 表中的条目索引                                                                                                                                                        |
@@ -961,7 +987,97 @@ inline void register_dll_table(const runtime::Table *t, const char *dll_name);
 | `HasUniqueSigs<TypeList>`             | 编译期检查：列表中所有 `FnEntryTag` 条目的签名是否唯一 |
 | `FindBySig<TypeList, TargetSig>`      | 编译期搜索：查找具有匹配 `sig` 的 `FnEntryTag` 的索引  |
 
-## 12. 完整使用示例
+## 12. `SKL/ABIX/Error/` — 错误身份
+
+**命名空间：** `skl::abix`
+
+`Error/` 头文件定义错误在跨 DSO 或跨语言边界保存、比较、传输时使用的固定布局身份。子系统的状态枚举 (`dll::CallError`、`poly::InterfaceStatus`、`poly::ModuleStatus`、`poly::ManifestStatus`) 仍是主 API；`ErrorCode` 是边界值，不是运行时分发器。
+
+规范见 [`memory/error-abi_zh.md`](../../memory/error-abi_zh.md)。
+
+### `ErrorCode`
+
+```cpp
+struct ErrorCode final {
+    std::uint64_t domain;
+    std::int32_t value;
+    std::uint32_t reserved;   // v1: must be 0
+};
+```
+
+| 属性 | 值 |
+| --- | --- |
+| 大小 / 对齐 | 16 / 8 |
+| 字段偏移 | `domain` 0、`value` 8、`reserved` 12 |
+| 类别 | standard-layout、trivial、trivially copyable |
+
+该记录不拥有文本、指针、分配器或模块句柄，因此生产模块卸载后，已保存的值仍然有效。`value` 是错误编号；`domain` 标识分配它的子系统。
+
+### 成功与规范形式
+
+| 函数 | 说明 |
+| --- | --- |
+| `success()` | 返回规范成功 `{0, 0, 0}` |
+| `is_success(code)` | `code.value == 0` |
+| `is_canonical(code)` | `reserved == 0`，且要么是全零成功，要么是带非零 domain 的失败 |
+
+零值配非零 domain 仍是成功，但不是规范形式。跨序列化或 ABI 边界前应规范化非规范值。
+
+### Domain
+
+```cpp
+inline constexpr std::uint16_t abix_module_id = 0x002;
+
+inline constexpr DomainId call_domain      = make_skl_domain(abix_module_id, 1);
+inline constexpr DomainId interface_domain = make_skl_domain(abix_module_id, 2);
+inline constexpr DomainId module_domain    = make_skl_domain(abix_module_id, 3);
+inline constexpr DomainId manifest_domain  = make_skl_domain(abix_module_id, 4);
+inline constexpr DomainId lifecycle_domain = make_skl_domain(abix_module_id, 5);
+```
+
+| 常量 | 值 | 使用方 |
+| --- | --- | --- |
+| `call_domain` | `0x1002000000000001` | `dll::CallError` |
+| `interface_domain` | `0x1002000000000002` | `poly::InterfaceStatus` |
+| `module_domain` | `0x1002000000000003` | `poly::ModuleStatus` |
+| `manifest_domain` | `0x1002000000000004` | `poly::ManifestStatus` |
+| `lifecycle_domain` | `0x1002000000000005` | 预留给生命周期专用失败 |
+
+Domain id 使用与 EPCD 兼容的 owner/module/local 布局 (`owner` 位 63..60、`module` 位 59..48、`local` 位 47..0)。ABIX 使用 SKL owner 和 module `0x002`。已发布的 id 永久有效。
+
+### `to_error_code()`
+
+```cpp
+[[nodiscard]] constexpr ErrorCode to_error_code(dll::CallError error) noexcept;
+[[nodiscard]] constexpr ErrorCode to_error_code(poly::InterfaceStatus status) noexcept;
+[[nodiscard]] constexpr ErrorCode to_error_code(poly::ModuleStatus status) noexcept;
+[[nodiscard]] constexpr ErrorCode to_error_code(poly::ManifestStatus status) noexcept;
+```
+
+子系统成功映射为规范 `success()`。已知或未知失败保留数值，并带上子系统 domain。转换是 `constexpr`、无分配的，不查询注册表，也不要求模块已加载。
+
+```cpp
+#include "SKL/ABIX/ABIX.h"
+
+skl::abix::ErrorCode code = skl::abix::to_error_code(skl::abix::dll::CallError::not_found);
+// code.domain == skl::abix::call_domain
+// code.value  == 2
+// skl::abix::is_success(code) == false
+```
+
+未知值按数值保留，不折叠成哨兵：
+
+```cpp
+auto unknown = static_cast<skl::abix::poly::InterfaceStatus>(0xFFFFFFFFu);
+skl::abix::ErrorCode code = skl::abix::to_error_code(unknown);
+// code.value == -1；低 32 位完整往返
+```
+
+### 与 `last_error()` 的关系
+
+`dll::last_error()` 仍是线程局部、per-DSO 的诊断便利接口，不是跨模块错误通道。错误需要跨调用存活或跨越边界时，使用显式返回值、输出参数或 `ErrorCode`。
+
+## 13. 完整使用示例
 
 ```cpp
 #include "SKL/ABIX/ABIX.h"

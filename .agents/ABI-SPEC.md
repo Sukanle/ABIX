@@ -147,6 +147,40 @@ The contract is a **semantic contract, not a layout fact**: it does not change
 language-native unwinding mechanism (C++ exception, Rust panic) to cross the ABI
 boundary; the producing side converts it to the declared status.
 
+The v1 contract is frozen: a status other than `success` is a failure, an
+unknown status is a failure, and an absent contract must not be inferred. A v2
+record is an additive extension; a reader that does not understand it must reject
+or skip it as an unknown version rather than interpreting it as v1.
+
+### 6.2 Error identity
+
+The `[[error]]` contract defines where status and payload travel; it does not
+define how a failure is identified. When a failure must be stored, compared or
+transported across a DSO or language boundary, it uses the fixed-layout ABIX
+`ErrorCode`:
+
+```cpp
+struct ErrorCode final {
+    std::uint64_t domain;
+    std::int32_t value;
+    std::uint32_t reserved;   // v1: must be 0
+};
+```
+
+- `sizeof(ErrorCode) == 16`, `alignof(ErrorCode) == 8`; field offsets are `0`, `8`, `12`.
+- It is standard-layout and trivially copyable, with no exceptions, RTTI, pointers, strings or allocator.
+- `value == 0` is success; a non-zero `value` requires a non-zero `domain`; `domain == 0` may only appear with `value == 0`.
+- `reserved` is not part of identity and must be zero in v1.
+- Unknown values are preserved numerically; they are never folded into success or a generic `unknown` sentinel.
+- A saved code stays valid after the producing module unloads; it carries no module handle or owned text.
+- Domains use the EPCD-compatible owner/module/local layout: owner bits `63..60`, module bits `59..48`, local bits `47..0`. ABIX uses the SKL owner (`1`), module `0x002` and local ids `1..5` (`call`, `interface`, `module`, `manifest`, `lifecycle`). Allocated ids are permanent.
+- The host status enums remain the primary API. `to_error_code()` is a `constexpr`, allocation-free boundary mapping; a subsystem success maps to canonical `success()` (`{0, 0, 0}`).
+- EPCD interoperability converts field by field and zeroes `reserved`; ABIX Runtime does not include EPCD.
+- Error identity does not change `TypeID`, `LayoutHash` or `ABIHash`.
+
+The normative allocation table, language mapping and lifecycle rules are in
+[`memory/error-abi.md`](../memory/error-abi.md).
+
 ## 7. Symbol Identity
 
 - A `Symbol` maps a name to a type, field or function by index.

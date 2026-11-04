@@ -21,7 +21,8 @@
 - [9. `SKL/ABIX/Runtime/Function.h` — Cross-Boundary Closure](#9-abixruntimefunctionh--cross-boundary-closure)
 - [10. Smart Pointers (`SKL/ABIX/DLL/DLLPtr.h`)](#10-smart-pointers-abixdlldllptrh)
 - [11. `SKL/ABIX/Bridge/Refl.h` — Dynamic mics Integration](#11-abixbridgereflh--dynamic-mics-integration)
-- [12. Complete Usage Example](#12-complete-usage-example)
+- [12. `SKL/ABIX/Error/` — Error Identity](#12-abixerror--error-identity)
+- [13. Complete Usage Example](#13-complete-usage-example)
 
 </details>
 
@@ -250,14 +251,38 @@ inline dll::CallError &last_error() noexcept;
 
 Returns a reference to the thread-local last error code. Each thread has its own error state; because the function is defined in a header, each DSO may also have its own copy. Do not use `last_error()` as a cross-module error channel; pass an explicit return value or `[[error]]` contract instead.
 
+### Explicit error reporting
+
+Setup-time DLL operations provide an explicit error-output overload. These forms do not read or write `last_error()`:
+
+```cpp
+CallError error = CallError::none;
+if (!lib.load(path, error)) {
+    // error names the reason; lib is unchanged
+}
+
+if (!lib.reload(path, error)) {
+    // error == load_failed; the previous image is still loaded
+}
+
+if (!lib.unload(error)) {
+    // error == stale_handle while a Function handle is alive
+}
+```
+
+`dll::Function::try_resolve()` is the matching explicit form for symbol resolution. The original `load` / `reload` / `unload` / `resolve` signatures remain as compatibility wrappers that write `last_error()`. A hot call through `operator()` still reports through `last_error()`; use the checked interface path (`InterfaceStatus`) when a call must return a status.
+
 ### `dll::Object`
 
 | Method                       | Returns                 | Description                                                                                                                                                                                                                          |
 | ---------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `load(path)`                 | `bool`                  | Load a DLL/SO, resolve `abi_get_table()`, validate magic/version and build the hash index **with no lock held**, then publish the image under the writer lock. A failed load leaves the previous image in place (same as `reload()`) |
+| `load(path, error)`          | `bool`                  | Explicit form; writes `CallError` and does not touch `last_error()`                                                                                                                                                                  |
 | `unload()`                   | `bool`                  | Refuses with `stale_handle` while any `Function` handle is alive (`ref_count() != 0`); otherwise swaps the image out and retires it for the domain to reclaim after a grace period                                                   |
+| `unload(error)`              | `bool`                  | Explicit form; writes `CallError` and does not touch `last_error()`                                                                                                                                                                  |
 | `force_unload()`             | `void`                  | Detach and free the image immediately, bypassing the grace period (the caller must already have excluded readers)                                                                                                                    |
 | `reload(path)`               | `bool`                  | Load the new module and build its index with no lock held, swap it in atomically, then retire the previous image (EBR-protected, not a `force_unload` + `load`)                                                                      |
+| `reload(path, error)`        | `bool`                  | Explicit form; writes `CallError` and does not touch `last_error()`                                                                                                                                                                  |
 | `is_loaded()`                | `bool`                  | `state == rcu::State::active` and an image is published                                                                                                                                                                              |
 | `get_table()`                | `const runtime::Table*` | The validated export table of the current image                                                                                                                                                                                      |
 | `module()`                   | `module_handle`         | Raw OS module handle (`HMODULE` on Windows, `void*` on POSIX)                                                                                                                                                                        |
@@ -522,7 +547,8 @@ The primary template for typed function handles. Template parameters:
 
 | Method                    | Returns    | Description                                                                                                                                                                                                                |
 | ------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve(lib, name, ver)` | `void`     | Resolve a function by name and optional version                                                                                                                                                                            |
+| `resolve(lib, name, ver)` | `void`     | Resolve a function by name and optional version; writes `last_error()` (compatibility form)                                                                                                                                |
+| `try_resolve(lib, name, ver)` | `CallError` | Resolve explicitly; returns the result and does not touch `last_error()`                                                                                                                                                |
 | `valid()`                 | `bool`     | Whether the handle is valid and the library is loaded                                                                                                                                                                      |
 | `operator bool()`         | `bool`     | Same as `valid()`                                                                                                                                                                                                          |
 | `index()`                 | `index_t`  | Entry index in the table                                                                                                                                                                                                   |
@@ -964,7 +990,97 @@ Registers all entries from an ABIX export table into the dynamic mics registry.
 | `HasUniqueSigs<TypeList>`             | Compile-time check: all `FnEntryTag` entries in the list have unique signatures |
 | `FindBySig<TypeList, TargetSig>`      | Compile-time search: find the index of a `FnEntryTag` with matching `sig`       |
 
-## 12. Complete Usage Example
+## 12. `SKL/ABIX/Error/` — Error Identity
+
+**Namespace:** `skl::abix`
+
+The `Error/` headers define the fixed-layout identity used when a failure is stored, compared or transported across a DSO or language boundary. The subsystem status enums (`dll::CallError`, `poly::InterfaceStatus`, `poly::ModuleStatus`, `poly::ManifestStatus`) remain the primary API; `ErrorCode` is a boundary value, not a runtime dispatcher.
+
+The normative specification is [`memory/error-abi.md`](../../memory/error-abi.md).
+
+### `ErrorCode`
+
+```cpp
+struct ErrorCode final {
+    std::uint64_t domain;
+    std::int32_t value;
+    std::uint32_t reserved;   // v1: must be 0
+};
+```
+
+| Property | Value |
+| --- | --- |
+| Size / alignment | 16 / 8 |
+| Field offsets | `domain` 0, `value` 8, `reserved` 12 |
+| Category | standard-layout, trivial, trivially copyable |
+
+The record owns no text, pointer, allocator or module handle, so a saved value stays valid after the producing module unloads. `value` is the error number; `domain` identifies the subsystem that assigned it.
+
+### Success and canonical form
+
+| Function | Description |
+| --- | --- |
+| `success()` | Returns the canonical success `{0, 0, 0}` |
+| `is_success(code)` | `code.value == 0` |
+| `is_canonical(code)` | `reserved == 0` and either an all-zero success or a failure with a non-zero domain |
+
+A zero value with a non-zero domain is still a success, but it is not canonical. Normalize non-canonical values before crossing a serialization or ABI boundary.
+
+### Domains
+
+```cpp
+inline constexpr std::uint16_t abix_module_id = 0x002;
+
+inline constexpr DomainId call_domain      = make_skl_domain(abix_module_id, 1);
+inline constexpr DomainId interface_domain = make_skl_domain(abix_module_id, 2);
+inline constexpr DomainId module_domain    = make_skl_domain(abix_module_id, 3);
+inline constexpr DomainId manifest_domain  = make_skl_domain(abix_module_id, 4);
+inline constexpr DomainId lifecycle_domain = make_skl_domain(abix_module_id, 5);
+```
+
+| Constant | Value | Used by |
+| --- | --- | --- |
+| `call_domain` | `0x1002000000000001` | `dll::CallError` |
+| `interface_domain` | `0x1002000000000002` | `poly::InterfaceStatus` |
+| `module_domain` | `0x1002000000000003` | `poly::ModuleStatus` |
+| `manifest_domain` | `0x1002000000000004` | `poly::ManifestStatus` |
+| `lifecycle_domain` | `0x1002000000000005` | Reserved for lifecycle-specific failures |
+
+Domain ids use the EPCD-compatible owner/module/local layout (`owner` bits 63..60, `module` bits 59..48, `local` bits 47..0). ABIX uses the SKL owner and module `0x002`. Released ids are permanent.
+
+### `to_error_code()`
+
+```cpp
+[[nodiscard]] constexpr ErrorCode to_error_code(dll::CallError error) noexcept;
+[[nodiscard]] constexpr ErrorCode to_error_code(poly::InterfaceStatus status) noexcept;
+[[nodiscard]] constexpr ErrorCode to_error_code(poly::ModuleStatus status) noexcept;
+[[nodiscard]] constexpr ErrorCode to_error_code(poly::ManifestStatus status) noexcept;
+```
+
+A subsystem success maps to canonical `success()`. A known or unknown failure keeps its numeric value and receives the subsystem domain. The conversion is `constexpr`, allocation-free and does not consult a registry or require a loaded module.
+
+```cpp
+#include "SKL/ABIX/ABIX.h"
+
+skl::abix::ErrorCode code = skl::abix::to_error_code(skl::abix::dll::CallError::not_found);
+// code.domain == skl::abix::call_domain
+// code.value  == 2
+// skl::abix::is_success(code) == false
+```
+
+Unknown values are preserved rather than folded into a sentinel:
+
+```cpp
+auto unknown = static_cast<skl::abix::poly::InterfaceStatus>(0xFFFFFFFFu);
+skl::abix::ErrorCode code = skl::abix::to_error_code(unknown);
+// code.value == -1; the low 32 bits round-trip
+```
+
+### Relationship to `last_error()`
+
+`dll::last_error()` remains a thread-local, per-DSO diagnostic convenience. It is not a cross-module error channel. Use an explicit return value, an output parameter or `ErrorCode` when a failure must outlive the call or cross a boundary.
+
+## 13. Complete Usage Example
 
 ```cpp
 #include "SKL/ABIX/ABIX.h"

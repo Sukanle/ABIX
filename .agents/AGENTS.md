@@ -90,6 +90,7 @@ SKL/ABIX/    header-only ABI model + runtime, organised by layer:
          Metadata/ (Registry.h, Descriptor.h),
          Runtime/ (Registry.h, Type.h, TypeSig.h, Search.h, Function.h),
          DLL/ (Object.h, Function.h, FnSig.h, Export.h, *Ptr.h),
+         Error/ (Domain.h, ErrorCode.h, Mapping.h),
          RCU/ (Config.h, Domain.h), Bridge/ (Adapter.h, Refl.h, MICS.h),
          Util/ (Config.h, Log.h, Atomic.h, Hash.h, Mem.h, Timeout.h),
          Binary/ (BinaryImage.h + ELF/MachO/PE adapters — capability layer)
@@ -107,6 +108,7 @@ docs/    specification and design
 | Metadata projection | `SKL/ABIX/Metadata/` | `metadata::Registry`, `metadata::TypeDescriptor`, `metadata::ModuleDescriptor` |
 | ABI runtime | `SKL/ABIX/Runtime/` | `runtime::Registry`, `runtime::TypeTraits`, `runtime::Function`, `runtime::Table` |
 | DLL binding | `SKL/ABIX/DLL/` | `dll::Object`, `dll::Function`, `dll::CallError`, smart pointers |
+| Error identity | `SKL/ABIX/Error/` | `ErrorCode`, domain allocation, `to_error_code()` boundary mapping |
 | Adapter dispatch | `SKL/ABIX/Bridge/Adapter.h` | `bridge::Adapter` |
 | Binary reader | `SKL/ABIX/Binary/` (BinaryImage.h + ELF/MachO/PE), shimmed by AMC | Capability layer: format / target / sections / exports / region lookup (`parse_binary_image`, `is_binary`, `find_binary_section`) |
 | Metadata Region | AMC repository: `src/SKL/AMC/Core/amc_metadata.h` | Self-describing, pointer-free metadata image (manifest + desc + hash + names) |
