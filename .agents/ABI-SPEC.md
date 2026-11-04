@@ -147,10 +147,16 @@ The contract is a **semantic contract, not a layout fact**: it does not change
 language-native unwinding mechanism (C++ exception, Rust panic) to cross the ABI
 boundary; the producing side converts it to the declared status.
 
-The v1 contract is frozen: a status other than `success` is a failure, an
-unknown status is a failure, and an absent contract must not be inferred. A v2
-record is an additive extension; a reader that does not understand it must reject
-or skip it as an unknown version rather than interpreting it as v1.
+The error-boundary contract is one current ABIX semantic contract; it is not an
+ABI-level v1/v2 compatibility series. The `.abic.toml` input mapping is owned by
+AMC: its v1/v2 schema versions are toolchain concerns and do not create ABIX ABI
+versions. A reader must not infer ABIX semantics from an input mapping it does
+not understand; AMC may reject an older mapping and require migration. Within
+the contract, optional extension records may carry their own version, and a
+reader may skip an unknown extension version it does not understand.
+
+A status other than `success` is a failure, including an unknown status, and an
+absent contract must not be inferred.
 
 ### 6.2 Error identity
 
@@ -163,14 +169,14 @@ transported across a DSO or language boundary, it uses the fixed-layout ABIX
 struct ErrorCode final {
     std::uint64_t domain;
     std::int32_t value;
-    std::uint32_t reserved;   // v1: must be 0
+    std::uint32_t reserved;   // ErrorCode layout v1: must be 0
 };
 ```
 
 - `sizeof(ErrorCode) == 16`, `alignof(ErrorCode) == 8`; field offsets are `0`, `8`, `12`.
 - It is standard-layout and trivially copyable, with no exceptions, RTTI, pointers, strings or allocator.
 - `value == 0` is success; a non-zero `value` requires a non-zero `domain`; `domain == 0` may only appear with `value == 0`.
-- `reserved` is not part of identity and must be zero in v1.
+- `reserved` is not part of identity and must be zero in ErrorCode layout v1.
 - Unknown values are preserved numerically; they are never folded into success or a generic `unknown` sentinel.
 - A saved code stays valid after the producing module unloads; it carries no module handle or owned text.
 - Domains use the EPCD-compatible owner/module/local layout: owner bits `63..60`, module bits `59..48`, local bits `47..0`. ABIX uses the SKL owner (`1`), module `0x002` and local ids `1..5` (`call`, `interface`, `module`, `manifest`, `lifecycle`). Allocated ids are permanent.
