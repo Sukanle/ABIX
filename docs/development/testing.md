@@ -1,5 +1,13 @@
 # Testing ABIX and AMC
 
+> **Repository split:** ABIX's root build tests the header-only runtime only.
+> The AMC tiers below are owned and run by the standalone AMC repository
+> (<https://github.com/Sukanle/AMC>); they are kept here as reference for the
+> toolchain contract. AMC-relative paths below resolve inside that checkout. The
+> monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` tiers were
+> retired; the standalone suite covers core/e2e/package/feature/provider/
+> interop/expose/cancellation/CMake integration.
+
 <p align="center">
   <a href="testing_zh.md">中文</a> · English
 </p>
@@ -147,11 +155,11 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 
 ### E. AMC feature set (`amc-feature-test`)
 
-A cross-platform test (`AMC/tests/cli/feature_test.py`) that asserts the five AMC capabilities directly:
+A cross-platform test (`tests/cli/feature_test.py`) that asserts the five AMC capabilities directly:
 
 | Aspect                  | Checks                                                                                                                                                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Front/back separation   | `--list-languages`/`--describe-language` from `AMC/providers.toml` (cpp/lua/rust/zig); `AMC_PROVIDERS_FILE` override; `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** and `abix.plugin/1` envelope |
+| Front/back separation   | `--list-languages`/`--describe-language` from `providers.toml` (cpp/lua/rust/zig); `AMC_PROVIDERS_FILE` override; `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** and `abix.plugin/1` envelope |
 | Code parsing            | `amc build` parses **C++** (`amc-cpp`) and **Rust** (`amc-rust`, a built-in frontend — no `rustc` needed) into `.abix`                                                                                    |
 | IR generation           | `validate`, `inspect`, `query --layout`, `context --format json`                                                                                                                                          |
 | Native language binding | one `.abix` → `generate -l cpp\|zig\|rust\|lua`; the **C++** and **Rust** bindings are compiled                                                                                                           |
@@ -203,10 +211,10 @@ The protocol also has a dedicated cooperative-cancellation test (`amc-cancellati
 The suites generate into a temporary directory and clean up. To inspect the artifacts, either run the steps by hand or keep the directories with [`SKL_ABIX_KEEP_TEST_ARTIFACTS`](#keeping-the-temporary-artifacts):
 
 ```bash
-AMC=build/Release/bin/amc.exe           # drop .exe on Linux/macOS
+AMC=$(command -v amc)                           # run from an AMC checkout
 
 # parse source -> IR
-"$AMC" build -c AMC/tests/fixtures/amc_test.abic.toml -B build/amc-demo
+"$AMC" build -c tests/fixtures/amc_test.abic.toml -B build/amc-demo
 
 # one IR -> four language bindings
 ABIX=build/amc-demo/build/amc_test.abix
@@ -228,8 +236,8 @@ ABIX=build/amc-demo/build/amc_test.abix
 
 Fixtures:
 
-- C++ `AMC/tests/fixtures/amc_test.abic.toml`;
-- Rust frontend `AMC/tests/fixtures/rust_demo.abic.toml`.
+- C++ `tests/fixtures/amc_test.abic.toml`;
+- Rust frontend `tests/fixtures/rust_demo.abic.toml`.
 
 ## Native binding (Rust) walkthrough
 
@@ -237,11 +245,11 @@ The interop test performs exactly this in a temp directory:
 
 ```bash
 # native C-ABI library (Windows also emits the import library rustc links against)
-clang++ -std=c++17 -shared -O2 AMC/tests/interop/demo_lib.cpp \
+clang++ -std=c++17 -shared -O2 tests/interop/demo_lib.cpp \
     -o /tmp/interop_demo.dll -Wl,--out-implib,/tmp/libinterop_demo.dll.a
 # Linux: clang++ -std=c++17 -shared -fPIC -O2 ... -o /tmp/libinterop_demo.so
 
-amc build -c AMC/tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
+amc build -c tests/interop/interop_demo.abic.toml -B /tmp/abix     # -> /tmp/abix/interop_demo.abix
 amc generate /tmp/abix/interop_demo.abix -l rust -o /tmp/gen           # -> /tmp/gen/amc_generated.rs
 
 # rust_consumer.rs includes the projection via #[path = "gen/amc_generated.rs"]
@@ -268,8 +276,8 @@ ctest --test-dir build/Release -R amc- --output-on-failure
 The same switch works for one run without reconfiguring, either through the environment variable or the flag every suite accepts:
 
 ```bash
-KEEP_ARTIFACTS=1 python AMC/tests/cli/feature_test.py build/Release/bin .
-python AMC/tests/interop/interop_test.py build/Release/bin . --keep-artifacts
+KEEP_ARTIFACTS=1 python tests/cli/feature_test.py build/Release/bin .
+python tests/interop/interop_test.py build/Release/bin . --keep-artifacts
 ```
 
 Retained locations (all under the platform temp directory):
@@ -292,7 +300,7 @@ The switch only reaches the suites registered in `ctest` (CMake injects `KEEP_AR
 
 ## Tool scripts (`tools/`)
 
-These scripts are **not registered in `ctest`** and are run by hand. Only the second group produces test verdicts.
+These scripts are **not registered in `ctest`** and are run by hand. `run_test.py` produces the ABIX Catch2 verdict; the AMC toolchain suites live in the AMC repository.
 
 ### Build and code-generation helpers
 
@@ -310,24 +318,27 @@ python tools/run.py --with-msvc --vs-path "C:/Program Files/Microsoft Visual Stu
 python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC variants alone
 ```
 
-`run.py` picks the stages with `--build-only` / `--test-only` / `--bench-only` / `--build-test` / `--build-bench` and forwards the remaining flags to the stage scripts (`run_build.py`, `run_test.py`, `run_bench.py`). Build options: `--clean`, `--build-type`, `--generator`, `--with-dev`, `--skip-variants`, `--skip-hotcache`; `--cmake-env KEY=VALUE` and `--cmake-var KEY=VALUE` are repeatable and forward environment variables to, and `-DKEY=VALUE` cache variables through, the CMake configure/build. Test options: `--catch2` / `--elf-pe` / `--bootstrap` / `--interop` (see [test tiers](#test-tiers)). The benchmark stage delegates to `run_bench.py` (one process per family), tuned by `--bench-repetitions`, `--bench-out` and `--bench-min-time`; `--bench-raw` restores the old single-process `bench_all` run. It runs the aggregate executables, so it is **not** a substitute for `ctest`.
+`run.py` picks the stages with `--build-only` / `--test-only` / `--bench-only` / `--build-test` / `--build-bench` and forwards the remaining flags to the stage scripts (`run_build.py`, `run_test.py`, `run_bench.py`). Build options: `--clean`, `--build-type`, `--generator`, `--with-dev`, `--skip-variants`, `--skip-hotcache`; `--cmake-env KEY=VALUE` and `--cmake-var KEY=VALUE` are repeatable and forward environment variables to, and `-DKEY=VALUE` cache variables through, the CMake configure/build. The test stage runs the ABIX Catch2 suite; AMC's test tiers are run from the AMC repository. The benchmark stage delegates to `run_bench.py` (one process per family), tuned by `--bench-repetitions`, `--bench-out` and `--bench-min-time`; `--bench-raw` restores the old single-process `bench_all` run. It runs the aggregate executables, so it is **not** a substitute for `ctest`.
 
 ### Tests and verification
 
 | Script                  | What                                                                                                                                                                                                                                                                                                         | Purpose                                                                                                                                                                     | Expected                                                                                                                                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run_test.py --bootstrap` | Verifies AMC's metadata bootstrap for its own core IR: `amc_add_abi` (`AMC.cmake`) attaches `amc/self.abic.toml` to the `AMC/tests/consumers` CMake build graph, so one `cmake --build` runs `amc build` -> `validate` -> `generate` -> compiles and runs the consumer that reads types back through `RuntimeRegistry::type_of<T>()` in the generated C++ projection | Shows the compiled AMC stage can describe its core model and consume its projection (not compiler-source self-hosting: `amc-cpp` still uses Clang to extract C++ semantics); editing the `.abic.toml` or one of its declared dependencies re-runs the whole pipeline | `[PASS] AMC core metadata bootstrap succeeded` and `[PASS] verified amc_add_abi -> build -> validate -> generate -> RuntimeRegistry::type_of<T>()`; needs `cmake` + `clang++` (and prefers `ninja` when it is installed) |
-| `run_test.py --elf-pe`    | Nine phases over the metadata section: `amc build` -> `amc generate` (a `amc_generated.hpp` with the platform section attribute) -> `clang++` links a native binary carrying `.abix.metadata` -> `readelf -S` -> `objdump -s` -> `amc metadata --from-elf` -> `--verify` -> export round-trip -> error cases | Shows the section really lands in the binary and can be read back, rather than round-tripping in memory only                                                                | Each `[Phase N]` prints `[PASS]` (with a `✓`) and the run ends with a summary; needs `readelf` / `objdump` on Linux, `otool` on macOS and `llvm-readobj` / `llvm-objcopy` on Windows |
-| `abix_mcp_compat.py`    | Drives `amc-mcp` over stdio JSON-RPC to answer "is `plugin` ABI-compatible with `host`?" and prints a JSON report                                                                                                                                                                                            | Makes the MCP tool protocol verifiable in CI: the LLM is removed from the loop while the transport and tool protocol stay real                                              | JSON report on stdout; stderr prints `COMPATIBLE`, otherwise `INCOMPATIBLE: N difference(s)` with a non-zero exit                                                                                  |
-| `abix_token_cost.py`    | Compares the token cost of learning one module's ABI from source against `amc context <file.abix> --format llm`                                                                                                                                                                                              | Gives a reproducible order-of-magnitude for "the metadata view is cheaper"                                                                                                  | `{"source_tokens", "metadata_tokens", "source_over_metadata"}` on stdout; the counts come from a lexical tokenizer, not a model tokenizer, so treat the ratio as an **indicator, not a benchmark** |
+| `run_test.py`           | Runs `build/<type>/bin/test_all`, the ABIX Catch2 suite. AMC's metadata, bootstrap, MCP and interop suites live in the AMC repository and are registered in its CTest suite | The ABIX-side test verdict; use `ctest` when you need per-case reporting                                                                                                    | Green `test_all` run; missing binary prints `Build first: python tools/run_build.py`                                                                                                              |
 | `run_bench.py` | Runs each benchmark **family in its own process** and summarises the results (`mean`/`stddev`); `--list` shows what would run. It discovers every family in `bench_all` via `--benchmark_list_tests` and every Google Benchmark suite is linked into `bench_all`, so no standalone executable is run by default; pass explicit filters to narrow it; reads the `cpu0` cpufreq governor up front and prints the fix command when CPU scaling is active, and `--pin` (default `auto`) restricts every child to the highest-frequency cores (`--pin off` disables it, `--pin 0-7` pins explicitly)                          | The EBR/RCU families share the process-wide `rcu::Domain`, so a family measured after the others reads several times slower (`BM_EBR_SyncPhase/1T` spans ~6 ns to ~1 us); isolating them is what makes numbers comparable across families and machines | Prints `N benchmarks -> <json>` per family, then a `| family | benchmark | threads | mean ns | sd |` table; one JSON per family |
 
 ```bash
-python tools/run_test.py --bootstrap                       # AMC_BIN_DIR=... reuses an external build
-KEEP_ARTIFACTS=1 python tools/run_test.py --bootstrap       # keeps amc-bootstrap.*
-python tools/run_test.py --elf-pe --keep                    # keeps amc_elf_test_*
-python tools/abix_mcp_compat.py --host host.abix --plugin plugin.abix
-python tools/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
+python tools/run_test.py                                   # ABIX Catch2 suite
+python tools/run_test.py --build-dir build/Debug           # non-default build
+```
+
+AMC-side test tiers and analysis scripts are owned by the AMC repository:
+
+```bash
+ctest --test-dir <amc-build> -R amc-elf-pe-metadata-test --output-on-failure
+ctest --test-dir <amc-build> -R amc-bootstrap-test --output-on-failure
+python3 path/to/AMC/tests/cli/mcp_compat_test.py --host host.abix --plugin plugin.abix
+python3 path/to/AMC/scripts/abix_token_cost.py --abix module.abix --source a.hpp b.hpp
 ```
 
 ### Debugger integration

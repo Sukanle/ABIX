@@ -41,7 +41,7 @@ Classify your change; it tells you what to update and test.
 | **ABI change**  | identity, layout, calling convention, `.abix` format | [`ABI-SPEC.md`](.agents/ABI-SPEC.md), compatibility analysis, regression test, migration note |
 | **IR change**   | new record/field, canonical encoding                 | [`ABI-SPEC.md`](.agents/ABI-SPEC.md), serialization + round-trip tests                        |
 | Runtime change  | registry, binding, caching, synchronization          | [`ARCHITECTURE.md`](.agents/ARCHITECTURE.md), `docs/runtime.md`, benchmark if hot-path        |
-| AMC change      | CLI, extraction, codegen, diagnostics                | `docs/amc.md`, CLI test                                                                       |
+| AMC change      | CLI, extraction, codegen, diagnostics                | the AMC repository's `docs/amc/amc.md`, CLI test                                              |
 | Language plugin | new language frontend/backend                        | [`LANGUAGE-PLUGIN.md`](.agents/LANGUAGE-PLUGIN.md), extraction + round-trip tests             |
 | Documentation   | guides, examples                                     | the matching `_zh` edition when user-visible                                                  |
 | Performance     | binding, lookup, call path                           | benchmark before/after; must not change ABI semantics                                         |
@@ -66,34 +66,31 @@ Requirements:
 
 - C++17 (the project builds as C++17; see `CMakeLists.txt`)
 - CMake 3.20+
-- LLVM / Clang tooling (links `clang-cpp` for the AMC C++ frontend)
-- optional: Lua 5.4 (Aue), `readelf`/`strip`/`lldb`/`clang++` (integration tests)
+- optional: `readelf`/`strip`/`lldb`/`clang++` (runtime tests)
 
-### Locating LLVM (macOS / Homebrew)
+AMC is a separate repository: <https://github.com/Sukanle/AMC>. It additionally
+needs LLVM/Clang, fmt, toml++, optionally Rust/Zig, and Lua 5.4 for Aue. See the
+AMC repository's README for its build instructions.
 
-`cmake/AbixDependencies.cmake` locates LLVM with
-`find_package(LLVM CONFIG)`. On Homebrew, `llvm` is **keg-only**: installing
-`llvm@22` creates `/opt/homebrew/opt/llvm@22`, and the unversioned
+### Locating LLVM for AMC (macOS / Homebrew)
+
+The AMC project locates LLVM with `find_package(LLVM CONFIG)`. On
+Homebrew, `llvm` is **keg-only**: installing `llvm@22` creates
+`/opt/homebrew/opt/llvm@22`, and the unversioned
 `/opt/homebrew/opt/llvm` symlink does **not** exist. Point `CMAKE_PREFIX_PATH`
 at the keg root:
 
 ```bash
-cmake -B build/Release -G Ninja -S . \
+cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22)"
+  -DABIX_DIR=.../lib/cmake/ABIX \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22);..."
 ```
 
-Two constraints are easy to trip over:
-
-- `CMAKE_PREFIX_PATH` must be the keg **root**. `.../llvm@22/lib` and
-  `.../llvm@22/lib/cmake/llvm` both fail to resolve.
-- `-DLLVM_DIR=...` / `-DClang_DIR=...` have no effect: the dependency module
-  clears those cache entries on every configure so it re-detects a changed
-  toolchain. Use `CMAKE_PREFIX_PATH`.
-
-If LLVM is not found, `AMC_BUILD` still succeeds but the AMC tools are skipped
-with a warning — `amc`, `amc-cpp`, `amc-rust` and the AMC tests are absent from
-`build/<type>/bin`.
+`CMAKE_PREFIX_PATH` must be the keg **root**. `.../llvm@22/lib` and
+`.../llvm@22/lib/cmake/llvm` both fail to resolve. If LLVM is not found, the
+AMC configure fails; build and install the ABIX runtime package first, then
+configure AMC.
 
 Avoid exporting `LDFLAGS` / `CPPFLAGS` pointing at an unversioned LLVM prefix.
 CMake copies them into `CMAKE_EXE_LINKER_FLAGS` (and the shared/module
@@ -111,12 +108,11 @@ cmake -B build/Release -S . \
 
 A missing Clang resource directory is a related failure with a different
 symptom: `amc-cpp` prints `ABIX_CLANG_RESOURCE_DIR not set at build time` and
-cannot find built-in headers, which breaks the self-description steps of
-`AMC/tests/cli/integration_test.py`. Clear the stale detection results to let
-CMake re-run `clang -print-resource-dir`:
+cannot find built-in headers, which breaks AMC feature/self-description tests.
+Clear the stale detection results to let CMake re-run `clang -print-resource-dir`:
 
 ```bash
-cmake -B build/Release -S . -U ABIX_CLANG_EXECUTABLE -U ABIX_CLANG_RESOURCE_DIR
+cmake -S . -B build -U AMC_CLANG_EXECUTABLE -U AMC_CLANG_RESOURCE_DIR
 ```
 
 ### Windows (MSYS2 UCRT64)
@@ -157,7 +153,7 @@ Notes:
   (the variant script strips those entries explicitly).
 - `amc` embeds ABI metadata in a custom section: ELF `.abix.metadata` /
   `.abix.names`, Mach-O `__DATA,__abix_*` and PE `.abix` / `.abix.n` — see
-  [`docs/architecture/pe-inspection.md`](docs/architecture/pe-inspection.md).
+  the AMC repository's [`pe-inspection.md`](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md).
 - Optional integration tests use `llvm-readobj` / `llvm-objcopy` / `llvm-strip`
   (from the LLVM package) and a debugger; they are skipped when absent.
 
@@ -219,11 +215,11 @@ ctest --test-dir build/Release --output-on-failure
 ## Guidelines
 
 - Keep the build green: run `ctest` before opening a pull request.
-- Add tests for behaviour changes. The AMC CLI suite is
-  `AMC/tests/cli/integration_test.py`; core assertions live in
-  `AMC/tests/unit/core_test.cpp`; runtime tests use Catch2 in `test/`.
-- Keep ABI semantics in one place: extend `libabix-*` rather than duplicating a
-  parser in a consumer.
+- Add tests for behaviour changes. AMC's standalone suite is registered by its
+  own `CMakeLists.txt`; core assertions live in `tests/unit/core_test.cpp` in
+  the AMC repository. ABIX runtime tests use Catch2 in `test/`.
+- Keep ABI semantics in one place: extend the AMC artifact libraries rather than
+  duplicating a parser in a consumer.
 - Update the relevant `docs/` page (and its `_zh` edition when you can) for
   user-visible changes.
 - Prefer small, focused commits with a clear message.

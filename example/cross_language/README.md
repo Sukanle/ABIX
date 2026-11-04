@@ -26,7 +26,7 @@ Or point at a specific toolchain:
 
 ```bash
 python3 example/cross_language/run_example.py \
-    --amc build/Release/bin/amc \
+    --amc /path/to/amc \
     --cxx clang++ \
     --rustc rustc \
     --zig zig
@@ -80,7 +80,7 @@ infer lifetime safety.
 
 ## Relation to the interop suite
 
-`AMC/tests/interop/` is the broader CI fixture: it covers ABIX-STD views,
+The AMC repository's `tests/interop/` is the broader CI fixture: it covers ABIX-STD views,
 containers, interfaces, exposed classes and `amc target` verification. This
 example is deliberately smaller so it can be copied into a new project without
 pulling in the test harness.

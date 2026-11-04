@@ -33,7 +33,7 @@ ABIX 0.2.1 — Maintenance               修复现有行为、补测试和文档
 ABIX 0.2.2 — Built-in type IDs         预定义 canonical primitive TypeId 常量
 ABIX 0.2.3 — Runtime-only package      不依赖 AMC/LLVM/fmt 的 runtime + 宿主日志
 ABIX 0.2.4 — No-exception runtime      ABIX runtime 无异常、无 RTTI
-ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
+ABIX 0.3.0 — Ecosystem                 AMC 拆分 + 其他项目建立在 ABIX 之上
 ```
 
 ### ABIX 0.1.0 — Foundation, self-hosting and toolchain（已发布，pre-1.0/非稳定）
@@ -55,7 +55,7 @@ ABIX 0.3.0 — Ecosystem                 其他项目建立在 ABIX 之上
 * 基于 ABI 归一化 primitive 身份的跨语言类型投影（例如 C `double` → Rust `core::ffi::c_double`）。
 * 跨语言绑定与 C++ ↔ Rust 互操作 demo。
 
-已交付：`amc-rust` provider（`frontend` + `backend`）与 C++ → ABIX → Rust 闭环——真实 C++ 库 → `.abix` → 生成 Rust 并链接运行，所有权/错误边界/目标契约承载在版本化的 metadata-region 扩展目录中；以及最小化的 `amc-zig` **仅后端** provider，使同一份 `.abix` 同时驱动 Rust 与 Zig 投影，两个消费者链接同一个原生库（`AMC/tests/interop/`）。0.2.0 的跨语言规则已在 [`ABI-SPEC.md` §20](../../.agents/ABI-SPEC.md#20-020-cross-language-freeze) 冻结。
+已交付：`amc-rust` provider（`frontend` + `backend`）与 C++ → ABIX → Rust 闭环——真实 C++ 库 → `.abix` → 生成 Rust 并链接运行，所有权/错误边界/目标契约承载在版本化的 metadata-region 扩展目录中；以及最小化的 `amc-zig` **仅后端** provider，使同一份 `.abix` 同时驱动 Rust 与 Zig 投影，两个消费者链接同一个原生库（`tests/interop/`）。0.2.0 的跨语言规则已在 [`ABI-SPEC.md` §20](../../.agents/ABI-SPEC.md#20-020-cross-language-freeze) 冻结。
 
 构建系统/包管理器集成与更深的调试器集成属于 0.2.0 之后的目标，随 0.3.0 生态工作跟踪；它们不属于 0.2.0 的发布门槛。
 
@@ -114,6 +114,7 @@ ABIX runtime 目标以显式控制流层构建：
 
 目标方向，而非硬性承诺：
 
+* **AMC 拆分** —— AMC 成为独立 CMake 工程/包，消费 runtime-only ABIX；ABIX 根工程不再构建 AMC 及其 artifact 库。
 * **待议：AI / Agent 集成（MCP 高级工具、TROI、工作流）**——需要评估是否过早引入高级工具与工作流；现有 `amc-mcp` 低层查询保持不变。
 * LSP、插件生态、包管理与构建系统集成。
 * 更深的调试器/编辑器集成 (LLDB go-to-definition、Source Origin)。

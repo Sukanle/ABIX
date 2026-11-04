@@ -33,7 +33,7 @@ ABIX 0.2.1 — Maintenance             fix existing behavior, add tests/docs; no
 ABIX 0.2.2 — Built-in type IDs       predefined canonical primitive TypeId constants
 ABIX 0.2.3 — Runtime-only package    installable runtime + host-owned diagnostics
 ABIX 0.2.4 — No-exception runtime    ABIX runtime without exceptions or RTTI
-ABIX 0.3.0 — Ecosystem               others build on top of ABIX
+ABIX 0.3.0 — Ecosystem               AMC split + others build on top of ABIX
 ```
 
 ### ABIX 0.1.0 — Foundation, self-hosting and toolchain (released, pre-1.0/unstable)
@@ -55,7 +55,7 @@ The main line: ABIX IR as the common ABI representation across languages.
 * cross-language type projection on the ABI-normalised primitive identity (for example C `double` → Rust `core::ffi::c_double`).
 * cross-language bindings and a C++ ↔ Rust interoperability demo.
 
-Delivered: the `amc-rust` provider (`frontend` + `backend`) and the C++ → ABIX → Rust closed loop — a real C++ library → `.abix` → generated Rust that links and runs, with ownership, error-boundary and target contracts carried in a versioned metadata-region extension directory. Also a minimal `amc-zig` **backend-only** provider, so the same `.abix` drives both the Rust and the Zig projection and both consumers link the same native library (`AMC/tests/interop/`). The 0.2.0 cross-language rules are frozen in [`ABI-SPEC.md` §20](../../.agents/ABI-SPEC.md#20-020-cross-language-freeze).
+Delivered: the `amc-rust` provider (`frontend` + `backend`) and the C++ → ABIX → Rust closed loop — a real C++ library → `.abix` → generated Rust that links and runs, with ownership, error-boundary and target contracts carried in a versioned metadata-region extension directory. Also a minimal `amc-zig` **backend-only** provider, so the same `.abix` drives both the Rust and the Zig projection and both consumers link the same native library (`tests/interop/`). The 0.2.0 cross-language rules are frozen in [`ABI-SPEC.md` §20](../../.agents/ABI-SPEC.md#20-020-cross-language-freeze).
 
 Build-system / package-manager integration and deeper debugger integration are post-0.2.0 goals, tracked with the 0.3.0 ecosystem work; they are not part of the 0.2.0 release gate.
 
@@ -127,6 +127,9 @@ No public ABI or `.abix` format changes.
 
 Target areas, not hard commitments:
 
+* **AMC split** — AMC is an independent CMake project/package consuming a
+  runtime-only ABIX; the ABIX root no longer builds AMC or its artifact
+  libraries.
 * **Under discussion: AI / Agent integration (advanced MCP tools, TROI, workflows)** — we need to decide whether advanced tools and workflows are premature; the existing low-level `amc-mcp` queries remain.
 * LSP, plugin ecosystem, package management and build-system integration.
 * Deeper debugger / editor integration (LLDB go-to-definition, Source Origin).

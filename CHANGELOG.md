@@ -3,6 +3,75 @@
 All notable changes to ABIX are recorded here. Older releases are available in
 the GitHub release history.
 
+## v0.3.0 — AMC split, runtime-only ABIX and error ABI
+
+AMC is now an independent repository and package. ABIX keeps the header-only
+runtime and no longer contains or builds the AMC toolchain, its artifact
+libraries, Aue, or the LLDB plugin. v0.3.0 also adds the ABIX-side error
+identity contract.
+
+### Added
+
+- `SKL/ABIX/Error/` with the fixed-layout `skl::abix::ErrorCode`
+  (`{uint64 domain, int32 value, uint32 reserved}`, 16 bytes / 8-byte aligned)
+  and the `success()`, `is_success()`, `is_canonical()` contract.
+- ABIX domain allocation under the SKL owner mask: module `0x002`, local domains
+  `0x0001..0x0005` for `call`, `interface`, `module`, `manifest` and `lifecycle`;
+  the allocation table is recorded in `memory/error-abi.md`.
+- `constexpr`, allocation-free `to_error_code()` mappings for `CallError`,
+  `InterfaceStatus`, `ModuleStatus` and `ManifestStatus`. Success maps to
+  canonical `{0, 0, 0}`; unknown values keep their numeric identity.
+- A frozen Error ABI specification (`memory/error-abi.md` and
+  `memory/error-abi_zh.md`, plus `ABI-SPEC.md` §6.2) covering layout, success,
+  domain allocation, unknown/reserved values, unload lifetime, language mapping
+  and EPCD interoperability.
+- `test/error_code_test.cpp` for layout, canonicality, domain values and
+  known/unknown mappings; the v0.2.1 test-only prototype header is removed.
+- Explicit error outputs for setup-time DLL operations:
+  `Object::load(path, error)`, `Object::reload(path, error)`,
+  `Object::unload(error)` and `Function::try_resolve()`. They report a
+  `CallError` without reading or writing `last_error()`; the original signatures
+  remain as compatibility wrappers.
+- `test/error_flow_test.cpp` for explicit success/failure reporting, unchanged
+  `last_error()` behavior, unload refusal through `stale_handle`, and a saved
+  `ErrorCode` remaining valid after the module object is destroyed.
+- Lifecycle coverage in `test/interface_module_test.cpp`: a saved `ErrorCode`
+  survives `ModuleRegistry` unload, a `ModuleLease` blocks unload, and lease
+  acquisition after unload fails closed instead of touching a retired module.
+- Optional `test/epcd_compat_test.cpp`, built only when EPCD headers are
+  available: verifies `ErrorCode` size/alignment/offsets, shared domain masks
+  and field-by-field conversion without making EPCD a runtime dependency.
+
+### Changed
+
+- Removed the `AMC/` directory, including its targets, tests, headers, tools,
+  Aue and artifact-library sources. AMC is developed in
+  <https://github.com/Sukanle/AMC> and consumes an installed runtime-only ABIX
+  package; when no package is found it fetches ABIX into its own
+  `dependencies/` directory.
+- `AMC::format`, `AMC::abi`, `AMC::metadata` and `AMC::tools` now belong to the
+  AMC package. ABIX no longer exports `ABIX::format/abi/metadata/tools`.
+- ABIX package configuration is runtime-only: `ABIX::runtime`, `ABIX::ABIX`
+  and `MICS`; fmt is not a runtime dependency.
+- Removed the monorepo-only AMC integration tests. AMC now has standalone core,
+  e2e, package, feature, Rust provider/panic, cancellation, interop and
+  capability-generation tests, plus an independent CMake integration test.
+- Aue moved to the AMC repository; AMC-specific tooling is no longer required
+  to build the ABIX runtime and its tests.
+
+### Compatibility
+
+- This is a package-layout breaking change: consumers that need
+  `ABIX::format/abi/metadata/tools` should depend on the AMC package.
+- The error ABI is additive: existing `CallError` / `InterfaceStatus` /
+  `ModuleStatus` / `ManifestStatus` values are unchanged, and `last_error()`
+  keeps its thread-local, per-DSO semantics.
+- No `.abix` wire-format change.
+- ABIX Runtime does not depend on EPCD; interoperability is a field-by-field
+  conversion on the EPCD side.
+- ABIX runtime remains no-exception/no-RTTI; AMC keeps its own exception/RTTI
+  policy.
+
 ## v0.2.4 — No-exception/no-RTTI runtime build
 
 Build-contract release: ABIX runtime targets are compiled as an

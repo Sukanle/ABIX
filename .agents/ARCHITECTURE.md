@@ -93,9 +93,9 @@ plugins ──► ABIX IR ──► AMC ──► runtime
 
 - Plugins depend on ABIX IR, never on runtime internals.
 - The runtime depends on the ABI model, never on a language AST.
-- Tooling splits into `libabix-format` / `libabix-abi` / `libabix-metadata` /
-  `libabix-tools` (plus header-only `libabix-runtime`) so every consumer shares
-  one parser.
+- The AMC toolchain owns `libabix-format` / `libabix-abi` /
+  `libabix-metadata` / `libabix-tools`; ABIX owns header-only
+  `libabix-runtime`. AMC consumers share one parser.
 
 ## 6. Bootstrap Architecture
 
@@ -159,14 +159,13 @@ Typed mode (`amc adapter --typed`) generates `abix::adapter<Source, Target>`
 specializations for each compatible type pair. The primary template returns
 `false` so callers can fall back gracefully.
 
-See [`docs/amc.md`](../docs/amc.md) `amc adapter` section and
-[`AMC/core/amc_adapter.h`](../AMC/core/amc_adapter.h).
+See the AMC repository's [`docs/amc/amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) `amc adapter` section and the AMC repository's `src/SKL/AMC/Core/amc_adapter.h`.
 
 ## 8. Extension Points
 
 - **New language** → implement a frontend/plugin ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
 - **New artifact consumer** → link `libabix-*`, do not write a new parser.
-- **New tool** → build on `AMC/core` query/verify APIs; keep JSON schemas stable.
+- **New tool** → build on the AMC repository's core query/verify APIs; keep JSON schemas stable.
 - **New runtime capability** → extend the runtime projection, not the ABI model,
   unless it is a genuine ABI concept.
 - **ABI adaptation** → use `amc adapter` to generate field-level mapping code

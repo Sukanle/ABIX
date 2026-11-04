@@ -137,7 +137,7 @@ primitive `TypeID` 是 **ABI 描述符**的哈希，而非源拼写。描述符�
 * `char`、`signed char`、`unsigned char`、`char8_t`、`char16_t`、`char32_t`、`wchar_t` 是不同的 kind；plain `char` 与 `wchar_t` 携带目标定义的有符号性。
 * `long double` 按**格式**而非拼写识别：某 target 上 `double` 为 32 位时它与 `float` 合并；x87 80-bit 与 IEEE binary128 即使都占 16 字节也保持区分。
 
-实现为 `AMC/core/amc_core.h` 里的 `PrimitiveAbiKind` 与 `FloatFormat`，打包进 `Type::primitive_abi` 并序列化进 `.abix` 类型表。
+实现为 `src/SKL/AMC/Core/amc_core.h` 里的 `PrimitiveAbiKind` 与 `FloatFormat`，打包进 `Type::primitive_abi` 并序列化进 `.abix` 类型表。
 
 ## 源语言 provenance
 

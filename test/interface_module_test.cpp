@@ -10,6 +10,7 @@
 #include <thread>
 #include <vector>
 
+#include "SKL/ABIX/Error/Mapping.h"
 #include "SKL/ABIX/Interface/Interface.h"
 
 namespace {
@@ -31,6 +32,7 @@ using skl::abix::poly::ModuleManifest;
 using skl::abix::poly::ModuleRegistry;
 using skl::abix::poly::ModuleState;
 using skl::abix::poly::ModuleStatus;
+using skl::abix::poly::try_acquire_lease;
 using skl::abix::poly::validate_manifest;
 
 // A provider object and its adapter. No vtable, never modified.
@@ -207,6 +209,50 @@ TEST_CASE("unload is refused while a lease is held, then completes") {
     bound.lease.release();
     REQUIRE(registry.unregister_module(control.id) == ModuleStatus::ok);
     REQUIRE(registry.find_first(InterfaceId{0x11, 0x12}) == nullptr);
+}
+
+TEST_CASE("error codes stay valid across module unload") {
+    using namespace skl::abix;
+
+    ModuleRegistry<> registry;
+    Adder adder;
+    ModuleControl control;
+    control.name = "error-lifecycle";
+    REQUIRE(registry.register_module(control, adder.manifest) == ModuleStatus::ok);
+    const auto *binding = registry.find_first(InterfaceId{0x11, 0x12}, 1);
+    REQUIRE(binding != nullptr);
+
+    auto bound = bind_interface(*binding, &adder.object);
+    REQUIRE(bound.valid());
+
+    const ErrorCode busy = to_error_code(ModuleStatus::busy);
+    CHECK(busy.domain == module_domain);
+    CHECK(busy.value == static_cast<int32_t>(ModuleStatus::busy));
+    CHECK(is_canonical(busy));
+
+    // The lease keeps the module alive and refuses the unload; the explicit
+    // status maps to the same stable identity before and after the attempt.
+    REQUIRE(registry.unregister_module(control.id) == ModuleStatus::busy);
+    CHECK(to_error_code(ModuleStatus::busy).domain == busy.domain);
+    CHECK(to_error_code(ModuleStatus::busy).value == busy.value);
+
+    const auto add = bound.ref.method<AddFn>(0);
+    REQUIRE(add != nullptr);
+    CHECK(add(bound.ref.object(), 5) == 15);
+
+    bound.lease.release();
+    REQUIRE(registry.unregister_module(control.id) == ModuleStatus::ok);
+    REQUIRE_FALSE(registry.registered(control.id));
+
+    // A lease cannot be acquired after unload: the failure is closed, not a
+    // dangling call into the retired module.
+    CHECK_FALSE(try_acquire_lease(control));
+
+    // The saved code never depended on the module and remains comparable.
+    CHECK(busy.domain == module_domain);
+    CHECK(busy.value == static_cast<int32_t>(ModuleStatus::busy));
+    CHECK(is_canonical(busy));
+    CHECK_FALSE(is_success(busy));
 }
 
 TEST_CASE("reloading the same module gets a fresh instance id") {

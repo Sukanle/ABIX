@@ -343,4 +343,4 @@ Or more precisely:
 
 ---
 
-*This document captures the theoretical foundation for ABIX × AI. For the MCP tool interface, see [MCP.md](MCP.md). For the token-efficiency metric, see [troi.md](troi.md). For the Agent architecture, see **AGENT.md** (planned).*
+*This document captures the theoretical foundation for ABIX × AI. For the MCP tool interface, see [MCP.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md). For the token-efficiency metric, see [troi.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md). For the Agent architecture, see **AGENT.md** (planned).*

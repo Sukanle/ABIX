@@ -17,6 +17,7 @@
 #define SKL_ABIX_HPP
 
 #include "SKL/ABIX/Bridge/Bridge.h"         // IWYU pragma: keep
+#include "SKL/ABIX/Error/Error.h"           // IWYU pragma: keep
 #include "SKL/ABIX/Model/Model.h"           // IWYU pragma: keep
 #include "SKL/ABIX/Metadata/Metadata.h"     // IWYU pragma: keep
 #include "SKL/ABIX/Interface/Interface.h"   // IWYU pragma: keep

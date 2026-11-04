@@ -137,7 +137,7 @@ Consequences:
 * `char`, `signed char`, `unsigned char`, `char8_t`, `char16_t`, `char32_t`, `wchar_t` are distinct kinds; plain `char` and `wchar_t` carry their target-defined signedness.
 * `long double` is identified by **format**, not spelling: on a target where `double` is 32-bit it collapses with `float`; x87 80-bit and IEEE binary128 stay distinct even though both occupy 16 bytes.
 
-The implementation is `PrimitiveAbiKind` and `FloatFormat` in `AMC/core/amc_core.h`, packed into `Type::primitive_abi` and serialized in the `.abix` type table.
+The implementation is `PrimitiveAbiKind` and `FloatFormat` in `src/SKL/AMC/Core/amc_core.h`, packed into `Type::primitive_abi` and serialized in the `.abix` type table.
 
 ## Source-language provenance
 

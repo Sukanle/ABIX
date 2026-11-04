@@ -1,17 +1,14 @@
 ---
-applyTo: "{SKL/ABIX/model/*.h,SKL/ABIX/Metadata/*.h,AMC/include/AMC/Core/*.h,AMC/src/Core/*.cpp}"
+applyTo: "{include/SKL/ABIX/**/*.h}"
 ---
 
 # ABI-semantic instructions
 
 These files define ABIX's ABI representation: the IR record definitions and
-hashing in `SKL/ABIX/model/`, the metadata projection in `SKL/ABIX/Metadata/`, and the
-`.abix` reader/writer plus metadata region in `AMC/src/Core/` and
-`AMC/include/AMC/Core/`. Changes here are **ABI semantic changes**.
-
-Globs use the `SKL/ABIX/` / `AMC/` prefixes, which now match the git index: the layer
-directories were renamed to upper case, so a fresh clone sees the same spelling
-on every filesystem.
+hashing in `include/SKL/ABIX/Model/` and the metadata projection in
+`include/SKL/ABIX/Metadata/`. The `.abix` reader/writer and metadata region live
+in the separate AMC repository (<https://github.com/Sukanle/AMC>); changes there
+are **ABI semantic changes** too.
 
 Read first: [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) and
 [`ARCHITECTURE.md`](../../.agents/ARCHITECTURE.md).

@@ -315,4 +315,4 @@ AI 价值不是：
 
 ---
 
-*本文档论述 ABIX × AI 的理论基础。MCP 工具接口见 [MCP.md](MCP.md)。Token 效率指标见 [troi.md](troi.md)。Agent 架构见 **AGENT.md**（规划中）。*
+*本文档论述 ABIX × AI 的理论基础。MCP 工具接口见 [MCP.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP_zh.md)。Token 效率指标见 [troi.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)。Agent 架构见 **AGENT.md**（规划中）。*

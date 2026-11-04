@@ -85,7 +85,7 @@ bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &image, st
 - **`Section`** — normalised linker section: `name`, `segment`, `file_offset`, `file_size`, `address`, `size`, `alignment`, `type`, `flags`.
 - **`Export`** — `name`, `address`, `ordinal`.
 - **`Target`** — the `format` / `os` / `architecture` / `endian` / `pointer_size` / `image_base` bundle.
-- **`find_region` / `read_region`** — the ABIX region accessor: a canonical name (`.abix.metadata`, `.abix.names`) is translated to the container's native spelling via `native_section_name`, and `read_region` returns the Metadata Region (for PE it also unwraps the private header; see [pe-inspection.md](pe-inspection.md)).
+- **`find_region` / `read_region`** — the ABIX region accessor: a canonical name (`.abix.metadata`, `.abix.names`) is translated to the container's native spelling via `native_section_name`, and `read_region` returns the Metadata Region (for PE it also unwraps the private header; see the AMC repository's [pe-inspection.md](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md)).
 
 `BinaryImage` does not own the bytes: the caller keeps the buffer alive while the image is in use (the same contract as the previous `find_binary_section`).
 
@@ -119,7 +119,7 @@ Segments, imports and relocations are added only when a concrete ABIX workflow n
 
 ## Consumers
 
-- **AMC** — `amc metadata --from-elf`, `amc inspect`, `amc verify`, `amc publish` and the LLDB plugin go through a thin compatibility shim (`AMC/include/AMC/Core/ELF.h`) that now also handles PE.
+- **AMC** — `amc metadata --from-elf`, `amc inspect`, `amc verify`, `amc publish` and the LLDB plugin go through a thin compatibility shim (`include/SKL/AMC/Core/ELF.h`) that now also handles PE.
 - **Interface auto-discovery (planned)** — scan `exports()` for `abix_module_query_v1`, pair it with the embedded region, and register the interface without the runtime ever knowing the container:
 
   ```text

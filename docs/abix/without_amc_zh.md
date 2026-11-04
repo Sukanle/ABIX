@@ -130,5 +130,5 @@ const std::string &square_name(const void *self) {
 ## 相关
 
 - [`interface.md`](interface_zh.md) —— Interface 契约、代理与 `signatures`。
-- [`abic.md`](abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
+- [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic_zh.md) —— `[[interface]]` / `[[implements]]` 构建声明。
 - [`std.md`](std_zh.md) —— `StringView` 等 ABIX-STD 边界类型。

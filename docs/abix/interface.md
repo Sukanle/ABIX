@@ -1919,7 +1919,7 @@ The macro is not suitable for:
 - complex ABI signatures that must match the compiler AST exactly;
 - providers that need an automatically generated manifest.
 
-For those, use `amc generate -l cpp`, or write `Traits` and the proxy by hand following [`Proxy.h`](../../ABIX/Interface/Proxy.h). AMC has the Clang AST and therefore knows the real C++ parameter types; its signatures and adapter typedefs are not limited by macro text.
+For those, use `amc generate -l cpp`, or write `Traits` and the proxy by hand following [`Proxy.h`](https://github.com/Sukanle/ABIX/blob/main/include/SKL/ABIX/Interface/Proxy.h). AMC has the Clang AST and therefore knows the real C++ parameter types; its signatures and adapter typedefs are not limited by macro text.
 
 ## What it is not
 
@@ -1931,6 +1931,6 @@ For those, use `amc generate -l cpp`, or write `Traits` and the proxy by hand fo
 
 - [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) — contracts, the extension directory and the Interface contract (identity / slot stability / signature checks).
 - [`std.md`](std.md) — ABIX-STD primitives and the borrow/owned/copy contract.
-- [`abic.md`](abic.md) — `[[interface]]` / `[[implements]]` build declarations.
+- [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md) — `[[interface]]` / `[[implements]]` build declarations.
 - [`without_amc.md`](without_amc.md) — using the header-only runtime without the AMC toolchain.
 - [ngcpp/proxy](https://github.com/ngcpp/proxy) — C++20 facade/pointer runtime-polymorphism library (compared above).

@@ -85,7 +85,7 @@ bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &image, st
 - **`Section`** —— 规范化的链接器节区：`name`、`segment`、`file_offset`、`file_size`、`address`、`size`、`alignment`、`type`、`flags`。
 - **`Export`** —— `name`、`address`、`ordinal`。
 - **`Target`** —— `format` / `os` / `architecture` / `endian` / `pointer_size` / `image_base` 的组合。
-- **`find_region` / `read_region`** —— ABIX region 访问器：规范名（`.abix.metadata`、`.abix.names`）经 `native_section_name` 翻译成容器的原生拼写，`read_region` 返回 Metadata Region（对 PE 还会剥掉私有头，见 [pe-inspection_zh.md](pe-inspection_zh.md)）。
+- **`find_region` / `read_region`** —— ABIX region 访问器：规范名（`.abix.metadata`、`.abix.names`）经 `native_section_name` 翻译成容器的原生拼写，`read_region` 返回 Metadata Region（对 PE 还会剥掉私有头，见 AMC 仓库的 [pe-inspection_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection_zh.md)）。
 
 `BinaryImage` 不拥有字节：调用方在镜像使用期间保持缓冲区存活（与旧的 `find_binary_section` 同一契约）。
 
@@ -119,7 +119,7 @@ Segment、import、relocation 只在出现具体 ABIX 工作流需要时才加�
 
 ## 消费方
 
-- **AMC** —— `amc metadata --from-elf`、`amc inspect`、`amc verify`、`amc publish` 以及 LLDB 插件都经由一层薄兼容垫片（`AMC/include/AMC/Core/ELF.h`），该垫片现在也支持 PE。
+- **AMC** —— `amc metadata --from-elf`、`amc inspect`、`amc verify`、`amc publish` 以及 LLDB 插件都经由一层薄兼容垫片（`include/SKL/AMC/Core/ELF.h`），该垫片现在也支持 PE。
 - **接口自动发现（规划中）** —— 扫描 `exports()` 找 `abix_module_query_v1`，与内嵌 region 配对，注册接口；runtime 全程不知道容器：
 
   ```text

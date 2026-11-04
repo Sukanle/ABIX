@@ -18,12 +18,13 @@ Do not duplicate those rules here; this file only adds GitHub-specific advice.
 - Do not claim tests passed unless they were actually run; paste the command
   and result.
 - For ABI changes, include compatibility analysis and a regression test.
-- For AMC/CLI changes, mention the commands you exercised.
+- For CLI changes in the AMC repository, mention the commands you exercised.
 - Prefer updating `docs/` (and the matching `_zh` edition) over adding prose to
   code comments.
 
 ## Path-scoped rules
 
 More specific instructions live in
-[`.github/instructions/`](instructions/): `cpp`, `runtime`, `amc`, `abi`, and
-`docs` instruction files are applied by path.
+[`.github/instructions/`](instructions/): `cpp`, `runtime`, `abi`, and `docs`
+instruction files are applied by path. AMC-specific instructions live in the
+AMC repository.

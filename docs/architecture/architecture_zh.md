@@ -34,8 +34,8 @@ graph TD
 ```
 
 * **ABIX IR** — 语言无关的 ABI 模型：类型、字段、函数、参数、符号、hash、兼容性与映射。
-* **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../ABIX/abix_zh.md)。
-* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](../AMC/amc_zh.md)。
+* **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../abix/abix_zh.md)。
+* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) 与 [AMC 仓库](https://github.com/Sukanle/AMC)。
 * **ABIX Runtime** — 消费 ABI：注册、绑定、分派、适配，见 [`runtime_zh.md`](runtime_zh.md)。
 
 ## 运行时交互
@@ -64,15 +64,15 @@ sequenceDiagram
 
 > 运行时可以使用 ABI 模型的**投影**，但不得自行重新定义 ABI 语义。
 
-工具链拆分为多个库，使每个消费者只链接所需部分，同时共享唯一的 parser：
+ABIX 拥有 header-only runtime；AMC 仓库拥有 artifact 库，并在其工具之间共享唯一的 parser：
 
-| 库 | 职责 |
-|----|------|
-| `libabix-format` | `.abix` v4 读写、hash、canonical 形式、ELF reader |
-| `libabix-abi` | `TypeID`/`LayoutHash` 比较、兼容性 diff |
-| `libabix-metadata` | Metadata Region 序列化/解析/materialize、context、query |
-| `libabix-tools` | Lua 契约生成、symbol store |
-| `libabix-runtime` | header-only 注册/绑定层 |
+| 库 | 所有者 | 职责 |
+|----|--------|------|
+| `libabix-runtime` | ABIX | header-only 注册/绑定层 |
+| `libabix-format` | AMC | `.abix` v4 读写、hash、canonical 形式、ELF reader |
+| `libabix-abi` | AMC | `TypeID`/`LayoutHash` 比较、兼容性 diff |
+| `libabix-metadata` | AMC | Metadata Region 序列化/解析/materialize、context、query |
+| `libabix-tools` | AMC | Lua 契约生成、symbol store |
 
 ## 身份
 
@@ -95,7 +95,7 @@ graph TD
     B -->|materialize| C["Runtime Descriptor（pointer-rich，热路径）"]
 ```
 
-Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接近纯静态 ABI。见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
+Region 是 offset-based、无 relocation，可作为独立文件、嵌入 ELF 段或被离线 parser mmap；Runtime Descriptor 是初始化期的一次性物化，之后热路径接近纯静态 ABI。见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
 
 ## 执行模型
 
@@ -111,10 +111,8 @@ graph LR
 ```text
 ABIX
 ├── SKL/ABIX/      ABI 模型 + 运行时（header-only 注册表）
-├── AMC/       AMC 工具链：core/、cpp/ 前后端、dump/、mcp/
 ├── test/      运行时与单元测试（Catch2）
 ├── bench/     基准测试
-├── Aue/       实验性 Lua 边界层 + 一致性运行器
 ├── tools/     辅助脚本（MCP demo、token 成本、LLDB 命令）
 └── docs/      规范与设计
 ```

@@ -243,7 +243,7 @@ graph TD
 The IR focuses on ABI semantics rather than source-level detail. Its serialized form is the `.abix` artifact:
 
 - [`docs/abix/abix.md`](docs/abix/abix.md) — the canonical `.abix` artifact
-- [`docs/abix/abic.md`](docs/abix/abic.md) — the `.abic.toml` build configuration
+- [`docs/abic/abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md) — the `.abic.toml` build configuration (AMC repository)
 - [`docs/abix/metadata_modes.md`](docs/abix/metadata_modes.md) — the three metadata modes
 - [`docs/abix/interface.md`](docs/abix/interface.md) — the ABIX Interface layer (non-intrusive polymorphism)
 - [`docs/abix/std.md`](docs/abix/std.md) — ABIX-STD cross-language ABI primitives
@@ -281,7 +281,7 @@ amc verify -c package.abic.toml -B build
 amc generate build/build/package.abix -l rust -o gen/
 ```
 
-AMC is an extensible toolchain, not a language-specific compiler: frontends extract ABI from a language AST, ABIX IR stays the common representation. The `amc-cpp` frontend/backend links Clang/LLVM; `amc-rust` provides a Rust provider (frontend + backend), and `amc-zig` is a backend-only projection. `amc-dump`, the optional LLDB plugin and `amc-mcp` expose the same artifact to debuggers and AI agents. See [`docs/amc/amc.md`](docs/amc/amc.md).
+AMC is an extensible toolchain, not a language-specific compiler: frontends extract ABI from a language AST, ABIX IR stays the common representation. The `amc-cpp` frontend/backend links Clang/LLVM; `amc-rust` provides a Rust provider (frontend + backend), and `amc-zig` is a backend-only projection. `amc-dump`, the optional LLDB plugin and `amc-mcp` expose the same artifact to debuggers and AI agents. See the AMC repository's [`docs/amc/amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md).
 
 ---
 
@@ -320,7 +320,7 @@ The core architectural rule:
 
 > **There should be one source of ABI truth.** The runtime may use a projection of the ABI model, but must not independently redefine ABI semantics.
 
-Tooling is split into `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools`, plus the header-only `libabix-runtime`, so every consumer shares exactly one `.abix` / Metadata Region parser. The runtime layers stay independent: the ABI model and metadata projection, native DLL binding with RCU lifecycle, and the interface contract layer.
+The ABIX runtime is header-only (`libabix-runtime`). The AMC toolchain owns the `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools` artifact libraries, so every AMC consumer shares exactly one `.abix` / Metadata Region parser. The runtime layers stay independent: the ABI model and metadata projection, native DLL binding with RCU lifecycle, and the interface contract layer.
 
 ---
 
@@ -390,16 +390,10 @@ ABIX
 │   ├── Binary/            BinaryImage.h ELF.h MachO.h PE.h
 │   ├── STD/               String.h Span.h Optional.h Result.h Callback.h
 │   └── Util/              Util.h Config.h Log.h Atomic.h Hash.h Array.h Mem.h
-├── AMC/                   ABI toolchain
-│   ├── src/CLI/           build, inspect, query, context, diff, verify, generate, ...
-│   ├── src/Core/          .abix format, metadata, query, verify, adapter, symbol store
-│   ├── src/Lang/          C++ frontend/backend, Rust provider, Zig backend
-│   └── src/Tool/          dump and MCP server
-├── Aue/                   experimental Lua boundary layer and conformance runner
 ├── test/                  Catch2 runtime and unit tests
 ├── bench/                 Google Benchmark suites
 ├── dlls/                  cross-DLL test plugins and fixtures
-├── tools/                 MCP demo, token-cost, LLDB and test runners
+├── tools/                 MCP demo, token-cost and test runners
 ├── scripts/               developer scripts (git hooks, Markdown reflow)
 ├── src/                   self-hosting ABI inputs
 ├── docs/                  specification, guides, API, architecture, AI, benchmarks
@@ -414,12 +408,14 @@ ABIX
 
 - C++17 or later
 - CMake 3.20+ and Ninja
-- LLVM / Clang tooling (`clang-cpp`) for the AMC C++ frontend
-- Python 3 for the AMC integration, feature and interop tests
-- optional: Rust (`rustc`) and Zig for the cross-language providers, Lua 5.4 for Aue, LLDB for the native plugin
+- Python 3 for the ABIX package/runtime tests
 - a supported native toolchain
 
-> **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` so the AMC targets are built.
+The separate [AMC project](https://github.com/Sukanle/AMC) additionally requires
+LLVM/Clang (`clang-cpp`), fmt, toml++, Python, optionally Rust/Zig for the
+cross-language providers, and Lua 5.4 for the Aue conformance prototype.
+
+> **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` when building AMC.
 
 ### Build
 
@@ -430,6 +426,12 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
+
+### AMC
+
+AMC is an independent repository: <https://github.com/Sukanle/AMC>. It consumes
+an installed ABIX runtime package (or fetches ABIX automatically into its own
+`dependencies/` directory). The ABIX root neither contains nor builds AMC.
 
 ### Runtime build contract: no exceptions, no RTTI
 
@@ -471,38 +473,42 @@ cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.2 CONFIG REQUIRED COMPONENTS runtime)
+find_package(ABIX 0.3 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
-The runtime package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It
-does not require AMC, LLVM/Clang or fmt. The full package additionally provides
-`ABIX::ABIX` and `ABIX::format`, `ABIX::abi`, `ABIX::metadata` and
-`ABIX::tools`; those optional libraries use fmt. `ABIX::ABIX` is always
-available and is runtime-only when the optional libraries were not built.
+The package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It does not
+require AMC, LLVM/Clang, fmt or static libraries. `ABIX::ABIX` is a convenience
+aggregate for the runtime.
 
 ABIX installs its bundled MICS package by default. Set
-`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The
-runtime config only resolves `MICS`; fmt is resolved when a library component or
-the full aggregate is requested. `ABIX_INSTALL` defaults to ON for a top-level
-build and OFF when ABIX is added as a subproject.
+`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The package
+config resolves only `MICS`. `ABIX_INSTALL` defaults to ON for a top-level build
+and OFF when ABIX is added as a subproject.
+
+The artifact libraries (`format`/`abi`/`metadata`/`tools`) are owned by the
+standalone AMC package and are exported there as `AMC::format`, `AMC::abi`,
+`AMC::metadata` and `AMC::tools`.
 
 ### Try it
 
+Build and install AMC separately first (see the
+[AMC repository](https://github.com/Sukanle/AMC)), then use `amc`:
+
 ```bash
-# Build an .abix artifact from the example config
-./build/Release/bin/amc build -c AMC/tests/fixtures/amc_test.abic.toml -B build/demo
+# Build an .abix artifact from an AMC fixture (AMC_SOURCE_DIR is an AMC checkout)
+amc build -c "$AMC_SOURCE_DIR/tests/fixtures/amc_test.abic.toml" -B build/demo
 
 # Inspect it
-./build/Release/bin/amc inspect build/demo/build/amc_test.abix
+amc inspect build/demo/build/amc_test.abix
 
 # Query a type and its layout
-./build/Release/bin/amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
+amc query build/demo/build/amc_test.abix --type AmcTestFoo --layout
 
 # LLM-friendly ABI context
-./build/Release/bin/amc context build/demo/build/amc_test.abix --format llm
+amc context build/demo/build/amc_test.abix --format llm
 ```
 
 For the first complete walkthrough see [`docs/getting-started/getting-started.md`](docs/getting-started/getting-started.md).
@@ -521,7 +527,7 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 ### Core Concepts
 
 - [ABI Identity & Compat](docs/architecture/compatibility.md)
-- [`.abic` — ABI Configuration](docs/abix/abic.md)
+- [`.abic` — ABI Configuration](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md)
 - [Metadata Modes](docs/abix/metadata_modes.md)
 - [ABIX Interface](docs/abix/interface.md)
 - [ABIX-STD](docs/abix/std.md)
@@ -529,10 +535,10 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 
 ### Languages
 
-- [Cross-language ABI projections](docs/lang/README.md)
-- [C++](docs/lang/cpp.md)
-- [Rust](docs/lang/rust.md)
-- [Zig](docs/lang/zig.md)
+- [Cross-language ABI projections](https://github.com/Sukanle/AMC/blob/main/docs/lang/README.md)
+- [C++](https://github.com/Sukanle/AMC/blob/main/docs/lang/cpp.md)
+- [Rust](https://github.com/Sukanle/AMC/blob/main/docs/lang/rust.md)
+- [Zig](https://github.com/Sukanle/AMC/blob/main/docs/lang/zig.md)
 
 ### Runtime
 
@@ -542,9 +548,10 @@ For the first complete walkthrough see [`docs/getting-started/getting-started.md
 
 ### AMC Toolchain
 
-- [AMC](docs/amc/amc.md)
+- [AMC documentation](https://github.com/Sukanle/AMC/blob/main/docs/README.md)
+- [AMC toolchain and CLI](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md)
 - [Language Plugins](.agents/LANGUAGE-PLUGIN.md)
-- [MCP: ABI Metadata for AI agents](docs/ai/MCP.md)
+- [MCP: ABI Metadata for AI agents](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md)
 
 ### Project & Development
 
@@ -592,7 +599,7 @@ ABIX releases are project stages, not feature lists:
 - **ABIX 0.2.2 — Built-in type IDs** (predefined canonical primitive TypeId constants)
 - **ABIX 0.2.3 — Runtime-only package** (installable `ABIX::runtime` without AMC/LLVM/fmt; host-owned diagnostics)
 - **ABIX 0.2.4 — No-exception runtime** (ABIX runtime without exceptions or RTTI; AMC keeps both)
-- **ABIX 0.3.0 — Ecosystem** (AMC Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
+- **ABIX 0.3.0 — Ecosystem** (AMC split into an independent project, Interface devirtualization, LSP, package management; advanced MCP/agent tools under discussion)
 
 ```mermaid
 graph LR
@@ -631,7 +638,6 @@ See [`LICENSE`](LICENSE).
 
 ABIX uses third-party components under their respective licenses:
 
-- **ljson** — MIT License, Copyright (c) 2019 lengjingzju. Vendored under `AMC/include/ljson/` and `AMC/src/ljson/`; see `AMC/include/ljson/LICENSE`.
 - **{fmt}** — MIT License, Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors.
 
 See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full notices.

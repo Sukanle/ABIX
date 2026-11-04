@@ -70,7 +70,9 @@ macro(abix_find_dependencies)
   cmake_parse_arguments(_abix "" "" "COMPONENTS;REQUIRED" ${ARGN})
 
   # If no COMPONENTS specified, default to all known dependencies.
-  set(_abix_all_deps LLVM Catch2 benchmark fmt tomlplusplus)
+  # AMC has its own dependency discovery. The ABIX tree only needs its test
+  # framework, optional benchmarks, and fmt for the benchmarks.
+  set(_abix_all_deps Catch2 benchmark fmt)
   if(NOT _abix_COMPONENTS)
     set(_abix_COMPONENTS ${_abix_all_deps})
   endif()

@@ -141,4 +141,4 @@ The code unit is matched by the data pointer's pointee `TypeID`; the encoding is
 
 In scope: the ABI types and contracts languages share (span, string view, owned handle, result, callback). Out of scope: re-implementing a full STL, defining a universal object model, or a runtime ownership system (see [`AGENTS.md`](../../.agents/AGENTS.md) §1.3).
 
-The end-to-end example lives in `AMC/tests/interop/`: one C++ library, one `.abix`, and both a Rust and a Zig consumer reading the same borrowed span.
+The end-to-end example lives in `tests/interop/`: one C++ library, one `.abix`, and both a Rust and a Zig consumer reading the same borrowed span.

@@ -108,7 +108,6 @@ jobs:
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$LLVM_PREFIX;$RUNNER_TEMP/fmt;$RUNNER_TEMP/benchmark" \
-            -DAMC_BUILD=ON \
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=ON
 
@@ -117,35 +116,16 @@ jobs:
 
       - name: Verify required build outputs
         run: |
-          test -x build/Release/bin/amc
-          test -x build/Release/bin/amc-cpp
-          test -x build/Release/bin/amc-rust
-          test -x build/Release/bin/amc-zig
-          test -x build/Release/bin/amc-core-test
           test -x build/Release/bin/test_all
-          ctest --test-dir build/Release -N | grep -q amc-feature-test
-          ctest --test-dir build/Release -N | grep -q amc-cancellation-test
-          ctest --test-dir build/Release -N | grep -q amc-example-test
+          ctest --test-dir build/Release -N | grep -q abix-cmake-runtime-package-test
 
       - name: Test
         run: ctest --test-dir build/Release --output-on-failure --timeout 120
 
-      - name: Smoke language manifest
-        run: |
-          ./build/Release/bin/amc --list-languages | tee languages.txt
-          grep -qx cpp languages.txt
-          grep -qx rust languages.txt
-          grep -qx zig languages.txt
-          ./build/Release/bin/amc --describe-language rust
-          ./build/Release/bin/amc --describe-language zig
-
-      - name: Install and smoke the installed layout
+      - name: Install and verify the ABIX runtime package
         run: |
           cmake --install build/Release --prefix "$RUNNER_TEMP/abix-install"
-          "$RUNNER_TEMP/abix-install/bin/amc" --list-languages | tee installed-languages.txt
-          grep -qx cpp installed-languages.txt
-          grep -qx rust installed-languages.txt
-          grep -qx zig installed-languages.txt
+          test -f "$RUNNER_TEMP/abix-install/lib/cmake/ABIX/ABIXConfig.cmake"
 
       - name: Upload test logs
         if: failure()
@@ -215,7 +195,6 @@ jobs:
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$PREFIXES" \
-            -DAMC_BUILD=ON \
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=ON
 
@@ -224,29 +203,13 @@ jobs:
 
       - name: Verify required build outputs
         run: |
-          test -x build/Release/bin/amc
-          test -x build/Release/bin/amc-cpp
-          test -x build/Release/bin/amc-rust
-          test -x build/Release/bin/amc-zig
-          test -x build/Release/bin/amc-core-test
           test -x build/Release/bin/test_all
-          ctest --test-dir build/Release -N | grep -q amc-feature-test
-          ctest --test-dir build/Release -N | grep -q amc-cancellation-test
-          ctest --test-dir build/Release -N | grep -q amc-example-test
+          ctest --test-dir build/Release -N | grep -q abix-cmake-runtime-package-test
 
       - name: Test
         run: |
           export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
           ctest --test-dir build/Release --output-on-failure --timeout 120
-
-      - name: Smoke language manifest
-        run: |
-          ./build/Release/bin/amc --list-languages | tee languages.txt
-          grep -qx cpp languages.txt
-          grep -qx rust languages.txt
-          grep -qx zig languages.txt
-          ./build/Release/bin/amc --describe-language rust
-          ./build/Release/bin/amc --describe-language zig
 
       - name: Upload test logs
         if: failure()
@@ -310,7 +273,6 @@ jobs:
           export CMAKE_PREFIX_PATH="$(cygpath -m "$MINGW_PREFIX")"
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DAMC_BUILD=ON \
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=ON
 
@@ -338,29 +300,12 @@ jobs:
       - name: Verify required build outputs
         shell: msys2 {0}
         run: |
-          test -f build/Release/bin/amc.exe
-          test -f build/Release/bin/amc-cpp.exe
-          test -f build/Release/bin/amc-rust.exe
-          test -f build/Release/bin/amc-zig.exe
-          test -f build/Release/bin/amc-core-test.exe
           test -f build/Release/bin/test_all.exe
-          ctest --test-dir build/Release -N | grep -q amc-feature-test
-          ctest --test-dir build/Release -N | grep -q amc-cancellation-test
-          ctest --test-dir build/Release -N | grep -q amc-example-test
+          ctest --test-dir build/Release -N | grep -q abix-cmake-runtime-package-test
 
       - name: Test
         shell: msys2 {0}
         run: ctest --test-dir build/Release --output-on-failure --timeout 120
-
-      - name: Smoke language manifest
-        shell: msys2 {0}
-        run: |
-          ./build/Release/bin/amc.exe --list-languages | tee languages.txt
-          grep -qx cpp languages.txt
-          grep -qx rust languages.txt
-          grep -qx zig languages.txt
-          ./build/Release/bin/amc.exe --describe-language rust
-          ./build/Release/bin/amc.exe --describe-language zig
 
       - name: Upload test logs
         if: failure()

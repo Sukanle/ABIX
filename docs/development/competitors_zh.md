@@ -436,4 +436,4 @@ ABIXML = libabigail 的 XML 表示
 
 ---
 
-_另见：[AI 理论](../ai/ai_zh.md)、[TROI 指标](../ai/troi_zh.md)、[MCP 工具](../ai/MCP_zh.md)。_
+_另见：[AI 理论](../ai/ai_zh.md)、[TROI 指标](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)、[MCP 工具](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP_zh.md)。_

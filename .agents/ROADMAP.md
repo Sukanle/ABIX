@@ -27,7 +27,7 @@ Established and maintained:
 - versioned TypeID registration — same TypeID across module ABI versions;
 - multi-module MCP knowledge base and field-width assertion;
 - LLDB C++ plugin (`libabix_lldb.so`) and Python helper;
-- ELF metadata section test suite (`tools/run_test.py --elf-pe`).
+- ELF metadata section test suite (`amc-elf-pe-metadata-test` in the AMC repository).
 
 ## Current — ABIX 0.2.0 (Cross-language, released)
 
@@ -54,7 +54,7 @@ Also delivered: a minimal `amc-zig` **backend-only** provider that consumes the
 same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]`
 typed pointers / `comptime` layout assertions). It validates that ABIX IR is
 reusable: the same artifact drives both the Rust and the Zig projection, and
-`AMC/tests/interop/` builds one native library and runs both consumers against
+`tests/interop/` builds one native library and runs both consumers against
 it. The C++ → ABIX → Rust closed loop (with ownership, error-boundary and target
 contracts in an optional metadata-region extension directory) is complete.
 
@@ -116,6 +116,15 @@ paths. See [`CHANGELOG.md`](../CHANGELOG.md).
 ## Post-0.2.0 — toolchain and ecosystem follow-ups
 
 These are follow-up goals after the 0.2.0 cross-language milestone. They are not part of the 0.2.0 release gate and are tracked with the 0.3.0 work.
+
+### P0 — AMC repository split (in progress)
+
+- ABIX root is runtime-only; AMC builds from `CMakeLists.txt` against an
+  installed ABIX runtime package.
+- AMC owns `libabix-format/abi/metadata/tools` and exports them as `AMC::*`.
+- AMC has standalone core/e2e/package/feature/provider/interop/CMake tests.
+- Remaining: move the last monorepo-only assets, extract the AMC Git history,
+  and add AMC-owned cross-platform CI.
 
 ### P1 — broaden the toolchain
 

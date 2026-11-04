@@ -40,7 +40,7 @@
 
 </details>
 
-> 本文档定义 ABIX 官方量化指标、公式和报告方法。这是**定义**文档；实际测量数据见 [`benchmark.md`](../benchmark/benchmark_zh.md) 和 [`troi.md`](troi_zh.md)。
+> 本文档定义 ABIX 官方量化指标、公式和报告方法。这是**定义**文档；实际测量数据见 [`benchmark.md`](../benchmark/benchmark_zh.md) 和 [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)。
 
 ---
 
@@ -140,7 +140,7 @@ ABIX
 
 **定义：** Token 投资回报率 — 通过 AMC/MCP 获取结构化 ABI 知识后，AI Agent 每 token 完成的工作量，相对于传统工作流。
 
-完整定义、公式和测量方法见 [`troi.md`](troi_zh.md)。
+完整定义、公式和测量方法见 [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)。
 
 ### Token 缩减率 (TRR)
 
@@ -431,7 +431,7 @@ O_type = 56 B/type
 O_binary = 1.17%
 ```
 
-Debug/Release/RelWithDebInfo 开销详情见 [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md)。
+Debug/Release/RelWithDebInfo 开销详情见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
 
 ---
 
@@ -591,5 +591,5 @@ AI 效率
 |------|------|
 | [`metrics.md`](metrics.md) | **本文档。** 定义、公式、方法。 |
 | [`benchmark.md`](../benchmark/benchmark_zh.md) | 特定硬件上的实际测量数据。 |
-| [`troi.md`](troi_zh.md) | AI 工作流 TROI / token 效率深度分析。 |
-| [`metadata_modes_zh.md`](../ABIX/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |
+| [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md) | AI 工作流 TROI / token 效率深度分析。 |
+| [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |

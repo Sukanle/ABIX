@@ -132,4 +132,4 @@ code unit 按数据指针 pointee 的 `TypeID` 匹配；encoding 是**运行期�
 
 范围内：各语言共享的 ABI 类型与契约（span、string view、owned handle、result、callback）。范围外：重写完整 STL、定义通用对象模型、或运行时所有权系统（见 [`AGENTS.md`](../../.agents/AGENTS.md) §1.3）。
 
-端到端示例位于 `AMC/tests/interop/`：一个 C++ 库、一份 `.abix`，以及 Rust 与 Zig 两个消费者读取同一个 borrowed span。
+端到端示例位于 `tests/interop/`：一个 C++ 库、一份 `.abix`，以及 Rust 与 Zig 两个消费者读取同一个 borrowed span。

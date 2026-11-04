@@ -5,7 +5,3 @@ CMakePresets.json
 .cache/
 variants/
 tmp/
-
-# AMC generated artifacts (never commit)
-AMC/tests/fixtures/build/
-**/.amc/
