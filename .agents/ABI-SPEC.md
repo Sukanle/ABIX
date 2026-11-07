@@ -230,6 +230,13 @@ Facts that need the compiled binary or the target toolchain — real field offse
 
 The CLI exposes this as `amc target <file.abix|binary> [--expect arch=..,os=..]`: it prints the recorded target, or verifies it and reports each dimension independently (exit `1` when any is incompatible).
 
+### 10.2 Authority and missing target
+
+- AMC `TargetFacts` is the authority for layout generation and the rustc/ABI probe. ABIX does not re-derive field offsets or primitive widths from a target.
+- ABIX `Model::Target` records only `arch`, `os` and `target_abi`. `BinaryImage::Target` additionally records the produced artifact's `format`, `endianness`, `pointer_size` and `image_base`. The runtime records these facts; it does not use them to change a layout.
+- A missing target is `unverifiable`, never the host target. A consumer must not default an absent target to the current machine.
+- New target facts use a versioned metadata/extension record. The existing `Model::Target` and `BinaryImage::Target` layouts do not change in v0.3.x.
+
 ## 11. Canonical Representation
 
 - The canonical form is deterministic: the same inputs produce byte-identical output.
