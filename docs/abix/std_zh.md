@@ -93,6 +93,25 @@ P1 增加四个契约，均按能力匹配（形状 + 元素 `TypeID`）：
 | `callback` | `{ 函数入口; opaque context }`                       |
 | `range`    | 非连续容器，经长度 + 索引访问 accessor 暴露          |
 
+`abix_callback` 是 borrowed 形式：调用方保持 context 存活并负责注销。
+`abix_callback_owned` 是 additive 的 owned 形式：
+
+```c
+typedef void (*abix_callback_release_fn)(void *context);
+
+typedef struct abix_callback_owned {
+    abix_callback_fn invoke;
+    void *context;
+    abix_callback_release_fn release;
+    uint32_t flags;       // v1 为 0
+    uint32_t reserved;    // 必须为 0
+} abix_callback_owned;
+```
+
+producer 拥有 context，并在最后一次调用后恰好执行一次 `release`。owned
+callback 的 `release` 必填、不得 unwind，且不得由消费者直接调用。消费者不得在
+release 后继续调用 callback。
+
 实例化与契约匹配是两件事：`abix_span<int32_t>` 实例化成功，并不等于它满足 ABIX-STD 的 `SequenceView<i32>` 契约；AMC 需证明兼容，或生成薄适配器。声明契约后，AMC 会对具体类型做 lowering：
 
 ```toml
@@ -127,6 +146,20 @@ element = "char"
 ```
 
 code unit 按数据指针 pointee 的 `TypeID` 匹配；encoding 是**运行期值**（构建阶段只检查字段存在与类型）。默认只读、借用。`std::string_view`、Rust `&str` 与 Zig slice 不被视为天然等价——先验证编码、长度单位、布局与借用。
+
+## Owner 投影
+
+`abix_std::Owner<T>` 是现有 `owner::handle` 的源码级投影，不是新的 ABI 类型。
+模板参数只是生成绑定的标签；布局与 `owner::handle` 完全一致：
+
+```text
+Owner<T> = owner::handle
+instances = abix_owner_<Type>   // 生成名称
+runtime = owner::ref（C++）或语言 wrapper
+```
+
+handle 携带身份、mode、destroy 与 module instance。保证 destroy 入口有效的模块
+lease 是独立的 `abix_lease` C ABI，见 [`lease_zh.md`](lease_zh.md)。
 
 ## 范围
 

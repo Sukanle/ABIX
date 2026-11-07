@@ -61,6 +61,26 @@ P1 adds four contracts, each matched by capability (shape + element `TypeID`):
 | `callback` | `{ function entry; opaque context }`                 |
 | `range`    | non-contiguous container via length + indexed access |
 
+`abix_callback` is the borrowed form: the caller keeps the context alive and
+unregisters it. `abix_callback_owned` is the additive owned form:
+
+```c
+typedef void (*abix_callback_release_fn)(void *context);
+
+typedef struct abix_callback_owned {
+    abix_callback_fn invoke;
+    void *context;
+    abix_callback_release_fn release;
+    uint32_t flags;       // zero in v1
+    uint32_t reserved;    // must be zero
+} abix_callback_owned;
+```
+
+The producer owns the context and invokes `release` exactly once after the last
+call. `release` is required for an owned callback, must not unwind, and must not
+be called by the consumer directly. The consumer must not call the callback
+after release.
+
 ## First primitive: borrowed span
 
 The ABIX-STD span is written as a source-level template:
@@ -136,6 +156,22 @@ element = "char"
 ```
 
 The code unit is matched by the data pointer's pointee `TypeID`; the encoding is a runtime value (the build checks the field's presence and type). It is read-only and borrowed by default. `std::string_view`, Rust `&str` and Zig slices are not treated as inherently equivalent — encoding, length unit, layout and borrowing are verified first.
+
+## Owner projection
+
+`abix_std::Owner<T>` is a source-level projection of the existing
+`owner::handle`, not a new ABI type. The template parameter is a label for
+generated bindings; the layout is exactly `owner::handle`:
+
+```text
+Owner<T> = owner::handle
+instances = abix_owner_<Type>   // generated names
+runtime = owner::ref (C++) or a language wrapper
+```
+
+The handle carries identity, mode, destroy and module instance. The module
+lease that keeps the destroy entry valid is the separate `abix_lease` C ABI
+described in [`lease.md`](lease.md).
 
 ## Scope
 

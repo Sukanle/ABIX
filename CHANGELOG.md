@@ -17,6 +17,14 @@ the GitHub release history.
   independent registries and token overflow.
 - `docs/abix/lease.md` and `lease_zh.md`: the normative contract and the
   ABIX / AMC / plugin responsibility boundary.
+- Additive `abix_callback_owned` with an explicit `release`, `flags` and
+  `reserved` field; the borrowed `abix_callback` layout is unchanged.
+- `test/std_contract_test.cpp`: portable layout audit for `abix_optional`,
+  `abix_result`, `abix_str`, `abix_span`, `abix_callback`,
+  `abix_callback_owned` and the `Owner<T>` projection across pointer widths
+  and alignments.
+- Additive `abix_std::Owner<T>` as a source-level projection of
+  `owner::handle`; it adds no ABI type or layout field.
 
 ### Compatibility
 
