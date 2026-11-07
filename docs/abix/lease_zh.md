@@ -4,7 +4,7 @@
   中文 · <a href="lease.md">English</a>
 </p>
 
-> **状态：ABIX v0.3.x 契约冻结；ABIX 头文件与 mock Host 测试已实现；AMC 参考 Host 与 C++/Rust/Zig interop 已在 Linux 验证（测试矩阵 1–10）。** 本文定义 ABIX 侧的跨语言模块 lease C ABI 契约。ABIX 在 `include/SKL/ABIX/Interface/LeaseABI.h` 提供 C 类型和状态映射，在 `test/lease_abi_test.cpp` 提供 mock Host 契约测试。Host（例如 AMC）提供 function table 实现和 registry。ABIX 不导出全局 lease 符号，也不依赖 AMC。
+> **状态：ABIX v0.3.x 契约冻结；ABIX 头文件与 mock Host 测试已实现；AMC 参考 Host 与 C++/Rust/Zig interop 已在 Linux、macOS、Windows 验证（测试矩阵 1–10）。** 本文定义 ABIX 侧的跨语言模块 lease C ABI 契约。ABIX 在 `include/SKL/ABIX/Interface/LeaseABI.h` 提供 C 类型和状态映射，在 `test/lease_abi_test.cpp` 提供 mock Host 契约测试。Host（例如 AMC）提供 function table 实现和 registry。ABIX 不导出全局 lease 符号，也不依赖 AMC。
 
 ## 目的
 
@@ -223,16 +223,16 @@ ABIX 不得依赖 AMC 实现细节。AMC 不得向 Rust/Zig 暴露 `ModuleContro
 
 ## 实现状态
 
-| 层                             | 状态                                                          |
-| ------------------------------ | ------------------------------------------------------------- |
-| ABIX C ABI 头文件              | `include/SKL/ABIX/Interface/LeaseABI.h`                       |
-| ABIX 状态映射                  | `abix::to_error_code(abix_status)`                            |
-| ABIX 契约测试                  | `test/lease_abi_test.cpp`，使用 mock Host registry            |
-| Host registry / function table | AMC 参考实现位于 `tests/interop/lease/`；Linux interop 已验证 |
-| Rust/Zig owned-object wrapper  | 已实现；Linux interop 已验证                                  |
-| Plugin `destroy` 集成          | 参考 fixture 已实现；沿用现有 owner ABI                       |
-| 跨平台验证                     | 待 macOS/Windows                                              |
-| Zig→Rust 接管 fixture          | 已实现；Linux interop 已验证                                  |
+| 层                             | 状态                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| ABIX C ABI 头文件              | `include/SKL/ABIX/Interface/LeaseABI.h`                                          |
+| ABIX 状态映射                  | `abix::to_error_code(abix_status)`                                               |
+| ABIX 契约测试                  | `test/lease_abi_test.cpp`，使用 mock Host registry                               |
+| Host registry / function table | AMC 参考实现位于 `tests/interop/lease/`；interop 已在 Linux、macOS、Windows 验证 |
+| Rust/Zig owned-object wrapper  | 已实现；interop 已在 Linux、macOS、Windows 验证                                  |
+| Plugin `destroy` 集成          | 参考 fixture 已实现；沿用现有 owner ABI                                          |
+| 跨平台验证                     | 已在 Linux、macOS、Windows 验证                                                  |
+| Zig→Rust 接管 fixture          | 已实现；interop 已在 Linux、macOS、Windows 验证                                  |
 
 ABIX 测试使用 mock Host 验证契约，不会成为生产 registry，也不导出全局符号。
 
