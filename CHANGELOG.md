@@ -2,7 +2,7 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
-## v0.3.1 — Cross-language lease C ABI (unreleased)
+## v0.3.1 — Cross-language lease C ABI (2026-11-08)
 
 ### Added
 
