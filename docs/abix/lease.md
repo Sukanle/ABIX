@@ -4,7 +4,7 @@
   English · <a href="lease_zh.md">中文</a>
 </p>
 
-> **Status: contract frozen for ABIX v0.3.x; ABIX header and test skeleton implemented; Host implementation pending.** This document defines the ABIX-side C ABI contract for cross-language module leases. ABIX ships the C types and status mapping in `include/SKL/ABIX/Interface/LeaseABI.h` and a mock-Host contract test in `test/lease_abi_test.cpp`. The Host (for example AMC) provides the function-table implementation and the registry. ABIX does not export global lease symbols and does not depend on AMC.
+> **Status: contract frozen for ABIX v0.3.x; ABIX header + mock-Host test implemented; AMC reference Host and C++/Rust/Zig interop verified on Linux (test matrix 1–10).** This document defines the ABIX-side C ABI contract for cross-language module leases. ABIX ships the C types and status mapping in `include/SKL/ABIX/Interface/LeaseABI.h` and a mock-Host contract test in `test/lease_abi_test.cpp`. The Host (for example AMC) provides the function-table implementation and the registry. ABIX does not export global lease symbols and does not depend on AMC.
 >
 > The plan and decision log are in [`memory/plan-v0.3.x.md`](../../memory/plan-v0.3.x.md) A3X-0 #2.
 
@@ -230,9 +230,11 @@ ABIX must not depend on AMC implementation details. AMC must not expose `ModuleC
 | ABIX C ABI header | `include/SKL/ABIX/Interface/LeaseABI.h` |
 | ABIX status mapping | `abix::to_error_code(abix_status)` |
 | ABIX contract test | `test/lease_abi_test.cpp` with a mock Host registry |
-| Host registry / function table | Pending; AMC implements it |
-| Rust/Zig owned-object wrappers | Pending; AMC interop fixture |
-| Plugin `destroy` integration | Pending; follows the existing owner ABI |
+| Host registry / function table | AMC reference implementation in `tests/interop/lease/`; Linux interop verified |
+| Rust/Zig owned-object wrappers | Implemented; Linux interop verified |
+| Plugin `destroy` integration | Implemented in the reference fixture; follows the existing owner ABI |
+| Cross-platform verification | Pending macOS/Windows |
+| Zig→Rust takeover fixture | Implemented; Linux interop verified |
 
 The ABIX test uses a mock Host to validate the contract. It does not become a
 production registry and does not export global symbols.
