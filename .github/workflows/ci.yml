@@ -39,7 +39,7 @@ env:
   FMT_VERSION: "11.2.0"
   BENCHMARK_VERSION: "1.10.0"
   # MSYS2 is rolling; keep this pin aligned with the current ucrt64 repo.
-  WINDOWS_LLVM_VERSION: "23.1.4-2"
+  WINDOWS_LLVM_VERSION: "23.1.5-1"
   WINDOWS_FMT_VERSION: "12.2.0-1"
   WINDOWS_BENCHMARK_VERSION: "1.10.0-1"
 
