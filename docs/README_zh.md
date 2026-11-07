@@ -71,6 +71,7 @@ graph TD
 | [abix_zh.md](abix/abix_zh.md)                     | [abix.md](abix/abix.md)                     | 规范的 `.abix` 产物格式                          |
 | [api_zh.md](abix/api_zh.md)                       | [api.md](abix/api.md)                       | 完整的 C++ API 参考                              |
 | [interface_zh.md](abix/interface_zh.md)           | [interface.md](abix/interface.md)           | Interface 层：契约、代理、发现与 Owner ABI       |
+| [lease_zh.md](abix/lease_zh.md)                   | [lease.md](abix/lease.md)                   | 跨语言 Lease C ABI 与 Host-owned registry        |
 | [std_zh.md](abix/std_zh.md)                       | [std.md](abix/std.md)                       | ABIX-STD 跨语言 ABI 原语                         |
 | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
 

@@ -27,6 +27,7 @@
 #include "SKL/ABIX/Interface/Discovery.h"        // IWYU pragma: keep
 #include "SKL/ABIX/Interface/Declaration.h"      // IWYU pragma: keep
 #include "SKL/ABIX/Interface/Lease.h"            // IWYU pragma: keep
+#include "SKL/ABIX/Interface/LeaseABI.h"         // IWYU pragma: keep
 #include "SKL/ABIX/Interface/Module.h"           // IWYU pragma: keep
 #include "SKL/ABIX/Interface/ModuleRegistry.h"   // IWYU pragma: keep
 #include "SKL/ABIX/Interface/Owner.h"            // IWYU pragma: keep

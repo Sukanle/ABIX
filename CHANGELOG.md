@@ -3,6 +3,28 @@
 All notable changes to ABIX are recorded here. Older releases are available in
 the GitHub release history.
 
+## v0.3.1 — Cross-language lease C ABI (unreleased)
+
+### Added
+
+- `SKL/ABIX/Interface/LeaseABI.h`: the C ABI contract for cross-language
+  module leases, including the Host-owned function table, registry-scoped
+  `uint64_t` tokens and `abix_status`.
+- `abix::to_error_code(abix_status)` and `abix::is_success(abix_status)` mapping
+  to the existing `ErrorCode` / `CallError` / `ModuleStatus` identity.
+- `test/lease_abi_test.cpp`: contract tests with a mock Host registry covering
+  token lifetime, duplicate release, registry CLOSING/destroy, draining/busy,
+  independent registries and token overflow.
+- `docs/abix/lease.md` and `lease_zh.md`: the normative contract and the
+  ABIX / AMC / plugin responsibility boundary.
+
+### Compatibility
+
+- Additive: no existing STD layout, `ErrorCode` layout or `ModuleLease`
+  semantics changed.
+- ABIX still does not export a global lease registry; the Host owns the registry
+  and function table.
+
 ## v0.3.0 — AMC split, runtime-only ABIX and error ABI
 
 AMC is now an independent repository and package. ABIX keeps the header-only
