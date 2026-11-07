@@ -5,8 +5,6 @@
 </p>
 
 > **状态：ABIX v0.3.x 契约冻结；ABIX 头文件与 mock Host 测试已实现；AMC 参考 Host 与 C++/Rust/Zig interop 已在 Linux 验证（测试矩阵 1–10）。** 本文定义 ABIX 侧的跨语言模块 lease C ABI 契约。ABIX 在 `include/SKL/ABIX/Interface/LeaseABI.h` 提供 C 类型和状态映射，在 `test/lease_abi_test.cpp` 提供 mock Host 契约测试。Host（例如 AMC）提供 function table 实现和 registry。ABIX 不导出全局 lease 符号，也不依赖 AMC。
->
-> 计划与决策记录见 [`memory/plan-v0.3.x.md`](../../memory/plan-v0.3.x.md) A3X-0 #2。
 
 ## 目的
 
@@ -92,14 +90,14 @@ typedef struct abix_lease_api {
 
 `abix_status` 是 C ABI 结果，显式映射到现有 ABIX 错误身份。它不是新的错误域。
 
-| C 状态 | ABIX 映射 |
-| --- | --- |
-| `ABIX_SUCCESS` | 规范 `success()` |
-| `ABIX_ERROR_INVALID` | `CallError::invalid`（`call_domain`） |
-| `ABIX_ERROR_NOT_FOUND` | `ModuleStatus::not_registered`（`module_domain`） |
-| `ABIX_ERROR_STALE_HANDLE` | `CallError::stale_handle`（`call_domain`） |
-| `ABIX_ERROR_BUSY` | `ModuleStatus::busy`（`module_domain`） |
-| `ABIX_ERROR_UNLOADING` | `CallError::unloading`（`call_domain`） |
+| C 状态                    | ABIX 映射                                         |
+| ------------------------- | ------------------------------------------------- |
+| `ABIX_SUCCESS`            | 规范 `success()`                                  |
+| `ABIX_ERROR_INVALID`      | `CallError::invalid`（`call_domain`）             |
+| `ABIX_ERROR_NOT_FOUND`    | `ModuleStatus::not_registered`（`module_domain`） |
+| `ABIX_ERROR_STALE_HANDLE` | `CallError::stale_handle`（`call_domain`）        |
+| `ABIX_ERROR_BUSY`         | `ModuleStatus::busy`（`module_domain`）           |
+| `ABIX_ERROR_UNLOADING`    | `CallError::unloading`（`call_domain`）           |
 
 未知 C 状态值一律视为失败。映射辅助函数必须保留数值并带有效失败 domain，不得把未知状态折叠成成功。
 
@@ -201,12 +199,12 @@ Acquire Lease
 
 ## 责任边界
 
-| 层 | 责任 |
-| --- | --- |
-| ABIX | C ABI 类型、状态映射、C++ owner 集成、契约测试骨架 |
-| Host（AMC） | `abix_lease_api` 实现、registry、module table、Rust/Zig fixture |
-| Plugin | 提供 `destroy`；绝不实现 lease release |
-| Rust/Zig wrapper | 持有 object 和 lease；destroy 后 release；lease 不实现 `Clone` |
+| 层               | 责任                                                            |
+| ---------------- | --------------------------------------------------------------- |
+| ABIX             | C ABI 类型、状态映射、C++ owner 集成、契约测试骨架              |
+| Host（AMC）      | `abix_lease_api` 实现、registry、module table、Rust/Zig fixture |
+| Plugin           | 提供 `destroy`；绝不实现 lease release                          |
+| Rust/Zig wrapper | 持有 object 和 lease；destroy 后 release；lease 不实现 `Clone`  |
 
 ABIX 不得依赖 AMC 实现细节。AMC 不得向 Rust/Zig 暴露 `ModuleControl` 或 `ModuleLease` 布局。
 
@@ -225,16 +223,16 @@ ABIX 不得依赖 AMC 实现细节。AMC 不得向 Rust/Zig 暴露 `ModuleContro
 
 ## 实现状态
 
-| 层 | 状态 |
-| --- | --- |
-| ABIX C ABI 头文件 | `include/SKL/ABIX/Interface/LeaseABI.h` |
-| ABIX 状态映射 | `abix::to_error_code(abix_status)` |
-| ABIX 契约测试 | `test/lease_abi_test.cpp`，使用 mock Host registry |
+| 层                             | 状态                                                          |
+| ------------------------------ | ------------------------------------------------------------- |
+| ABIX C ABI 头文件              | `include/SKL/ABIX/Interface/LeaseABI.h`                       |
+| ABIX 状态映射                  | `abix::to_error_code(abix_status)`                            |
+| ABIX 契约测试                  | `test/lease_abi_test.cpp`，使用 mock Host registry            |
 | Host registry / function table | AMC 参考实现位于 `tests/interop/lease/`；Linux interop 已验证 |
-| Rust/Zig owned-object wrapper | 已实现；Linux interop 已验证 |
-| Plugin `destroy` 集成 | 参考 fixture 已实现；沿用现有 owner ABI |
-| 跨平台验证 | 待 macOS/Windows |
-| Zig→Rust 接管 fixture | 已实现；Linux interop 已验证 |
+| Rust/Zig owned-object wrapper  | 已实现；Linux interop 已验证                                  |
+| Plugin `destroy` 集成          | 参考 fixture 已实现；沿用现有 owner ABI                       |
+| 跨平台验证                     | 待 macOS/Windows                                              |
+| Zig→Rust 接管 fixture          | 已实现；Linux interop 已验证                                  |
 
 ABIX 测试使用 mock Host 验证契约，不会成为生产 registry，也不导出全局符号。
 
@@ -243,7 +241,7 @@ ABIX 测试使用 mock Host 验证契约，不会成为生产 registry，也不�
 - 该契约在 v0.3.x 中是 additive，不改变现有 STD 布局。
 - 初始 function table 的 `abi_version = 1`；`struct_size` 保护增量字段。
 - 未知状态值失败关闭。
-- ABIX v0.4.0 的 STD 布局变更与本契约无关，见 [`plan-v0.4.0.md`](../../memory/plan-v0.4.0.md)。
+- ABIX v0.4.0 的 STD 布局变更与本契约无关。
 
 ## 非目标
 

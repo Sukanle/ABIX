@@ -31,10 +31,10 @@
 
 Two kinds of statement appear below, and they are not interchangeable:
 
-| Kind              | Meaning                                                                                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Measured**      | A number produced by this repository's benchmark suite on this machine; see [`benchmark.md`](benchmark.md) §5, and the per-family rerun in `memory/windows-benchmark.md` §8. Reproduce with `python tools/run_bench.py`. |
-| **Architectural** | A statement about what a framework _does_ (indirection, marshalling, reflection, GC, lifetime bookkeeping), **not measured here**. No framework below was installed or benchmarked in this repository.                   |
+| Kind              | Meaning                                                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Measured**      | A number produced by this repository's benchmark suite on this machine; see [`benchmark.md`](benchmark.md) §5. Reproduce with `python tools/run_bench.py`.                                             |
+| **Architectural** | A statement about what a framework _does_ (indirection, marshalling, reflection, GC, lifetime bookkeeping), **not measured here**. No framework below was installed or benchmarked in this repository. |
 
 So: ABIX's cost is a measurement; the competitors' costs are mechanism descriptions with an order-of-magnitude judgement, and the comparison is made in **cost classes**, not by subtracting unlike numbers.
 
@@ -180,7 +180,6 @@ Stated plainly, because a comparison that only lists wins is useless:
 ## 7. References
 
 - [`benchmark.md`](benchmark.md) — the ABIX numbers quoted above, with method and environment.
-- `memory/windows-benchmark.md` §8/§10 — per-family rerun (one process per family, `repetitions=5`) and the two benchmark corrections.
 - [`docs/development/competitors.md`](../development/competitors.md) — the tooling landscape (libabigail, ABI Compliance Checker, Conan, vcpkg, Wasm CM, bindgen/SWIG, gRPC, CMake/Bazel) and ABIX's positioning against it.
 - [`docs/abix/api.md`](../abix/api.md) — the actual contract: `Domain`, `Deadline`, `Function::operator()`, `Object` and `ReclaimOutcome`.
 - `tools/run_bench.py` — reproduce any row in §2 with `python tools/run_bench.py <family> --no-extra --repetitions 5`.

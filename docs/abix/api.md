@@ -485,21 +485,21 @@ Enabling a bound is an explicit trade, as described under "Bounding a Grace-Peri
 Logging is an optional diagnostic side channel. Program-visible failures use
 error return values / `CallError`; logging never replaces error handling.
 
-| Type / Function | Description |
-| --- | --- |
-| `LogLevel` | `Debug`, `Info`, `Warning`, `Error`, `Off` (fixed 8-bit enum) |
-| `log_sink_t` | Legacy callback: `void (*)(LogLevel, const char *)`; message is valid only during the call |
-| `LogRecord` | `{level, message, length, truncated}` for length-aware consumers |
-| `log_record_sink_t` | `void (*)(const LogRecord *)`; message is valid only during the call |
-| `ThreadSafeLogState` | `LogStateT<true>`; ABIX atomic configuration storage |
-| `SingleThreadedLogState` | `LogStateT<false>`; plain storage, host guarantees configuration safety |
-| `LogState` | Alias selected by `ABIX_LOG_THREAD_SAFE` (default `ThreadSafeLogState`) |
-| `default_log_state()` | Convenience state; it is **per DSO/image**, not a process-global singleton |
-| `set_log_sink(sink)` / `set_log_sink(state, sink)` | Install/clear a legacy sink |
-| `set_log_record_sink(sink)` / overload | Install/clear a length-aware sink |
-| `set_log_level(level)` / overload | Set the runtime threshold |
-| `get_log_sink()` / `get_log_level()` | Read current callback / threshold |
-| `log(level, fmt, ...)` / `log(state, level, fmt, ...)` | Format into a fixed 1 KiB buffer and dispatch synchronously |
+| Type / Function                                        | Description                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `LogLevel`                                             | `Debug`, `Info`, `Warning`, `Error`, `Off` (fixed 8-bit enum)                              |
+| `log_sink_t`                                           | Legacy callback: `void (*)(LogLevel, const char *)`; message is valid only during the call |
+| `LogRecord`                                            | `{level, message, length, truncated}` for length-aware consumers                           |
+| `log_record_sink_t`                                    | `void (*)(const LogRecord *)`; message is valid only during the call                       |
+| `ThreadSafeLogState`                                   | `LogStateT<true>`; ABIX atomic configuration storage                                       |
+| `SingleThreadedLogState`                               | `LogStateT<false>`; plain storage, host guarantees configuration safety                    |
+| `LogState`                                             | Alias selected by `ABIX_LOG_THREAD_SAFE` (default `ThreadSafeLogState`)                    |
+| `default_log_state()`                                  | Convenience state; it is **per DSO/image**, not a process-global singleton                 |
+| `set_log_sink(sink)` / `set_log_sink(state, sink)`     | Install/clear a legacy sink                                                                |
+| `set_log_record_sink(sink)` / overload                 | Install/clear a length-aware sink                                                          |
+| `set_log_level(level)` / overload                      | Set the runtime threshold                                                                  |
+| `get_log_sink()` / `get_log_level()`                   | Read current callback / threshold                                                          |
+| `log(level, fmt, ...)` / `log(state, level, fmt, ...)` | Format into a fixed 1 KiB buffer and dispatch synchronously                                |
 
 Configuration storage uses the plain-storage primitives in
 `SKL/ABIX/Util/Atomic.h`, not `std::atomic`, so the state layout does not depend
@@ -523,13 +523,13 @@ must cross a DLL boundary; do not treat `set_log_sink()` as process-global.
 
 **Macros:**
 
-| Macro | When Active |
-| --- | --- |
-| `ABIX_LOG_DEBUG(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
-| `ABIX_LOG_INFO(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_INFO` |
-| `ABIX_LOG_WARNING(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
-| `ABIX_LOG_ERROR(fmt, ...)` | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR` |
-| `ABIX_LOG_*_TO(state, fmt, ...)` | Same, but dispatch through an explicit `LogState` |
+| Macro                            | When Active                                                       |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `ABIX_LOG_DEBUG(fmt, ...)`       | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_DEBUG`   |
+| `ABIX_LOG_INFO(fmt, ...)`        | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_INFO`    |
+| `ABIX_LOG_WARNING(fmt, ...)`     | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_WARNING` |
+| `ABIX_LOG_ERROR(fmt, ...)`       | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
+| `ABIX_LOG_*_TO(state, fmt, ...)` | Same, but dispatch through an explicit `LogState`                 |
 
 Runtime filtering happens before `vsnprintf`; compile-time level disabling
 removes the call entirely.
@@ -545,16 +545,16 @@ The primary template for typed function handles. Template parameters:
 - `C` — Calling convention tag (`cc::tag::Cdecl` or `cc::tag::Stdcall`)
 - `Sig` — Function signature (e.g., `int(int, double)`)
 
-| Method                    | Returns    | Description                                                                                                                                                                                                                |
-| ------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve(lib, name, ver)` | `void`     | Resolve a function by name and optional version; writes `last_error()` (compatibility form)                                                                                                                                |
-| `try_resolve(lib, name, ver)` | `CallError` | Resolve explicitly; returns the result and does not touch `last_error()`                                                                                                                                                |
-| `valid()`                 | `bool`     | Whether the handle is valid and the library is loaded                                                                                                                                                                      |
-| `operator bool()`         | `bool`     | Same as `valid()`                                                                                                                                                                                                          |
-| `index()`                 | `index_t`  | Entry index in the table                                                                                                                                                                                                   |
-| `handle_id()`             | `uint64_t` | Opaque handle ID (stable across reload)                                                                                                                                                                                    |
-| `raw()`                   | `fn_type`  | Raw function pointer. Handed out after the read-side section is released, so it is valid only while this handle's image is current: a reload invalidates it (re-resolve, or call `operator()`, which revalidates per call) |
-| `operator()(Args...)`     | `R`        | Call the function with type safety                                                                                                                                                                                         |
+| Method                        | Returns     | Description                                                                                                                                                                                                                |
+| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve(lib, name, ver)`     | `void`      | Resolve a function by name and optional version; writes `last_error()` (compatibility form)                                                                                                                                |
+| `try_resolve(lib, name, ver)` | `CallError` | Resolve explicitly; returns the result and does not touch `last_error()`                                                                                                                                                   |
+| `valid()`                     | `bool`      | Whether the handle is valid and the library is loaded                                                                                                                                                                      |
+| `operator bool()`             | `bool`      | Same as `valid()`                                                                                                                                                                                                          |
+| `index()`                     | `index_t`   | Entry index in the table                                                                                                                                                                                                   |
+| `handle_id()`                 | `uint64_t`  | Opaque handle ID (stable across reload)                                                                                                                                                                                    |
+| `raw()`                       | `fn_type`   | Raw function pointer. Handed out after the read-side section is released, so it is valid only while this handle's image is current: a reload invalidates it (re-resolve, or call `operator()`, which revalidates per call) |
+| `operator()(Args...)`         | `R`         | Call the function with type safety                                                                                                                                                                                         |
 
 **`operator()` behavior:**
 
@@ -996,8 +996,6 @@ Registers all entries from an ABIX export table into the dynamic mics registry.
 
 The `Error/` headers define the fixed-layout identity used when a failure is stored, compared or transported across a DSO or language boundary. The subsystem status enums (`dll::CallError`, `poly::InterfaceStatus`, `poly::ModuleStatus`, `poly::ManifestStatus`) remain the primary API; `ErrorCode` is a boundary value, not a runtime dispatcher.
 
-The normative specification is [`memory/error-abi.md`](../../memory/error-abi.md).
-
 ### `ErrorCode`
 
 ```cpp
@@ -1008,20 +1006,20 @@ struct ErrorCode final {
 };
 ```
 
-| Property | Value |
-| --- | --- |
-| Size / alignment | 16 / 8 |
-| Field offsets | `domain` 0, `value` 8, `reserved` 12 |
-| Category | standard-layout, trivial, trivially copyable |
+| Property         | Value                                        |
+| ---------------- | -------------------------------------------- |
+| Size / alignment | 16 / 8                                       |
+| Field offsets    | `domain` 0, `value` 8, `reserved` 12         |
+| Category         | standard-layout, trivial, trivially copyable |
 
 The record owns no text, pointer, allocator or module handle, so a saved value stays valid after the producing module unloads. `value` is the error number; `domain` identifies the subsystem that assigned it.
 
 ### Success and canonical form
 
-| Function | Description |
-| --- | --- |
-| `success()` | Returns the canonical success `{0, 0, 0}` |
-| `is_success(code)` | `code.value == 0` |
+| Function             | Description                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `success()`          | Returns the canonical success `{0, 0, 0}`                                          |
+| `is_success(code)`   | `code.value == 0`                                                                  |
 | `is_canonical(code)` | `reserved == 0` and either an all-zero success or a failure with a non-zero domain |
 
 A zero value with a non-zero domain is still a success, but it is not canonical. Normalize non-canonical values before crossing a serialization or ABI boundary.
@@ -1038,12 +1036,12 @@ inline constexpr DomainId manifest_domain  = make_skl_domain(abix_module_id, 4);
 inline constexpr DomainId lifecycle_domain = make_skl_domain(abix_module_id, 5);
 ```
 
-| Constant | Value | Used by |
-| --- | --- | --- |
-| `call_domain` | `0x1002000000000001` | `dll::CallError` |
-| `interface_domain` | `0x1002000000000002` | `poly::InterfaceStatus` |
-| `module_domain` | `0x1002000000000003` | `poly::ModuleStatus` |
-| `manifest_domain` | `0x1002000000000004` | `poly::ManifestStatus` |
+| Constant           | Value                | Used by                                  |
+| ------------------ | -------------------- | ---------------------------------------- |
+| `call_domain`      | `0x1002000000000001` | `dll::CallError`                         |
+| `interface_domain` | `0x1002000000000002` | `poly::InterfaceStatus`                  |
+| `module_domain`    | `0x1002000000000003` | `poly::ModuleStatus`                     |
+| `manifest_domain`  | `0x1002000000000004` | `poly::ManifestStatus`                   |
 | `lifecycle_domain` | `0x1002000000000005` | Reserved for lifecycle-specific failures |
 
 Domain ids use the EPCD-compatible owner/module/local layout (`owner` bits 63..60, `module` bits 59..48, `local` bits 47..0). ABIX uses the SKL owner and module `0x002`. Released ids are permanent.

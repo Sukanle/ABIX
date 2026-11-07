@@ -5,8 +5,6 @@
 </p>
 
 > **Status: contract frozen for ABIX v0.3.x; ABIX header + mock-Host test implemented; AMC reference Host and C++/Rust/Zig interop verified on Linux (test matrix 1–10).** This document defines the ABIX-side C ABI contract for cross-language module leases. ABIX ships the C types and status mapping in `include/SKL/ABIX/Interface/LeaseABI.h` and a mock-Host contract test in `test/lease_abi_test.cpp`. The Host (for example AMC) provides the function-table implementation and the registry. ABIX does not export global lease symbols and does not depend on AMC.
->
-> The plan and decision log are in [`memory/plan-v0.3.x.md`](../../memory/plan-v0.3.x.md) A3X-0 #2.
 
 ## Purpose
 
@@ -92,14 +90,14 @@ Rules:
 
 `abix_status` is the C ABI result; it maps explicitly to the existing ABIX error identity. It is not a new error domain.
 
-| C status | ABIX mapping |
-| --- | --- |
-| `ABIX_SUCCESS` | canonical `success()` |
-| `ABIX_ERROR_INVALID` | `CallError::invalid` (`call_domain`) |
-| `ABIX_ERROR_NOT_FOUND` | `ModuleStatus::not_registered` (`module_domain`) |
-| `ABIX_ERROR_STALE_HANDLE` | `CallError::stale_handle` (`call_domain`) |
-| `ABIX_ERROR_BUSY` | `ModuleStatus::busy` (`module_domain`) |
-| `ABIX_ERROR_UNLOADING` | `CallError::unloading` (`call_domain`) |
+| C status                  | ABIX mapping                                     |
+| ------------------------- | ------------------------------------------------ |
+| `ABIX_SUCCESS`            | canonical `success()`                            |
+| `ABIX_ERROR_INVALID`      | `CallError::invalid` (`call_domain`)             |
+| `ABIX_ERROR_NOT_FOUND`    | `ModuleStatus::not_registered` (`module_domain`) |
+| `ABIX_ERROR_STALE_HANDLE` | `CallError::stale_handle` (`call_domain`)        |
+| `ABIX_ERROR_BUSY`         | `ModuleStatus::busy` (`module_domain`)           |
+| `ABIX_ERROR_UNLOADING`    | `CallError::unloading` (`call_domain`)           |
 
 Unknown C status values are failures. A mapping helper must preserve the numeric value with a valid failure domain; it must not fold an unknown status into success.
 
@@ -201,12 +199,12 @@ Acquire Lease
 
 ## Responsibility boundary
 
-| Layer | Responsibility |
-| --- | --- |
-| ABIX | C ABI types, status mapping, C++ owner integration, contract tests |
-| Host (AMC) | `abix_lease_api` implementation, registry, module table, Rust/Zig fixture |
-| Plugin | Provides `destroy`; never implements lease release |
-| Rust/Zig wrapper | Holds object and lease; destroy then release; no `Clone` on the lease |
+| Layer            | Responsibility                                                            |
+| ---------------- | ------------------------------------------------------------------------- |
+| ABIX             | C ABI types, status mapping, C++ owner integration, contract tests        |
+| Host (AMC)       | `abix_lease_api` implementation, registry, module table, Rust/Zig fixture |
+| Plugin           | Provides `destroy`; never implements lease release                        |
+| Rust/Zig wrapper | Holds object and lease; destroy then release; no `Clone` on the lease     |
 
 ABIX must not depend on AMC implementation details. AMC must not expose `ModuleControl` or `ModuleLease` layouts to Rust/Zig.
 
@@ -225,16 +223,16 @@ ABIX must not depend on AMC implementation details. AMC must not expose `ModuleC
 
 ## Implementation status
 
-| Layer | Status |
-| --- | --- |
-| ABIX C ABI header | `include/SKL/ABIX/Interface/LeaseABI.h` |
-| ABIX status mapping | `abix::to_error_code(abix_status)` |
-| ABIX contract test | `test/lease_abi_test.cpp` with a mock Host registry |
+| Layer                          | Status                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| ABIX C ABI header              | `include/SKL/ABIX/Interface/LeaseABI.h`                                        |
+| ABIX status mapping            | `abix::to_error_code(abix_status)`                                             |
+| ABIX contract test             | `test/lease_abi_test.cpp` with a mock Host registry                            |
 | Host registry / function table | AMC reference implementation in `tests/interop/lease/`; Linux interop verified |
-| Rust/Zig owned-object wrappers | Implemented; Linux interop verified |
-| Plugin `destroy` integration | Implemented in the reference fixture; follows the existing owner ABI |
-| Cross-platform verification | Pending macOS/Windows |
-| Zig→Rust takeover fixture | Implemented; Linux interop verified |
+| Rust/Zig owned-object wrappers | Implemented; Linux interop verified                                            |
+| Plugin `destroy` integration   | Implemented in the reference fixture; follows the existing owner ABI           |
+| Cross-platform verification    | Pending macOS/Windows                                                          |
+| Zig→Rust takeover fixture      | Implemented; Linux interop verified                                            |
 
 The ABIX test uses a mock Host to validate the contract. It does not become a
 production registry and does not export global symbols.
@@ -244,7 +242,7 @@ production registry and does not export global symbols.
 - The contract is additive in v0.3.x; it does not change existing STD layouts.
 - `abi_version = 1` for the initial table; `struct_size` guards additive fields.
 - Unknown status values fail closed.
-- ABIX v0.4.0 STD layout changes are unrelated to this contract and are documented in [`plan-v0.4.0.md`](../../memory/plan-v0.4.0.md).
+- ABIX v0.4.0 STD layout changes are unrelated to this contract.
 
 ## Non-goals
 

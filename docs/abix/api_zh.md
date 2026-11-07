@@ -499,21 +499,21 @@ domain.synchronize();
 
 日志是可选的诊断副作用。程序可判断的失败由错误码 / `CallError` 返回；日志不能替代错误处理。
 
-| 类型 / 函数 | 说明 |
-| --- | --- |
-| `LogLevel` | `Debug`、`Info`、`Warning`、`Error`、`Off`（8-bit 枚举） |
-| `log_sink_t` | 兼容回调：`void (*)(LogLevel, const char *)`；消息只在回调期间有效 |
-| `LogRecord` | `{level, message, length, truncated}`，供需要长度/截断信息的消费者使用 |
-| `log_record_sink_t` | `void (*)(const LogRecord *)`；消息只在回调期间有效 |
-| `ThreadSafeLogState` | `LogStateT<true>`；使用 ABIX 原子配置存储 |
-| `SingleThreadedLogState` | `LogStateT<false>`；普通存储，由宿主保证配置访问安全 |
-| `LogState` | 由 `ABIX_LOG_THREAD_SAFE` 选择的别名（默认 `ThreadSafeLogState`） |
-| `default_log_state()` | 便利状态；**每个 DSO/镜像一份**，不是进程级单例 |
-| `set_log_sink(sink)` / `set_log_sink(state, sink)` | 设置/清除兼容 sink |
-| `set_log_record_sink(sink)` / 重载 | 设置/清除带长度信息的 sink |
-| `set_log_level(level)` / 重载 | 设置运行时阈值 |
-| `get_log_sink()` / `get_log_level()` | 读取当前回调 / 阈值 |
-| `log(level, fmt, ...)` / `log(state, ...)` | 格式化到固定 1 KiB 缓冲区并同步分发 |
+| 类型 / 函数                                        | 说明                                                                   |
+| -------------------------------------------------- | ---------------------------------------------------------------------- |
+| `LogLevel`                                         | `Debug`、`Info`、`Warning`、`Error`、`Off`（8-bit 枚举）               |
+| `log_sink_t`                                       | 兼容回调：`void (*)(LogLevel, const char *)`；消息只在回调期间有效     |
+| `LogRecord`                                        | `{level, message, length, truncated}`，供需要长度/截断信息的消费者使用 |
+| `log_record_sink_t`                                | `void (*)(const LogRecord *)`；消息只在回调期间有效                    |
+| `ThreadSafeLogState`                               | `LogStateT<true>`；使用 ABIX 原子配置存储                              |
+| `SingleThreadedLogState`                           | `LogStateT<false>`；普通存储，由宿主保证配置访问安全                   |
+| `LogState`                                         | 由 `ABIX_LOG_THREAD_SAFE` 选择的别名（默认 `ThreadSafeLogState`）      |
+| `default_log_state()`                              | 便利状态；**每个 DSO/镜像一份**，不是进程级单例                        |
+| `set_log_sink(sink)` / `set_log_sink(state, sink)` | 设置/清除兼容 sink                                                     |
+| `set_log_record_sink(sink)` / 重载                 | 设置/清除带长度信息的 sink                                             |
+| `set_log_level(level)` / 重载                      | 设置运行时阈值                                                         |
+| `get_log_sink()` / `get_log_level()`               | 读取当前回调 / 阈值                                                    |
+| `log(level, fmt, ...)` / `log(state, ...)`         | 格式化到固定 1 KiB 缓冲区并同步分发                                    |
 
 配置存储使用 `SKL/ABIX/Util/Atomic.h` 的 plain-storage 原语，而不是 `std::atomic`，避免标准库实现在 DLL/CRT 边界上影响状态布局。`ABIX_LOG_THREAD_SAFE` 默认 `1`：对普通函数指针和 `uint8_t` 字段使用 acquire/release 读写。设为 `0` 表示固定 sink / 单线程配置，所有配置变更必须发生在工作线程启动之前。该策略是编译期契约；共享同一个 `LogState` 的模块必须使用相同策略。
 
@@ -523,13 +523,13 @@ sink 只观察诊断事件：它在调用线程执行，ABIX 不持有锁；回�
 
 **宏：**
 
-| 宏 | 生效条件 |
-| --- | --- |
-| `ABIX_LOG_DEBUG(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG` |
-| `ABIX_LOG_INFO(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO` |
-| `ABIX_LOG_WARNING(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
-| `ABIX_LOG_ERROR(fmt, ...)` | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR` |
-| `ABIX_LOG_*_TO(state, fmt, ...)` | 同上，但通过显式 `LogState` 分发 |
+| 宏                               | 生效条件                                                            |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `ABIX_LOG_DEBUG(fmt, ...)`       | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_DEBUG`   |
+| `ABIX_LOG_INFO(fmt, ...)`        | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_INFO`    |
+| `ABIX_LOG_WARNING(fmt, ...)`     | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_WARNING` |
+| `ABIX_LOG_ERROR(fmt, ...)`       | 除非定义 `ABIX_DISABLE_LOGGING` 或 `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
+| `ABIX_LOG_*_TO(state, fmt, ...)` | 同上，但通过显式 `LogState` 分发                                    |
 
 运行时过滤在 `vsnprintf` 之前执行；编译期级别关闭会完全移除调用。
 
@@ -544,16 +544,16 @@ sink 只观察诊断事件：它在调用线程执行，ABIX 不持有锁；回�
 - `C` — 调用约定标签（`cc::tag::Cdecl` 或 `cc::tag::Stdcall`）
 - `Sig` — 函数签名（例如 `int(int, double)`）
 
-| 方法                      | 返回值     | 说明                                                                                                                                                                  |
-| ------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolve(lib, name, ver)` | `void`     | 按名称和可选版本解析函数；写入 `last_error()`（兼容形式）                                                                                                            |
-| `try_resolve(lib, name, ver)` | `CallError` | 显式解析；返回结果，不触碰 `last_error()`                                                                                                                        |
-| `valid()`                 | `bool`     | 句柄是否有效且库已加载                                                                                                                                                |
-| `operator bool()`         | `bool`     | 同 `valid()`                                                                                                                                                          |
-| `index()`                 | `index_t`  | 表中的条目索引                                                                                                                                                        |
-| `handle_id()`             | `uint64_t` | 不透明句柄 ID（在重载中保持稳定）                                                                                                                                     |
-| `raw()`                   | `fn_type`  | 原始函数指针。它在读侧临界区**退出之后**才交给调用者，因此只在该句柄的 image 仍是当前 image 时有效：一次 reload 即失效（请重新解析，或改用每次都复核的 `operator()`） |
-| `operator()(Args...)`     | `R`        | 以类型安全方式调用函数                                                                                                                                                |
+| 方法                          | 返回值      | 说明                                                                                                                                                                  |
+| ----------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resolve(lib, name, ver)`     | `void`      | 按名称和可选版本解析函数；写入 `last_error()`（兼容形式）                                                                                                             |
+| `try_resolve(lib, name, ver)` | `CallError` | 显式解析；返回结果，不触碰 `last_error()`                                                                                                                             |
+| `valid()`                     | `bool`      | 句柄是否有效且库已加载                                                                                                                                                |
+| `operator bool()`             | `bool`      | 同 `valid()`                                                                                                                                                          |
+| `index()`                     | `index_t`   | 表中的条目索引                                                                                                                                                        |
+| `handle_id()`                 | `uint64_t`  | 不透明句柄 ID（在重载中保持稳定）                                                                                                                                     |
+| `raw()`                       | `fn_type`   | 原始函数指针。它在读侧临界区**退出之后**才交给调用者，因此只在该句柄的 image 仍是当前 image 时有效：一次 reload 即失效（请重新解析，或改用每次都复核的 `operator()`） |
+| `operator()(Args...)`         | `R`         | 以类型安全方式调用函数                                                                                                                                                |
 
 **`operator()` 的行为：**
 
@@ -993,8 +993,6 @@ inline void register_dll_table(const runtime::Table *t, const char *dll_name);
 
 `Error/` 头文件定义错误在跨 DSO 或跨语言边界保存、比较、传输时使用的固定布局身份。子系统的状态枚举 (`dll::CallError`、`poly::InterfaceStatus`、`poly::ModuleStatus`、`poly::ManifestStatus`) 仍是主 API；`ErrorCode` 是边界值，不是运行时分发器。
 
-规范见 [`memory/error-abi_zh.md`](../../memory/error-abi_zh.md)。
-
 ### `ErrorCode`
 
 ```cpp
@@ -1005,20 +1003,20 @@ struct ErrorCode final {
 };
 ```
 
-| 属性 | 值 |
-| --- | --- |
-| 大小 / 对齐 | 16 / 8 |
-| 字段偏移 | `domain` 0、`value` 8、`reserved` 12 |
-| 类别 | standard-layout、trivial、trivially copyable |
+| 属性        | 值                                           |
+| ----------- | -------------------------------------------- |
+| 大小 / 对齐 | 16 / 8                                       |
+| 字段偏移    | `domain` 0、`value` 8、`reserved` 12         |
+| 类别        | standard-layout、trivial、trivially copyable |
 
 该记录不拥有文本、指针、分配器或模块句柄，因此生产模块卸载后，已保存的值仍然有效。`value` 是错误编号；`domain` 标识分配它的子系统。
 
 ### 成功与规范形式
 
-| 函数 | 说明 |
-| --- | --- |
-| `success()` | 返回规范成功 `{0, 0, 0}` |
-| `is_success(code)` | `code.value == 0` |
+| 函数                 | 说明                                                          |
+| -------------------- | ------------------------------------------------------------- |
+| `success()`          | 返回规范成功 `{0, 0, 0}`                                      |
+| `is_success(code)`   | `code.value == 0`                                             |
 | `is_canonical(code)` | `reserved == 0`，且要么是全零成功，要么是带非零 domain 的失败 |
 
 零值配非零 domain 仍是成功，但不是规范形式。跨序列化或 ABI 边界前应规范化非规范值。
@@ -1035,13 +1033,13 @@ inline constexpr DomainId manifest_domain  = make_skl_domain(abix_module_id, 4);
 inline constexpr DomainId lifecycle_domain = make_skl_domain(abix_module_id, 5);
 ```
 
-| 常量 | 值 | 使用方 |
-| --- | --- | --- |
-| `call_domain` | `0x1002000000000001` | `dll::CallError` |
+| 常量               | 值                   | 使用方                  |
+| ------------------ | -------------------- | ----------------------- |
+| `call_domain`      | `0x1002000000000001` | `dll::CallError`        |
 | `interface_domain` | `0x1002000000000002` | `poly::InterfaceStatus` |
-| `module_domain` | `0x1002000000000003` | `poly::ModuleStatus` |
-| `manifest_domain` | `0x1002000000000004` | `poly::ManifestStatus` |
-| `lifecycle_domain` | `0x1002000000000005` | 预留给生命周期专用失败 |
+| `module_domain`    | `0x1002000000000003` | `poly::ModuleStatus`    |
+| `manifest_domain`  | `0x1002000000000004` | `poly::ManifestStatus`  |
+| `lifecycle_domain` | `0x1002000000000005` | 预留给生命周期专用失败  |
 
 Domain id 使用与 EPCD 兼容的 owner/module/local 布局 (`owner` 位 63..60、`module` 位 59..48、`local` 位 47..0)。ABIX 使用 SKL owner 和 module `0x002`。已发布的 id 永久有效。
 
