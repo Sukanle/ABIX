@@ -68,14 +68,14 @@ HTML_START_RE = re.compile(r"^\s*<([A-Za-z][A-Za-z0-9-]*)")
 # joined without a space.  Everything else keeps the space that a Markdown soft
 # break would have rendered.
 CJK_RANGES = (
-    (0x2E80, 0x2FFF),    # CJK radicals, Kangxi radicals
-    (0x3000, 0x303F),    # CJK symbols and punctuation
-    (0x3040, 0x30FF),    # Hiragana, Katakana
-    (0x3400, 0x4DBF),    # CJK Extension A
-    (0x4E00, 0x9FFF),    # CJK Unified Ideographs
-    (0xF900, 0xFAFF),    # CJK Compatibility Ideographs
-    (0xFE30, 0xFE4F),    # CJK Compatibility Forms
-    (0xFF00, 0xFFEF),    # Halfwidth and Fullwidth Forms
+    (0x2E80, 0x2FFF),  # CJK radicals, Kangxi radicals
+    (0x3000, 0x303F),  # CJK symbols and punctuation
+    (0x3040, 0x30FF),  # Hiragana, Katakana
+    (0x3400, 0x4DBF),  # CJK Extension A
+    (0x4E00, 0x9FFF),  # CJK Unified Ideographs
+    (0xF900, 0xFAFF),  # CJK Compatibility Ideographs
+    (0xFE30, 0xFE4F),  # CJK Compatibility Forms
+    (0xFF00, 0xFFEF),  # Halfwidth and Fullwidth Forms
     (0x20000, 0x2FA1F),  # CJK Extension B-F and compatibility supplement
 )
 
