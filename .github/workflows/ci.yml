@@ -24,6 +24,16 @@ on:
       - main
       - "v0.*"
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to run"
+        required: true
+        default: "windows"
+        type: choice
+        options:
+          - windows
+          - linux
+          - all
 
 permissions:
   contents: read
@@ -46,6 +56,7 @@ env:
 jobs:
   linux:
     name: Linux (Ubuntu 24.04)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'linux' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -252,6 +263,7 @@ jobs:
   #
   windows:
     name: Windows (MSYS2 UCRT64)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -362,7 +374,15 @@ jobs:
       - windows
     runs-on: ubuntu-latest
     steps:
-      - name: Require every platform job
+      - name: Require every selected platform job
         run: |
-          test "${{ needs.linux.result }}" = "success"
-          test "${{ needs.windows.result }}" = "success"
+          echo "linux=${{ needs.linux.result }} windows=${{ needs.windows.result }}"
+          for result in "${{ needs.linux.result }}" "${{ needs.windows.result }}"; do
+            case "$result" in
+              failure|cancelled) exit 1 ;;
+            esac
+          done
+          if [ "${{ needs.linux.result }}" = "skipped" ] && [ "${{ needs.windows.result }}" = "skipped" ]; then
+            echo "no platform was selected" >&2
+            exit 1
+          fi
