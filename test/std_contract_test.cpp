@@ -191,3 +191,25 @@ TEST_CASE("std_contract.optional_discriminant_contract", "[std][contract]") {
     CHECK(present.has_value == 1);
     CHECK(present.value == 42);
 }
+
+TEST_CASE("std_contract.optional_invalid_discriminant_is_not_normalized", "[std][contract]") {
+    using optional_i32 = abix_std::abix_optional<std::int32_t>;
+
+    // The ABI stores the byte as-is. A consumer must reject anything other than
+    // 0 or 1; the runtime does not silently normalize an invalid discriminant.
+    const optional_i32 invalid{2, 7};
+    CHECK(invalid.has_value == 2);
+    CHECK(invalid.value == 7);
+}
+
+TEST_CASE("std_contract.callback_owned_incomplete_entry_is_kept_for_validation", "[std][contract]") {
+    abix_callback_owned incomplete{};
+    incomplete.invoke = [](void *) -> std::int32_t { return 0; };
+
+    CHECK(incomplete.invoke != nullptr);
+    CHECK(incomplete.context == nullptr);
+    CHECK(incomplete.release == nullptr);
+
+    // An owned callback is valid only when invoke and release are both set.
+    // The consumer must reject an incomplete entry instead of invoking it.
+}

@@ -7,7 +7,9 @@
 #include <thread>
 
 #if defined(_WIN32)
-#  define NOMINMAX
+#  ifndef NOMINMAX
+#    define NOMINMAX 1
+#  endif
 #  include <windef.h>
 #  include <winnt.h>
 #  include <winbase.h>

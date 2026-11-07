@@ -21,7 +21,6 @@
 // ============================================================
 #include <benchmark/benchmark.h>
 
-#define NOMINMAX
 #include <algorithm>
 #include <math.h>
 #include <string.h>
