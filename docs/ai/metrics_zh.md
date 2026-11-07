@@ -60,17 +60,17 @@ ABIX 指标遵循三条规则：
 
 所有 ABIX 基准测试必须报告：
 
-| 字段 | 描述 |
-|------|------|
-| 硬件 | CPU 型号、核心数、内存、存储类型 |
-| OS / 内核 | 发行版和内核版本 |
-| 编译器 | 工具链和版本（如 Clang 22.0） |
-| ABIX 版本 | Git commit 或 release tag |
-| 项目 / 数据集 | 测试产物的来源 |
-| 任务定义 | 执行的精确步骤 |
-| 样本量 | 每次测量的运行次数 |
-| 统计方法 | 均值、中位数、P95、标准差 |
-| 日期 | 测量执行时间 |
+| 字段          | 描述                             |
+| ------------- | -------------------------------- |
+| 硬件          | CPU 型号、核心数、内存、存储类型 |
+| OS / 内核     | 发行版和内核版本                 |
+| 编译器        | 工具链和版本（如 Clang 22.0）    |
+| ABIX 版本     | Git commit 或 release tag        |
+| 项目 / 数据集 | 测试产物的来源                   |
+| 任务定义      | 执行的精确步骤                   |
+| 样本量        | 每次测量的运行次数               |
+| 统计方法      | 均值、中位数、P95、标准差        |
+| 日期          | 测量执行时间                     |
 
 **不要只报告均值。** 至少报告中位数和 P95。示例：
 
@@ -98,36 +98,36 @@ ABIX
 
 ### 第一层：当前可测量（ABIX 0.1.0+）
 
-| 指标 | 类别 |
-|------|------|
-| TROI | AI |
-| Token 缩减率 | AI |
-| ABI 覆盖率 | ABI |
-| Breaking Change 检出率 | ABI |
-| 不安全接受率 | ABI |
-| 检查加速比 | 工具链 |
-| 元数据开销 | 工具链 |
-| ABI 检出延迟 | ABI |
+| 指标                   | 类别   |
+| ---------------------- | ------ |
+| TROI                   | AI     |
+| Token 缩减率           | AI     |
+| ABI 覆盖率             | ABI    |
+| Breaking Change 检出率 | ABI    |
+| 不安全接受率           | ABI    |
+| 检查加速比             | 工具链 |
+| 元数据开销             | 工具链 |
+| ABI 检出延迟           | ABI    |
 
 ### 第二层：真实采用后可测量
 
-| 指标 | 类别 |
-|------|------|
-| 集成工作量缩减 | 工具链 |
-| 迁移自动化率 | 工具链 |
-| 二进制复用率 | 工具链 |
-| ABI 逃逸率 | ABI |
-| 影响召回率 / 精确率 | ABI |
-| 验证任务成功率 | Agent |
-| 人工干预率 | Agent |
+| 指标                | 类别   |
+| ------------------- | ------ |
+| 集成工作量缩减      | 工具链 |
+| 迁移自动化率        | 工具链 |
+| 二进制复用率        | 工具链 |
+| ABI 逃逸率          | ABI    |
+| 影响召回率 / 精确率 | ABI    |
+| 验证任务成功率      | Agent  |
+| 人工干预率          | Agent  |
 
 ### 第三层：企业 PoC 时测量
 
-| 指标 | 类别 |
-|------|------|
+| 指标         | 类别 |
+| ------------ | ---- |
 | 年度成本避免 | 商业 |
-| ROI | 商业 |
-| 回收期 | 商业 |
+| ROI          | 商业 |
+| 回收期       | 商业 |
 | ABI 风险降低 | 商业 |
 
 第三层指标必须由采用组织使用自己的历史数据计算。ABIX 提供公式和测量方法，不提供绝对数字。
@@ -150,10 +150,10 @@ $$
 \text{TRR} = 1 - \frac{T_{\text{ABIX}}}{T_{\text{baseline}}}
 $$
 
-| 符号 | 含义 |
-|------|------|
+| 符号                  | 含义                       |
+| --------------------- | -------------------------- |
 | $T_{\text{baseline}}$ | 不使用 ABIX 时消耗的 token |
-| $T_{\text{ABIX}}$ | 使用 ABIX 时消耗的 token |
+| $T_{\text{ABIX}}$     | 使用 ABIX 时消耗的 token   |
 
 **示例：**
 
@@ -177,10 +177,10 @@ $$
 C_{\text{ABI}} = \frac{N_{\text{covered}}}{N_{\text{public}}} \times 100\%
 $$
 
-| 符号 | 含义 |
-|------|------|
-| $N_{\text{public}}$ | 导出的 ABI 实体（类型、函数、变量） |
-| $N_{\text{covered}}$ | 拥有有效 ABIX 元数据的实体 |
+| 符号                 | 含义                                |
+| -------------------- | ----------------------------------- |
+| $N_{\text{public}}$  | 导出的 ABI 实体（类型、函数、变量） |
+| $N_{\text{covered}}$ | 拥有有效 ABIX 元数据的实体          |
 
 **示例：**
 
@@ -200,10 +200,10 @@ $$
 \text{BDR} = \frac{N_{\text{detected}}}{N_{\text{actual breaking}}}
 $$
 
-| 符号 | 含义 |
-|------|------|
-| $N_{\text{actual breaking}}$ | 测试集中的已知 breaking change |
-| $N_{\text{detected}}$ | ABIX 正确标记的 breaking change |
+| 符号                         | 含义                            |
+| ---------------------------- | ------------------------------- |
+| $N_{\text{actual breaking}}$ | 测试集中的已知 breaking change  |
+| $N_{\text{detected}}$        | ABIX 正确标记的 breaking change |
 
 **示例：**
 
@@ -223,9 +223,9 @@ $$
 \text{UAR} = \frac{N_{\text{incompatible accepted}}}{N_{\text{actual incompatible}}} \times 100\%
 $$
 
-| 符号 | 含义 |
-|------|------|
-| $N_{\text{actual incompatible}}$ | 已知不兼容 change |
+| 符号                               | 含义                         |
+| ---------------------------------- | ---------------------------- |
+| $N_{\text{actual incompatible}}$   | 已知不兼容 change            |
 | $N_{\text{incompatible accepted}}$ | ABIX 未能拒绝的不兼容 change |
 
 **目标：** $\text{UAR} \rightarrow 0$
@@ -248,10 +248,10 @@ $$
 \text{AER} = \frac{N_{\text{post-release}}}{N_{\text{all incidents}}} \times 100\%
 $$
 
-| 符号 | 含义 |
-|------|------|
+| 符号                       | 含义                            |
+| -------------------------- | ------------------------------- |
 | $N_{\text{all incidents}}$ | 发现的 ABI 问题总数（任何阶段） |
-| $N_{\text{post-release}}$ | 在生产环境中发现的 ABI 问题 |
+| $N_{\text{post-release}}$  | 在生产环境中发现的 ABI 问题     |
 
 **示例：**
 
@@ -357,10 +357,10 @@ $$
 \text{IER} = 1 - \frac{H_{\text{ABIX}}}{H_{\text{baseline}}}
 $$
 
-| 符号 | 含义 |
-|------|------|
+| 符号                  | 含义                 |
+| --------------------- | -------------------- |
 | $H_{\text{baseline}}$ | 不使用 ABIX 的小时数 |
-| $H_{\text{ABIX}}$ | 使用 ABIX 的小时数 |
+| $H_{\text{ABIX}}$     | 使用 ABIX 的小时数   |
 
 **示例：**
 
@@ -496,12 +496,12 @@ $$
 B_{\text{annual}} = B_{\text{labor}} + B_{\text{build}} + B_{\text{incident}} + B_{\text{infra}}
 $$
 
-| 组件 | 公式 |
-|------|------|
-| 人力节约 | $\Delta H \times C_{\text{hour}}$ |
-| 构建节约 | $\Delta T_{\text{build}} \times C_{\text{compute/time}}$ |
-| 事件避免 | $N_{\text{avoided}} \times C_{\text{incident}}$ |
-| 基础设施节约 | CI、产物存储、注册表、开发机 |
+| 组件         | 公式                                                     |
+| ------------ | -------------------------------------------------------- |
+| 人力节约     | $\Delta H \times C_{\text{hour}}$                        |
+| 构建节约     | $\Delta T_{\text{build}} \times C_{\text{compute/time}}$ |
+| 事件避免     | $N_{\text{avoided}} \times C_{\text{incident}}$          |
+| 基础设施节约 | CI、产物存储、注册表、开发机                             |
 
 ### ROI
 
@@ -587,9 +587,9 @@ AI 效率
 
 ## 与其他文档的关系
 
-| 文档 | 范围 |
-|------|------|
-| [`metrics.md`](metrics.md) | **本文档。** 定义、公式、方法。 |
-| [`benchmark.md`](../benchmark/benchmark_zh.md) | 特定硬件上的实际测量数据。 |
-| [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md) | AI 工作流 TROI / token 效率深度分析。 |
-| [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md) | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |
+| 文档                                                                     | 范围                                                 |
+| ------------------------------------------------------------------------ | ---------------------------------------------------- |
+| [`metrics.md`](metrics.md)                                               | **本文档。** 定义、公式、方法。                      |
+| [`benchmark.md`](../benchmark/benchmark_zh.md)                           | 特定硬件上的实际测量数据。                           |
+| [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md) | AI 工作流 TROI / token 效率深度分析。                |
+| [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)                   | 每类型开销详情（Debug / Release / RelWithDebInfo）。 |

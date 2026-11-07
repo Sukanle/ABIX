@@ -1,7 +1,6 @@
 # Contributing to ABIX
 
-ABIX is an open-source project and welcomes contributions. This document covers
-the practical basics; the design context lives in [`docs/`](docs/).
+ABIX is an open-source project and welcomes contributions. This document covers the practical basics; the design context lives in [`docs/`](docs/).
 
 ## Ways to contribute
 
@@ -12,12 +11,10 @@ the practical basics; the design context lives in [`docs/`](docs/).
 - **Runtime integration** — registry, binding, dispatch, adaptation.
 - **Compat testing** — real-world ABI break cases.
 - **Build-system integration** — CMake/packaging/CI.
-- **Documentation and examples** — especially a first walkthrough for your
-  language/toolchain.
+- **Documentation and examples** — especially a first walkthrough for your language/toolchain.
 - **Benchmarks** — repeatable measurements.
 
-If you are experimenting with ABIX in another language or toolchain, prototypes
-and write-ups are especially welcome.
+If you are experimenting with ABIX in another language or toolchain, prototypes and write-ups are especially welcome.
 
 ## Read before you write
 
@@ -46,11 +43,9 @@ Classify your change; it tells you what to update and test.
 | Documentation   | guides, examples                                     | the matching `_zh` edition when user-visible                                                  |
 | Performance     | binding, lookup, call path                           | benchmark before/after; must not change ABI semantics                                         |
 
-Workflow: **understand → design (classify the change) → implement → test →
-ABI verification → documentation → pull request.**
+Workflow: **understand → design (classify the change) → implement → test → ABI verification → documentation → pull request.**
 
-If your change conflicts with an architectural invariant, explain the conflict
-before changing the constraint — do not silently relax it.
+If your change conflicts with an architectural invariant, explain the conflict before changing the constraint — do not silently relax it.
 
 ## Development setup
 
@@ -68,17 +63,11 @@ Requirements:
 - CMake 3.20+
 - optional: `readelf`/`strip`/`lldb`/`clang++` (runtime tests)
 
-AMC is a separate repository: <https://github.com/Sukanle/AMC>. It additionally
-needs LLVM/Clang, fmt, toml++, optionally Rust/Zig, and Lua 5.4 for Aue. See the
-AMC repository's README for its build instructions.
+AMC is a separate repository: <https://github.com/Sukanle/AMC>. It additionally needs LLVM/Clang, fmt, toml++, optionally Rust/Zig, and Lua 5.4 for Aue. See the AMC repository's README for its build instructions.
 
 ### Locating LLVM for AMC (macOS / Homebrew)
 
-The AMC project locates LLVM with `find_package(LLVM CONFIG)`. On
-Homebrew, `llvm` is **keg-only**: installing `llvm@22` creates
-`/opt/homebrew/opt/llvm@22`, and the unversioned
-`/opt/homebrew/opt/llvm` symlink does **not** exist. Point `CMAKE_PREFIX_PATH`
-at the keg root:
+The AMC project locates LLVM with `find_package(LLVM CONFIG)`. On Homebrew, `llvm` is **keg-only**: installing `llvm@22` creates `/opt/homebrew/opt/llvm@22`, and the unversioned `/opt/homebrew/opt/llvm` symlink does **not** exist. Point `CMAKE_PREFIX_PATH` at the keg root:
 
 ```bash
 cmake -S . -B build -G Ninja \
@@ -87,17 +76,9 @@ cmake -S . -B build -G Ninja \
   -DCMAKE_PREFIX_PATH="$(brew --prefix llvm@22);..."
 ```
 
-`CMAKE_PREFIX_PATH` must be the keg **root**. `.../llvm@22/lib` and
-`.../llvm@22/lib/cmake/llvm` both fail to resolve. If LLVM is not found, the
-AMC configure fails; build and install the ABIX runtime package first, then
-configure AMC.
+`CMAKE_PREFIX_PATH` must be the keg **root**. `.../llvm@22/lib` and `.../llvm@22/lib/cmake/llvm` both fail to resolve. If LLVM is not found, the AMC configure fails; build and install the ABIX runtime package first, then configure AMC.
 
-Avoid exporting `LDFLAGS` / `CPPFLAGS` pointing at an unversioned LLVM prefix.
-CMake copies them into `CMAKE_EXE_LINKER_FLAGS` (and the shared/module
-variants) on the **first** configure and then reuses the cached value, so a
-stale `-L/opt/homebrew/opt/llvm/lib` keeps reaching every link line — the linker
-warns `search path ... not found`, and `CPPFLAGS` can shadow the toolchain's own
-headers. To repair an existing build directory after changing the environment:
+Avoid exporting `LDFLAGS` / `CPPFLAGS` pointing at an unversioned LLVM prefix. CMake copies them into `CMAKE_EXE_LINKER_FLAGS` (and the shared/module variants) on the **first** configure and then reuses the cached value, so a stale `-L/opt/homebrew/opt/llvm/lib` keeps reaching every link line — the linker warns `search path ... not found`, and `CPPFLAGS` can shadow the toolchain's own headers. To repair an existing build directory after changing the environment:
 
 ```bash
 cmake -B build/Release -S . \
@@ -106,10 +87,7 @@ cmake -B build/Release -S . \
   -U CMAKE_MODULE_LINKER_FLAGS
 ```
 
-A missing Clang resource directory is a related failure with a different
-symptom: `amc-cpp` prints `ABIX_CLANG_RESOURCE_DIR not set at build time` and
-cannot find built-in headers, which breaks AMC feature/self-description tests.
-Clear the stale detection results to let CMake re-run `clang -print-resource-dir`:
+A missing Clang resource directory is a related failure with a different symptom: `amc-cpp` prints `ABIX_CLANG_RESOURCE_DIR not set at build time` and cannot find built-in headers, which breaks AMC feature/self-description tests. Clear the stale detection results to let CMake re-run `clang -print-resource-dir`:
 
 ```bash
 cmake -S . -B build -U AMC_CLANG_EXECUTABLE -U AMC_CLANG_RESOURCE_DIR
@@ -117,18 +95,14 @@ cmake -S . -B build -U AMC_CLANG_EXECUTABLE -U AMC_CLANG_RESOURCE_DIR
 
 ### Windows (MSYS2 UCRT64)
 
-The supported Windows toolchain is [MSYS2](https://www.msys2.org/) **UCRT64**
-(GCC or Clang). From a UCRT64 shell install the build and dependency packages:
+The supported Windows toolchain is [MSYS2](https://www.msys2.org/) **UCRT64** (GCC or Clang). From a UCRT64 shell install the build and dependency packages:
 
 ```bash
 pacman -S --needed \
   mingw-w64-ucrt-x86_64-{gcc,clang,llvm,fmt,catch2,benchmark,cmake,ninja,python}
 ```
 
-`toml++` is not always packaged; if `pacman` does not provide it, install it with
-[vcpkg](https://vcpkg.io/) (`vcpkg install tomlplusplus`) or from the single
-header, then point CMake at the prefix (CMake reads the `CMAKE_PREFIX_PATH`
-environment variable):
+`toml++` is not always packaged; if `pacman` does not provide it, install it with [vcpkg](https://vcpkg.io/) (`vcpkg install tomlplusplus`) or from the single header, then point CMake at the prefix (CMake reads the `CMAKE_PREFIX_PATH` environment variable):
 
 ```bash
 export CMAKE_PREFIX_PATH="/c/msys2/ucrt64;$VCPKG_ROOT/installed/x64-windows"
@@ -137,8 +111,7 @@ cmake --build build/Release --parallel
 ctest --test-dir build/Release --output-on-failure
 ```
 
-`tools/run.py` orchestrates the same steps (build, test, bench) and auto-detects
-Ninja; `tools/run_build.py` is the build stage on its own:
+`tools/run.py` orchestrates the same steps (build, test, bench) and auto-detects Ninja; `tools/run_build.py` is the build stage on its own:
 
 ```bash
 python tools/run.py               # build + tests + benchmarks
@@ -148,61 +121,36 @@ python tools/run.py --with-msvc   # also build the MSVC cross-toolchain variants
 
 Notes:
 
-- **Do not mix toolchains.** A UCRT64 build must see only UCRT64 headers and
-  libraries; a MinGW/MSYS2 `INCLUDE`/`LIB` leaking into an MSVC build corrupts it
-  (the variant script strips those entries explicitly).
-- `amc` embeds ABI metadata in a custom section: ELF `.abix.metadata` /
-  `.abix.names`, Mach-O `__DATA,__abix_*` and PE `.abix` / `.abix.n` — see
-  the AMC repository's [`pe-inspection.md`](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md).
-- Optional integration tests use `llvm-readobj` / `llvm-objcopy` / `llvm-strip`
-  (from the LLVM package) and a debugger; they are skipped when absent.
+- **Do not mix toolchains.** A UCRT64 build must see only UCRT64 headers and libraries; a MinGW/MSYS2 `INCLUDE`/`LIB` leaking into an MSVC build corrupts it (the variant script strips those entries explicitly).
+- `amc` embeds ABI metadata in a custom section: ELF `.abix.metadata` / `.abix.names`, Mach-O `__DATA,__abix_*` and PE `.abix` / `.abix.n` — see the AMC repository's [`pe-inspection.md`](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md).
+- Optional integration tests use `llvm-readobj` / `llvm-objcopy` / `llvm-strip` (from the LLVM package) and a debugger; they are skipped when absent.
 
 ## Branching
 
-ABIX is developed per platform and integrated only when consistent across
-platforms. A change may enter `devel` only if it builds and links on every
-supported platform; platform-specific details (linker, CRT, ELF/Mach-O/PE
-dynamic-library loading, symbol visibility, calling conventions) stay on the
-platform branch and are promoted through staged test branches.
+ABIX is developed per platform and integrated only when consistent across platforms. A change may enter `devel` only if it builds and links on every supported platform; platform-specific details (linker, CRT, ELF/Mach-O/PE dynamic-library loading, symbol visibility, calling conventions) stay on the platform branch and are promoted through staged test branches.
 
-| Branch | Role |
-|--------|------|
-| `main` | latest stable; moves forward from a fully verified `devel` |
-| `vX.Y.x` | frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
-| `devel` | unified integration branch; only all-platform-verified changes land here |
-| `devel-beta` | promotion stage: a tested `devel-alpha` merges here for the next test round |
-| `devel-alpha` | integration/test stage: completed platform work merges here first |
-| `devel-linux` / `devel-macos` / `devel-windows` | per-platform development lines |
+| Branch                                          | Role                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `main`                                          | latest stable; moves forward from a fully verified `devel`                     |
+| `vX.Y.x`                                        | frozen stable line (zig-style name); tags `vX.Y.Z` must be platform-consistent |
+| `devel`                                         | unified integration branch; only all-platform-verified changes land here       |
+| `devel-beta`                                    | promotion stage: a tested `devel-alpha` merges here for the next test round    |
+| `devel-alpha`                                   | integration/test stage: completed platform work merges here first              |
+| `devel-linux` / `devel-macos` / `devel-windows` | per-platform development lines                                                 |
 
-Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**.
-Work on your platform branch; merge completed units into `devel-alpha` and
-resolve the platform differences there; promote to `devel-beta` once Alpha
-passes, and to `devel` only when every available platform is green. `devel` then
-promotes to `main` / releases.
+Promotion pipeline: **platform → `devel-alpha` → `devel-beta` → `devel`**. Work on your platform branch; merge completed units into `devel-alpha` and resolve the platform differences there; promote to `devel-beta` once Alpha passes, and to `devel` only when every available platform is green. `devel` then promotes to `main` / releases.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs the same build and test contract on Linux,
-macOS and Windows:
+`.github/workflows/ci.yml` runs the same build and test contract on Linux, macOS and Windows:
 
-- **Linux (Ubuntu 24.04)** — system LLVM/Clang, fmt, toml++, Catch2, Google
-  Benchmark and Lua 5.4; Rust and Zig are installed explicitly.
-- **macOS** — Homebrew `llvm`, fmt, toml++, Catch2, Google Benchmark and
-  Lua; the keg root is passed through `CMAKE_PREFIX_PATH`.
-- **Windows (MSYS2 UCRT64)** — GCC or Clang, LLVM, fmt, toml++, Catch2, Google
-  Benchmark, Lua 5.4 and Rust from the UCRT64 repository; Zig is installed by
-  the setup action.
+- **Linux (Ubuntu 24.04)** — system LLVM/Clang, fmt, toml++, Catch2, Google Benchmark and Lua 5.4; Rust and Zig are installed explicitly.
+- **macOS** — Homebrew `llvm`, fmt, toml++, Catch2, Google Benchmark and Lua; the keg root is passed through `CMAKE_PREFIX_PATH`.
+- **Windows (MSYS2 UCRT64)** — GCC or Clang, LLVM, fmt, toml++, Catch2, Google Benchmark, Lua 5.4 and Rust from the UCRT64 repository; Zig is installed by the setup action.
 
-Each platform job builds the release tree, verifies that `amc`, the providers,
-`amc-core-test` and `test_all` exist, runs `ctest`, checks
-`amc --list-languages` / `--describe-language`, and uploads test logs on failure.
-The Linux job additionally installs to a temporary prefix and re-runs the
-installed `amc` so the manifest-next-to-driver layout is covered.
+Each platform job builds the release tree, verifies that `amc`, the providers, `amc-core-test` and `test_all` exist, runs `ctest`, checks `amc --list-languages` / `--describe-language`, and uploads test logs on failure. The Linux job additionally installs to a temporary prefix and re-runs the installed `amc` so the manifest-next-to-driver layout is covered.
 
-The `CI status` job is the required check: it fails unless all three platform
-jobs pass. Do not merge by relying on a skipped optional-toolchain test during a
-release gate; Rust and Zig are installed in CI so the interop and example tests
-must actually run.
+The `CI status` job is the required check: it fails unless all three platform jobs pass. Do not merge by relying on a skipped optional-toolchain test during a release gate; Rust and Zig are installed in CI so the interop and example tests must actually run.
 
 A local equivalent is:
 
@@ -215,20 +163,14 @@ ctest --test-dir build/Release --output-on-failure
 ## Guidelines
 
 - Keep the build green: run `ctest` before opening a pull request.
-- Add tests for behaviour changes. AMC's standalone suite is registered by its
-  own `CMakeLists.txt`; core assertions live in `tests/unit/core_test.cpp` in
-  the AMC repository. ABIX runtime tests use Catch2 in `test/`.
-- Keep ABI semantics in one place: extend the AMC artifact libraries rather than
-  duplicating a parser in a consumer.
-- Update the relevant `docs/` page (and its `_zh` edition when you can) for
-  user-visible changes.
+- Add tests for behaviour changes. AMC's standalone suite is registered by its own `CMakeLists.txt`; core assertions live in `tests/unit/core_test.cpp` in the AMC repository. ABIX runtime tests use Catch2 in `test/`.
+- Keep ABI semantics in one place: extend the AMC artifact libraries rather than duplicating a parser in a consumer.
+- Update the relevant `docs/` page (and its `_zh` edition when you can) for user-visible changes.
 - Prefer small, focused commits with a clear message.
 
 ## Style
 
-The repository uses `.clang-format`. Format changed C++ files accordingly; the
-existing code favours explicit types, `noexcept` on hot paths and small
-headers.
+The repository uses `.clang-format`. Format changed C++ files accordingly; the existing code favours explicit types, `noexcept` on hot paths and small headers.
 
 ## Reporting issues
 
@@ -236,10 +178,8 @@ When reporting an ABI problem, include:
 
 - the `.abic.toml` and the exported symbols,
 - the produced `.abix` (or the binary with its `.abix.metadata` region),
-- the expected vs actual behaviour, and tool output (`amc query`,
-  `amc verify --format diagnostics`).
+- the expected vs actual behaviour, and tool output (`amc query`, `amc verify --format diagnostics`).
 
 ## License
 
-By contributing you agree that your contributions are licensed under the
-project's [`LICENSE`](LICENSE).
+By contributing you agree that your contributions are licensed under the project's [`LICENSE`](LICENSE).

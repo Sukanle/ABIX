@@ -96,12 +96,12 @@ AMC 工具链是独立仓库，其文档也位于该仓库。
 
 ABIX 和 AMC 内部工作原理。
 
-| 文档                                                      | English                                             | 描述                                         |
-| --------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
-| [architecture_zh.md](architecture/architecture_zh.md)     | [architecture.md](architecture/architecture.md)     | 系统概览、设计地图、不变量                   |
-| [runtime_zh.md](architecture/runtime_zh.md)               | [runtime.md](architecture/runtime.md)               | 运行时职责、注册表、执行模型                 |
-| [compatibility_zh.md](architecture/compatibility_zh.md)   | [compatibility.md](architecture/compatibility.md)   | TypeID / LayoutHash / BuildID / MetadataID   |
-| [binary-image_zh.md](architecture/binary-image_zh.md)     | [binary-image.md](architecture/binary-image.md)     | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
+| 文档                                                    | English                                           | 描述                                         |
+| ------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------- |
+| [architecture_zh.md](architecture/architecture_zh.md)   | [architecture.md](architecture/architecture.md)   | 系统概览、设计地图、不变量                   |
+| [runtime_zh.md](architecture/runtime_zh.md)             | [runtime.md](architecture/runtime.md)             | 运行时职责、注册表、执行模型                 |
+| [compatibility_zh.md](architecture/compatibility_zh.md) | [compatibility.md](architecture/compatibility.md) | TypeID / LayoutHash / BuildID / MetadataID   |
+| [binary-image_zh.md](architecture/binary-image_zh.md)   | [binary-image.md](architecture/binary-image.md)   | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
 
 二进制元数据检查指南位于 AMC 仓库：见 [ELF/Mach-O 检查](https://github.com/Sukanle/AMC/blob/main/docs/architecture/elf-inspection_zh.md) 与 [PE 检查](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection_zh.md)。
 

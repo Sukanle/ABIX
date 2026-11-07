@@ -57,11 +57,11 @@ Constraint: the hot path of the typed handle is a direct function pointer call. 
 
 > ABIX describes existing native objects; it does not define a new type system that objects must conform to.
 
-| | Object model | ABI fact model |
-|---|---|---|
-| Responsibility | define types, manage types, execute type semantics | describe types, identify types, verify types, compare types |
-| Question | "how is an object constructed, inherited, dispatched?" | "what is this thing's ABI identity, how much space does it occupy, how is it laid out?" |
-| User | application code must enter the model | native binaries stand beside it, unmodified |
+|                | Object model                                           | ABI fact model                                                                          |
+| -------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Responsibility | define types, manage types, execute type semantics     | describe types, identify types, verify types, compare types                             |
+| Question       | "how is an object constructed, inherited, dispatched?" | "what is this thing's ABI identity, how much space does it occupy, how is it laid out?" |
+| User           | application code must enter the model                  | native binaries stand beside it, unmodified                                             |
 
 The core records answer ABI facts. `TypeDesc` identifies a type and points at its layout; `TypeLayout` records size, alignment, field range and layout hash. There is no `create_object()`, `destroy_object()` or `dispatch_virtual()`.
 
@@ -122,9 +122,9 @@ The basic semantic is therefore not "convert automatically" but "decide first wh
 
 > ABI facts are not source or debug facts. `.abix` must never become "DWARF but smaller".
 
-| | DWARF (debug ontology) | ABIX (ABI ontology) |
-|---|---|---|
-| Answers | "where did this come from?" | "what binary contract does this expose?" |
+|           | DWARF (debug ontology)                                                        | ABIX (ABI ontology)                                                                                                  |
+| --------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Answers   | "where did this come from?"                                                   | "what binary contract does this expose?"                                                                             |
 | Describes | source, file, line, scope, variable, expression, call frame, inlining, macros | module, symbol, type, layout, function, parameter, calling convention, ownership, target, ABI version, compatibility |
 
 Both may describe the same `Foo`:
@@ -182,13 +182,13 @@ flowchart TD
 
 ### Boundary Risk Checklist
 
-| Risk | Principle | Severity | Countermeasure |
-|------|-----------|----------|----------------|
-| Type checking added to the `operator()` hot path | 1 | high | keep the direct `fn(args...)` call |
-| Object lifetime management introduced in ABIX | 2 | high | describe, do not manage |
-| Implicit conversion (`dll::Function` calling `MapPlan` automatically) | 3 | medium | `MapPlan` must be constructed explicitly |
-| `.abix` begins to store source line numbers or variable scopes | 4 | medium | code review |
-| The runtime registers types that AMC did not generate | 5 | high | canonical hash validation on `.abix` |
+| Risk                                                                  | Principle | Severity | Countermeasure                           |
+| --------------------------------------------------------------------- | --------- | -------- | ---------------------------------------- |
+| Type checking added to the `operator()` hot path                      | 1         | high     | keep the direct `fn(args...)` call       |
+| Object lifetime management introduced in ABIX                         | 2         | high     | describe, do not manage                  |
+| Implicit conversion (`dll::Function` calling `MapPlan` automatically) | 3         | medium   | `MapPlan` must be constructed explicitly |
+| `.abix` begins to store source line numbers or variable scopes        | 4         | medium   | code review                              |
+| The runtime registers types that AMC did not generate                 | 5         | high     | canonical hash validation on `.abix`     |
 
 ### ABIX and SOM: Historical Difference
 
@@ -250,15 +250,15 @@ Describing ABIX as "that runtime" is inaccurate: ABIX is an ABI semantic layer, 
 
 The project moved through seven stages, from framing the problem to an engineering quality system. The table summarizes the stages; the sections that follow record the decisions and constraints of each.
 
-| Stage | Focus | Key technical points |
-|-------|-------|----------------------|
-| 1 | Problem framing and option selection | raw resolution, layered resolution validation, compile-time FNV-1a, trivially copyable export table |
-| 2 | ABIX core library | stable function table, calling convention in the signature, typed handles, version coexistence, RCU/EBR unload safety, resource lifetime, cross-boundary closures |
-| 3 | MICS reflection library | dual-track compile-time and runtime reflection, `URefl::vector`, shared `type_hash<T>()` |
-| 4 | ABI metadata layer | `.abix` / `.abic`, layered TypeId/LayoutHash/SignatureHash/ABIHash, Hash128, mmap-friendly layout |
-| 5 | AMC metadata compiler | minimal ABI-IR core, Clang AST front end, projection back end, provider process isolation, bootstrap |
-| 6 | Micro-RCU performance engineering | role-based benchmarks, measured cache-line isolation, epoch batching, experimental methodology |
-| 7 | Engineering quality system | plugin matrix, tests, benchmarks, CMake and cross-platform reproducibility |
+| Stage | Focus                                | Key technical points                                                                                                                                              |
+| ----- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Problem framing and option selection | raw resolution, layered resolution validation, compile-time FNV-1a, trivially copyable export table                                                               |
+| 2     | ABIX core library                    | stable function table, calling convention in the signature, typed handles, version coexistence, RCU/EBR unload safety, resource lifetime, cross-boundary closures |
+| 3     | MICS reflection library              | dual-track compile-time and runtime reflection, `URefl::vector`, shared `type_hash<T>()`                                                                          |
+| 4     | ABI metadata layer                   | `.abix` / `.abic`, layered TypeId/LayoutHash/SignatureHash/ABIHash, Hash128, mmap-friendly layout                                                                 |
+| 5     | AMC metadata compiler                | minimal ABI-IR core, Clang AST front end, projection back end, provider process isolation, bootstrap                                                              |
+| 6     | Micro-RCU performance engineering    | role-based benchmarks, measured cache-line isolation, epoch batching, experimental methodology                                                                    |
+| 7     | Engineering quality system           | plugin matrix, tests, benchmarks, CMake and cross-platform reproducibility                                                                                        |
 
 ### Stage 1: Problem Framing and Option Selection
 
@@ -285,10 +285,10 @@ The core library implements the registration, resolution, call, resource and unl
 
 A purely static reflection layer is zero-overhead but fixed; a purely dynamic one is flexible but resource-heavy. MICS implements the same metadata semantics twice, once at compile time and once at run time.
 
-* **Static track (`skl::mics::ct` / SRefl).** `type_list` plus a functional type library (`map`/`filter`/`fold`/`unique`), and `field_traits`/`fn_traits`/`enum_traits` to extract fields, methods and enumerations; `type_info<T>()` is `consteval`.
-* **Dynamic track (`skl::mics::rt` / DRefl).** A `Registry` singleton, `TypeInfo`, `FieldAccessor` (getter/setter), `MethodInvoker` and `Any` (16-byte small-buffer type erasure).
-* **Shared utilities (`skl::mics::util` / URefl).** The ABI-stable immutable container `URefl::vector` (fixed `sizeof`, move-only, `malloc`/`free`, constructed only through `vector_builder`) is the uniform carrier for all reflection description data (fields, methods, parameters, enumerators) and the key to cross-compiler binary compatibility.
-* **Hash consistency.** The static and dynamic tracks share `type_hash<T>()` as the single source of TypeId, so compile-time type identity and the identity found at run time are the same.
+- **Static track (`skl::mics::ct` / SRefl).** `type_list` plus a functional type library (`map`/`filter`/`fold`/`unique`), and `field_traits`/`fn_traits`/`enum_traits` to extract fields, methods and enumerations; `type_info<T>()` is `consteval`.
+- **Dynamic track (`skl::mics::rt` / DRefl).** A `Registry` singleton, `TypeInfo`, `FieldAccessor` (getter/setter), `MethodInvoker` and `Any` (16-byte small-buffer type erasure).
+- **Shared utilities (`skl::mics::util` / URefl).** The ABI-stable immutable container `URefl::vector` (fixed `sizeof`, move-only, `malloc`/`free`, constructed only through `vector_builder`) is the uniform carrier for all reflection description data (fields, methods, parameters, enumerators) and the key to cross-compiler binary compatibility.
+- **Hash consistency.** The static and dynamic tracks share `type_hash<T>()` as the single source of TypeId, so compile-time type identity and the identity found at run time are the same.
 
 Declaring a struct and one registration macro yields runtime reflection, and `register_dll_table` bridges a DLL export table to the reflection registry, so objects inside a module are accessible to generic tools through reflection.
 
@@ -296,10 +296,10 @@ Declaring a struct and one registration macro yields runtime reflection, and `re
 
 ABI truth should exist independently of any language and compiler, as a persistable artifact that can be projected across languages and diffed.
 
-* **Four hash layers.** `TypeId` answers whether two things are the same type; `LayoutHash` whether the layout is compatible; `SignatureHash` whether the call is compatible; `ABIHash` whether the artifact is consistent. `TypeHash ≠ LayoutHash` is the basis of compatibility and mapping: types with the same name may have different layouts, and size/align alone would miss field reordering.
-* **`Hash128` abstraction with `HashDescriptor`.** FNV-1a is not hardwired; `Hash128{lo, hi}` together with algorithm, version and domain is recorded as schema information, so XXH3 or BLAKE3 can replace it later. Conversion across namespaces (MICS 64 to ABIX 128) must be explicit, and ABI identity must never be truncated to a single 64-bit value.
-* **`.abix` v2 binary.** Little-endian, magic `ABIX`, header, section directory, and string/identity/type/field/function/parameter/symbol/hash sections. Strings are deduplicated as `(offset, length)`; symbols use a `(kind, index)` typed index. The artifact is directly `mmap`-able, and `validate` covers truncation, bad magic and out-of-range references.
-* **`.abic` declarative configuration.** Build configuration is elevated to an ABI boundary declaration. `[[import]]` states where the ABI is taken from, and `[[export]]` states where `.abix` is written and which symbol subset is projected. Code generation is assigned to a separate `amc generate` step so that `.abix` stays language-independent.
+- **Four hash layers.** `TypeId` answers whether two things are the same type; `LayoutHash` whether the layout is compatible; `SignatureHash` whether the call is compatible; `ABIHash` whether the artifact is consistent. `TypeHash ≠ LayoutHash` is the basis of compatibility and mapping: types with the same name may have different layouts, and size/align alone would miss field reordering.
+- **`Hash128` abstraction with `HashDescriptor`.** FNV-1a is not hardwired; `Hash128{lo, hi}` together with algorithm, version and domain is recorded as schema information, so XXH3 or BLAKE3 can replace it later. Conversion across namespaces (MICS 64 to ABIX 128) must be explicit, and ABI identity must never be truncated to a single 64-bit value.
+- **`.abix` v2 binary.** Little-endian, magic `ABIX`, header, section directory, and string/identity/type/field/function/parameter/symbol/hash sections. Strings are deduplicated as `(offset, length)`; symbols use a `(kind, index)` typed index. The artifact is directly `mmap`-able, and `validate` covers truncation, bad magic and out-of-range references.
+- **`.abic` declarative configuration.** Build configuration is elevated to an ABI boundary declaration. `[[import]]` states where the ABI is taken from, and `[[export]]` states where `.abix` is written and which symbol subset is projected. Code generation is assigned to a separate `amc generate` step so that `.abix` stays language-independent.
 
 `.abix` is the single source of ABI truth. The runtime can consume it through `mmap`, and the same artifact can be projected into compile-time constants in several languages, uniting dynamic ABI with static performance. See [`abix.md`](../abix/abix.md) and [`abic.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic.md).
 
@@ -307,12 +307,12 @@ ABI truth should exist independently of any language and compiler, as a persista
 
 `.abix` cannot be handwritten, so it is extracted automatically from source. Two questions had to be answered together: which front end obtains ABI facts, and how to decouple front end, core and back end.
 
-* **AMC Core.** A minimal ABI-IR compiler core that builds, validates, hashes and serializes `.abix`. It knows neither Clang nor C++ syntax; keeping the core small means changing the language front end does not affect the artifact format.
-* **C++ front end (Clang LibTooling/AST).** A `RecursiveASTVisitor` walks records, enums and functions; a compilation database is built from `compile_commands` or flags; explicit symbol filtering avoids parsing the whole project. It extracts field offsets (`getFieldOffset`), `sizeof`/`alignof`, bitfields, template instantiations, calling conventions, visibility, inheritance and base classes, and member-level exports (`Foo::method`).
-* **C++ back end (projection).** Reads `.abix` and generates C++17 `constexpr` `TypeTraits`, TypeId constants, `LayoutInfo` and field offsets in the `amc_generated` namespace. The back end consumes the hashes and layouts already present in `.abix` and never recomputes them.
-* **Provider process isolation.** `amc-cpp` is a standalone executable carrying the heavy Clang/LLVM dependency. `amc` schedules it as a subprocess instead of loading it as a `dlopen` plugin, because the Clang/LLVM plugin ABI is itself version-sensitive; process isolation keeps the main program clean. The interface is abstracted as a provider protocol, leaving extension points for Rust, Zig and C providers.
-* **CLI driver.** `build`, `frontend`, `backend`, `inspect` and `validate` subcommands. The CMake integration (`amc_add_abi`) attaches `.abic → .abix → optional header` to an existing target's incremental build graph.
-* **Bootstrap.** The ABI metamodel is frozen first (Phase 0); a minimal, static bootstrap kernel that uses neither ABIX, dynamic memory nor RCU acts as the equivalent trusted computing base, with strict DAG dependencies to avoid recursion.
+- **AMC Core.** A minimal ABI-IR compiler core that builds, validates, hashes and serializes `.abix`. It knows neither Clang nor C++ syntax; keeping the core small means changing the language front end does not affect the artifact format.
+- **C++ front end (Clang LibTooling/AST).** A `RecursiveASTVisitor` walks records, enums and functions; a compilation database is built from `compile_commands` or flags; explicit symbol filtering avoids parsing the whole project. It extracts field offsets (`getFieldOffset`), `sizeof`/`alignof`, bitfields, template instantiations, calling conventions, visibility, inheritance and base classes, and member-level exports (`Foo::method`).
+- **C++ back end (projection).** Reads `.abix` and generates C++17 `constexpr` `TypeTraits`, TypeId constants, `LayoutInfo` and field offsets in the `amc_generated` namespace. The back end consumes the hashes and layouts already present in `.abix` and never recomputes them.
+- **Provider process isolation.** `amc-cpp` is a standalone executable carrying the heavy Clang/LLVM dependency. `amc` schedules it as a subprocess instead of loading it as a `dlopen` plugin, because the Clang/LLVM plugin ABI is itself version-sensitive; process isolation keeps the main program clean. The interface is abstracted as a provider protocol, leaving extension points for Rust, Zig and C providers.
+- **CLI driver.** `build`, `frontend`, `backend`, `inspect` and `validate` subcommands. The CMake integration (`amc_add_abi`) attaches `.abic → .abix → optional header` to an existing target's incremental build graph.
+- **Bootstrap.** The ABI metamodel is frozen first (Phase 0); a minimal, static bootstrap kernel that uses neither ABIX, dynamic memory nor RCU acts as the equivalent trusted computing base, with strict DAG dependencies to avoid recursion.
 
 The loop `C++ header → Clang AST → AbiModule → .abix → projection code` is closed; round-trip tests and CTest keep the format stable, and `amc-dump` provides text and JSON summaries. See [`amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) and [`self-hosting.md`](../getting-started/self-hosting.md).
 
@@ -320,11 +320,11 @@ The loop `C++ header → Clang AST → AbiModule → .abix → projection code` 
 
 Once the functionality was correct, `synchronize()` became noticeably slower as the number of readers grew; shared cache-line write contention was the suspected cause.
 
-* **Layered benchmarks.** Microbenchmarks first, then role-based benchmarks. The role-based configuration (N readers plus one writer) is the most representative; other configurations corroborate.
-* **Bottleneck chain.** `synchronize → WriterLock → publish → global_epoch RMW → shared cache-line bouncing`. The shared atomic RMW in `_global_epoch.fetch_add` is the largest single point.
-* **Cache-line isolation only for fields with measured contention.** `alignas(64) _epoch` gives a clear gain (about 43% on 20 threads); padding every field enlarges `sizeof` and hurts the cache, so global padding is not used.
-* **Epoch advancement batching.** The default is B8, one epoch per 8 `synchronize` calls. B16 is better for high-concurrency read-heavy workloads (about +24% on read-heavy 20 threads) but regresses write-heavy workloads slightly, because delayed advancement accumulates retired entries. The default therefore remains B8, with B16 as a platform-measured tunable.
-* **Experiment methodology.** For single-point anomalies such as the thr16/thr32 collapse, a fine-grained neighborhood scan (14–18, 30–33) excludes system noise before a conclusion is drawn. Formal benchmarks report median, p90 and coefficient of variation rather than single values.
+- **Layered benchmarks.** Microbenchmarks first, then role-based benchmarks. The role-based configuration (N readers plus one writer) is the most representative; other configurations corroborate.
+- **Bottleneck chain.** `synchronize → WriterLock → publish → global_epoch RMW → shared cache-line bouncing`. The shared atomic RMW in `_global_epoch.fetch_add` is the largest single point.
+- **Cache-line isolation only for fields with measured contention.** `alignas(64) _epoch` gives a clear gain (about 43% on 20 threads); padding every field enlarges `sizeof` and hurts the cache, so global padding is not used.
+- **Epoch advancement batching.** The default is B8, one epoch per 8 `synchronize` calls. B16 is better for high-concurrency read-heavy workloads (about +24% on read-heavy 20 threads) but regresses write-heavy workloads slightly, because delayed advancement accumulates retired entries. The default therefore remains B8, with B16 as a platform-measured tunable.
+- **Experiment methodology.** For single-point anomalies such as the thr16/thr32 collapse, a fine-grained neighborhood scan (14–18, 30–33) excludes system noise before a conclusion is drawn. Formal benchmarks report median, p90 and coefficient of variation rather than single values.
 
 Steady-state unload and reclamation overhead is brought close to that of a direct call. The work produced tuning guidance for read-mostly concurrent reclamation and the norm that batch size is not an architectural constant but must be remeasured on the target platform. See [`benchmark.md`](../benchmark/benchmark.md).
 
@@ -332,9 +332,9 @@ Steady-state unload and reclamation overhead is brought close to that of a direc
 
 Testing, the plugin matrix, benchmarks and documentation keep fragile points such as cross-module ABI valid after changes.
 
-* **Tests.** Catch2 v3 covers load and unload, resource smart pointers, callback closures, version coexistence, lookup performance, hot-reload handle stability, calling-convention boundaries, RCU configuration, concurrent load and unload, and shutdown/zombie states.
-* **Example plugin matrix.** Each plugin under `dlls/` verifies one class of behavior (math, versioning, signature checking, resources, callbacks, hot reload a and b, the stdcall boundary, the hot-function cache, shutdown) and acts as executable documentation of framework behavior.
-* **Benchmarks.** Google Benchmark covers function call overhead, lookup, reload, atomic versus builtin, EBR grace/retire, false sharing and cross-table resolution, together with topology and workload infrastructure.
-* **Build.** CMake provides unified `abi_add_dll` and `abi_add_test`; Linux builds hide symbols and use `--no-undefined`; debug builds add ASan/TSan; DSOs, executables and dSYM are handled per platform, and toolchain-variant DLLs are supported.
+- **Tests.** Catch2 v3 covers load and unload, resource smart pointers, callback closures, version coexistence, lookup performance, hot-reload handle stability, calling-convention boundaries, RCU configuration, concurrent load and unload, and shutdown/zombie states.
+- **Example plugin matrix.** Each plugin under `dlls/` verifies one class of behavior (math, versioning, signature checking, resources, callbacks, hot reload a and b, the stdcall boundary, the hot-function cache, shutdown) and acts as executable documentation of framework behavior.
+- **Benchmarks.** Google Benchmark covers function call overhead, lookup, reload, atomic versus builtin, EBR grace/retire, false sharing and cross-table resolution, together with topology and workload infrastructure.
+- **Build.** CMake provides unified `abi_add_dll` and `abi_add_test`; Linux builds hide symbols and use `--no-undefined`; debug builds add ASan/TSan; DSOs, executables and dSYM are handled per platform, and toolchain-variant DLLs are supported.
 
 ABI stability becomes an engineering fact enforced jointly by the plugin matrix, the tests and the benchmarks, and `dlls/` gives a fast way to understand a feature.

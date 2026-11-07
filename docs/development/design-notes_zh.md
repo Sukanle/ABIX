@@ -57,11 +57,11 @@ flowchart TD
 
 > ABIX 描述既有的原生对象，不定义一套对象必须符合的新类型系统。
 
-| | 对象模型 | ABI 事实模型 |
-|---|---|---|
-| 职责 | 定义类型、管理类型、执行类型语义 | 描述类型、标识类型、验证类型、比较类型 |
-| 问题 | "对象如何构造？如何继承？如何分发？" | "这个东西的 ABI identity 是什么？占多少空间？怎么布局？" |
-| 使用者 | 应用代码必须进入该模型 | 原生二进制站在旁边，不被侵入 |
+|        | 对象模型                             | ABI 事实模型                                             |
+| ------ | ------------------------------------ | -------------------------------------------------------- |
+| 职责   | 定义类型、管理类型、执行类型语义     | 描述类型、标识类型、验证类型、比较类型                   |
+| 问题   | "对象如何构造？如何继承？如何分发？" | "这个东西的 ABI identity 是什么？占多少空间？怎么布局？" |
+| 使用者 | 应用代码必须进入该模型               | 原生二进制站在旁边，不被侵入                             |
 
 核心记录回答的是 ABI 事实。`TypeDesc` 标识类型并指向其布局；`TypeLayout` 记录大小、对齐、字段范围与布局哈希。没有 `create_object()`、`destroy_object()` 或 `dispatch_virtual()`。
 
@@ -122,9 +122,9 @@ plan.apply(src_layout, tgt_layout, src_fields, tgt_fields, target, source);
 
 > ABI 事实不等于源码 / 调试事实。`.abix` 绝不能变成"更小的 DWARF"。
 
-| | DWARF（调试本体） | ABIX（ABI 本体） |
-|---|---|---|
-| 回答 | "这个东西从哪来？" | "它暴露的二进制契约是什么？" |
+|      | DWARF（调试本体）                                                          | ABIX（ABI 本体）                                                                                           |
+| ---- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 回答 | "这个东西从哪来？"                                                         | "它暴露的二进制契约是什么？"                                                                               |
 | 描述 | source、file、line、scope、variable、expression、call frame、inline、macro | module、symbol、type、layout、function、parameter、调用约定、ownership、target、ABI version、compatibility |
 
 两者可能描述同一个 `Foo`：
@@ -182,13 +182,13 @@ flowchart TD
 
 ### 边界风险清单
 
-| 风险场景 | 违反原则 | 严重程度 | 预防措施 |
-|---------|---------|---------|---------|
-| 在 `operator()` 热路径中加入类型检查 | 1 | 高 | 保持 `fn(args...)` 直接调用 |
-| 引入 ABIX 自己的对象生命周期管理 | 2 | 高 | 只描述，不管理 |
-| 隐式类型转换（`dll::Function` 自动调用 `MapPlan`） | 3 | 中 | `MapPlan` 必须显式构造 |
-| `.abix` 开始存储源码行号 / 变量作用域 | 4 | 中 | Code Review 把关 |
-| Runtime 注册非 AMC 生成的类型 | 5 | 高 | `.abix` canonical hash 校验 |
+| 风险场景                                           | 违反原则 | 严重程度 | 预防措施                    |
+| -------------------------------------------------- | -------- | -------- | --------------------------- |
+| 在 `operator()` 热路径中加入类型检查               | 1        | 高       | 保持 `fn(args...)` 直接调用 |
+| 引入 ABIX 自己的对象生命周期管理                   | 2        | 高       | 只描述，不管理              |
+| 隐式类型转换（`dll::Function` 自动调用 `MapPlan`） | 3        | 中       | `MapPlan` 必须显式构造      |
+| `.abix` 开始存储源码行号 / 变量作用域              | 4        | 中       | Code Review 把关            |
+| Runtime 注册非 AMC 生成的类型                      | 5        | 高       | `.abix` canonical hash 校验 |
 
 ### ABIX 与 SOM 的历史差异
 
@@ -250,15 +250,15 @@ flowchart TD
 
 项目经由七个阶段，从问题确立走到工程质量体系。下表概括各阶段；其后各节记录每个阶段的决策与约束。
 
-| 阶段 | 侧重 | 关键技术点 |
-|------|------|-----------|
-| 一 | 问题确立与方案选型 | 裸解析的缺陷、分层解析校验、编译期 FNV-1a、可平凡拷贝的导出表 |
-| 二 | ABIX 核心库 | 稳定函数表、调用约定并入签名、类型化句柄、版本共存、RCU/EBR 卸载安全、资源生命周期、跨边界闭包 |
-| 三 | MICS 反射库 | 编译期与运行时双轨反射、`URefl::vector`、共用 `type_hash<T>()` |
-| 四 | ABI 元数据层 | `.abix` / `.abic`、TypeId/LayoutHash/SignatureHash/ABIHash 分层、Hash128、mmap 友好布局 |
-| 五 | AMC 元数据编译器 | 极小 ABI-IR 核心、Clang AST 前端、投影后端、Provider 进程隔离、Bootstrap |
-| 六 | Micro-RCU 性能工程 | role-based 基准、按实测隔离 cache-line、epoch 批处理、实验方法论 |
-| 七 | 工程质量体系 | 插件矩阵、测试、基准、CMake 与跨平台必现性 |
+| 阶段 | 侧重               | 关键技术点                                                                                     |
+| ---- | ------------------ | ---------------------------------------------------------------------------------------------- |
+| 一   | 问题确立与方案选型 | 裸解析的缺陷、分层解析校验、编译期 FNV-1a、可平凡拷贝的导出表                                  |
+| 二   | ABIX 核心库        | 稳定函数表、调用约定并入签名、类型化句柄、版本共存、RCU/EBR 卸载安全、资源生命周期、跨边界闭包 |
+| 三   | MICS 反射库        | 编译期与运行时双轨反射、`URefl::vector`、共用 `type_hash<T>()`                                 |
+| 四   | ABI 元数据层       | `.abix` / `.abic`、TypeId/LayoutHash/SignatureHash/ABIHash 分层、Hash128、mmap 友好布局        |
+| 五   | AMC 元数据编译器   | 极小 ABI-IR 核心、Clang AST 前端、投影后端、Provider 进程隔离、Bootstrap                       |
+| 六   | Micro-RCU 性能工程 | role-based 基准、按实测隔离 cache-line、epoch 批处理、实验方法论                               |
+| 七   | 工程质量体系       | 插件矩阵、测试、基准、CMake 与跨平台必现性                                                     |
 
 ### 阶段一 · 问题确立与方案选型
 
@@ -285,10 +285,10 @@ flowchart TD
 
 纯静态反射零开销但固化，纯动态反射灵活但耗资源。MICS 把同一套元数据语义实现两遍：一遍在编译期，一遍在运行时。
 
-* **静态轨（`skl::mics::ct` / SRefl）。** `type_list` 加类型函数式库（`map`/`filter`/`fold`/ `unique`），`field_traits`/`fn_traits`/`enum_traits` 萃取字段、方法与枚举；`type_info<T>()` 为 `consteval`。
-* **动态轨（`skl::mics::rt` / DRefl）。** `Registry` 单例、`TypeInfo`、`FieldAccessor` （getter/setter）、`MethodInvoker` 与 `Any`（16 字节 SBO 类型擦除）。
-* **共享工具（`skl::mics::util` / URefl）。** ABI 稳定不可变容器 `URefl::vector`（固定 `sizeof`、仅移动、`malloc`/`free`、只能经 `vector_builder` 构造）是所有反射描述数据（字段、方法、参数、枚举项）的统一载体，也是跨编译器二进制兼容的关键。
-* **哈希一致性。** 静态、动态两轨共用 `type_hash<T>()` 作为 TypeId 的唯一来源，使编译期类型身份与运行期查到的身份是同一份。
+- **静态轨（`skl::mics::ct` / SRefl）。** `type_list` 加类型函数式库（`map`/`filter`/`fold`/ `unique`），`field_traits`/`fn_traits`/`enum_traits` 萃取字段、方法与枚举；`type_info<T>()` 为 `consteval`。
+- **动态轨（`skl::mics::rt` / DRefl）。** `Registry` 单例、`TypeInfo`、`FieldAccessor` （getter/setter）、`MethodInvoker` 与 `Any`（16 字节 SBO 类型擦除）。
+- **共享工具（`skl::mics::util` / URefl）。** ABI 稳定不可变容器 `URefl::vector`（固定 `sizeof`、仅移动、`malloc`/`free`、只能经 `vector_builder` 构造）是所有反射描述数据（字段、方法、参数、枚举项）的统一载体，也是跨编译器二进制兼容的关键。
+- **哈希一致性。** 静态、动态两轨共用 `type_hash<T>()` 作为 TypeId 的唯一来源，使编译期类型身份与运行期查到的身份是同一份。
 
 写一个结构体加一段注册宏即可获得运行时反射；`register_dll_table` 把 DLL 导出表桥接到反射注册表，模块内对象也能被通用工具以反射方式访问。
 
@@ -296,10 +296,10 @@ flowchart TD
 
 ABI 真相应独立于任何语言与编译器存在，作为可持久化、可跨语言投影、可 diff 的产物。
 
-* **四类哈希分层。** `TypeId` 回答是不是同一类型；`LayoutHash` 回答布局是否兼容；`SignatureHash` 回答调用是否兼容；`ABIHash` 回答 artifact 是否一致。`TypeHash ≠ LayoutHash` 是兼容性与 mapping 的基础：同名类型布局可能不同，仅靠 size/align 会漏掉字段重排这类破坏。
-* **`Hash128` 抽象与 `HashDescriptor`。** 不把 FNV-1a 焊死；`Hash128{lo, hi}` 连同算法、版本、domain 作为 schema 信息记录，未来可换 XXH3 或 BLAKE3。跨命名空间转换（MICS 64 → ABIX 128）必须显式，禁止把 ABI 身份截断成单个 64 位。
-* **`.abix` v2 二进制。** 小端、magic `ABIX`、Header、Section Directory，以及 String/Identity/Type/Field/Function/Parameter/Symbol/Hash 多节。字符串用 `(offset, length)` 去重；Symbol 用 `(kind, index)` typed index。产物可直接 `mmap`，`validate` 覆盖截断、坏 magic 与越界引用。
-* **`.abic` 声明式配置。** 把构建配置提升为 ABI 边界声明：`[[import]]` 说明从哪取 ABI，`[[export]]` 说明 `.abix` 输出到哪、投影哪些 symbol 子集。代码生成明确划给独立的 `amc generate`，以保持 `.abix` 语言无关。
+- **四类哈希分层。** `TypeId` 回答是不是同一类型；`LayoutHash` 回答布局是否兼容；`SignatureHash` 回答调用是否兼容；`ABIHash` 回答 artifact 是否一致。`TypeHash ≠ LayoutHash` 是兼容性与 mapping 的基础：同名类型布局可能不同，仅靠 size/align 会漏掉字段重排这类破坏。
+- **`Hash128` 抽象与 `HashDescriptor`。** 不把 FNV-1a 焊死；`Hash128{lo, hi}` 连同算法、版本、domain 作为 schema 信息记录，未来可换 XXH3 或 BLAKE3。跨命名空间转换（MICS 64 → ABIX 128）必须显式，禁止把 ABI 身份截断成单个 64 位。
+- **`.abix` v2 二进制。** 小端、magic `ABIX`、Header、Section Directory，以及 String/Identity/Type/Field/Function/Parameter/Symbol/Hash 多节。字符串用 `(offset, length)` 去重；Symbol 用 `(kind, index)` typed index。产物可直接 `mmap`，`validate` 覆盖截断、坏 magic 与越界引用。
+- **`.abic` 声明式配置。** 把构建配置提升为 ABI 边界声明：`[[import]]` 说明从哪取 ABI，`[[export]]` 说明 `.abix` 输出到哪、投影哪些 symbol 子集。代码生成明确划给独立的 `amc generate`，以保持 `.abix` 语言无关。
 
 `.abix` 是单一 ABI 真相源。Runtime 可经 `mmap` 消费它，同一产物也可投影成多语言的编译期常量，统一动态 ABI 与静态性能。见 [`abix_zh.md`](../abix/abix_zh.md) 与 [`abic_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/abic/abic_zh.md)。
 
@@ -307,12 +307,12 @@ ABI 真相应独立于任何语言与编译器存在，作为可持久化、可�
 
 `.abix` 不能手写，需从源码自动提取。两个问题必须一起回答：用哪个前端拿 ABI 事实，以及前端、核心、后端如何解耦。
 
-* **AMC Core。** 极小的 ABI-IR 编译核心，只负责构建、校验、哈希与序列化 `.abix`。它既不认识 Clang 也不认识 C++ 语法；核心小，换语言前端不影响产物格式。
-* **C++ 前端（Clang LibTooling/AST）。** `RecursiveASTVisitor` 遍历 Record、Enum 与 Function；经 `compile_commands` 或 flags 建编译数据库；显式 symbol 过滤避免全项目 AST 解析。提取字段偏移（`getFieldOffset`）、`sizeof`/`alignof`、bitfield、模板实例化、调用约定、可见性、继承与基类，以及成员级导出（`Foo::method`）。
-* **C++ 后端（投影）。** 读 `.abix`，在 `amc_generated` 命名空间生成 C++17 `constexpr` 的 `TypeTraits`、TypeId 常量、`LayoutInfo` 与字段偏移。后端只消费 `.abix` 中已有的 Hash/Layout，绝不重算。
-* **Provider 进程隔离。** `amc-cpp` 是独立可执行文件，自带 Clang/LLVM 重依赖。`amc` 以子进程调度它，而不是 `dlopen` 插件，因为 Clang/LLVM 插件 ABI 本身受版本影响；进程隔离让主程序保持干净。接口按 provider protocol 抽象，为 Rust、Zig、C provider 留扩展点。
-* **CLI Driver。** `build`、`frontend`、`backend`、`inspect`、`validate` 子命令。CMake 集成（`amc_add_abi`）把 `.abic → .abix → 可选 header` 挂进既有 target 的增量构建图。
-* **Bootstrap。** 先冻结 ABI 元模型（Phase 0）；再用一个极小、静态、不用 ABIX、不用动态内存、不用 RCU 的 bootstrap kernel 作为等价可信计算基（TCB），严格 DAG 依赖避免递归。
+- **AMC Core。** 极小的 ABI-IR 编译核心，只负责构建、校验、哈希与序列化 `.abix`。它既不认识 Clang 也不认识 C++ 语法；核心小，换语言前端不影响产物格式。
+- **C++ 前端（Clang LibTooling/AST）。** `RecursiveASTVisitor` 遍历 Record、Enum 与 Function；经 `compile_commands` 或 flags 建编译数据库；显式 symbol 过滤避免全项目 AST 解析。提取字段偏移（`getFieldOffset`）、`sizeof`/`alignof`、bitfield、模板实例化、调用约定、可见性、继承与基类，以及成员级导出（`Foo::method`）。
+- **C++ 后端（投影）。** 读 `.abix`，在 `amc_generated` 命名空间生成 C++17 `constexpr` 的 `TypeTraits`、TypeId 常量、`LayoutInfo` 与字段偏移。后端只消费 `.abix` 中已有的 Hash/Layout，绝不重算。
+- **Provider 进程隔离。** `amc-cpp` 是独立可执行文件，自带 Clang/LLVM 重依赖。`amc` 以子进程调度它，而不是 `dlopen` 插件，因为 Clang/LLVM 插件 ABI 本身受版本影响；进程隔离让主程序保持干净。接口按 provider protocol 抽象，为 Rust、Zig、C provider 留扩展点。
+- **CLI Driver。** `build`、`frontend`、`backend`、`inspect`、`validate` 子命令。CMake 集成（`amc_add_abi`）把 `.abic → .abix → 可选 header` 挂进既有 target 的增量构建图。
+- **Bootstrap。** 先冻结 ABI 元模型（Phase 0）；再用一个极小、静态、不用 ABIX、不用动态内存、不用 RCU 的 bootstrap kernel 作为等价可信计算基（TCB），严格 DAG 依赖避免递归。
 
 `C++ 头文件 → Clang AST → AbiModule → .abix → 投影代码` 的闭环被打通；round-trip 测试与 CTest 保证格式稳定，`amc-dump` 提供文本与 JSON 摘要。见 [`amc_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) 与 [`self-hosting_zh.md`](../getting-started/self-hosting_zh.md)。
 
@@ -320,11 +320,11 @@ ABI 真相应独立于任何语言与编译器存在，作为可持久化、可�
 
 功能正确之后，`synchronize()` 随 reader 数增长而明显变慢，怀疑是共享 cache-line 写竞争。
 
-* **分层基准。** 先 microbench，再 role-based。role-based 配置（N reader + 1 writer）最具代表性，其余配置作佐证。
-* **瓶颈链。** `synchronize → WriterLock → publish → global_epoch RMW → 共享 cache-line bouncing`。`_global_epoch.fetch_add` 的共享原子 RMW 是最大单点。
-* **只隔离实测竞争的字段。** `alignas(64) _epoch` 收益明显（20 线程下约 43%）；把所有字段都 `alignas(64)` 反而把 `sizeof` 撑大、伤缓存，因此不做全局 padding。
-* **Epoch 推进批处理。** 默认 B8，即每 8 次 `synchronize` 推进一次 epoch。B16 在高并发 read-heavy 场景更优（read-heavy 20 线程约 +24%），但 write-heavy 轻微回退，因为延迟推进使 retire 累积。默认因此保守取 B8，B16 作为平台实测可调参数。
-* **实验方法论。** 对 thr16/thr32 崩塌这类单点异常，先做细粒度邻域扫描（14–18、30–33）排除系统噪声再下结论。正式 benchmark 记中位数、p90 与变异系数，而非单次值。
+- **分层基准。** 先 microbench，再 role-based。role-based 配置（N reader + 1 writer）最具代表性，其余配置作佐证。
+- **瓶颈链。** `synchronize → WriterLock → publish → global_epoch RMW → 共享 cache-line bouncing`。`_global_epoch.fetch_add` 的共享原子 RMW 是最大单点。
+- **只隔离实测竞争的字段。** `alignas(64) _epoch` 收益明显（20 线程下约 43%）；把所有字段都 `alignas(64)` 反而把 `sizeof` 撑大、伤缓存，因此不做全局 padding。
+- **Epoch 推进批处理。** 默认 B8，即每 8 次 `synchronize` 推进一次 epoch。B16 在高并发 read-heavy 场景更优（read-heavy 20 线程约 +24%），但 write-heavy 轻微回退，因为延迟推进使 retire 累积。默认因此保守取 B8，B16 作为平台实测可调参数。
+- **实验方法论。** 对 thr16/thr32 崩塌这类单点异常，先做细粒度邻域扫描（14–18、30–33）排除系统噪声再下结论。正式 benchmark 记中位数、p90 与变异系数，而非单次值。
 
 卸载与回收的稳定态开销被压到接近直接调用。该阶段沉淀了读多写少并发回收的调优指引，以及 "batch 不是架构常量、必须在目标平台重测"的规范。见 [`benchmark_zh.md`](../benchmark/benchmark_zh.md)。
 
@@ -332,9 +332,9 @@ ABI 真相应独立于任何语言与编译器存在，作为可持久化、可�
 
 测试、插件矩阵、基准与文档共同保证"跨模块 ABI"这类易碎点在改动后仍然成立。
 
-* **测试。** Catch2 v3 覆盖加载与卸载、资源智能指针、回调闭包、版本共存、查找性能、热重载句柄稳定性、调用约定边界、RCU 配置、并发加载与卸载，以及关闭/僵尸态。
-* **示例插件矩阵。** `dlls/` 下每个插件只验证一类特性（数学、版本、签名校验、资源、回调、热重载 a 与 b、stdcall 边界、热点缓存、关闭），是框架行为的可执行文档。
-* **基准。** Google Benchmark 覆盖函数调用开销、lookup、reload、atomic 与 builtin 对比、 EBR grace/retire、false sharing、跨表解析，以及 topology/workload 基础设施。
-* **构建。** CMake 统一 `abi_add_dll` 与 `abi_add_test`；Linux 隐藏符号并使用 `--no-undefined`；Debug 带 ASan/TSan；DSO、可执行文件与 dSYM 分平台处理，并支持工具链变体 DLL。
+- **测试。** Catch2 v3 覆盖加载与卸载、资源智能指针、回调闭包、版本共存、查找性能、热重载句柄稳定性、调用约定边界、RCU 配置、并发加载与卸载，以及关闭/僵尸态。
+- **示例插件矩阵。** `dlls/` 下每个插件只验证一类特性（数学、版本、签名校验、资源、回调、热重载 a 与 b、stdcall 边界、热点缓存、关闭），是框架行为的可执行文档。
+- **基准。** Google Benchmark 覆盖函数调用开销、lookup、reload、atomic 与 builtin 对比、 EBR grace/retire、false sharing、跨表解析，以及 topology/workload 基础设施。
+- **构建。** CMake 统一 `abi_add_dll` 与 `abi_add_test`；Linux 隐藏符号并使用 `--no-undefined`；Debug 带 ASan/TSan；DSO、可执行文件与 dSYM 分平台处理，并支持工具链变体 DLL。
 
 ABI 稳定性成为由插件矩阵、测试与基准共同约束的工程事实，`dlls/` 提供了快速理解某个特性的入口。

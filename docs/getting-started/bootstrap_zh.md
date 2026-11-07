@@ -81,10 +81,10 @@ ABIX 自身的 type、registry、map、RCU、compatibility 与 bootstrap metadat
 
 不允许一个 `TypeInfo` 同时承担所有职责，按所回答的问题拆分：
 
-| 类型 | 回答 | 内容 |
-|------|------|------|
-| `TypeId` | "我是谁？" | 以 `Hash128` 表示的规范类型标识 |
-| `TypeDesc` | "我是什么？" | id、flags、名称偏移、layout 引用 |
+| 类型         | 回答                       | 内容                               |
+| ------------ | -------------------------- | ---------------------------------- |
+| `TypeId`     | "我是谁？"                 | 以 `Hash128` 表示的规范类型标识    |
+| `TypeDesc`   | "我是什么？"               | id、flags、名称偏移、layout 引用   |
 | `TypeLayout` | "我的 ABI layout 是什么？" | size、align、字段范围、layout hash |
 
 ```cpp
@@ -153,15 +153,15 @@ constexpr LayoutHash layout_hash(...);
 
 ### 其他核心概念
 
-| 概念 | 说明 |
-|------|------|
-| `Field` | 字段描述：name、`TypeId`、offset、bitfield、flags |
-| `Function` | 函数描述：name、signature hash、调用约定、参数 |
-| `Symbol` | 可导出符号：name、`TypeId`/`FunctionId`、visibility |
-| `MapInfo` | ABI 映射描述：源类型到目标类型的转换规则 |
-| `Compat` | 兼容性规则：`TypeId` 对 → compatible / incompatible |
-| `ABI Identity` | 平台、编译器与调用约定的唯一标识 |
-| `Target` | 目标平台描述：arch、OS、ABI convention |
+| 概念           | 说明                                                |
+| -------------- | --------------------------------------------------- |
+| `Field`        | 字段描述：name、`TypeId`、offset、bitfield、flags   |
+| `Function`     | 函数描述：name、signature hash、调用约定、参数      |
+| `Symbol`       | 可导出符号：name、`TypeId`/`FunctionId`、visibility |
+| `MapInfo`      | ABI 映射描述：源类型到目标类型的转换规则            |
+| `Compat`       | 兼容性规则：`TypeId` 对 → compatible / incompatible |
+| `ABI Identity` | 平台、编译器与调用约定的唯一标识                    |
+| `Target`       | 目标平台描述：arch、OS、ABI convention              |
 
 ## `.abix` artifact
 
@@ -176,8 +176,8 @@ graph TD
     Abix --> Runtime
 ```
 
-* `.abix` —— 跨进程、跨工具、跨语言共享的稳定 ABI artifact。
-* `generated/*.abix.hpp` —— 针对当前编译环境的 zero-cost C++ 编译期元数据。
+- `.abix` —— 跨进程、跨工具、跨语言共享的稳定 ABI artifact。
+- `generated/*.abix.hpp` —— 针对当前编译环境的 zero-cost C++ 编译期元数据。
 
 v0 布局为顺序结构：
 
@@ -227,13 +227,13 @@ BootStatus abix_bootstrap(const BootImage& image);
 
 ### 约束
 
-| 约束 | 规则 |
-|------|------|
-| 不使用 ABIX | 不出现 `ABIX_EXPORT(...)` 等宏 |
-| 不使用动态内存 | 无 `std::vector`、`std::unordered_map`、`std::string` |
-| 不使用 RCU/EBR | 仅静态数据、普通指针与固定布局 |
-| 不依赖 C++ ABI | 接近 `extern "C"` 加 POD |
-| 无完整 Registry API | 只负责将静态 metadata 送入运行时 |
+| 约束                | 规则                                                  |
+| ------------------- | ----------------------------------------------------- |
+| 不使用 ABIX         | 不出现 `ABIX_EXPORT(...)` 等宏                        |
+| 不使用动态内存      | 无 `std::vector`、`std::unordered_map`、`std::string` |
+| 不使用 RCU/EBR      | 仅静态数据、普通指针与固定布局                        |
+| 不依赖 C++ ABI      | 接近 `extern "C"` 加 POD                              |
+| 无完整 Registry API | 只负责将静态 metadata 送入运行时                      |
 
 ### Wire format
 
@@ -374,9 +374,9 @@ graph TD
     MapPrivate --> CompileTime["compile-time offset"]
 ```
 
-| 场景 | 路径 |
-|------|------|
-| Debug | `MapInfo` → runtime validation |
+| 场景    | 路径                                     |
+| ------- | ---------------------------------------- |
+| Debug   | `MapInfo` → runtime validation           |
 | Release | `MapPrivate` → direct access (zero-cost) |
 
 `MapPrivate` 晚于 Runtime Map 实现：先验证 Runtime Map 语义正确，再生成等价的静态版本。二者在 copy 与 default 操作上经验证语义一致；其他转换需要 native converter。
@@ -398,13 +398,13 @@ Bootstrap 内核是 TCB（可信计算基）。类似 BIOS/firmware 或 compiler
 
 ### 已验证能力
 
-* 从 C++ header 到 `.abix` 再到静态 Runtime descriptor 的生成链路；
-* Type、field、function、layout、`Hash128` 与 Symbol metadata；
-* namespace、alias、bitfield、继承、访问级别、模板特化与调用约定的提取；
-* `runtime::Registry` 注册、`TypeId` 查询与 canonical registry bridge；
-* Compat / Map IR 与 `MapPrivate` constexpr 操作计划；
-* 独立 provider 进程与 JSON-lines IPC；
-* `self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor 注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()` 与 `type_of<amc::CompatibilityRecord>()` 均可查询。
+- 从 C++ header 到 `.abix` 再到静态 Runtime descriptor 的生成链路；
+- Type、field、function、layout、`Hash128` 与 Symbol metadata；
+- namespace、alias、bitfield、继承、访问级别、模板特化与调用约定的提取；
+- `runtime::Registry` 注册、`TypeId` 查询与 canonical registry bridge；
+- Compat / Map IR 与 `MapPrivate` constexpr 操作计划；
+- 独立 provider 进程与 JSON-lines IPC；
+- `self.abic.toml` 可从干净目录生成 `amc_core.abix`，生成的 C++ descriptor 注册进 `runtime::Registry`；`type_of<amc::AbiModule>()`、`type_of<amc::MapOperation>()` 与 `type_of<amc::CompatibilityRecord>()` 均可查询。
 
 ### 自举边界
 
@@ -424,32 +424,32 @@ AMC 的验证表明，已编译的 AMC stage 能解析自身 core IR，并生成
 
 ABIX Runtime 自举里程碑均已完成。
 
-| 里程碑 | 范围 | 状态 |
-|--------|------|------|
-| M0 —— ABI Model | `TypeId`、`TypeDesc`、`TypeLayout`、`Field`、`Function`、`Symbol`、`MapInfo`、`Compat`、`ABI Identity`、`Target`；`Hash128` 抽象与 TypeHash ≠ LayoutHash；刻意不实现 RCU | 已完成 |
-| M1 —— `.abix` v0 | Header、Type/Field/Function Table（首版 inline 顺序序列化）；`write_abix` / `read_abix` round-trip；`amc inspect` / `amc validate`；Section Directory 与 String Table 去重、offset/index 引用、length、flags 与 optional section；ABI Identity、Target、Hash Table、Symbol Table section | 已完成 |
-| M2 —— Bootstrap Kernel | `BootImage`、`BootRecord` 与 loader；无 allocator、无 Registry、无 RCU、无 ABIX API；以显式 endianness 与 padding 定义 wire format | 已完成 |
-| M3 —— Runtime Registry | Type registration、lookup、validation；打通 `Bootstrap → Registry → Type lookup` 闭环；Registry 自描述（`RegistryEntry` / `metadata::Bootstrap`） | 已完成 |
-| M4 —— Type Self-hosting | 为 ABIX 核心类型建立正式 `.abic` self-description 配置；AMC 生成核心类型、`RegistryEntry`、`TypeDescriptor` 的 `.abix` metadata；静态 descriptor 注册进 `runtime::Registry`；验证 `runtime::Registry::type_of<TypeDesc>()` 能返回自身 metadata | 已完成 |
-| M5 —— Compat | HashDescriptor、Hash Domain、算法版本与 RuntimeKey 分层模型；`TypeHash`、`LayoutHash`、`SignatureHash` 与兼容性检查 | 已完成 |
-| M6 —— Runtime Map | `MapInfo` 与 dynamic Map 的运行时转换 | 已完成 |
-| M7 —— RCU / EBR | AMC 提取 `ThreadState`、`Epoch`、`RetiredNode` 的布局与成员关系；将 RCU/EBR 类型注册进 Runtime Registry；完成 `ABIX Registry → ABIX RCU → ABIX Registry` 初始化闭环；验证 lookup 与 retire 不依赖未注册 metadata | 已完成 |
-| M8 —— MapPrivate | 生成 `MapPrivate<A, B>` 静态转换；验证 Runtime Map 与 `MapPrivate` 语义一致（copy/default；转换需 native converter） | 已完成 |
-| M9 —— Full Self-hosting | ABIX 的 Type、Registry、Map、RCU、Compat、Bootstrap metadata 全部由 ABIX 描述；从干净构建目录重新生成 self-description artifact；禁止运行时路径依赖手写的非 Bootstrap metadata；至此完成 Runtime Self-hosting | 已完成 |
+| 里程碑                  | 范围                                                                                                                                                                                                                                                                                     | 状态   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| M0 —— ABI Model         | `TypeId`、`TypeDesc`、`TypeLayout`、`Field`、`Function`、`Symbol`、`MapInfo`、`Compat`、`ABI Identity`、`Target`；`Hash128` 抽象与 TypeHash ≠ LayoutHash；刻意不实现 RCU                                                                                                                 | 已完成 |
+| M1 —— `.abix` v0        | Header、Type/Field/Function Table（首版 inline 顺序序列化）；`write_abix` / `read_abix` round-trip；`amc inspect` / `amc validate`；Section Directory 与 String Table 去重、offset/index 引用、length、flags 与 optional section；ABI Identity、Target、Hash Table、Symbol Table section | 已完成 |
+| M2 —— Bootstrap Kernel  | `BootImage`、`BootRecord` 与 loader；无 allocator、无 Registry、无 RCU、无 ABIX API；以显式 endianness 与 padding 定义 wire format                                                                                                                                                       | 已完成 |
+| M3 —— Runtime Registry  | Type registration、lookup、validation；打通 `Bootstrap → Registry → Type lookup` 闭环；Registry 自描述（`RegistryEntry` / `metadata::Bootstrap`）                                                                                                                                        | 已完成 |
+| M4 —— Type Self-hosting | 为 ABIX 核心类型建立正式 `.abic` self-description 配置；AMC 生成核心类型、`RegistryEntry`、`TypeDescriptor` 的 `.abix` metadata；静态 descriptor 注册进 `runtime::Registry`；验证 `runtime::Registry::type_of<TypeDesc>()` 能返回自身 metadata                                           | 已完成 |
+| M5 —— Compat            | HashDescriptor、Hash Domain、算法版本与 RuntimeKey 分层模型；`TypeHash`、`LayoutHash`、`SignatureHash` 与兼容性检查                                                                                                                                                                      | 已完成 |
+| M6 —— Runtime Map       | `MapInfo` 与 dynamic Map 的运行时转换                                                                                                                                                                                                                                                    | 已完成 |
+| M7 —— RCU / EBR         | AMC 提取 `ThreadState`、`Epoch`、`RetiredNode` 的布局与成员关系；将 RCU/EBR 类型注册进 Runtime Registry；完成 `ABIX Registry → ABIX RCU → ABIX Registry` 初始化闭环；验证 lookup 与 retire 不依赖未注册 metadata                                                                         | 已完成 |
+| M8 —— MapPrivate        | 生成 `MapPrivate<A, B>` 静态转换；验证 Runtime Map 与 `MapPrivate` 语义一致（copy/default；转换需 native converter）                                                                                                                                                                     | 已完成 |
+| M9 —— Full Self-hosting | ABIX 的 Type、Registry、Map、RCU、Compat、Bootstrap metadata 全部由 ABIX 描述；从干净构建目录重新生成 self-description artifact；禁止运行时路径依赖手写的非 Bootstrap metadata；至此完成 Runtime Self-hosting                                                                            | 已完成 |
 
 ## 关键设计决策
 
-| 决策 | 选择 | 理由 |
-|------|------|------|
-| 阶段数 | 四阶段，Phase 0 先冻结元模型 | 避免后期返工 |
-| `TypeInfo` | 拆分为 `TypeId` + `TypeDesc` + `TypeLayout` | 职责分离，兼容性更灵活 |
-| Hash | 抽象为 `Hash128`，算法可替换 | 不将 FNV-1a 定死为最终标准 |
-| TypeHash vs LayoutHash | 区分 | 兼容性系统的基础 |
-| Bootstrap Kernel 定位 | 静态 metadata loader，而非简化 Registry | 防止内核自身膨胀 |
-| Bootstrap ABI | 明确定义 wire format | 跨编译器稳定性 |
-| 开发顺序 | 先单线程 Registry，后 RCU/EBR | 先证明闭环成立，再引入并发 |
-| 依赖图 | 严格 DAG，禁止反向依赖 | 架构清晰，避免循环依赖 |
-| 状态机 | 初始化线程多状态，用户线程仅 NOT_READY/READY | 热路径零开销 |
-| `MapPrivate` 时机 | 晚于 Runtime Map | 先验证语义，再生成等价静态版本 |
-| Bootstrap 自描述 | 永远不需要 | Bootstrap 是 TCB，类似 BIOS/firmware |
-| `.abix` 引入时机 | Phase 0 即纳入设计 | 跨进程、跨语言共享 ABI 描述 |
+| 决策                   | 选择                                         | 理由                                 |
+| ---------------------- | -------------------------------------------- | ------------------------------------ |
+| 阶段数                 | 四阶段，Phase 0 先冻结元模型                 | 避免后期返工                         |
+| `TypeInfo`             | 拆分为 `TypeId` + `TypeDesc` + `TypeLayout`  | 职责分离，兼容性更灵活               |
+| Hash                   | 抽象为 `Hash128`，算法可替换                 | 不将 FNV-1a 定死为最终标准           |
+| TypeHash vs LayoutHash | 区分                                         | 兼容性系统的基础                     |
+| Bootstrap Kernel 定位  | 静态 metadata loader，而非简化 Registry      | 防止内核自身膨胀                     |
+| Bootstrap ABI          | 明确定义 wire format                         | 跨编译器稳定性                       |
+| 开发顺序               | 先单线程 Registry，后 RCU/EBR                | 先证明闭环成立，再引入并发           |
+| 依赖图                 | 严格 DAG，禁止反向依赖                       | 架构清晰，避免循环依赖               |
+| 状态机                 | 初始化线程多状态，用户线程仅 NOT_READY/READY | 热路径零开销                         |
+| `MapPrivate` 时机      | 晚于 Runtime Map                             | 先验证语义，再生成等价静态版本       |
+| Bootstrap 自描述       | 永远不需要                                   | Bootstrap 是 TCB，类似 BIOS/firmware |
+| `.abix` 引入时机       | Phase 0 即纳入设计                           | 跨进程、跨语言共享 ABI 描述          |

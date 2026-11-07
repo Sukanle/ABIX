@@ -15,13 +15,13 @@ ABIX 和 AMC 的职责不同：
 
 ## 只用 ABIX 能做什么
 
-| 能力                     | 头文件                                                                           | 需要 AMC？                                                                   |
-| ------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Interface 身份与方法签名 | `SKL/ABIX/Interface/Contract.h`                                                      | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
-| 手写 `Traits` 与代理     | `SKL/ABIX/Interface/Proxy.h`                                                         | 否——`UniqueInterfaceProxy<Traits>` 是 header-only                            |
-| 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h`                                                 | 否                                                                           |
-| 动态库发现与租约         | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h`                         | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY`                   |
-| Owner ABI                | `Owner.h`                                                                        | 否                                                                           |
+| 能力                     | 头文件                                                                                   | 需要 AMC？                                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Interface 身份与方法签名 | `SKL/ABIX/Interface/Contract.h`                                                          | 否——`interface_id`、`method_signature`、`canonical_type_id` 都是 `constexpr` |
+| 手写 `Traits` 与代理     | `SKL/ABIX/Interface/Proxy.h`                                                             | 否——`UniqueInterfaceProxy<Traits>` 是 header-only                            |
+| 进程内注册 / 解析 / 调用 | `Registry.h`、`Ref.h`、`Proxy.h`                                                         | 否                                                                           |
+| 动态库发现与租约         | `Module.h`、`ModuleRegistry.h`、`Discovery.h`、`Lease.h`                                 | 否——手写 `ModuleManifest` + `SKL_ABIX_DEFINE_MODULE_QUERY`                   |
+| Owner ABI                | `Owner.h`                                                                                | 否                                                                           |
 | 运行时表 / descriptor    | `SKL/ABIX/Runtime/Registry.h`、`SKL/ABIX/Metadata/Descriptor.h`、`SKL_ABIX_DEFINE_TABLE` | 否——结构是公开的，可以手写                                                   |
 | ABIX 自己的类型/布局摘要 | `SKL/ABIX/Model/ABI.h`、`SKL/ABIX/Model/Compat.h`                                        | 否——`canonical_type_id`、`canonical_layout_hash`、`abi_signature_hash`       |
 

@@ -58,192 +58,199 @@ include_guard(GLOBAL)
 # ============================================================================
 
 macro(abix_find_dependencies)
-  # Because we need to set variables in the caller's scope (not just one
-  # level up), we use a macro (which runs in the caller's scope directly)
-  # instead of a function.
-  #
-  # Usage:  abix_find_dependencies([COMPONENTS <dep1> <dep2> ...]
-  #                                 [REQUIRED  <dep1> <dep2> ...])
-  #
-  # If COMPONENTS is omitted, all known dependencies are searched.
+    # Because we need to set variables in the caller's scope (not just one
+    # level up), we use a macro (which runs in the caller's scope directly)
+    # instead of a function.
+    #
+    # Usage:  abix_find_dependencies([COMPONENTS <dep1> <dep2> ...]
+    #                                 [REQUIRED  <dep1> <dep2> ...])
+    #
+    # If COMPONENTS is omitted, all known dependencies are searched.
 
-  cmake_parse_arguments(_abix "" "" "COMPONENTS;REQUIRED" ${ARGN})
+    cmake_parse_arguments(_abix "" "" "COMPONENTS;REQUIRED" ${ARGN})
 
-  # If no COMPONENTS specified, default to all known dependencies.
-  # AMC has its own dependency discovery. The ABIX tree only needs its test
-  # framework, optional benchmarks, and fmt for the benchmarks.
-  set(_abix_all_deps Catch2 benchmark fmt)
-  if(NOT _abix_COMPONENTS)
-    set(_abix_COMPONENTS ${_abix_all_deps})
-  endif()
-
-  # --------------------------------------------------------------------------
-  # LLVM + Clang
-  # --------------------------------------------------------------------------
-  if(LLVM IN_LIST _abix_COMPONENTS)
-    list(FIND _abix_REQUIRED LLVM _abix_llvm_req)
-    if(_abix_llvm_req GREATER -1)
-      set(_abix_llvm_quiet "")
-    else()
-      set(_abix_llvm_quiet "QUIET")
+    # If no COMPONENTS specified, default to all known dependencies.
+    # AMC has its own dependency discovery. The ABIX tree only needs its test
+    # framework, optional benchmarks, and fmt for the benchmarks.
+    set(_abix_all_deps Catch2 benchmark fmt)
+    if(NOT _abix_COMPONENTS)
+        set(_abix_COMPONENTS ${_abix_all_deps})
     endif()
 
-    # Always clear CACHE entries so every configure run performs a
-    # fresh search.  This ensures LLVM/Clang are re-detected when the
-    # environment changes (e.g. different toolchain, platform switch).
-    unset(LLVM_DIR CACHE)
-    unset(Clang_DIR CACHE)
+    # --------------------------------------------------------------------------
+    # LLVM + Clang
+    # --------------------------------------------------------------------------
+    if(LLVM IN_LIST _abix_COMPONENTS)
+        list(FIND _abix_REQUIRED LLVM _abix_llvm_req)
+        if(_abix_llvm_req GREATER -1)
+            set(_abix_llvm_quiet "")
+        else()
+            set(_abix_llvm_quiet "QUIET")
+        endif()
 
-    find_package(LLVM CONFIG ${_abix_llvm_quiet})
-    find_package(Clang CONFIG ${_abix_llvm_quiet})
+        # Always clear CACHE entries so every configure run performs a
+        # fresh search.  This ensures LLVM/Clang are re-detected when the
+        # environment changes (e.g. different toolchain, platform switch).
+        unset(LLVM_DIR CACHE)
+        unset(Clang_DIR CACHE)
 
-    if(LLVM_FOUND AND TARGET clang-cpp)
-      set(ABIX_LLVM_FOUND TRUE)
-      message(STATUS "LLVM ${LLVM_PACKAGE_VERSION} — ${LLVM_DIR}")
-      message(STATUS "Clang          — ${Clang_DIR}")
-    else()
-      set(ABIX_LLVM_FOUND FALSE)
-      if(LLVM_FOUND AND NOT TARGET clang-cpp)
-        message(STATUS "LLVM found but clang-cpp library target is missing "
-                        "(install the full LLVM package including libclang-cpp)")
-      elseif(_abix_llvm_req GREATER -1)
-        message(FATAL_ERROR "LLVM / Clang not found — required by the project configuration.  "
-                            "Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 LLVM package, or "
-                            "point CMake at it with -DCMAKE_PREFIX_PATH=<prefix> "
-                            "(Homebrew keg-only: $(brew --prefix llvm)).")
-      else()
-        message(STATUS "LLVM / Clang not found — AMC (ABI Metadata Compiler) "
-                        "will not be built.  Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 "
-                        "LLVM package, or point CMake at it with -DCMAKE_PREFIX_PATH=<prefix> "
-                        "(Homebrew keg-only: $(brew --prefix llvm)).")
-      endif()
-    endif()
-  endif()
+        find_package(LLVM CONFIG ${_abix_llvm_quiet})
+        find_package(Clang CONFIG ${_abix_llvm_quiet})
 
-  # --------------------------------------------------------------------------
-  # fmtlib
-  # --------------------------------------------------------------------------
-  if(fmt IN_LIST _abix_COMPONENTS)
-    list(FIND _abix_REQUIRED fmt _abix_fmt_req)
-    if(_abix_fmt_req GREATER -1)
-      set(_abix_fmt_quiet "")
-    else()
-      set(_abix_fmt_quiet "QUIET")
-    endif()
-
-    find_package(fmt CONFIG ${_abix_fmt_quiet})
-
-    if(fmt_FOUND)
-      set(ABIX_FMT_FOUND TRUE)
-      message(STATUS "fmt ${FMT_VERSION} found — ${FMT_DIR}")
-    else()
-      set(ABIX_FMT_FOUND FALSE)
-      if(_abix_fmt_req GREATER -1)
-        message(FATAL_ERROR "fmt not found — required by the project configuration.  "
-                            "Install: brew install fmt")
-      else()
-        message(STATUS "fmt not found — install via: brew install fmt")
-      endif()
-    endif()
-  endif()
-
-  # --------------------------------------------------------------------------
-  # toml++  (AMC .abic.toml configuration parser)
-  # --------------------------------------------------------------------------
-  if(tomlplusplus IN_LIST _abix_COMPONENTS)
-    list(FIND _abix_REQUIRED tomlplusplus _abix_toml_req)
-    if(_abix_toml_req GREATER -1)
-      set(_abix_toml_quiet "")
-    else()
-      set(_abix_toml_quiet "QUIET")
+        if(LLVM_FOUND AND TARGET clang-cpp)
+            set(ABIX_LLVM_FOUND TRUE)
+            message(STATUS "LLVM ${LLVM_PACKAGE_VERSION} — ${LLVM_DIR}")
+            message(STATUS "Clang          — ${Clang_DIR}")
+        else()
+            set(ABIX_LLVM_FOUND FALSE)
+            if(LLVM_FOUND AND NOT TARGET clang-cpp)
+                message(
+                    STATUS "LLVM found but clang-cpp library target is missing "
+                           "(install the full LLVM package including libclang-cpp)")
+            elseif(_abix_llvm_req GREATER -1)
+                message(
+                    FATAL_ERROR "LLVM / Clang not found — required by the project configuration.  "
+                                "Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 LLVM package, or "
+                                "point CMake at it with -DCMAKE_PREFIX_PATH=<prefix> "
+                                "(Homebrew keg-only: $(brew --prefix llvm)).")
+            else()
+                message(
+                    STATUS "LLVM / Clang not found — AMC (ABI Metadata Compiler) "
+                           "will not be built.  Install LLVM via Homebrew / vcpkg / the MSYS2 ucrt64 "
+                           "LLVM package, or point CMake at it with -DCMAKE_PREFIX_PATH=<prefix> "
+                           "(Homebrew keg-only: $(brew --prefix llvm)).")
+            endif()
+        endif()
     endif()
 
-    find_package(tomlplusplus CONFIG ${_abix_toml_quiet})
+    # --------------------------------------------------------------------------
+    # fmtlib
+    # --------------------------------------------------------------------------
+    if(fmt IN_LIST _abix_COMPONENTS)
+        list(FIND _abix_REQUIRED fmt _abix_fmt_req)
+        if(_abix_fmt_req GREATER -1)
+            set(_abix_fmt_quiet "")
+        else()
+            set(_abix_fmt_quiet "QUIET")
+        endif()
 
-    if(tomlplusplus_FOUND)
-      set(ABIX_tomlplusplus_FOUND TRUE)
-      message(STATUS "toml++ ${tomlplusplus_VERSION} found")
-    else()
-      set(ABIX_tomlplusplus_FOUND FALSE)
-      if(_abix_toml_req GREATER -1)
-        message(FATAL_ERROR "toml++ not found — required by the project configuration.  "
-                            "Install: brew install tomlplusplus, or vcpkg install tomlplusplus")
-      else()
-        message(STATUS "toml++ not found — install via: brew install tomlplusplus, or vcpkg install tomlplusplus")
-      endif()
-    endif()
-  endif()
+        find_package(fmt CONFIG ${_abix_fmt_quiet})
 
-  # --------------------------------------------------------------------------
-  # Catch2  (testing framework)
-  # --------------------------------------------------------------------------
-  if(Catch2 IN_LIST _abix_COMPONENTS)
-    list(FIND _abix_REQUIRED Catch2 _abix_catch2_req)
-    if(_abix_catch2_req GREATER -1)
-      set(_abix_catch2_quiet "")
-    else()
-      set(_abix_catch2_quiet "QUIET")
-    endif()
-
-    find_package(Catch2 3 CONFIG ${_abix_catch2_quiet})
-
-    if(Catch2_FOUND)
-      set(ABIX_Catch2_FOUND TRUE)
-      message(STATUS "Catch2 ${Catch2_VERSION} found")
-    else()
-      set(ABIX_Catch2_FOUND FALSE)
-      if(_abix_catch2_req GREATER -1)
-        message(FATAL_ERROR "Catch2 v3 not found — required by the project configuration.  "
-                            "Install: brew install catch2")
-      else()
-        message(STATUS "Catch2 v3 not found — tests will not be built.  "
-                        "Install: brew install catch2")
-      endif()
-    endif()
-  endif()
-
-  # --------------------------------------------------------------------------
-  # Google Benchmark
-  # --------------------------------------------------------------------------
-  if(benchmark IN_LIST _abix_COMPONENTS)
-    list(FIND _abix_REQUIRED benchmark _abix_bench_req)
-    if(_abix_bench_req GREATER -1)
-      set(_abix_bench_quiet "")
-    else()
-      set(_abix_bench_quiet "QUIET")
+        if(fmt_FOUND)
+            set(ABIX_FMT_FOUND TRUE)
+            message(STATUS "fmt ${FMT_VERSION} found — ${FMT_DIR}")
+        else()
+            set(ABIX_FMT_FOUND FALSE)
+            if(_abix_fmt_req GREATER -1)
+                message(
+                    FATAL_ERROR "fmt not found — required by the project configuration.  " "Install: brew install fmt")
+            else()
+                message(STATUS "fmt not found — install via: brew install fmt")
+            endif()
+        endif()
     endif()
 
-    find_package(benchmark CONFIG ${_abix_bench_quiet})
+    # --------------------------------------------------------------------------
+    # toml++  (AMC .abic.toml configuration parser)
+    # --------------------------------------------------------------------------
+    if(tomlplusplus IN_LIST _abix_COMPONENTS)
+        list(FIND _abix_REQUIRED tomlplusplus _abix_toml_req)
+        if(_abix_toml_req GREATER -1)
+            set(_abix_toml_quiet "")
+        else()
+            set(_abix_toml_quiet "QUIET")
+        endif()
 
-    if(benchmark_FOUND)
-      set(ABIX_benchmark_FOUND TRUE)
-      message(STATUS "Google Benchmark found")
-    else()
-      set(ABIX_benchmark_FOUND FALSE)
-      if(_abix_bench_req GREATER -1)
-        message(FATAL_ERROR "Google Benchmark not found — required by the project configuration.  "
-                            "Install: brew install google-benchmark")
-      else()
-        message(STATUS "Google Benchmark not found — benchmarks will not be built.  "
-                        "Install: brew install google-benchmark")
-      endif()
+        find_package(tomlplusplus CONFIG ${_abix_toml_quiet})
+
+        if(tomlplusplus_FOUND)
+            set(ABIX_tomlplusplus_FOUND TRUE)
+            message(STATUS "toml++ ${tomlplusplus_VERSION} found")
+        else()
+            set(ABIX_tomlplusplus_FOUND FALSE)
+            if(_abix_toml_req GREATER -1)
+                message(
+                    FATAL_ERROR "toml++ not found — required by the project configuration.  "
+                                "Install: brew install tomlplusplus, or vcpkg install tomlplusplus")
+            else()
+                message(
+                    STATUS "toml++ not found — install via: brew install tomlplusplus, or vcpkg install tomlplusplus")
+            endif()
+        endif()
     endif()
-  endif()
 
-  # Clean up internal variables so they don't leak into the caller's scope.
-  unset(_abix_all_deps)
-  unset(_abix_COMPONENTS)
-  unset(_abix_REQUIRED)
-  unset(_abix_llvm_req)
-  unset(_abix_llvm_quiet)
-  unset(_abix_fmt_req)
-  unset(_abix_fmt_quiet)
-  unset(_abix_toml_req)
-  unset(_abix_toml_quiet)
-  unset(_abix_catch2_req)
-  unset(_abix_catch2_quiet)
-  unset(_abix_bench_req)
-  unset(_abix_bench_quiet)
+    # --------------------------------------------------------------------------
+    # Catch2  (testing framework)
+    # --------------------------------------------------------------------------
+    if(Catch2 IN_LIST _abix_COMPONENTS)
+        list(FIND _abix_REQUIRED Catch2 _abix_catch2_req)
+        if(_abix_catch2_req GREATER -1)
+            set(_abix_catch2_quiet "")
+        else()
+            set(_abix_catch2_quiet "QUIET")
+        endif()
+
+        find_package(Catch2 3 CONFIG ${_abix_catch2_quiet})
+
+        if(Catch2_FOUND)
+            set(ABIX_Catch2_FOUND TRUE)
+            message(STATUS "Catch2 ${Catch2_VERSION} found")
+        else()
+            set(ABIX_Catch2_FOUND FALSE)
+            if(_abix_catch2_req GREATER -1)
+                message(
+                    FATAL_ERROR "Catch2 v3 not found — required by the project configuration.  "
+                                "Install: brew install catch2")
+            else()
+                message(STATUS "Catch2 v3 not found — tests will not be built.  " "Install: brew install catch2")
+            endif()
+        endif()
+    endif()
+
+    # --------------------------------------------------------------------------
+    # Google Benchmark
+    # --------------------------------------------------------------------------
+    if(benchmark IN_LIST _abix_COMPONENTS)
+        list(FIND _abix_REQUIRED benchmark _abix_bench_req)
+        if(_abix_bench_req GREATER -1)
+            set(_abix_bench_quiet "")
+        else()
+            set(_abix_bench_quiet "QUIET")
+        endif()
+
+        find_package(benchmark CONFIG ${_abix_bench_quiet})
+
+        if(benchmark_FOUND)
+            set(ABIX_benchmark_FOUND TRUE)
+            message(STATUS "Google Benchmark found")
+        else()
+            set(ABIX_benchmark_FOUND FALSE)
+            if(_abix_bench_req GREATER -1)
+                message(
+                    FATAL_ERROR "Google Benchmark not found — required by the project configuration.  "
+                                "Install: brew install google-benchmark")
+            else()
+                message(
+                    STATUS "Google Benchmark not found — benchmarks will not be built.  "
+                           "Install: brew install google-benchmark")
+            endif()
+        endif()
+    endif()
+
+    # Clean up internal variables so they don't leak into the caller's scope.
+    unset(_abix_all_deps)
+    unset(_abix_COMPONENTS)
+    unset(_abix_REQUIRED)
+    unset(_abix_llvm_req)
+    unset(_abix_llvm_quiet)
+    unset(_abix_fmt_req)
+    unset(_abix_fmt_quiet)
+    unset(_abix_toml_req)
+    unset(_abix_toml_quiet)
+    unset(_abix_catch2_req)
+    unset(_abix_catch2_quiet)
+    unset(_abix_bench_req)
+    unset(_abix_bench_quiet)
 endmacro()
 
 # ============================================================================

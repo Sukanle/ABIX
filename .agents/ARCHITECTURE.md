@@ -1,12 +1,8 @@
 # Architecture
 
-This document is the **design map** for ABIX. It states _why the system is
-shaped this way_ and which invariants must not be broken. It intentionally does
-not track file-level implementation detail, which ages quickly.
+This document is the **design map** for ABIX. It states _why the system is shaped this way_ and which invariants must not be broken. It intentionally does not track file-level implementation detail, which ages quickly.
 
-For ABI semantics see [`ABI-SPEC.md`](ABI-SPEC.md). For extension see
-[`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md). Deeper implementation knowledge lives
-in [`docs/`](../docs/).
+For ABI semantics see [`ABI-SPEC.md`](ABI-SPEC.md). For extension see [`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md). Deeper implementation knowledge lives in [`docs/`](../docs/).
 
 ## 1. Design Goals
 
@@ -34,8 +30,7 @@ ABIX IR                           language-independent ABI semantics
         └──────────────► ABIX Runtime                 binding / execution
 ```
 
-Each layer has one responsibility. Data flows downward; nothing below
-redefines a layer above it.
+Each layer has one responsibility. Data flows downward; nothing below redefines a layer above it.
 
 ## 3. Ownership of Responsibilities
 
@@ -51,33 +46,27 @@ redefines a layer above it.
 
 ### 4.1 One ABI Truth
 
-There is exactly one authoritative ABI semantic model. The runtime may project
-or cache it, but must not redefine it.
+There is exactly one authoritative ABI semantic model. The runtime may project or cache it, but must not redefine it.
 
 ### 4.2 Native Execution
 
-ABIX establishes the ABI relationship dynamically and then executes through the
-native ABI. It does not interpret compatible calls.
+ABIX establishes the ABI relationship dynamically and then executes through the native ABI. It does not interpret compatible calls.
 
 ### 4.3 No Universal Object Model
 
-ABIX describes existing native types and binary contracts. It does not define a
-universal object hierarchy, ownership runtime, GC, or VM.
+ABIX describes existing native types and binary contracts. It does not define a universal object hierarchy, ownership runtime, GC, or VM.
 
 ### 4.4 Language Independence
 
-ABIX IR is language-independent. Language-specific behaviour belongs in a
-frontend/plugin, not in the core model.
+ABIX IR is language-independent. Language-specific behaviour belongs in a frontend/plugin, not in the core model.
 
 ### 4.5 Pointer-Free Serialization
 
-Serialized metadata uses offsets and indices, never absolute pointers, so it is
-relocation-free and survives ASLR, PIE, mmap and cross-process transport.
+Serialized metadata uses offsets and indices, never absolute pointers, so it is relocation-free and survives ASLR, PIE, mmap and cross-process transport.
 
 ### 4.6 Names Are Not Identity
 
-`TypeID` and `LayoutHash` define identity and layout. Names are diagnostic only
-and must never drive compatibility.
+`TypeID` and `LayoutHash` define identity and layout. Names are diagnostic only and must never drive compatibility.
 
 ### 4.7 Deterministic Artifacts
 
@@ -93,16 +82,11 @@ plugins ──► ABIX IR ──► AMC ──► runtime
 
 - Plugins depend on ABIX IR, never on runtime internals.
 - The runtime depends on the ABI model, never on a language AST.
-- The AMC toolchain owns `libabix-format` / `libabix-abi` /
-  `libabix-metadata` / `libabix-tools`; ABIX owns header-only
-  `libabix-runtime`. AMC consumers share one parser.
+- The AMC toolchain owns `libabix-format` / `libabix-abi` / `libabix-metadata` / `libabix-tools`; ABIX owns header-only `libabix-runtime`. AMC consumers share one parser.
 
 ## 6. Bootstrap Architecture
 
-ABIX is self-hosting for its public ABI: it describes its own public ABI with
-its own model, then uses that description to build and verify later versions.
-The stable bootstrap ABI is separated from internal implementation. See
-[`docs/self-hosting.md`](../docs/self-hosting.md).
+ABIX is self-hosting for its public ABI: it describes its own public ABI with its own model, then uses that description to build and verify later versions. The stable bootstrap ABI is separated from internal implementation. See [`docs/self-hosting.md`](../docs/self-hosting.md).
 
 ## 7. Runtime Architecture
 
@@ -116,15 +100,11 @@ Metadata Region (embedded, pointer-free, mmap-able)
 Runtime Descriptor (pointer-rich, hot path)
 ```
 
-Dynamic cost is concentrated at initialisation. After materialization the hot
-path is close to a static ABI. See [`docs/runtime.md`](../docs/runtime.md) and
-[`docs/metadata_modes.md`](../docs/metadata_modes.md).
+Dynamic cost is concentrated at initialisation. After materialization the hot path is close to a static ABI. See [`docs/runtime.md`](../docs/runtime.md) and [`docs/metadata_modes.md`](../docs/metadata_modes.md).
 
 ## 7.1 Versioned TypeID Registration
 
-The `runtime::Registry` supports versioned registration: the same `TypeID` may
-coexist under distinct module ABI versions with different layouts. Only a
-repeated `TypeID` _within the same version_ is a layout conflict (Boundary #1).
+The `runtime::Registry` supports versioned registration: the same `TypeID` may coexist under distinct module ABI versions with different layouts. Only a repeated `TypeID` _within the same version_ is a layout conflict (Boundary #1).
 
 ```cpp
 // Two versions of the same module may register the same TypeID.
@@ -138,9 +118,7 @@ const auto *entry = registry.find_type(my_type_id, /*version=*/2);
 const auto *latest = registry.find_by_id(my_type_id);
 ```
 
-The version is parsed from the module's `version` string: leading decimal
-digits map to an integer (`"1"` → 1, `"1.0"` → 1, `"2"` → 2); no digits → 0
-(experimental). The adapter layer selects the version at dispatch time.
+The version is parsed from the module's `version` string: leading decimal digits map to an integer (`"1"` → 1, `"1.0"` → 1, `"2"` → 2); no digits → 0 (experimental). The adapter layer selects the version at dispatch time.
 
 ## 7.2 ABI Adapter
 
@@ -151,13 +129,9 @@ amc diff v1.abix v2.abix  →  compatibility report (maps[])
 amc adapter v1.abix v2.abix  →  C++ header with field-level copy
 ```
 
-The generated adapter applies `copy_field` / `add_default` / `skip_field` /
-`convert_int` / `convert_float` mappings from raw source memory to raw target
-memory. It works without the C++ projections being present.
+The generated adapter applies `copy_field` / `add_default` / `skip_field` / `convert_int` / `convert_float` mappings from raw source memory to raw target memory. It works without the C++ projections being present.
 
-Typed mode (`amc adapter --typed`) generates `abix::adapter<Source, Target>`
-specializations for each compatible type pair. The primary template returns
-`false` so callers can fall back gracefully.
+Typed mode (`amc adapter --typed`) generates `abix::adapter<Source, Target>` specializations for each compatible type pair. The primary template returns `false` so callers can fall back gracefully.
 
 See the AMC repository's [`docs/amc/amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) `amc adapter` section and the AMC repository's `src/SKL/AMC/Core/amc_adapter.h`.
 
@@ -166,10 +140,8 @@ See the AMC repository's [`docs/amc/amc.md`](https://github.com/Sukanle/AMC/blob
 - **New language** → implement a frontend/plugin ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md)).
 - **New artifact consumer** → link `libabix-*`, do not write a new parser.
 - **New tool** → build on the AMC repository's core query/verify APIs; keep JSON schemas stable.
-- **New runtime capability** → extend the runtime projection, not the ABI model,
-  unless it is a genuine ABI concept.
-- **ABI adaptation** → use `amc adapter` to generate field-level mapping code
-  between ABI versions; the runtime adapter dispatches via `abix::adapter<S,T>`.
+- **New runtime capability** → extend the runtime projection, not the ABI model, unless it is a genuine ABI concept.
+- **ABI adaptation** → use `amc adapter` to generate field-level mapping code between ABI versions; the runtime adapter dispatches via `abix::adapter<S,T>`.
 
 ## 9. Forbidden Architectural Patterns
 
@@ -186,5 +158,4 @@ Do not:
 - change ABI semantics to simplify an implementation;
 - hardcode adapter mappings instead of deriving them from compatibility reports;
 
-If a task appears to require one of these, stop and explain the conflict
-before changing the constraint ([`AGENTS.md`](AGENTS.md) §13).
+If a task appears to require one of these, stop and explain the conflict before changing the constraint ([`AGENTS.md`](AGENTS.md) §13).

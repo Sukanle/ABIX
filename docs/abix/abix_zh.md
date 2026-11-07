@@ -41,13 +41,13 @@
 
 ## 核心职责
 
-| 职责 | 说明 |
-|------|------|
-| 记录 ABI 事实 | 类型、布局、字段、函数、符号的真实状态 |
-| 记录 ABI IR | Map 操作的中间表示（语言无关） |
-| 记录兼容性 | LayoutHash / SignatureHash / Compat |
-| 支持 mmap | 二进制格式，零反序列化，直接访问 |
-| 支持投影 | 可被 AMC 投影为 C++ / Rust / Zig 等目标代码 |
+| 职责          | 说明                                        |
+| ------------- | ------------------------------------------- |
+| 记录 ABI 事实 | 类型、布局、字段、函数、符号的真实状态      |
+| 记录 ABI IR   | Map 操作的中间表示（语言无关）              |
+| 记录兼容性    | LayoutHash / SignatureHash / Compat         |
+| 支持 mmap     | 二进制格式，零反序列化，直接访问            |
+| 支持投影      | 可被 AMC 投影为 C++ / Rust / Zig 等目标代码 |
 
 ## 格式：Binary
 
@@ -55,15 +55,15 @@
 
 ### 设计原则
 
-| 原则 | 说明 |
-|------|------|
-| 固定宽度 | `u8` / `u16` / `u32` / `u64` / `i8` / `i16` / ...，不使用 `sizeof(long)` / `sizeof(void*)` |
-| 不保存裸指针 | 使用 `TypeId` / `Offset` / `Index` 引用，而非指针 |
-| Offset-based | 所有表通过偏移量/索引访问 |
-| Little endian | 统一字节序 |
-| Compact | 针对 cache locality / compactness / sequential access / random access 优化 |
-| mmap-friendly | 可直接 `mmap("foo.abix")` 后访问 Header → Section → Record |
-| 无冗余 | 不保存可从其他表推导的信息 |
+| 原则          | 说明                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| 固定宽度      | `u8` / `u16` / `u32` / `u64` / `i8` / `i16` / ...，不使用 `sizeof(long)` / `sizeof(void*)` |
+| 不保存裸指针  | 使用 `TypeId` / `Offset` / `Index` 引用，而非指针                                          |
+| Offset-based  | 所有表通过偏移量/索引访问                                                                  |
+| Little endian | 统一字节序                                                                                 |
+| Compact       | 针对 cache locality / compactness / sequential access / random access 优化                 |
+| mmap-friendly | 可直接 `mmap("foo.abix")` 后访问 Header → Section → Record                                 |
+| 无冗余        | 不保存可从其他表推导的信息                                                                 |
 
 ### "无需反序列化" ≠ "零运行时成本"
 
@@ -94,15 +94,15 @@ graph TD
 
 相比初始设计的变更：
 
-| 移除/变更 | 原因 |
-|-----------|------|
-| `Target` 节 | 合并入 `ABI Identity`，职责统一为"此 artifact 的编译环境" |
-| `Hash Table` | 当前 AMC v4 required section，保存 HashDescriptor 与 canonical hash records |
-| `Compat Table` 中的 `source/target_layout_hash` | 由 source/target TypeId 查 Type Table → Layout Table 推导 |
-| Type Table 中的 `field_begin` / `field_count` | 通过 `layout_index` 从 Layout Table 获取 |
-| Symbol Table 中的 `target_hash` | 改为 `(target_kind, target_index)` typed index |
-| Parameter Table 中的 `position` | 由数组顺序推导 |
-| Field Table 中的 `size` | 默认从字段 TypeId 对应的 Layout 推导（仅数组/opaque 等特殊情况保留） |
+| 移除/变更                                       | 原因                                                                        |
+| ----------------------------------------------- | --------------------------------------------------------------------------- |
+| `Target` 节                                     | 合并入 `ABI Identity`，职责统一为"此 artifact 的编译环境"                   |
+| `Hash Table`                                    | 当前 AMC v4 required section，保存 HashDescriptor 与 canonical hash records |
+| `Compat Table` 中的 `source/target_layout_hash` | 由 source/target TypeId 查 Type Table → Layout Table 推导                   |
+| Type Table 中的 `field_begin` / `field_count`   | 通过 `layout_index` 从 Layout Table 获取                                    |
+| Symbol Table 中的 `target_hash`                 | 改为 `(target_kind, target_index)` typed index                              |
+| Parameter Table 中的 `position`                 | 由数组顺序推导                                                              |
+| Field Table 中的 `size`                         | 默认从字段 TypeId 对应的 Layout 推导（仅数组/opaque 等特殊情况保留）        |
 
 ## 各节详解
 
@@ -334,18 +334,18 @@ Offset  Size  Field             (per record)
 
 `.abix` 中保存的是 **Map IR**（语言无关的操作码），而非 C++ 代码：
 
-| Opcode | 名称 | source_idx | target_idx | auxiliary | 说明 |
-|--------|------|:----------:|:----------:|:---------:|------|
-| 0x00 | `COPY_FIELD` | ✓ | ✓ | — | 按偏移拷贝字段 |
-| 0x01 | `CONVERT_INT` | ✓ | ✓ | ✓ | 整数类型转换，aux = 目标类型 TypeId |
-| 0x02 | `CONVERT_FLOAT` | ✓ | ✓ | ✓ | 浮点类型转换，aux = 目标类型 TypeId |
-| 0x03 | `DEFAULT_FIELD` | — | ✓ | ✓ | 用默认值填充，aux = 默认值编码 |
-| 0x04 | `RENAME_FIELD` | ✓ | ✓ | — | 字段重命名 |
-| 0x05 | `PTR_REINTERPRET` | ✓ | ✓ | ✓ | 指针重新解释，aux = 目标 TypeId |
-| 0x06 | `CALL_CONVERTER` | ✓ | ✓ | ✓ | 调用转换器，aux = 转换函数 SignatureHash |
-| 0x07 | `SKIP_FIELD` | ✓ | — | — | 跳过字段（源有目标无） |
-| 0x08 | `ADD_DEFAULT` | — | ✓ | ✓ | 添加默认字段，aux = 默认值编码 |
-| 0x09 | `NESTED_MAP` | ✓ | ✓ | ✓ | 递归映射，aux = 嵌套 Map Table 索引 |
+| Opcode | 名称              | source_idx | target_idx | auxiliary | 说明                                     |
+| ------ | ----------------- | :--------: | :--------: | :-------: | ---------------------------------------- |
+| 0x00   | `COPY_FIELD`      |     ✓      |     ✓      |     —     | 按偏移拷贝字段                           |
+| 0x01   | `CONVERT_INT`     |     ✓      |     ✓      |     ✓     | 整数类型转换，aux = 目标类型 TypeId      |
+| 0x02   | `CONVERT_FLOAT`   |     ✓      |     ✓      |     ✓     | 浮点类型转换，aux = 目标类型 TypeId      |
+| 0x03   | `DEFAULT_FIELD`   |     —      |     ✓      |     ✓     | 用默认值填充，aux = 默认值编码           |
+| 0x04   | `RENAME_FIELD`    |     ✓      |     ✓      |     —     | 字段重命名                               |
+| 0x05   | `PTR_REINTERPRET` |     ✓      |     ✓      |     ✓     | 指针重新解释，aux = 目标 TypeId          |
+| 0x06   | `CALL_CONVERTER`  |     ✓      |     ✓      |     ✓     | 调用转换器，aux = 转换函数 SignatureHash |
+| 0x07   | `SKIP_FIELD`      |     ✓      |     —      |     —     | 跳过字段（源有目标无）                   |
+| 0x08   | `ADD_DEFAULT`     |     —      |     ✓      |     ✓     | 添加默认字段，aux = 默认值编码           |
+| 0x09   | `NESTED_MAP`      |     ✓      |     ✓      |     ✓     | 递归映射，aux = 嵌套 Map Table 索引      |
 
 **opcode-specific payload**：不同 opcode 实际需要的字段不同。无效字段设为 `UINT32_MAX`（sentinel），而非浪费空间存储无用数据。
 
@@ -396,12 +396,12 @@ Offset  Size  Field             (per record)
 
 这是 `.abix` 设计的原则：
 
-| 概念 | 回答的问题 | 举例 |
-|------|-----------|------|
-| **Type** | 这是什么类型？ | `Foo` |
-| **Layout** | 它在 ABI 上长什么样？ | `size=32, align=8, field[a@0, b@8, c@24]` |
-| **Function** | 逻辑函数签名是什么？ | `Foo* foo_create(i32, u64)` |
-| **Symbol** | 对应哪个 linker symbol？ | `_Z11foo_createim` |
+| 概念         | 回答的问题               | 举例                                      |
+| ------------ | ------------------------ | ----------------------------------------- |
+| **Type**     | 这是什么类型？           | `Foo`                                     |
+| **Layout**   | 它在 ABI 上长什么样？    | `size=32, align=8, field[a@0, b@8, c@24]` |
+| **Function** | 逻辑函数签名是什么？     | `Foo* foo_create(i32, u64)`               |
+| **Symbol**   | 对应哪个 linker symbol？ | `_Z11foo_createim`                        |
 
 **Type ≠ Layout**：同一 Type 在不同平台可有不同 Layout。
 
@@ -422,12 +422,12 @@ struct Hash128 {
 
 `.abix` 的 canonical 元数据使用 Hash128；现有 ABIX DLL 表和 MICS 运行时接口继续使用 64 位哈希，以保持既有二进制兼容性：
 
-| 哈希类型 | 宽度 | 说明 |
-|----------|------|------|
-| `TypeId` | Hash128 | `.abix` 中的规范类型标识 |
-| `LayoutHash` | Hash128 | 完整布局描述 |
+| 哈希类型        | 宽度    | 说明                                                   |
+| --------------- | ------- | ------------------------------------------------------ |
+| `TypeId`        | Hash128 | `.abix` 中的规范类型标识                               |
+| `LayoutHash`    | Hash128 | 完整布局描述                                           |
 | `SignatureHash` | Hash128 | `.abix` 中的规范函数签名；现有 DLL 函数表仍使用 Hash64 |
-| `ABIHash` | Hash128 | 整个 ABI artifact |
+| `ABIHash`       | Hash128 | 整个 ABI artifact                                      |
 
 现有运行时接口中的 `type_hash` / `sig_t` 保持 `uint64_t`。第一版 `.abix` 使用 Hash128 表示 TypeId、LayoutHash、SignatureHash 和 ABIHash；算法可替换为 XXH3 / BLAKE3 / SHA-256 truncated，**不改变 `.abix` 模型**。Hash 算法由 Header 中的 `hash_algorithm` 字段标识。
 
@@ -562,9 +562,9 @@ graph TD
 
 支持两种加载模式：
 
-| 模式 | 说明 |
-|------|------|
-| **Lazy mmap View** | 延迟加载，按需 page fault |
+| 模式                       | 说明                            |
+| -------------------------- | ------------------------------- |
+| **Lazy mmap View**         | 延迟加载，按需 page fault       |
 | **Eager Runtime Registry** | 一次性加载到 Registry，全量可用 |
 
 ### Mode B：Static（编译期）
@@ -621,13 +621,13 @@ graph TD
     A[".abic<br/>Intent/Policy"] -->|"AMC"| B[".abix<br/>ABI Artifact<br/>+ ABI IR"]
 ```
 
-| 属性 | `.abic` | `.abix` |
-|------|---------|---------|
-| 定位 | 配置/意图 | 事实/产物 |
-| 格式 | TOML（人可读） | Binary（机器可读） |
-| 消费者 | AMC（构建时） | Runtime / AMC / Compiler |
-| 运行时依赖 | 无 | 有（Runtime 模式） |
-| Source of Truth | 否 | **是** |
+| 属性            | `.abic`        | `.abix`                  |
+| --------------- | -------------- | ------------------------ |
+| 定位            | 配置/意图      | 事实/产物                |
+| 格式            | TOML（人可读） | Binary（机器可读）       |
+| 消费者          | AMC（构建时）  | Runtime / AMC / Compiler |
+| 运行时依赖      | 无             | 有（Runtime 模式）       |
+| Source of Truth | 否             | **是**                   |
 
 ## 投影体系
 
@@ -651,24 +651,24 @@ graph TD
 
 ## 与传统方案的区别
 
-| 方案 | 本质 | ABIX 的区别 |
-|------|------|------------|
-| Reflection | 运行时类型内省 | ABIX 包含兼容性/映射 IR，不仅是类型信息 |
-| Serialization | 数据编解码 | ABIX 关注 ABI 布局兼容，不关注数据格式 |
-| RPC | 远程过程调用 | ABIX 关注本地跨 DLL 边界，不涉及网络 |
-| IDL | 接口描述语言 | ABIX 从实际编译产物提取，非手写接口 |
-| Protobuf/FlatBuffers | 数据 schema | ABIX 描述内存布局 ABI，非序列化 schema |
+| 方案                 | 本质           | ABIX 的区别                             |
+| -------------------- | -------------- | --------------------------------------- |
+| Reflection           | 运行时类型内省 | ABIX 包含兼容性/映射 IR，不仅是类型信息 |
+| Serialization        | 数据编解码     | ABIX 关注 ABI 布局兼容，不关注数据格式  |
+| RPC                  | 远程过程调用   | ABIX 关注本地跨 DLL 边界，不涉及网络    |
+| IDL                  | 接口描述语言   | ABIX 从实际编译产物提取，非手写接口     |
+| Protobuf/FlatBuffers | 数据 schema    | ABIX 描述内存布局 ABI，非序列化 schema  |
 
 ABIX 是一个位于源码/编译器与 ABI Runtime 之间的 ABI 中间层。
 
 ## 核心理念
 
-| 关键词 | 说明 |
-|--------|------|
-| **Canonical** | 不同编译器/语言/平台的 ABI 信息首先被归一化 |
-| **Declarative** | `.abix` 描述"是什么"，而非"怎么写 C++ 代码" |
-| **Dynamic** | Runtime 可动态加载，不要求双方 ABI 在编译时完全固定 |
-| **Static** | 已知 ABI 可被 AMC 降级为 constexpr / MapPrivate / inline |
+| 关键词           | 说明                                                              |
+| ---------------- | ----------------------------------------------------------------- |
+| **Canonical**    | 不同编译器/语言/平台的 ABI 信息首先被归一化                       |
+| **Declarative**  | `.abix` 描述"是什么"，而非"怎么写 C++ 代码"                       |
+| **Dynamic**      | Runtime 可动态加载，不要求双方 ABI 在编译时完全固定               |
+| **Static**       | 已知 ABI 可被 AMC 降级为 constexpr / MapPrivate / inline          |
 | **Self-hosting** | ABIX 自己也使用 ABIX：`abix.abix` → ABIX Runtime → 读取自己的 ABI |
 
 ## 完整文件关系

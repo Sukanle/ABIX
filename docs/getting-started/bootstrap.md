@@ -81,10 +81,10 @@ ABIX's own type, registry, map, RCU, compatibility and bootstrap metadata are pr
 
 A single `TypeInfo` is not allowed to carry every responsibility. It is split by question answered:
 
-| Type | Question | Content |
-|------|----------|---------|
-| `TypeId` | "Who am I?" | canonical type identity as a `Hash128` |
-| `TypeDesc` | "What am I?" | id, flags, name offset, layout reference |
+| Type         | Question                 | Content                                   |
+| ------------ | ------------------------ | ----------------------------------------- |
+| `TypeId`     | "Who am I?"              | canonical type identity as a `Hash128`    |
+| `TypeDesc`   | "What am I?"             | id, flags, name offset, layout reference  |
 | `TypeLayout` | "What is my ABI layout?" | size, alignment, field range, layout hash |
 
 ```cpp
@@ -153,15 +153,15 @@ The first implementation may use FNV-1a; later implementations may substitute XX
 
 ### Supporting concepts
 
-| Concept | Meaning |
-|---------|---------|
-| `Field` | field description: name, `TypeId`, offset, bitfield, flags |
-| `Function` | function description: name, signature hash, calling convention, parameters |
-| `Symbol` | exportable symbol: name, `TypeId`/`FunctionId`, visibility |
-| `MapInfo` | ABI mapping description: conversion rules from source type to target type |
-| `Compat` | compatibility rule: `TypeId` pair → compatible / incompatible |
-| `ABI Identity` | unique identity of platform, compiler and calling convention |
-| `Target` | target platform description: arch, OS, ABI convention |
+| Concept        | Meaning                                                                    |
+| -------------- | -------------------------------------------------------------------------- |
+| `Field`        | field description: name, `TypeId`, offset, bitfield, flags                 |
+| `Function`     | function description: name, signature hash, calling convention, parameters |
+| `Symbol`       | exportable symbol: name, `TypeId`/`FunctionId`, visibility                 |
+| `MapInfo`      | ABI mapping description: conversion rules from source type to target type  |
+| `Compat`       | compatibility rule: `TypeId` pair → compatible / incompatible              |
+| `ABI Identity` | unique identity of platform, compiler and calling convention               |
+| `Target`       | target platform description: arch, OS, ABI convention                      |
 
 ## `.abix` artifact
 
@@ -176,8 +176,8 @@ graph TD
     Abix --> Runtime
 ```
 
-* `.abix` — a stable ABI artifact shared across processes, tools and languages.
-* `generated/*.abix.hpp` — zero-cost C++ compile-time metadata specialized for the current compilation environment.
+- `.abix` — a stable ABI artifact shared across processes, tools and languages.
+- `generated/*.abix.hpp` — zero-cost C++ compile-time metadata specialized for the current compilation environment.
 
 The v0 layout is a flat sequence:
 
@@ -227,13 +227,13 @@ BootStatus abix_bootstrap(const BootImage& image);
 
 ### Constraints
 
-| Constraint | Rule |
-|------------|------|
-| Does not use ABIX | no `ABIX_EXPORT(...)` or similar macros |
-| No dynamic memory | no `std::vector`, `std::unordered_map`, `std::string` |
-| No RCU/EBR | static data, plain pointers, fixed layout only |
-| No dependency on the C++ ABI | close to `extern "C"` plus POD |
-| No full registry API | only delivers static metadata to the runtime |
+| Constraint                   | Rule                                                  |
+| ---------------------------- | ----------------------------------------------------- |
+| Does not use ABIX            | no `ABIX_EXPORT(...)` or similar macros               |
+| No dynamic memory            | no `std::vector`, `std::unordered_map`, `std::string` |
+| No RCU/EBR                   | static data, plain pointers, fixed layout only        |
+| No dependency on the C++ ABI | close to `extern "C"` plus POD                        |
+| No full registry API         | only delivers static metadata to the runtime          |
 
 ### Wire format
 
@@ -374,10 +374,10 @@ graph TD
     MapPrivate --> CompileTime["compile-time offset"]
 ```
 
-| Scenario | Path |
-|----------|------|
-| Debug | `MapInfo` → runtime validation |
-| Release | `MapPrivate` → direct access (zero-cost) |
+| Scenario | Path                                     |
+| -------- | ---------------------------------------- |
+| Debug    | `MapInfo` → runtime validation           |
+| Release  | `MapPrivate` → direct access (zero-cost) |
 
 `MapPrivate` is implemented after the runtime map: the runtime semantics are validated first, then an equivalent static form is generated. The two are verified to agree on copy and default operations; other conversions require a native converter.
 
@@ -398,13 +398,13 @@ The bootstrap kernel is the trusted computing base (TCB). Like BIOS/firmware or 
 
 ### Verified capabilities
 
-* generation chain from C++ headers to `.abix` to static runtime descriptors;
-* type, field, function, layout, `Hash128` and symbol metadata;
-* extraction of namespaces, aliases, bitfields, inheritance, access levels, template specializations and calling conventions;
-* `runtime::Registry` registration, `TypeId` lookup and the canonical registry bridge;
-* compatibility / map IR and the `MapPrivate` constexpr operation plan;
-* a separate provider process and JSON-lines IPC;
-* `self.abic.toml` generates `amc_core.abix` from a clean directory, and the generated C++ descriptors register into `runtime::Registry`; lookups for `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and `type_of<amc::CompatibilityRecord>()` resolve.
+- generation chain from C++ headers to `.abix` to static runtime descriptors;
+- type, field, function, layout, `Hash128` and symbol metadata;
+- extraction of namespaces, aliases, bitfields, inheritance, access levels, template specializations and calling conventions;
+- `runtime::Registry` registration, `TypeId` lookup and the canonical registry bridge;
+- compatibility / map IR and the `MapPrivate` constexpr operation plan;
+- a separate provider process and JSON-lines IPC;
+- `self.abic.toml` generates `amc_core.abix` from a clean directory, and the generated C++ descriptors register into `runtime::Registry`; lookups for `type_of<amc::AbiModule>()`, `type_of<amc::MapOperation>()` and `type_of<amc::CompatibilityRecord>()` resolve.
 
 ### Boundaries
 
@@ -424,32 +424,32 @@ Acceptance criterion: a single build from a clean directory produces the self-de
 
 The ABIX runtime bootstrap milestones are complete.
 
-| Milestone | Scope | Status |
-|-----------|-------|--------|
-| M0 — ABI model | `TypeId`, `TypeDesc`, `TypeLayout`, `Field`, `Function`, `Symbol`, `MapInfo`, `Compat`, `ABI Identity`, `Target`; `Hash128` with TypeHash ≠ LayoutHash; RCU deliberately absent | Complete |
-| M1 — `.abix` v0 | header, type/field/function tables (initial inline sequential serialization); `write_abix` / `read_abix` round-trip; `amc inspect` / `amc validate`; Section Directory with String Table dedup, offset/index references, length, flags and optional sections; ABI Identity, Target, Hash Table and Symbol Table sections | Complete |
-| M2 — Bootstrap kernel | `BootImage`, `BootRecord`, loader; no allocator, registry, RCU or ABIX API; wire format with explicit endianness and padding | Complete |
-| M3 — Runtime registry | type registration, lookup and validation; `Bootstrap → Registry → Type lookup` closed loop; registry self-description (`RegistryEntry` / `metadata::Bootstrap`) | Complete |
-| M4 — Type self-hosting | formal `.abic` self-description configuration for ABIX core types; AMC-generated `.abix` metadata for core types, `RegistryEntry` and `TypeDescriptor`; static descriptors registered in `runtime::Registry`; verified `runtime::Registry::type_of<TypeDesc>()` returns its own metadata | Complete |
-| M5 — Compat | hash descriptor, hash domain, algorithm version and runtime key layering; `TypeHash`, `LayoutHash`, `SignatureHash` and compatibility checks | Complete |
-| M6 — Runtime Map | `MapInfo` and dynamic map runtime conversion | Complete |
-| M7 — RCU / EBR | AMC extraction of `ThreadState`, `Epoch` and `RetiredNode` layout and membership; RCU/EBR types registered in the runtime registry; `ABIX Registry → ABIX RCU → ABIX Registry` initialization loop; lookup and retire proven not to depend on unregistered metadata | Complete |
-| M8 — MapPrivate | generated `MapPrivate<A, B>` static conversion; semantic equivalence with the runtime map (copy/default; conversions require a native converter) | Complete |
-| M9 — Full self-hosting | type, registry, map, RCU, compatibility and bootstrap metadata all described by ABIX; self-description artifact regenerated from a clean build directory; runtime paths forbidden from depending on hand-written non-bootstrap metadata; runtime self-hosting achieved | Complete |
+| Milestone              | Scope                                                                                                                                                                                                                                                                                                                    | Status   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| M0 — ABI model         | `TypeId`, `TypeDesc`, `TypeLayout`, `Field`, `Function`, `Symbol`, `MapInfo`, `Compat`, `ABI Identity`, `Target`; `Hash128` with TypeHash ≠ LayoutHash; RCU deliberately absent                                                                                                                                          | Complete |
+| M1 — `.abix` v0        | header, type/field/function tables (initial inline sequential serialization); `write_abix` / `read_abix` round-trip; `amc inspect` / `amc validate`; Section Directory with String Table dedup, offset/index references, length, flags and optional sections; ABI Identity, Target, Hash Table and Symbol Table sections | Complete |
+| M2 — Bootstrap kernel  | `BootImage`, `BootRecord`, loader; no allocator, registry, RCU or ABIX API; wire format with explicit endianness and padding                                                                                                                                                                                             | Complete |
+| M3 — Runtime registry  | type registration, lookup and validation; `Bootstrap → Registry → Type lookup` closed loop; registry self-description (`RegistryEntry` / `metadata::Bootstrap`)                                                                                                                                                          | Complete |
+| M4 — Type self-hosting | formal `.abic` self-description configuration for ABIX core types; AMC-generated `.abix` metadata for core types, `RegistryEntry` and `TypeDescriptor`; static descriptors registered in `runtime::Registry`; verified `runtime::Registry::type_of<TypeDesc>()` returns its own metadata                                 | Complete |
+| M5 — Compat            | hash descriptor, hash domain, algorithm version and runtime key layering; `TypeHash`, `LayoutHash`, `SignatureHash` and compatibility checks                                                                                                                                                                             | Complete |
+| M6 — Runtime Map       | `MapInfo` and dynamic map runtime conversion                                                                                                                                                                                                                                                                             | Complete |
+| M7 — RCU / EBR         | AMC extraction of `ThreadState`, `Epoch` and `RetiredNode` layout and membership; RCU/EBR types registered in the runtime registry; `ABIX Registry → ABIX RCU → ABIX Registry` initialization loop; lookup and retire proven not to depend on unregistered metadata                                                      | Complete |
+| M8 — MapPrivate        | generated `MapPrivate<A, B>` static conversion; semantic equivalence with the runtime map (copy/default; conversions require a native converter)                                                                                                                                                                         | Complete |
+| M9 — Full self-hosting | type, registry, map, RCU, compatibility and bootstrap metadata all described by ABIX; self-description artifact regenerated from a clean build directory; runtime paths forbidden from depending on hand-written non-bootstrap metadata; runtime self-hosting achieved                                                   | Complete |
 
 ## Key design decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Number of phases | four, with Phase 0 freezing the meta-model | avoids late rework |
-| `TypeInfo` | split into `TypeId` + `TypeDesc` + `TypeLayout` | separation of concerns; more flexible compatibility |
-| Hash | abstracted as `Hash128` with a replaceable algorithm | avoids fixing FNV-1a as the final standard |
-| TypeHash vs LayoutHash | distinct | foundation of the compatibility system |
-| Bootstrap kernel role | static metadata loader, not a simplified registry | prevents the kernel from growing |
-| Bootstrap ABI | explicitly defined wire format | cross-compiler stability |
-| Development order | single-threaded registry before RCU/EBR | proves the loop before adding concurrency |
-| Dependency graph | strict DAG, no reverse dependencies | clear architecture, no cycles |
-| State machine | multiple states on the init thread; user threads see only NOT_READY/READY | zero hot-path overhead |
-| `MapPrivate` timing | after the runtime map | validate semantics, then generate an equivalent static form |
-| Bootstrap self-description | never required | the kernel is the TCB, like BIOS/firmware |
-| `.abix` introduction | designed in from Phase 0 | shared ABI description across processes and languages |
+| Decision                   | Choice                                                                    | Rationale                                                   |
+| -------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Number of phases           | four, with Phase 0 freezing the meta-model                                | avoids late rework                                          |
+| `TypeInfo`                 | split into `TypeId` + `TypeDesc` + `TypeLayout`                           | separation of concerns; more flexible compatibility         |
+| Hash                       | abstracted as `Hash128` with a replaceable algorithm                      | avoids fixing FNV-1a as the final standard                  |
+| TypeHash vs LayoutHash     | distinct                                                                  | foundation of the compatibility system                      |
+| Bootstrap kernel role      | static metadata loader, not a simplified registry                         | prevents the kernel from growing                            |
+| Bootstrap ABI              | explicitly defined wire format                                            | cross-compiler stability                                    |
+| Development order          | single-threaded registry before RCU/EBR                                   | proves the loop before adding concurrency                   |
+| Dependency graph           | strict DAG, no reverse dependencies                                       | clear architecture, no cycles                               |
+| State machine              | multiple states on the init thread; user threads see only NOT_READY/READY | zero hot-path overhead                                      |
+| `MapPrivate` timing        | after the runtime map                                                     | validate semantics, then generate an equivalent static form |
+| Bootstrap self-description | never required                                                            | the kernel is the TCB, like BIOS/firmware                   |
+| `.abix` introduction       | designed in from Phase 0                                                  | shared ABI description across processes and languages       |

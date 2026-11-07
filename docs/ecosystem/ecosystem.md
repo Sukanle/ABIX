@@ -37,14 +37,14 @@ Each layer can be adopted independently. A package manager can consume ABIX meta
 
 ABIX covers native binary interfaces across the full lifecycle:
 
-* ABI inspection and compatibility analysis
-* ABI-aware CI and release validation
-* Cross-language binding generation
-* Native plugin and component systems
-* Binary package and dependency management
-* IDE and LSP integration
-* AI-assisted binary and software engineering
-* Robotics and other native runtime environments
+- ABI inspection and compatibility analysis
+- ABI-aware CI and release validation
+- Cross-language binding generation
+- Native plugin and component systems
+- Binary package and dependency management
+- IDE and LSP integration
+- AI-assisted binary and software engineering
+- Robotics and other native runtime environments
 
 These are ecosystem directions, not specification requirements.
 
@@ -68,12 +68,12 @@ ABIX does not replace existing tools. It provides a common ABI representation th
 
 Applications with large native dependency or plugin ecosystems use ABIX to make binary compatibility explicit:
 
-* SDK integration
-* native plugin systems
-* cross-language interfaces
-* binary component discovery
-* compatibility validation
-* release and upgrade workflows
+- SDK integration
+- native plugin systems
+- cross-language interfaces
+- binary component discovery
+- compatibility validation
+- release and upgrade workflows
 
 An existing package manager continues to manage package versions and artifacts. ABIX adds ABI metadata: what each artifact exposes, who can load it, and whether two versions are compatible.
 
@@ -88,12 +88,12 @@ graph LR
 
 Applicable to software with:
 
-* multiple shared libraries
-* third-party plugins
-* long-lived SDKs
-* multiple compiler or platform configurations
-* cross-language integrations
-* independently versioned binary components
+- multiple shared libraries
+- third-party plugins
+- long-lived SDKs
+- multiple compiler or platform configurations
+- cross-language integrations
+- independently versioned binary components
 
 ## AI Integration
 
@@ -125,14 +125,14 @@ Robotics projects are application demonstrations, not core specification require
 
 ABIX complements existing infrastructure:
 
-| Domain          | Examples                        |
-|-----------------|---------------------------------|
-| Build systems   | CMake, Bazel                    |
-| Package managers | Conan, vcpkg                   |
-| Binding tools   | bindgen, SWIG                   |
+| Domain            | Examples                      |
+| ----------------- | ----------------------------- |
+| Build systems     | CMake, Bazel                  |
+| Package managers  | Conan, vcpkg                  |
+| Binding tools     | bindgen, SWIG                 |
 | Component systems | framework-specific plugins    |
-| IDE tooling     | clangd, language servers        |
-| AI protocols    | MCP and other tool interfaces   |
+| IDE tooling       | clangd, language servers      |
+| AI protocols      | MCP and other tool interfaces |
 
 ABIX provides a common native ABI representation that these systems consume.
 
@@ -140,15 +140,15 @@ ABIX provides a common native ABI representation that these systems consume.
 
 ABIX serves a broad audience:
 
-* open-source projects
-* commercial software
-* independent developers
-* framework and platform vendors
-* language communities
-* research projects
+- open-source projects
+- commercial software
+- independent developers
+- framework and platform vendors
+- language communities
+- research projects
 
 Application-specific integrations can be developed independently. Different ecosystems build on the same ABI foundation without shared infrastructure dependencies.
 
 ---
 
-*See also: [Sustainability](sustainability.md), [Competitive Landscape](../development/competitors.md), [AI Theory](../ai/ai.md).*
+_See also: [Sustainability](sustainability.md), [Competitive Landscape](../development/competitors.md), [AI Theory](../ai/ai.md)._

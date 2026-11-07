@@ -33,10 +33,10 @@ graph TD
     RT --> NB["Native Binary"]
 ```
 
-* **ABIX IR** — the language-independent ABI model: types, fields, functions, parameters, symbols, hashes, compatibility and mapping records.
-* **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../abix/abix.md).
-* **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) and the [AMC repository](https://github.com/Sukanle/AMC).
-* **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation. See [`runtime.md`](runtime.md).
+- **ABIX IR** — the language-independent ABI model: types, fields, functions, parameters, symbols, hashes, compatibility and mapping records.
+- **`.abix`** — the serialized, canonical artifact. See [`abix.md`](../abix/abix.md).
+- **AMC** — extracts ABI from a language AST, projects/compares modules and generates native code. See [`amc.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc.md) and the [AMC repository](https://github.com/Sukanle/AMC).
+- **ABIX Runtime** — consumes the ABI: registry, binding, dispatch, adaptation. See [`runtime.md`](runtime.md).
 
 ## Runtime Interaction
 
@@ -64,17 +64,15 @@ This diagram only shows "who talks to whom"; implementation details live in the 
 
 > The runtime may use a **projection** of the ABI model, but must not independently redefine ABI semantics.
 
-The same model drives every consumer. ABIX owns the header-only runtime; the
-AMC repository owns the artifact libraries and shares exactly one parser across
-its tools:
+The same model drives every consumer. ABIX owns the header-only runtime; the AMC repository owns the artifact libraries and shares exactly one parser across its tools:
 
-| Library | Owner | Responsibility |
-|---------|-------|----------------|
-| `libabix-runtime` | ABIX | header-only registry / binding layer |
-| `libabix-format` | AMC | `.abix` v4 read/write, hashing, canonical form, ELF reader |
-| `libabix-abi` | AMC | `TypeID`/`LayoutHash` comparison, compatibility diff |
-| `libabix-metadata` | AMC | Metadata Region serialize/parse/materialize, context, query |
-| `libabix-tools` | AMC | Lua contract generation, symbol store |
+| Library            | Owner | Responsibility                                              |
+| ------------------ | ----- | ----------------------------------------------------------- |
+| `libabix-runtime`  | ABIX  | header-only registry / binding layer                        |
+| `libabix-format`   | AMC   | `.abix` v4 read/write, hashing, canonical form, ELF reader  |
+| `libabix-abi`      | AMC   | `TypeID`/`LayoutHash` comparison, compatibility diff        |
+| `libabix-metadata` | AMC   | Metadata Region serialize/parse/materialize, context, query |
+| `libabix-tools`    | AMC   | Lua contract generation, symbol store                       |
 
 `amc-core` is an aggregate over the AMC libraries for the executables.
 
@@ -82,12 +80,12 @@ its tools:
 
 ABIX separates four identities that are frequently conflated:
 
-| ID | Meaning | Use |
-|----|---------|-----|
-| **TypeID** | semantic type identity | "is this the same type?" |
-| **LayoutHash** | physical layout identity | "is the memory layout compatible?" |
-| **BuildID** | binary build identity | locate the matching artifact |
-| **MetadataID** | metadata content identity | dedup / integrity |
+| ID             | Meaning                   | Use                                |
+| -------------- | ------------------------- | ---------------------------------- |
+| **TypeID**     | semantic type identity    | "is this the same type?"           |
+| **LayoutHash** | physical layout identity  | "is the memory layout compatible?" |
+| **BuildID**    | binary build identity     | locate the matching artifact       |
+| **MetadataID** | metadata content identity | dedup / integrity                  |
 
 Lookup chain: `Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`. See [`compatibility.md`](compatibility.md).
 
@@ -101,8 +99,8 @@ graph TD
     B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
 ```
 
-* The **Region** is offset-based and relocation-free; it can be shipped as a file, embedded in an ELF section, or mmap'd by an offline parser.
-* The **Runtime Descriptor** is a one-time materialization of the Region at initialization; after that the hot path is close to a static ABI.
+- The **Region** is offset-based and relocation-free; it can be shipped as a file, embedded in an ELF section, or mmap'd by an offline parser.
+- The **Runtime Descriptor** is a one-time materialization of the Region at initialization; after that the hot path is close to a static ABI.
 
 See [`metadata_modes.md`](../abix/metadata_modes.md).
 

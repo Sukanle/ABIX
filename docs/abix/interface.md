@@ -833,8 +833,8 @@ registry.unregister_module(control.id);   // now it can unload
 
 The symbols below come from `SKL/ABIX/ABIX.h`. Everything lives in namespace `skl::abix::poly` except the owner ABI (`skl::abix::owner`). To pull in the whole layer on its own, `#include "SKL/ABIX/Interface/Interface.h"`.
 
-| Header                            | Contents                                                                                                                 |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Header                                | Contents                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `SKL/ABIX/Interface/Contract.h`       | Interface identity, `InterfaceMethod` / `InterfaceImplementation`, `InterfaceStatus`, `interface_entry`                  |
 | `SKL/ABIX/Interface/Registry.h`       | `InterfaceRegistry` — binding-time registration and resolution                                                           |
 | `SKL/ABIX/Interface/Ref.h`            | `InterfaceRef` — resolve once, call natively through a slot cache                                                        |
@@ -848,15 +848,15 @@ The symbols below come from `SKL/ABIX/ABIX.h`. Everything lives in namespace `sk
 
 ### `Contract.h` — interface identity and methods
 
-| Symbol                                                   | Type                   | Description                                                                                                                                                                                                                                              |
-| -------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `InterfaceId`                                            | `Hash128`              | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)`                                                                          |
-| `InterfaceMethodHash`                                    | `model::SignatureHash` | One method's ABI signature hash                                                                                                                                                                                                                          |
+| Symbol                                                   | Type                   | Description                                                                                                                                                                                                                                             |
+| -------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InterfaceId`                                            | `Hash128`              | Interface identity: the content hash over the interface name, version and ordered method signatures. Not a class name, not a vtable address; derive it with `interface_id(...)`                                                                         |
+| `InterfaceMethodHash`                                    | `model::SignatureHash` | One method's ABI signature hash                                                                                                                                                                                                                         |
 | `interface_id(name, version, signatures)`                | `InterfaceId`          | Compile-time interface identity from a canonical name, version and slot-ordered signatures; reproduces `AMC::interface_identity`, so neither side needs a hand-written constant. Accepts a `mics::util::array` or a variadic `InterfaceMethodHash` list |
 | `InterfaceMethodKey`                                     | `{signature, slot}`    | A signature paired with its slot, for the `interface_id` `mics::util::array` overload to sort before hashing                                                                                                                                            |
-| `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash`  | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`)                  |
-| `interface_entry<Fn>(fn)`                                | `uintptr_t`            | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way                                                                                                                                        |
-| `to_string(status)`                                      | `const char*`          | Readable name for an `InterfaceStatus`                                                                                                                                                                                                                   |
+| `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash`  | Compile-time method signature from the method name and the return/parameter TypeIDs; reproduces `AMC::signature_hash` (the `[[interface]]` path; parameter names are not hashed). Get TypeIDs from `model::canonical_type_id` (`ABI.h`)                 |
+| `interface_entry<Fn>(fn)`                                | `uintptr_t`            | Copies a function pointer into the opaque `entry` slot; generated registrations and callers spell it the same way                                                                                                                                       |
+| `to_string(status)`                                      | `const char*`          | Readable name for an `InterfaceStatus`                                                                                                                                                                                                                  |
 
 **Cross-tool identity contract.** `InterfaceId` is defined identically by `AMC::interface_identity` and `ABIX::poly::interface_id`:
 
@@ -1058,12 +1058,12 @@ A failed creation returns an invalid handle (`object == nullptr`) rather than a 
 
 An interface proxy is a lightweight handle over "an object handle plus resolved adapters". It reads like a C++ `Shape*`, but it is not a base class — the concrete type is never modified and no compiler vtable is used. `UniqueInterfaceProxy<Traits>` holds the shared machinery; a per-interface class adds only its methods, and `Traits` supplies the interface difference:
 
-| `Traits` member | Description                                                                                                                                           |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`            | The `InterfaceId` (computed by AMC)                                                                                                                   |
-| `version`       | The interface version                                                                                                                                 |
+| `Traits` member | Description                                                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | The `InterfaceId` (computed by AMC)                                                                                                                  |
+| `version`       | The interface version                                                                                                                                |
 | `signatures`    | The `mics::util::array` of expected signatures, one per slot; its size is also the proxy's slot capacity. A zero hash means "do not check this slot" |
-| `slots`         | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)`                                             |
+| `slots`         | A typed zero-based slot table: `Traits::slots.<method>` is the slot value used by the proxy's `call(...)`                                            |
 
 `UniqueInterfaceProxy<Traits>`:
 
@@ -1083,10 +1083,10 @@ The proxy stores only the compact `InterfaceSlotCache`: object handle, highest b
 
 There are two proxy layouts:
 
-| Layout | Per-object size | Extra storage | Best for |
-|--------|----------------:|---------------|----------|
-| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N` | none | One/few objects; per-object method tables; no shared-table lifetime |
-| `SharedInterfaceProxy<Traits>` | `24` | `InterfaceSlotTable`: `8 * N + 8` per implementation | Many objects of the same implementation; a table built once and shared read-only |
+| Layout                         | Per-object size | Extra storage                                        | Best for                                                                         |
+| ------------------------------ | --------------: | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `UniqueInterfaceProxy<Traits>` |    `24 + 8 * N` | none                                                 | One/few objects; per-object method tables; no shared-table lifetime              |
+| `SharedInterfaceProxy<Traits>` |            `24` | `InterfaceSlotTable`: `8 * N + 8` per implementation | Many objects of the same implementation; a table built once and shared read-only |
 
 **Performance is not the deciding factor.** Both layouts measure at about 0.75 ns for the method call in the latency benchmark above; the extra table load in shared mode is hidden by the indirect call. Choose based on ownership of the adapter table, binding flexibility and total memory.
 
@@ -1692,12 +1692,7 @@ SKL_ABIX_INTERFACE_MEMBER_TABLE(Shape, BOX_METHODS);
 registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, box_id, 0));
 ```
 
-`SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` expands the list into a
-named `interface##Methods` (`ShapeMethods` here), a
-`mics::util::array<InterfaceMethod, N>`. `SKL_ABIX_INTERFACE_IMPLEMENTATION`
-combines `interface##Traits`, that table and the concrete type's `TypeId`
-expression, so the example reads `ShapeTraits::id`, `box_id`, `ShapeMethods`
-and `ShapeTraits::version`.
+`SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` expands the list into a named `interface##Methods` (`ShapeMethods` here), a `mics::util::array<InterfaceMethod, N>`. `SKL_ABIX_INTERFACE_IMPLEMENTATION` combines `interface##Traits`, that table and the concrete type's `TypeId` expression, so the example reads `ShapeTraits::id`, `box_id`, `ShapeMethods` and `ShapeTraits::version`.
 
 The generated adapter has the shape:
 
@@ -1715,17 +1710,17 @@ Rules and limitations:
   SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, area, &StaticBox::area)
   ```
 
-  If the static function itself already takes the object handle as its first parameter, use `interface_entry(&StaticBox::area)` directly instead.
+If the static function itself already takes the object handle as its first parameter, use `interface_entry(&StaticBox::area)` directly instead.
 
 - A non-`const` member receives a `const void*` handle and removes const internally; a `const` member keeps `const T*`.
 - The adapter always uses `const void*` as its first parameter, matching the proxy generated by `SKL_ABIX_INTERFACE_DECLARE`. If a hand-written proxy expects `void*`, write a wrapper.
 - It does not handle `volatile`, ref-qualified members (`&` / `&&`) or overload sets. For an overload, pass an explicit member-pointer cast wrapped in parentheses:
 
-    ```cpp
-    SKL_ABIX_INTERFACE_MEMBER_ENTRY(
-        ShapeTraits, resize,
-        (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
-    ```
+  ```cpp
+  SKL_ABIX_INTERFACE_MEMBER_ENTRY(
+      ShapeTraits, resize,
+      (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
+  ```
 
 - It only generates the adapter entry; it does not produce `Traits`, method signatures or the `id`. Those come from `SKL_ABIX_INTERFACE_DECLARE` / AMC.
 - `slot_name` is the interface slot field; it may differ from the member name. `member_pointer_expression` selects the member actually called.
@@ -1879,22 +1874,22 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 
 These are normally not used directly, but they explain expansion errors:
 
-| Macro                                                       | Effect                                                                                                              |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | Emits one `method_signature(#fn, reg_ret_t, mics::util::array __VA_ARGS__),` entry                                 |
-| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | Emits `uint32_t fn;` inside `Slots`                                                                                 |
-| `SKL_ABIX_INTERFACE_SLOTS(list)`                            | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                |
-| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | Emits the direct-return and `InterfaceStatus` checked overloads                                                     |
-| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`     |
-| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | Emits a named `interface##Methods` `mics::util::array<InterfaceMethod, N>` from a list of `MEMBER_ENTRY` entries   |
+| Macro                                                       | Effect                                                                                                               |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | Emits one `method_signature(#fn, reg_ret_t, mics::util::array __VA_ARGS__),` entry                                   |
+| `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | Emits `uint32_t fn;` inside `Slots`                                                                                  |
+| `SKL_ABIX_INTERFACE_SLOTS(list)`                            | Emits `Slots` and `slots = make_iota<Slots, signatures.size(), 0>()`                                                 |
+| `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | Emits the direct-return and `InterfaceStatus` checked overloads                                                      |
+| `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | Emits one `InterfaceMethod` entry adapted from an existing member function via `member_adapter<member>::invoke`      |
+| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | Emits a named `interface##Methods` `mics::util::array<InterfaceMethod, N>` from a list of `MEMBER_ENTRY` entries     |
 | `SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)` | Emits an `InterfaceImplementation` initializer from `interface##Traits`, `interface##Methods`, the type ID and flags |
-| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes |
-| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                    |
-| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | Emits the `SharedInterfaceProxy<typeTraits>`-derived `Shared##type` proxy; `...` is placed before `Shared##type`    |
-| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`; `storage` is `UNIQUE` or `SHARED`                                   |
-| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)`   | `TRAITS` + `UNIQUE_DATA`                                                                                            |
-| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)`   | `TRAITS` + `SHARED_DATA`                                                                                            |
-| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)`     | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA`                                                                            |
+| `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | Emits `typeTraits` (`signatures`, `version`, `id`, `slots`); `...` is placed before `typeTraits` as type attributes  |
+| `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | Emits the `UniqueInterfaceProxy<typeTraits>`-derived `type` proxy; `...` is placed before `type`                     |
+| `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | Emits the `SharedInterfaceProxy<typeTraits>`-derived `Shared##type` proxy; `...` is placed before `Shared##type`     |
+| `SKL_ABIX_INTERFACE_DECLARE(storage, type, list, ver, ...)` | `TRAITS` + `SKL_ABIX_INTERFACE_<storage>_DATA`; `storage` is `UNIQUE` or `SHARED`                                    |
+| `SKL_ABIX_INTERFACE_DECLARE_UNIQUE(type, list, ver, ...)`   | `TRAITS` + `UNIQUE_DATA`                                                                                             |
+| `SKL_ABIX_INTERFACE_DECLARE_SHARED(type, list, ver, ...)`   | `TRAITS` + `SHARED_DATA`                                                                                             |
+| `SKL_ABIX_INTERFACE_DECLARE_BOTH(type, list, ver, ...)`     | `TRAITS` + `UNIQUE_DATA` + `SHARED_DATA`                                                                             |
 
 Common expansion errors:
 

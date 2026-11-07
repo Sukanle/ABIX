@@ -79,32 +79,21 @@ Adds predefined `TypeId` constants for the canonical primitive ABI descriptors:
 - pointer-width `isize` / `usize`;
 - IEEE binary16/32/64/128, x87 80-bit, PowerPC double-double and bf16;
 - `long double` mapped by `LDBL_MANT_DIG`;
-- target-defined plain `char` / `wchar_t` signedness, plus `schar` / `uchar` /
-  `char8` / `char16` / `char32`;
-- `wint_t` resolved to its underlying integer descriptor; there is no
-  `prim:wint`.
+- target-defined plain `char` / `wchar_t` signedness, plus `schar` / `uchar` / `char8` / `char16` / `char32`;
+- `wint_t` resolved to its underlying integer descriptor; there is no `prim:wint`.
 
-These constants are compile-time entry points to existing canonical
-descriptors. They do not change any `TypeID`, `.abix` format or public ABI.
+These constants are compile-time entry points to existing canonical descriptors. They do not change any `TypeID`, `.abix` format or public ABI.
 
 ### ABIX 0.2.3 — Runtime-only package
 
-Makes the header-only runtime and its CMake package independent of the AMC
-toolchain:
+Makes the header-only runtime and its CMake package independent of the AMC toolchain:
 
-- `ABIX::runtime` and the ABIX package metadata are installed without AMC,
-  LLVM/Clang or fmt.
+- `ABIX::runtime` and the ABIX package metadata are installed without AMC, LLVM/Clang or fmt.
 - `ABIX_BUILD_RUNTIME_ONLY=ON` skips AMC, tests, benchmarks and DLLs.
-- `ABIXConfig.cmake` resolves fmt only for the optional format/ABI/metadata/
-  tools components or the full aggregate.
-- Subproject defaults no longer enable tests, benchmarks, AMC, DLL variants or
-  bundled MICS installation, and `MICS_INSTALL` is not forced.
+- `ABIXConfig.cmake` resolves fmt only for the optional format/ABI/metadata/ tools components or the full aggregate.
+- Subproject defaults no longer enable tests, benchmarks, AMC, DLL variants or bundled MICS installation, and `MICS_INSTALL` is not forced.
 - A runtime-only package consumer test covers `ABIX::runtime` without fmt.
-- Logging gains an explicit `LogState`, ABIX-atomic sink/threshold
-  registration, runtime filtering, a length-aware `LogRecord` callback and
-  documented callback / cross-DLL ownership rules. `ABIX_LOG_THREAD_SAFE`
-  selects the default thread-safe configuration or a fixed-sink/single-threaded
-  policy.
+- Logging gains an explicit `LogState`, ABIX-atomic sink/threshold registration, runtime filtering, a length-aware `LogRecord` callback and documented callback / cross-DLL ownership rules. `ABIX_LOG_THREAD_SAFE` selects the default thread-safe configuration or a fixed-sink/single-threaded policy.
 
 The `.abix` format, `TypeID` values and public ABI are unchanged.
 
@@ -112,14 +101,10 @@ The `.abix` format, `TypeID` values and public ABI are unchanged.
 
 ABIX runtime targets are compiled as an explicit-control-flow layer:
 
-- ABIX runtime tests and DLL plugins use `-fno-exceptions -fno-rtti` by default
-  (`ABIX_RUNTIME_NO_EXCEPTIONS=ON`, `ABIX_RUNTIME_NO_RTTI=ON`).
-- ABIX headers avoid `throw`/`catch`, `dynamic_cast` and `typeid`; failures use
-  returned status/error values and logging stays optional.
-- AMC keeps exceptions and RTTI enabled by default because it integrates
-  LLVM/Clang/fmt/toml++ and uses `try/catch`.
-- The README documents the runtime contract and its deliberate boundary with
-  AMC.
+- ABIX runtime tests and DLL plugins use `-fno-exceptions -fno-rtti` by default (`ABIX_RUNTIME_NO_EXCEPTIONS=ON`, `ABIX_RUNTIME_NO_RTTI=ON`).
+- ABIX headers avoid `throw`/`catch`, `dynamic_cast` and `typeid`; failures use returned status/error values and logging stays optional.
+- AMC keeps exceptions and RTTI enabled by default because it integrates LLVM/Clang/fmt/toml++ and uses `try/catch`.
+- The README documents the runtime contract and its deliberate boundary with AMC.
 
 No public ABI or `.abix` format changes.
 
@@ -127,9 +112,7 @@ No public ABI or `.abix` format changes.
 
 Target areas, not hard commitments:
 
-- **AMC split** — AMC is an independent CMake project/package consuming a
-  runtime-only ABIX; the ABIX root no longer builds AMC or its artifact
-  libraries.
+- **AMC split** — AMC is an independent CMake project/package consuming a runtime-only ABIX; the ABIX root no longer builds AMC or its artifact libraries.
 - **Under discussion: AI / Agent integration (advanced MCP tools, TROI, workflows)** — we need to decide whether advanced tools and workflows are premature; the existing low-level `amc-mcp` queries remain.
 - LSP, plugin ecosystem, package management and build-system integration.
 - Deeper debugger / editor integration (LLDB go-to-definition, Source Origin).

@@ -1,12 +1,6 @@
 # Testing ABIX and AMC
 
-> **Repository split:** ABIX's root build tests the header-only runtime only.
-> The AMC tiers below are owned and run by the standalone AMC repository
-> (<https://github.com/Sukanle/AMC>); they are kept here as reference for the
-> toolchain contract. AMC-relative paths below resolve inside that checkout. The
-> monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` tiers were
-> retired; the standalone suite covers core/e2e/package/feature/provider/
-> interop/expose/cancellation/CMake integration.
+> **Repository split:** ABIX's root build tests the header-only runtime only. The AMC tiers below are owned and run by the standalone AMC repository (<https://github.com/Sukanle/AMC>); they are kept here as reference for the toolchain contract. AMC-relative paths below resolve inside that checkout. The monorepo-only `amc-integration-test` and `amc-cmdly-interop-test` tiers were retired; the standalone suite covers core/e2e/package/feature/provider/ interop/expose/cancellation/CMake integration.
 
 <p align="center">
   <a href="testing_zh.md">中文</a> · English
@@ -23,17 +17,17 @@ This document is the complete test flow: how to build and run the suites, what e
 - [Build and run](#build-and-run)
 - [Expected result](#expected-result)
 - [Test tiers](#test-tiers)
-    - [A. Runtime & unit (Catch2, `test/`)](#a-runtime--unit-catch2-test)
-    - [B. AMC unit (`amc-core-test`)](#b-amc-unit-amc-core-test)
-    - [C. AMC end-to-end (`amc-e2e-test`)](#c-amc-end-to-end-amc-e2e-test)
-    - [D. AMC CLI integration (`amc-integration-test`)](#d-amc-cli-integration-amc-integration-test)
-    - [E. AMC feature set (`amc-feature-test`)](#e-amc-feature-set-amc-feature-test)
-    - [F. Rust/Zig interop (`amc-interop-test`)](#f-rustzig-interop-amc-interop-test)
-    - [G. Rust provider conformance (`amc-rust-test`)](#g-rust-provider-conformance-amc-rust-test)
-    - [H. cmdly interop (`amc-cmdly-interop-test`)](#h-cmdly-interop-amc-cmdly-interop-test)
-    - [I. expose interop (`amc-expose-interop-test`)](#i-expose-interop-amc-expose-interop-test)
-    - [J. CMake integration (`amc-cmake-integration-test`)](#j-cmake-integration-amc-cmake-integration-test)
-    - [K. Standalone cross-language example (`amc-example-test`)](#k-standalone-cross-language-example-amc-example-test)
+  - [A. Runtime & unit (Catch2, `test/`)](#a-runtime--unit-catch2-test)
+  - [B. AMC unit (`amc-core-test`)](#b-amc-unit-amc-core-test)
+  - [C. AMC end-to-end (`amc-e2e-test`)](#c-amc-end-to-end-amc-e2e-test)
+  - [D. AMC CLI integration (`amc-integration-test`)](#d-amc-cli-integration-amc-integration-test)
+  - [E. AMC feature set (`amc-feature-test`)](#e-amc-feature-set-amc-feature-test)
+  - [F. Rust/Zig interop (`amc-interop-test`)](#f-rustzig-interop-amc-interop-test)
+  - [G. Rust provider conformance (`amc-rust-test`)](#g-rust-provider-conformance-amc-rust-test)
+  - [H. cmdly interop (`amc-cmdly-interop-test`)](#h-cmdly-interop-amc-cmdly-interop-test)
+  - [I. expose interop (`amc-expose-interop-test`)](#i-expose-interop-amc-expose-interop-test)
+  - [J. CMake integration (`amc-cmake-integration-test`)](#j-cmake-integration-amc-cmake-integration-test)
+  - [K. Standalone cross-language example (`amc-example-test`)](#k-standalone-cross-language-example-amc-example-test)
 - [Manual feature walkthrough and generated files](#manual-feature-walkthrough-and-generated-files)
 - [Native binding (Rust) walkthrough](#native-binding-rust-walkthrough)
 - [Keeping the temporary artifacts](#keeping-the-temporary-artifacts)
@@ -97,36 +91,32 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 ### A. Runtime & unit (Catch2, `test/`)
 
 - **Functionality** — the header-only ABI runtime, exercised against real shared libraries:
-    - ABIX runtime targets compile with `-fno-exceptions -fno-rtti` by default
-      (`ABIX_RUNTIME_NO_EXCEPTIONS`, `ABIX_RUNTIME_NO_RTTI`; AMC keeps both);
-    - DLL load/resolve/call through the name+sig table;
-    - hot reload; RCU unload/timeout/zombie lifecycle; logging;
-    - edge/calling-convention cases;
-    - cross-compiler and cross-CRT variants;
-    - MICS integration;
-    - the non-intrusive **Interface** layer;
-    - `atomic`, and the `BinaryImage` capability layer (ELF/Mach-O/PE region + export parsing).
+  - ABIX runtime targets compile with `-fno-exceptions -fno-rtti` by default (`ABIX_RUNTIME_NO_EXCEPTIONS`, `ABIX_RUNTIME_NO_RTTI`; AMC keeps both);
+  - DLL load/resolve/call through the name+sig table;
+  - hot reload; RCU unload/timeout/zombie lifecycle; logging;
+  - edge/calling-convention cases;
+  - cross-compiler and cross-CRT variants;
+  - MICS integration;
+  - the non-intrusive **Interface** layer;
+  - `atomic`, and the `BinaryImage` capability layer (ELF/Mach-O/PE region + export parsing).
 - **Purpose** — prove the runtime keeps execution native (no dispatcher), that the lifetime rules hold (a lease/owner handle keeps its module mapped), and that layout/hash/dispatch never silently regress.
 - **Expected result** — every suite reports `All tests passed (N assertions in M test cases)`.
-    - Notable suites:
-        - `interface_dll_test` includes the lease-pinning case ("a lease keeps the module mapped across unload");
-        - `interface_module_test` includes the multithreaded register/unregister and lease/unload stress;
-        - `logging_single_thread_test` builds with `ABIX_LOG_THREAD_SAFE=0` and verifies the fixed-sink policy.
-    - Optional backend integration: configure with
-      `-DABIX_ENABLE_QUILL_TEST=ON -DABIX_QUILL_ROOT=/path/to/quill` to build
-      `logging_quill_test`, which forwards ABIX diagnostics through a Quill
-      file sink from multiple threads. The default build does not require Quill.
+  - Notable suites:
+    - `interface_dll_test` includes the lease-pinning case ("a lease keeps the module mapped across unload");
+    - `interface_module_test` includes the multithreaded register/unregister and lease/unload stress;
+    - `logging_single_thread_test` builds with `ABIX_LOG_THREAD_SAFE=0` and verifies the fixed-sink policy.
+  - Optional backend integration: configure with `-DABIX_ENABLE_QUILL_TEST=ON -DABIX_QUILL_ROOT=/path/to/quill` to build `logging_quill_test`, which forwards ABIX diagnostics through a Quill file sink from multiple threads. The default build does not require Quill.
 
 ### B. AMC unit (`amc-core-test`)
 
 - **Functionality** — the AMC core library directly:
-    - type/symbol hashing, layout;
-    - `validate`, `.abix` read/write round-trip;
-    - the Metadata Region;
-    - the instantiation cache;
-    - the string/JSON helpers;
-    - the binary reader (ELF/Mach-O/PE sections and the CodeView build id);
-    - the real-world compatibility matrix (field insertion/deletion, field type change, calling-convention change, ownership mismatch).
+  - type/symbol hashing, layout;
+  - `validate`, `.abix` read/write round-trip;
+  - the Metadata Region;
+  - the instantiation cache;
+  - the string/JSON helpers;
+  - the binary reader (ELF/Mach-O/PE sections and the CodeView build id);
+  - the real-world compatibility matrix (field insertion/deletion, field type change, calling-convention change, ownership mismatch).
 - **Purpose** — keep the format/verification core correct independently of the CLI and of any host toolchain.
 - **Expected result** — `amc-core-test: all checks passed`.
 
@@ -139,17 +129,17 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 ### D. AMC CLI integration (`amc-integration-test`)
 
 - **Functionality** — drives the real CLI end-to-end:
-    - `frontend`, `validate`, `inspect`, `generate` (cpp/lua);
-    - a compile check of the generated header;
-    - `build`, `dump`, `diff`, `compatibility`;
-    - self-description bootstrap;
-    - the provider IPC handshake and capability discovery;
-    - `context`, `verify` (consistent + drift);
-    - the unified JSON error envelope;
-    - the metadata region (emit/verify/tamper);
-    - `query`, the symbol server;
-    - the region-to-module path;
-    - the adapter / ABI-check / shim flows.
+  - `frontend`, `validate`, `inspect`, `generate` (cpp/lua);
+  - a compile check of the generated header;
+  - `build`, `dump`, `diff`, `compatibility`;
+  - self-description bootstrap;
+  - the provider IPC handshake and capability discovery;
+  - `context`, `verify` (consistent + drift);
+  - the unified JSON error envelope;
+  - the metadata region (emit/verify/tamper);
+  - `query`, the symbol server;
+  - the region-to-module path;
+  - the adapter / ABI-check / shim flows.
 - **Purpose** — the CLI contract is what users and CI depend on; this is the closest test to "what a build server runs".
 - **Expected result** — `=== Results: N passed, 0 failed ===` (currently 106). Steps that need an ELF/Mach-O-only tool (`readelf`, LLDB, `dlopen` shims) print `[INFO] ... skipping` on Windows and do not fail.
 
@@ -157,13 +147,13 @@ Each tier names what it exercises (**Functionality**), why it exists (**Purpose*
 
 A cross-platform test (`tests/cli/feature_test.py`) that asserts the five AMC capabilities directly:
 
-| Aspect                  | Checks                                                                                                                                                                                                    |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aspect                  | Checks                                                                                                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Front/back separation   | `--list-languages`/`--describe-language` from `providers.toml` (cpp/lua/rust/zig); `AMC_PROVIDERS_FILE` override; `amc-cpp`/`amc-rust` `--ipc` **READY + CAPABILITIES** and `abix.plugin/1` envelope |
-| Code parsing            | `amc build` parses **C++** (`amc-cpp`) and **Rust** (`amc-rust`, a built-in frontend — no `rustc` needed) into `.abix`                                                                                    |
-| IR generation           | `validate`, `inspect`, `query --layout`, `context --format json`                                                                                                                                          |
-| Native language binding | one `.abix` → `generate -l cpp\|zig\|rust\|lua`; the **C++** and **Rust** bindings are compiled                                                                                                           |
-| IR reuse                | the same `.abix` drives all four backends                                                                                                                                                                 |
+| Code parsing            | `amc build` parses **C++** (`amc-cpp`) and **Rust** (`amc-rust`, a built-in frontend — no `rustc` needed) into `.abix`                                                                               |
+| IR generation           | `validate`, `inspect`, `query --layout`, `context --format json`                                                                                                                                     |
+| Native language binding | one `.abix` → `generate -l cpp\|zig\|rust\|lua`; the **C++** and **Rust** bindings are compiled                                                                                                      |
+| IR reuse                | the same `.abix` drives all four backends                                                                                                                                                            |
 
 - **Purpose** — a single, fast, toolchain-light assertion of the AMC value proposition: one IR, many languages, clean front/back split.
 - **Expected result** — `AMC feature set: 26 passed, 0 failed, 0 skipped` (the Rust compile check is `[SKIP]`ped when `rustc` is absent, so `skipped` may be 1).
@@ -322,10 +312,10 @@ python tools/build_variants.py --with-msvc   # rebuild the cross-compiler/MSVC v
 
 ### Tests and verification
 
-| Script                  | What                                                                                                                                                                                                                                                                                                         | Purpose                                                                                                                                                                     | Expected                                                                                                                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run_test.py`           | Runs `build/<type>/bin/test_all`, the ABIX Catch2 suite. AMC's metadata, bootstrap, MCP and interop suites live in the AMC repository and are registered in its CTest suite | The ABIX-side test verdict; use `ctest` when you need per-case reporting                                                                                                    | Green `test_all` run; missing binary prints `Build first: python tools/run_build.py`                                                                                                              |
-| `run_bench.py` | Runs each benchmark **family in its own process** and summarises the results (`mean`/`stddev`); `--list` shows what would run. It discovers every family in `bench_all` via `--benchmark_list_tests` and every Google Benchmark suite is linked into `bench_all`, so no standalone executable is run by default; pass explicit filters to narrow it; reads the `cpu0` cpufreq governor up front and prints the fix command when CPU scaling is active, and `--pin` (default `auto`) restricts every child to the highest-frequency cores (`--pin off` disables it, `--pin 0-7` pins explicitly)                          | The EBR/RCU families share the process-wide `rcu::Domain`, so a family measured after the others reads several times slower (`BM_EBR_SyncPhase/1T` spans ~6 ns to ~1 us); isolating them is what makes numbers comparable across families and machines | Prints `N benchmarks -> <json>` per family, then a `| family | benchmark | threads | mean ns | sd |` table; one JSON per family |
+| Script         | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Purpose                                                                                                                                                                                                                                                | Expected                                                                             |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------ | --------- | ------- | ------- | --- | ---------------------------- |
+| `run_test.py`  | Runs `build/<type>/bin/test_all`, the ABIX Catch2 suite. AMC's metadata, bootstrap, MCP and interop suites live in the AMC repository and are registered in its CTest suite                                                                                                                                                                                                                                                                                                                                                                                                                     | The ABIX-side test verdict; use `ctest` when you need per-case reporting                                                                                                                                                                               | Green `test_all` run; missing binary prints `Build first: python tools/run_build.py` |
+| `run_bench.py` | Runs each benchmark **family in its own process** and summarises the results (`mean`/`stddev`); `--list` shows what would run. It discovers every family in `bench_all` via `--benchmark_list_tests` and every Google Benchmark suite is linked into `bench_all`, so no standalone executable is run by default; pass explicit filters to narrow it; reads the `cpu0` cpufreq governor up front and prints the fix command when CPU scaling is active, and `--pin` (default `auto`) restricts every child to the highest-frequency cores (`--pin off` disables it, `--pin 0-7` pins explicitly) | The EBR/RCU families share the process-wide `rcu::Domain`, so a family measured after the others reads several times slower (`BM_EBR_SyncPhase/1T` spans ~6 ns to ~1 us); isolating them is what makes numbers comparable across families and machines | Prints `N benchmarks -> <json>` per family, then a `                                 | family | benchmark | threads | mean ns | sd  | ` table; one JSON per family |
 
 ```bash
 python tools/run_test.py                                   # ABIX Catch2 suite

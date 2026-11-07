@@ -25,12 +25,12 @@ ABIX and AMC remain open infrastructure for native software ecosystems. Long-ter
 
 Community members and organizations support development through:
 
-* code contributions
-* documentation
-* testing and interoperability work
-* sponsorship
-* hardware or infrastructure support
-* ecosystem integrations
+- code contributions
+- documentation
+- testing and interoperability work
+- sponsorship
+- hardware or infrastructure support
+- ecosystem integrations
 
 Sponsorship funds long-term maintenance, cross-platform testing, documentation, infrastructure, and continued development.
 
@@ -38,12 +38,12 @@ Sponsorship funds long-term maintenance, cross-platform testing, documentation, 
 
 Companies participate in the ABIX ecosystem as:
 
-* users
-* contributors
-* integration partners
-* sponsors
-* research collaborators
-* providers or consumers of application-layer tooling
+- users
+- contributors
+- integration partners
+- sponsors
+- research collaborators
+- providers or consumers of application-layer tooling
 
 Enterprise participation does not require the ABIX core specification to be controlled by a single organization.
 
@@ -75,4 +75,4 @@ Build a sustainable ecosystem around a common native ABI foundation. The project
 
 ---
 
-*See also: [Ecosystem](ecosystem.md), [Competitive Landscape](../development/competitors.md).*
+_See also: [Ecosystem](ecosystem.md), [Competitive Landscape](../development/competitors.md)._

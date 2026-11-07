@@ -1,8 +1,6 @@
 # Cross-language example: one ABI, three consumers
 
-This is a standalone, reusable version of the C++ → ABIX → Rust/Zig flow. It is
-not part of the main test suite and has no build-time dependency on ABIX headers
-or libraries.
+This is a standalone, reusable version of the C++ → ABIX → Rust/Zig flow. It is not part of the main test suite and has no build-time dependency on ABIX headers or libraries.
 
 ```text
 native/shapes.hpp       public C ABI (the source of truth for the example)
@@ -32,9 +30,7 @@ python3 example/cross_language/run_example.py \
     --zig zig
 ```
 
-The script also accepts `AMC`, `CXX`, `RUSTC` and `ZIG` environment variables.
-It creates `example/cross_language/build/` and leaves the artifact, generated
-projections and compiled consumers there for inspection.
+The script also accepts `AMC`, `CXX`, `RUSTC` and `ZIG` environment variables. It creates `example/cross_language/build/` and leaves the artifact, generated projections and compiled consumers there for inspection.
 
 Expected output ends with:
 
@@ -50,22 +46,12 @@ zig example ok
 
 ## What it demonstrates
 
-- **One source of ABI truth.** `amc build` reads `native/shapes.hpp` once and
-  writes `build/shapes.abix`. The same artifact drives all three projections.
-- **Ownership contract.** `shape_create` returns an owned `ShapeVec` and
-  `shape_destroy` is the release entry point. The Rust projection turns that
-  into `OwnedShapeVec` with `Drop`; the consumer never frees foreign memory.
-- **Error boundary.** `shape_div` returns a status and writes its result
-  through parameter 2, recorded by `[[error]]`. Rust/Zig consumers can inspect
-  the same contract instead of guessing from a bare integer return; `shape_scale`
-  shows the same status-plus-out-parameter shape without a declared boundary.
-- **Layout verification.** The generated C++ header has `static_assert`s, the
-  Rust projection has `const assert!`, and the Zig projection has a `comptime`
-  block. A layout drift fails at compile time.
-- **No hand-written bindings.** The generated projections contain the types,
-  symbols and metadata; the consumers only add application logic.
-- **One-way scope.** The example intentionally covers C++ → Rust/Zig. Rust/Zig
-  source extraction and reverse projection are outside this example.
+- **One source of ABI truth.** `amc build` reads `native/shapes.hpp` once and writes `build/shapes.abix`. The same artifact drives all three projections.
+- **Ownership contract.** `shape_create` returns an owned `ShapeVec` and `shape_destroy` is the release entry point. The Rust projection turns that into `OwnedShapeVec` with `Drop`; the consumer never frees foreign memory.
+- **Error boundary.** `shape_div` returns a status and writes its result through parameter 2, recorded by `[[error]]`. Rust/Zig consumers can inspect the same contract instead of guessing from a bare integer return; `shape_scale` shows the same status-plus-out-parameter shape without a declared boundary.
+- **Layout verification.** The generated C++ header has `static_assert`s, the Rust projection has `const assert!`, and the Zig projection has a `comptime` block. A layout drift fails at compile time.
+- **No hand-written bindings.** The generated projections contain the types, symbols and metadata; the consumers only add application logic.
+- **One-way scope.** The example intentionally covers C++ → Rust/Zig. Rust/Zig source extraction and reverse projection are outside this example.
 
 ## Change it
 
@@ -74,13 +60,8 @@ zig example ok
 3. Re-run `run_example.py`.
 4. Update the consumers to use the new entry point.
 
-If a function takes or returns a borrowed view, add an explicit ownership or
-lifetime contract in `shapes.abic.toml`; do not rely on the generated code to
-infer lifetime safety.
+If a function takes or returns a borrowed view, add an explicit ownership or lifetime contract in `shapes.abic.toml`; do not rely on the generated code to infer lifetime safety.
 
 ## Relation to the interop suite
 
-The AMC repository's `tests/interop/` is the broader CI fixture: it covers ABIX-STD views,
-containers, interfaces, exposed classes and `amc target` verification. This
-example is deliberately smaller so it can be copied into a new project without
-pulling in the test harness.
+The AMC repository's `tests/interop/` is the broader CI fixture: it covers ABIX-STD views, containers, interfaces, exposed classes and `amc target` verification. This example is deliberately smaller so it can be copied into a new project without pulling in the test harness.

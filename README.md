@@ -411,9 +411,7 @@ ABIX
 - Python 3 for the ABIX package/runtime tests
 - a supported native toolchain
 
-The separate [AMC project](https://github.com/Sukanle/AMC) additionally requires
-LLVM/Clang (`clang-cpp`), fmt, toml++, Python, optionally Rust/Zig for the
-cross-language providers, and Lua 5.4 for the Aue conformance prototype.
+The separate [AMC project](https://github.com/Sukanle/AMC) additionally requires LLVM/Clang (`clang-cpp`), fmt, toml++, Python, optionally Rust/Zig for the cross-language providers, and Lua 5.4 for the Aue conformance prototype.
 
 > **Platform support:** Linux, macOS and **Windows**. Windows builds use the MSYS2 UCRT64 toolchain (GCC or Clang); see [`CONTRIBUTING.md`](CONTRIBUTING.md#windows-msys2-ucrt64). On macOS, Homebrew LLVM is keg-only; pass `-DCMAKE_PREFIX_PATH="$(brew --prefix llvm)"` when building AMC.
 
@@ -429,38 +427,21 @@ ctest --test-dir build/Release --output-on-failure
 
 ### AMC
 
-AMC is an independent repository: <https://github.com/Sukanle/AMC>. It consumes
-an installed ABIX runtime package (or fetches ABIX automatically into its own
-`dependencies/` directory). The ABIX root neither contains nor builds AMC.
+AMC is an independent repository: <https://github.com/Sukanle/AMC>. It consumes an installed ABIX runtime package (or fetches ABIX automatically into its own `dependencies/` directory). The ABIX root neither contains nor builds AMC.
 
 ### Runtime build contract: no exceptions, no RTTI
 
 ABIX runtime is built as an **explicit-control-flow layer**:
 
-- ABIX's own runtime tests and DLL plugins are compiled with
-  `-fno-exceptions -fno-rtti` by default (`ABIX_RUNTIME_NO_EXCEPTIONS=ON`,
-  `ABIX_RUNTIME_NO_RTTI=ON`; MSVC: `/EHs-c- /GR-`).
-- ABIX headers do not use `throw` / `catch`, `dynamic_cast` or `typeid`.
-  Failures are returned through `CallError` / status values, and logging is an
-  optional diagnostic sink.
-- ABIX runtime targets therefore carry no C++ exception landing pads or RTTI
-  metadata: control flow is explicit, with no exception/RTTI machinery on the
-  runtime path. Test executables still link Catch2, which may carry its own
-  RTTI/exception metadata; that is test-framework overhead, not ABIX runtime
-  code.
-- **AMC is different.** AMC is the LLVM/Clang/fmt/toml++ toolchain and keeps
-  C++ exceptions and RTTI enabled by default; its `try/catch` error handling
-  and LLVM integration are not part of the no-exception runtime contract.
-- `ABIX::runtime` is header-only and does not force compile flags on consumers.
-  The no-exception/no-RTTI contract is enforced for ABIX's own build targets;
-  a host application may choose its own policy.
+- ABIX's own runtime tests and DLL plugins are compiled with `-fno-exceptions -fno-rtti` by default (`ABIX_RUNTIME_NO_EXCEPTIONS=ON`, `ABIX_RUNTIME_NO_RTTI=ON`; MSVC: `/EHs-c- /GR-`).
+- ABIX headers do not use `throw` / `catch`, `dynamic_cast` or `typeid`. Failures are returned through `CallError` / status values, and logging is an optional diagnostic sink.
+- ABIX runtime targets therefore carry no C++ exception landing pads or RTTI metadata: control flow is explicit, with no exception/RTTI machinery on the runtime path. Test executables still link Catch2, which may carry its own RTTI/exception metadata; that is test-framework overhead, not ABIX runtime code.
+- **AMC is different.** AMC is the LLVM/Clang/fmt/toml++ toolchain and keeps C++ exceptions and RTTI enabled by default; its `try/catch` error handling and LLVM integration are not part of the no-exception runtime contract.
+- `ABIX::runtime` is header-only and does not force compile flags on consumers. The no-exception/no-RTTI contract is enforced for ABIX's own build targets; a host application may choose its own policy.
 
-This is ABIX's **no-extra-overhead / explicit-control-flow contract**: runtime
-failures are ordinary return values, not hidden unwinding paths.
+This is ABIX's **no-extra-overhead / explicit-control-flow contract**: runtime failures are ordinary return values, not hidden unwinding paths.
 
-Set `ABIX_RUNTIME_NO_EXCEPTIONS=OFF` or `ABIX_RUNTIME_NO_RTTI=OFF` only when
-debugging or integrating a toolchain that requires those features; doing so
-intentionally weakens the ABIX runtime contract.
+Set `ABIX_RUNTIME_NO_EXCEPTIONS=OFF` or `ABIX_RUNTIME_NO_RTTI=OFF` only when debugging or integrating a toolchain that requires those features; doing so intentionally weakens the ABIX runtime contract.
 
 ### CMake package
 
@@ -479,23 +460,15 @@ add_executable(app main.cpp)
 target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
-The package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It does not
-require AMC, LLVM/Clang, fmt or static libraries. `ABIX::ABIX` is a convenience
-aggregate for the runtime.
+The package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It does not require AMC, LLVM/Clang, fmt or static libraries. `ABIX::ABIX` is a convenience aggregate for the runtime.
 
-ABIX installs its bundled MICS package by default. Set
-`-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The package
-config resolves only `MICS`. `ABIX_INSTALL` defaults to ON for a top-level build
-and OFF when ABIX is added as a subproject.
+ABIX installs its bundled MICS package by default. Set `-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The package config resolves only `MICS`. `ABIX_INSTALL` defaults to ON for a top-level build and OFF when ABIX is added as a subproject.
 
-The artifact libraries (`format`/`abi`/`metadata`/`tools`) are owned by the
-standalone AMC package and are exported there as `AMC::format`, `AMC::abi`,
-`AMC::metadata` and `AMC::tools`.
+The artifact libraries (`format`/`abi`/`metadata`/`tools`) are owned by the standalone AMC package and are exported there as `AMC::format`, `AMC::abi`, `AMC::metadata` and `AMC::tools`.
 
 ### Try it
 
-Build and install AMC separately first (see the
-[AMC repository](https://github.com/Sukanle/AMC)), then use `amc`:
+Build and install AMC separately first (see the [AMC repository](https://github.com/Sukanle/AMC)), then use `amc`:
 
 ```bash
 # Build an .abix artifact from an AMC fixture (AMC_SOURCE_DIR is an AMC checkout)

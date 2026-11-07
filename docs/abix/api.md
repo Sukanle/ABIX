@@ -427,13 +427,13 @@ The counters keep apart what a single "RCU timeout" number would conflate:
 
 ### Who Owns Validity
 
-The grace period protects _calls_: `dll::Function::operator()` holds a read-side section for the whole call and revalidates the cached entry against the current image, so a reload can never make it call into a retired module. It does **not** protect a bare pointer that was copied out of the module, because nothing ties that pointer to a live image:| Way to reach module code | Protection across the call | What keeps it valid across a reload |
-|---|---|---|
-| `dll::Function::operator()` | read-side section, entry revalidated per call | the `dll::Function` handle (and `unload()` refuses while any handle is alive) |
-| `dll::Function::raw()` | none | nothing: re-resolve after a reload |
-| `Object::resolve(name)` | none | nothing: re-resolve after a reload |
-| `runtime::Function` (closure) | none | nothing: keep the module loaded yourself |
-| `UniqueInterfaceProxy::call` | its own **lease** model (`ModuleControl`, `pin`/`unpin`) | the lease: "the binding stays valid exactly as long as the caller holds a lease" |
+| The grace period protects _calls_: `dll::Function::operator()` holds a read-side section for the whole call and revalidates the cached entry against the current image, so a reload can never make it call into a retired module. It does **not** protect a bare pointer that was copied out of the module, because nothing ties that pointer to a live image: | Way to reach module code                                 | Protection across the call                                                       | What keeps it valid across a reload |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------- |
+| `dll::Function::operator()`                                                                                                                                                                                                                                                                                                                                    | read-side section, entry revalidated per call            | the `dll::Function` handle (and `unload()` refuses while any handle is alive)    |
+| `dll::Function::raw()`                                                                                                                                                                                                                                                                                                                                         | none                                                     | nothing: re-resolve after a reload                                               |
+| `Object::resolve(name)`                                                                                                                                                                                                                                                                                                                                        | none                                                     | nothing: re-resolve after a reload                                               |
+| `runtime::Function` (closure)                                                                                                                                                                                                                                                                                                                                  | none                                                     | nothing: keep the module loaded yourself                                         |
+| `UniqueInterfaceProxy::call`                                                                                                                                                                                                                                                                                                                                   | its own **lease** model (`ModuleControl`, `pin`/`unpin`) | the lease: "the binding stays valid exactly as long as the caller holds a lease" |
 
 So if a call target has to survive a reload, hold a handle or a lease — not a pointer.
 
@@ -482,8 +482,7 @@ Enabling a bound is an explicit trade, as described under "Bounding a Grace-Peri
 
 **Namespace:** `skl::abix::util`
 
-Logging is an optional diagnostic side channel. Program-visible failures use
-error return values / `CallError`; logging never replaces error handling.
+Logging is an optional diagnostic side channel. Program-visible failures use error return values / `CallError`; logging never replaces error handling.
 
 | Type / Function                                        | Description                                                                                |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
@@ -501,25 +500,11 @@ error return values / `CallError`; logging never replaces error handling.
 | `get_log_sink()` / `get_log_level()`                   | Read current callback / threshold                                                          |
 | `log(level, fmt, ...)` / `log(state, level, fmt, ...)` | Format into a fixed 1 KiB buffer and dispatch synchronously                                |
 
-Configuration storage uses the plain-storage primitives in
-`SKL/ABIX/Util/Atomic.h`, not `std::atomic`, so the state layout does not depend
-on the standard-library implementation across DLL/CRT boundaries.
-`ABIX_LOG_THREAD_SAFE` defaults to `1`: reads/writes use acquire/release
-operations over plain function-pointer and `uint8_t` fields. Set it to `0` for
-a fixed sink / single-threaded configuration where all configuration changes
-happen before worker threads start. The policy is a compile-time contract;
-modules sharing a `LogState` must use the same policy.
+Configuration storage uses the plain-storage primitives in `SKL/ABIX/Util/Atomic.h`, not `std::atomic`, so the state layout does not depend on the standard-library implementation across DLL/CRT boundaries. `ABIX_LOG_THREAD_SAFE` defaults to `1`: reads/writes use acquire/release operations over plain function-pointer and `uint8_t` fields. Set it to `0` for a fixed sink / single-threaded configuration where all configuration changes happen before worker threads start. The policy is a compile-time contract; modules sharing a `LogState` must use the same policy.
 
-A sink is observer-only. It runs on the calling thread, without an ABIX lock;
-it must not throw, and it must copy `message` before returning if it enqueues it
-for asynchronous processing. Re-entrant logging calls are allowed but must be
-bounded. `length` excludes the NUL terminator; `truncated` reports whether the
-message exceeded the 1 KiB buffer. External backends such as Quill/fmtlog own
-their own queue/locking; ABIX does not add a second dispatch lock.
+A sink is observer-only. It runs on the calling thread, without an ABIX lock; it must not throw, and it must copy `message` before returning if it enqueues it for asynchronous processing. Re-entrant logging calls are allowed but must be bounded. `length` excludes the NUL terminator; `truncated` reports whether the message exceeded the 1 KiB buffer. External backends such as Quill/fmtlog own their own queue/locking; ABIX does not add a second dispatch lock.
 
-The convenience state is inline and therefore has one copy per DSO that
-compiles ABIX. Use an explicit `LogState` owned by the host/runtime when state
-must cross a DLL boundary; do not treat `set_log_sink()` as process-global.
+The convenience state is inline and therefore has one copy per DSO that compiles ABIX. Use an explicit `LogState` owned by the host/runtime when state must cross a DLL boundary; do not treat `set_log_sink()` as process-global.
 
 **Macros:**
 
@@ -531,8 +516,7 @@ must cross a DLL boundary; do not treat `set_log_sink()` as process-global.
 | `ABIX_LOG_ERROR(fmt, ...)`       | Unless `ABIX_DISABLE_LOGGING` or `ABIX_DISABLE_LOG_LEVEL_ERROR`   |
 | `ABIX_LOG_*_TO(state, fmt, ...)` | Same, but dispatch through an explicit `LogState`                 |
 
-Runtime filtering happens before `vsnprintf`; compile-time level disabling
-removes the call entirely.
+Runtime filtering happens before `vsnprintf`; compile-time level disabling removes the call entirely.
 
 ## 5. `SKL/ABIX/DLL/Function.h` — Typed Function Handles
 

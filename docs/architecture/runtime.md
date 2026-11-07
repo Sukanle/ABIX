@@ -35,9 +35,9 @@ The runtime may participate in all of these, but after binding, a compatible cal
 
 `runtime::Registry` holds the ABI facts for all loaded modules and validates them at load time:
 
-* canonical `TypeDesc` / `TypeLayout` records are the one ABI truth;
-* a shared `TypeID` must carry the same `LayoutHash` within one module version (compatible duplicates are deduplicated; conflicts are rejected), while a newer version may carry a different layout as a separate entry;
-* lookups are by `TypeID` (`find_by_id` for the newest version, `find_type(id, version)` for a pinned one, `type_of<T>()`); name lookup is intentionally diagnostic-only and returns `nullptr` in the compact build.
+- canonical `TypeDesc` / `TypeLayout` records are the one ABI truth;
+- a shared `TypeID` must carry the same `LayoutHash` within one module version (compatible duplicates are deduplicated; conflicts are rejected), while a newer version may carry a different layout as a separate entry;
+- lookups are by `TypeID` (`find_by_id` for the newest version, `find_type(id, version)` for a pinned one, `type_of<T>()`); name lookup is intentionally diagnostic-only and returns `nullptr` in the compact build.
 
 ## Three metadata modes
 
@@ -47,8 +47,8 @@ graph TD
     B -->|materialization| C["Runtime Descriptor (pointer-rich, hot path)"]
 ```
 
-* The toolchain emits the Region into the `.abix.metadata` section of a generated header; an offline tool can scan a binary without loading it.
-* `MaterializedModule` projects a Region back into a pointer-rich `ModuleDescriptor`, so a registry can be driven entirely by the metadata image — no compile-time descriptor arrays required.
+- The toolchain emits the Region into the `.abix.metadata` section of a generated header; an offline tool can scan a binary without loading it.
+- `MaterializedModule` projects a Region back into a pointer-rich `ModuleDescriptor`, so a registry can be driven entirely by the metadata image — no compile-time descriptor arrays required.
 
 See [`metadata_modes.md`](../abix/metadata_modes.md) for the design.
 

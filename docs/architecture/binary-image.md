@@ -91,11 +91,11 @@ bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &image, st
 
 ## Format adapters
 
-| Adapter | Reads | Exports from |
-|---------|-------|--------------|
-| `SKL/ABIX/Binary/ELF.h` | ELF64 little-endian | `.dynsym` (GLOBAL/WEAK, defined) |
+| Adapter                   | Reads                          | Exports from                     |
+| ------------------------- | ------------------------------ | -------------------------------- |
+| `SKL/ABIX/Binary/ELF.h`   | ELF64 little-endian            | `.dynsym` (GLOBAL/WEAK, defined) |
 | `SKL/ABIX/Binary/MachO.h` | 32/64-bit little-endian Mach-O | `LC_SYMTAB` (external, `N_SECT`) |
-| `SKL/ABIX/Binary/PE.h` | PE32 / PE32+ | `IMAGE_EXPORT_DIRECTORY` |
+| `SKL/ABIX/Binary/PE.h`    | PE32 / PE32+                   | `IMAGE_EXPORT_DIRECTORY`         |
 
 Each adapter exposes a cheap `is_*` magic check and a `detail::parse_*` that fills a `ParseResult`. PE additionally resolves RVAs to file offsets (for the export name/function arrays) and computes `address = image_base + RVA`.
 

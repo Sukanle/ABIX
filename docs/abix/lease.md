@@ -234,8 +234,7 @@ ABIX must not depend on AMC implementation details. AMC must not expose `ModuleC
 | Cross-platform verification    | Pending macOS/Windows                                                          |
 | Zig→Rust takeover fixture      | Implemented; Linux interop verified                                            |
 
-The ABIX test uses a mock Host to validate the contract. It does not become a
-production registry and does not export global symbols.
+The ABIX test uses a mock Host to validate the contract. It does not become a production registry and does not export global symbols.
 
 ## Versioning
 

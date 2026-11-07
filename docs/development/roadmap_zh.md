@@ -101,10 +101,8 @@ ABIX 0.3.0 — Ecosystem                 AMC 拆分 + 其他项目建立在 ABIX
 
 ABIX runtime 目标以显式控制流层构建：
 
-- ABIX runtime 测试和 DLL 插件默认使用 `-fno-exceptions -fno-rtti`
-  （`ABIX_RUNTIME_NO_EXCEPTIONS=ON`、`ABIX_RUNTIME_NO_RTTI=ON`）。
-- ABIX 头文件不使用 `throw`/`catch`、`dynamic_cast` 和 `typeid`；失败通过返回的
-  status/error 值表达，日志保持可选。
+- ABIX runtime 测试和 DLL 插件默认使用 `-fno-exceptions -fno-rtti` （`ABIX_RUNTIME_NO_EXCEPTIONS=ON`、`ABIX_RUNTIME_NO_RTTI=ON`）。
+- ABIX 头文件不使用 `throw`/`catch`、`dynamic_cast` 和 `typeid`；失败通过返回的 status/error 值表达，日志保持可选。
 - AMC 默认保留异常和 RTTI，因为它集成 LLVM/Clang/fmt/toml++ 并使用 `try/catch`。
 - README 记录 runtime 契约及其与 AMC 的明确边界。
 

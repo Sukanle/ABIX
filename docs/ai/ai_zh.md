@@ -147,7 +147,7 @@ graph TD
     A --> D[ABI Ground Truth]
     A --> E[Deterministic Verification]
     A --> F[Agent Orchestration]
-    
+
     B --> B1[更少 Context Token]
     C --> C1[限定推理空间]
     D --> D1[防止模型猜测真实状态]
@@ -157,13 +157,13 @@ graph TD
 
 TROI 只是第一层。
 
-| 层 | 解决什么 | 能否经受 LLM 进化？ |
-|---|---------|-------------------|
-| TROI | 效率 | 随着 Context 增大而减弱 |
-| Semantic Constraint | 推理精度 | **增强** — 数据越多，越需要更紧的约束 |
-| ABI Ground Truth | 事实准确性 | **永久** — 真实二进制状态永不改变 |
-| Deterministic Verification | 正确性保证 | **永久** — "系统证明"胜过"模型猜测" |
-| Agent Orchestration | 闭环操作 | **永久** — 总得有人去执行 |
+| 层                         | 解决什么   | 能否经受 LLM 进化？                   |
+| -------------------------- | ---------- | ------------------------------------- |
+| TROI                       | 效率       | 随着 Context 增大而减弱               |
+| Semantic Constraint        | 推理精度   | **增强** — 数据越多，越需要更紧的约束 |
+| ABI Ground Truth           | 事实准确性 | **永久** — 真实二进制状态永不改变     |
+| Deterministic Verification | 正确性保证 | **永久** — "系统证明"胜过"模型猜测"   |
+| Agent Orchestration        | 闭环操作   | **永久** — 总得有人去执行             |
 
 ## 三角关系：LLM / Agent / ABIX
 
@@ -174,11 +174,11 @@ graph LR
     ABIX -->|Ground Truth| LLM
 ```
 
-| 角色 | 核心动作 | 输出 |
-|------|----------|------|
-| LLM | 推理、预测、规划、生成 | 候选解 / 计划 |
+| 角色  | 核心动作                     | 输出           |
+| ----- | ---------------------------- | -------------- |
+| LLM   | 推理、预测、规划、生成       | 候选解 / 计划  |
 | Agent | 取数、组合、执行、验证、恢复 | 可执行动作序列 |
-| ABIX | 标准、状态、事实、约束、验证 | Ground Truth |
+| ABIX  | 标准、状态、事实、约束、验证 | Ground Truth   |
 
 ABIX 定义"事实是什么"。Agent 决定"现在需要哪些事实以及怎么使用它们"。LLM 在结构化事实之上进行推理。
 
@@ -315,4 +315,4 @@ AI 价值不是：
 
 ---
 
-*本文档论述 ABIX × AI 的理论基础。MCP 工具接口见 [MCP.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP_zh.md)。Token 效率指标见 [troi.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)。Agent 架构见 **AGENT.md**（规划中）。*
+_本文档论述 ABIX × AI 的理论基础。MCP 工具接口见 [MCP.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP_zh.md)。Token 效率指标见 [troi.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi_zh.md)。Agent 架构见 **AGENT.md**（规划中）。_

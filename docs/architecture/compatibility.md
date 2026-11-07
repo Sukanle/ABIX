@@ -20,12 +20,12 @@ ABIX separates identities that are often conflated. Keeping them distinct makes 
 
 ## Four identities
 
-| ID | Meaning | Question it answers |
-|----|---------|---------------------|
-| **TypeID** | semantic type identity (128-bit) | is this the same type? |
-| **LayoutHash** | physical layout identity | is the memory layout compatible? |
-| **BuildID** | binary build identity | which artifact belongs to this binary? |
-| **MetadataID** | metadata content identity | is this metadata image intact? |
+| ID             | Meaning                          | Question it answers                    |
+| -------------- | -------------------------------- | -------------------------------------- |
+| **TypeID**     | semantic type identity (128-bit) | is this the same type?                 |
+| **LayoutHash** | physical layout identity         | is the memory layout compatible?       |
+| **BuildID**    | binary build identity            | which artifact belongs to this binary? |
+| **MetadataID** | metadata content identity        | is this metadata image intact?         |
 
 Lookup chain:
 
@@ -34,10 +34,10 @@ graph LR
     A[Binary] --> B[BuildID] --> C[".abix"] --> D[MetadataID] --> E[TypeID] --> F[LayoutHash]
 ```
 
-* `TypeID` is name-independent: two modules may spell the same type differently and still share a TypeID. Names are diagnostic only.
-* `LayoutHash` covers size, alignment and field offsets/types — the part that actually decides whether a call is safe.
-* `BuildID` comes from the ELF `.note.gnu.build-id` (or is injected); it indexes the symbol server.
-* `MetadataID` is a hash over the metadata region content (desc + hash + names) and detects tampering.
+- `TypeID` is name-independent: two modules may spell the same type differently and still share a TypeID. Names are diagnostic only.
+- `LayoutHash` covers size, alignment and field offsets/types — the part that actually decides whether a call is safe.
+- `BuildID` comes from the ELF `.note.gnu.build-id` (or is injected); it indexes the symbol server.
+- `MetadataID` is a hash over the metadata region content (desc + hash + names) and detects tampering.
 
 ## ABI diff flow
 
@@ -67,14 +67,14 @@ The diff result classifies each type into one of the compatibility kinds below.
 
 `amc compatibility` and `amc query --compatible` classify each type:
 
-| Kind | Meaning |
-|------|---------|
-| `identical` | same TypeID and same LayoutHash |
-| `layout_compatible` | same effective layout |
-| `map_compatible` | layout differs but a mapping exists |
-| `incompatible` | no safe use without an adapter |
+| Kind                | Meaning                             |
+| ------------------- | ----------------------------------- |
+| `identical`         | same TypeID and same LayoutHash     |
+| `layout_compatible` | same effective layout               |
+| `map_compatible`    | layout differs but a mapping exists |
+| `incompatible`      | no safe use without an adapter      |
 
-`amc verify` is stricter: **any** difference — including *added* types or functions — counts as drift, because widening the ABI surface must be an explicit decision.
+`amc verify` is stricter: **any** difference — including _added_ types or functions — counts as drift, because widening the ABI surface must be an explicit decision.
 
 ## Load-time cross-module validation
 

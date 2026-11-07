@@ -96,12 +96,12 @@ The AMC toolchain is a separate repository; its documentation lives there.
 
 How ABIX and AMC work internally.
 
-| Document                                            | 中文                                                      | Description                                                |
-| --------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
-| [architecture.md](architecture/architecture.md)     | [architecture_zh.md](architecture/architecture_zh.md)     | system overview, design map, invariants                    |
-| [runtime.md](architecture/runtime.md)               | [runtime_zh.md](architecture/runtime_zh.md)               | runtime responsibilities, registry, execution model        |
-| [compatibility.md](architecture/compatibility.md)   | [compatibility_zh.md](architecture/compatibility_zh.md)   | TypeID / LayoutHash / BuildID / MetadataID                 |
-| [binary-image.md](architecture/binary-image.md)     | [binary-image_zh.md](architecture/binary-image_zh.md)     | the BinaryImage capability layer over ELF / Mach-O / PE    |
+| Document                                          | 中文                                                    | Description                                             |
+| ------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
+| [architecture.md](architecture/architecture.md)   | [architecture_zh.md](architecture/architecture_zh.md)   | system overview, design map, invariants                 |
+| [runtime.md](architecture/runtime.md)             | [runtime_zh.md](architecture/runtime_zh.md)             | runtime responsibilities, registry, execution model     |
+| [compatibility.md](architecture/compatibility.md) | [compatibility_zh.md](architecture/compatibility_zh.md) | TypeID / LayoutHash / BuildID / MetadataID              |
+| [binary-image.md](architecture/binary-image.md)   | [binary-image_zh.md](architecture/binary-image_zh.md)   | the BinaryImage capability layer over ELF / Mach-O / PE |
 
 Binary metadata inspection guides live in the AMC repository: see [ELF/Mach-O inspection](https://github.com/Sukanle/AMC/blob/main/docs/architecture/elf-inspection.md) and [PE inspection](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md).
 

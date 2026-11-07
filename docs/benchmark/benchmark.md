@@ -100,11 +100,11 @@ Confirm these three before quoting anything from section 5:
 1. **Fixed frequency**: on Linux the governor must be `performance`. Otherwise Google Benchmark prints `***WARNING*** CPU scaling is enabled`, and short-run coefficients of variation reach 29–44%, which cannot establish any percentage claim. With a fixed frequency and `repetitions=5`, almost every entry below has sd under 1% of its mean.
 2. **Hyper-threading off, load taken on physical cores**: 20 logical CPUs = 8 P-cores + 12 E-cores. `threads:32` and the 20T workload entries already fill or exceed the physical core count, and `threads:32` is oversubscription — read it as degradation only, not as a scalability ceiling.
 3. **Explicit CPU affinity**: `tools/run_bench.py --pin` controls the child processes' CPU set:
-    - `--pin auto` / `--pin p` (the default): restrict them to the 8 P-cores (identified by `cpufreq/cpuinfo_max_freq` on Linux and `EfficiencyClass` on Windows);
-    - `--pin e`: restrict them to the 12 E-cores;
-    - `--pin all` (same as `--pin off`): leave the scheduler alone (all 20 logical CPUs available);
-    - `--pin <list>`: pin explicitly.
-    > **Note that `--pin 0-20`, `--pin all` and `--pin off` are equivalent**: only CPUs 0–19 are online and the kernel ignores non-existent CPUs in the mask; do not pin to fewer cores than the thread count when comparing scalability.
+   - `--pin auto` / `--pin p` (the default): restrict them to the 8 P-cores (identified by `cpufreq/cpuinfo_max_freq` on Linux and `EfficiencyClass` on Windows);
+   - `--pin e`: restrict them to the 12 E-cores;
+   - `--pin all` (same as `--pin off`): leave the scheduler alone (all 20 logical CPUs available);
+   - `--pin <list>`: pin explicitly.
+     > **Note that `--pin 0-20`, `--pin all` and `--pin off` are equivalent**: only CPUs 0–19 are online and the kernel ignores non-existent CPUs in the mask; do not pin to fewer cores than the thread count when comparing scalability.
 
 ### 4.3 Reproduction command
 
@@ -309,15 +309,15 @@ The i7-14700K is a hybrid design with 8 P-cores and 12 E-cores. This section hol
 
 **Lookup and resolution (ns/op)**
 
-| Benchmark                            |    Win P8 | Win E12 |    Win C20 |    Lin P8 | Lin E12 |    Lin C20 |
-| ------------------------------------ | --------: | ------: | ---------: | --------: | ------: | ---------: |
-| `LookupCross/uniform/hash_index/16`  |     5.999 |  15.318 |      6.188 |     5.927 |  10.607 |      5.931 |
-| `LookupCross/uniform/hash_index/16K` |    14.690 |  26.744 |     15.555 |    14.029 |  24.465 |     13.854 |
-| `LookupCross/uniform/linear/16`      |    19.587 |  26.800 |     19.587 |    18.082 |  25.464 |     18.067 |
+| Benchmark                            |    Win P8 |   Win E12 |   Win C20 |    Lin P8 |   Lin E12 |   Lin C20 |
+| ------------------------------------ | --------: | --------: | --------: | --------: | --------: | --------: |
+| `LookupCross/uniform/hash_index/16`  |     5.999 |    15.318 |     6.188 |     5.927 |    10.607 |     5.931 |
+| `LookupCross/uniform/hash_index/16K` |    14.690 |    26.744 |    15.555 |    14.029 |    24.465 |    13.854 |
+| `LookupCross/uniform/linear/16`      |    19.587 |    26.800 |    19.587 |    18.082 |    25.464 |    18.067 |
 | `LookupCross/uniform/linear/16K`     | 1,556.919 | 5,031.250 | 1,562.500 | 1,553.568 | 5,039.891 | 1,550.864 |
-| `LookupCross/zipf/hash_index/16`     |     6.138 |  15.123 |      6.083 |     5.925 |  10.603 |      5.924 |
-| `BM_Resolve_Linear`                  |   206.055 |       — |          — |   202.701 | 871.156 |    202.393 |
-| `BM_ResolvePath_OneHash`             |         — |       — |          — |     5.483 |  11.980 |      5.538 |
+| `LookupCross/zipf/hash_index/16`     |     6.138 |    15.123 |     6.083 |     5.925 |    10.603 |     5.924 |
+| `BM_Resolve_Linear`                  |   206.055 |         — |         — |   202.701 |   871.156 |   202.393 |
+| `BM_ResolvePath_OneHash`             |         — |         — |         — |     5.483 |    11.980 |     5.538 |
 
 > The Windows `BM_Resolve_Linear` reference value is taken from section 5.3 (that family was not measured in all three configurations); `—` means not measured in this run.
 
@@ -331,21 +331,21 @@ The i7-14700K is a hybrid design with 8 P-cores and 12 E-cores. This section hol
 
 **EBR scalability (ns/op)**
 
-| Benchmark                          | Win P8 |  Win E12 |  Win C20 |  Lin P8 |  Lin E12 |  Lin C20 |
-| ---------------------------------- | -----: | -------: | -------: | ------: | -------: | -------: |
-| `EBR_ReaderScalability/threads:1`  |  0.547 |    1.094 |    0.675 |   0.466 |    0.816 |    0.466 |
-| `EBR_ReaderScalability/threads:32` |  0.523 |    1.122 |    0.746 |   0.474 |    0.850 |    0.750 |
-| `EBR_WriterScalability/8/4`        | 202.148 |  661.281 |  150.670 | 377.472 |  285.987 |  317.145 |
-| `EBR_SyncPhase/8T`                 | 562.668 |  347.656 |  730.469 | 769.545 | 1,036.315 | 830.274 |
-| `EBR_SyncPhase/20T`                |      — |        — | 2,906.250 | 1,797.147 | 4,126.695 | 2,895.090 |
+| Benchmark                          |  Win P8 | Win E12 |   Win C20 |    Lin P8 |   Lin E12 |   Lin C20 |
+| ---------------------------------- | ------: | ------: | --------: | --------: | --------: | --------: |
+| `EBR_ReaderScalability/threads:1`  |   0.547 |   1.094 |     0.675 |     0.466 |     0.816 |     0.466 |
+| `EBR_ReaderScalability/threads:32` |   0.523 |   1.122 |     0.746 |     0.474 |     0.850 |     0.750 |
+| `EBR_WriterScalability/8/4`        | 202.148 | 661.281 |   150.670 |   377.472 |   285.987 |   317.145 |
+| `EBR_SyncPhase/8T`                 | 562.668 | 347.656 |   730.469 |   769.545 | 1,036.315 |   830.274 |
+| `EBR_SyncPhase/20T`                |       — |       — | 2,906.250 | 1,797.147 | 4,126.695 | 2,895.090 |
 
 **Reload and plugin loading (ns/op)**
 
-| Benchmark              |    Win P8 |   Win E12 |    Win C20 |    Lin P8 |    Lin E12 |    Lin C20 |
-| ---------------------- | --------: | --------: | ---------: | --------: | ---------: | ---------: |
-| `BM_Reload_SamePath`   | 3,632.806 | 5,998.884 |  3,574.916 |   166.428 |    229.334 |    168.319 |
+| Benchmark              |     Win P8 |    Win E12 |    Win C20 |    Lin P8 |    Lin E12 |   Lin C20 |
+| ---------------------- | ---------: | ---------: | ---------: | --------: | ---------: | --------: |
+| `BM_Reload_SamePath`   |  3,632.806 |  5,998.884 |  3,574.916 |   166.428 |    229.334 |   168.319 |
 | `BM_Reload_LoadOnly`   | 48,242.188 | 94,164.323 | 48,759.459 | 8,580.031 | 16,438.093 | 8,502.812 |
-| `BM_Object_LoadUnload` | 12,779.018 | 25,020.870 | 12,555.804 | 3,483.972 |  6,539.611 |  3,509.796 |
+| `BM_Object_LoadUnload` | 12,779.018 | 25,020.870 | 12,555.804 | 3,483.972 |  6,539.611 | 3,509.796 |
 
 **Observations**:
 
@@ -357,12 +357,12 @@ The i7-14700K is a hybrid design with 8 P-cores and 12 E-cores. This section hol
 
 ## 6. Where the Cross-Platform Differences Come From
 
-| Category                           | Behaviour                                                                                                            | Quoting rule                                                                              |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Chip and cache coherence           | Atomic load/store/inc, EBR bracket, `Domain` enter/exit, call overhead, false sharing: within ±10% on both platforms | Direction and order of magnitude are portable; absolute ns should still name the platform |
-| OS loader                          | `Reload` / `Object::load-unload` / path resolution: Linux is 2.7–21× faster                                          | **Must name the platform**; cross-platform use same-platform relative values only         |
-| OS allocator                       | `BM_EBR_ReclaimBatch` slope (Linux 16.3 ns/item versus Windows 24–32 ns/item)                                        | Linearity belongs to ABIX, the slope belongs to the platform                              |
-| Platform-independent (ABIX itself) | `BM_EBR_GracePeriod` at 0.125 ns/item (identical on both platforms); the near-linear growth of `SyncPhase`           | Portable across platforms                                                                 |
+| Category                           | Behaviour                                                                                                            | Quoting rule                                                                                                                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chip and cache coherence           | Atomic load/store/inc, EBR bracket, `Domain` enter/exit, call overhead, false sharing: within ±10% on both platforms | Direction and order of magnitude are portable; absolute ns should still name the platform                                                                                                    |
+| OS loader                          | `Reload` / `Object::load-unload` / path resolution: Linux is 2.7–21× faster                                          | **Must name the platform**; cross-platform use same-platform relative values only                                                                                                            |
+| OS allocator                       | `BM_EBR_ReclaimBatch` slope (Linux 16.3 ns/item versus Windows 24–32 ns/item)                                        | Linearity belongs to ABIX, the slope belongs to the platform                                                                                                                                 |
+| Platform-independent (ABIX itself) | `BM_EBR_GracePeriod` at 0.125 ns/item (identical on both platforms); the near-linear growth of `SyncPhase`           | Portable across platforms                                                                                                                                                                    |
 | Unresolved                         | Multi-threaded increments at 8T/16T (Linux 28–34% slower), `synthetic_mixed` 1T                                      | Same-platform relative comparison only; the P8/E12/C20 comparison in section 5.7 explains the 16T entry (cross-cluster plus oversubscription), but the 8T entry still needs a re-measurement |
 
 This is why the document gives no combined ranking: the same benchmark can differ by 1.0× (chip-dominated) or 21× (OS-dominated), and sorting both columns together produces a meaningless ordering.

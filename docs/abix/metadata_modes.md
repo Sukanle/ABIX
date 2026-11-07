@@ -67,13 +67,14 @@ At compile time, AMC extracts ABI facts from the language AST and emits them int
 
 ## Three Modes Overview
 
-| Mode | TypeDescriptor | String Location | .abix File | Typical Scenario |
-|------|---------------|-----------|-----------|---------|
-| **Debug** | 72 B (with `name`) | Embedded `.abix.names` section | Optional generation | Development / step debugging |
-| **RelWithDebInfo** | 56 B (no `name`) | Standalone `.abix` archive | Must archive | Staging / crash analysis |
-| **Release** | 56 B (no `name`) | None | Archive recommended | Production deployment |
+| Mode               | TypeDescriptor     | String Location                | .abix File          | Typical Scenario             |
+| ------------------ | ------------------ | ------------------------------ | ------------------- | ---------------------------- |
+| **Debug**          | 72 B (with `name`) | Embedded `.abix.names` section | Optional generation | Development / step debugging |
+| **RelWithDebInfo** | 56 B (no `name`)   | Standalone `.abix` archive     | Must archive        | Staging / crash analysis     |
+| **Release**        | 56 B (no `name`)   | None                           | Archive recommended | Production deployment        |
 
 Key properties:
+
 - **RelWithDebInfo and Release binaries are bit-identical**, differing only in whether the `.abix` file is archived
 - **Same binary**: debug before strip, release after strip
 - **Compile once, two forms**, enabling differential testing
@@ -113,6 +114,7 @@ inline constexpr const char *amc_type_names[] = {
 ```
 
 This section:
+
 - Falls into `.abix.names` on ELF (a custom section)
 - **Is not referenced by any runtime code** — the runtime path only uses `type_id`/`layout_hash`
 - Can be safely removed by `strip` without affecting program behavior
@@ -142,13 +144,13 @@ struct TypeDescriptor {           // sizeof = 56
 
 All other descriptors similarly remove the `name` field:
 
-| Structure | Debug Size | Release Size | Savings |
-|--------|-----------|-------------|------|
-| `TypeDescriptor` | 72 B | 56 B | **22%** |
-| `FieldDescriptor` | 32 B | 24 B | **25%** |
-| `FunctionDescriptor` | 56 B | 48 B | **14%** |
-| `ParameterDescriptor` | 32 B | 24 B | **25%** |
-| `SymbolDescriptor` | 24 B | 8 B | **67%** |
+| Structure             | Debug Size | Release Size | Savings |
+| --------------------- | ---------- | ------------ | ------- |
+| `TypeDescriptor`      | 72 B       | 56 B         | **22%** |
+| `FieldDescriptor`     | 32 B       | 24 B         | **25%** |
+| `FunctionDescriptor`  | 56 B       | 48 B         | **14%** |
+| `ParameterDescriptor` | 32 B       | 24 B         | **25%** |
+| `SymbolDescriptor`    | 24 B       | 8 B          | **67%** |
 
 > `ModuleDescriptor` retains `name` and `version` because they are not diagnostic names but logical package identifiers needed by module loading and verification paths.
 
@@ -185,6 +187,7 @@ graph TD
 ```
 
 This means:
+
 - **Same binary**: debug before strip, release after strip
 - Staging and production run exactly the same binary
 - The staging environment archives `.abix` for post-hoc diagnostics
@@ -280,27 +283,27 @@ This allows the symbol server to retrieve by build ID, without relying on filena
 
 ### Estimate for 500 Types
 
-| Mode | Total Metadata |
-|------|---------|
-| Debug (embedded strings) | ~123 KB |
-| Release (descriptor + hash) | ~28 KB |
-| **Relative Savings** | **77%** |
+| Mode                        | Total Metadata |
+| --------------------------- | -------------- |
+| Debug (embedded strings)    | ~123 KB        |
+| Release (descriptor + hash) | ~28 KB         |
+| **Relative Savings**        | **77%**        |
 
 ### Actual Measurement (ABIX Runtime Self-Description, 61 Types)
 
-| Metric | Debug | Release |
-|------|-------|---------|
-| TypeDescriptor array | 4,392 B (72 B × 61) | 3,416 B (56 B × 61) |
-| Name strings | ~3 KB | 0 B |
-| .data.rel.ro segment | 11.4 KB | ~8 KB |
-| **Binary delta** | ~100 KB | ~50 KB (including descriptor array) |
+| Metric               | Debug               | Release                             |
+| -------------------- | ------------------- | ----------------------------------- |
+| TypeDescriptor array | 4,392 B (72 B × 61) | 3,416 B (56 B × 61)                 |
+| Name strings         | ~3 KB               | 0 B                                 |
+| .data.rel.ro segment | 11.4 KB             | ~8 KB                               |
+| **Binary delta**     | ~100 KB             | ~50 KB (including descriptor array) |
 
 ### Source of Savings
 
-| Mode | Breakdown | Per-type |
-|------|-----------|----------|
-| Debug | 72 B TypeDescriptor (with name) + variable-length string constants | ≈ 120 B |
-| Release | 56 B TypeDescriptor (without name) + no string constants | ≈ 56 B |
+| Mode    | Breakdown                                                          | Per-type |
+| ------- | ------------------------------------------------------------------ | -------- |
+| Debug   | 72 B TypeDescriptor (with name) + variable-length string constants | ≈ 120 B  |
+| Release | 56 B TypeDescriptor (without name) + no string constants           | ≈ 56 B   |
 
 The 22% Release savings come from removing the `name` pointer from `TypeDescriptor` itself (along with reduced padding), while the savings from string constants (~20-50 B/type) are an additional benefit.
 

@@ -427,33 +427,21 @@ ctest --test-dir build/Release --output-on-failure
 
 ### AMC
 
-AMC 是独立仓库：<https://github.com/Sukanle/AMC>。它使用已安装的 ABIX runtime
-package（或自动把 ABIX 拉取到自己的 `dependencies/` 目录）。ABIX 根工程既不包含
-也不构建 AMC。
+AMC 是独立仓库：<https://github.com/Sukanle/AMC>。它使用已安装的 ABIX runtime package（或自动把 ABIX 拉取到自己的 `dependencies/` 目录）。ABIX 根工程既不包含也不构建 AMC。
 
 ### Runtime 构建契约：无异常、无 RTTI
 
 ABIX runtime 以**显式控制流层**构建：
 
-- ABIX 自身的 runtime 测试和 DLL 插件默认使用 `-fno-exceptions -fno-rtti`
-  编译（`ABIX_RUNTIME_NO_EXCEPTIONS=ON`、`ABIX_RUNTIME_NO_RTTI=ON`；
-  MSVC 为 `/EHs-c- /GR-`）。
-- ABIX 头文件不使用 `throw` / `catch`、`dynamic_cast` 或 `typeid`。失败通过
-  `CallError` / 状态值返回，日志只是可选的诊断 sink。
-- 因此 ABIX runtime 目标不携带 C++ 异常 landing pad 或 RTTI 元数据：控制流
-  显式，runtime 路径上没有异常/RTTI 机制。测试可执行文件仍会链接 Catch2，
-  Catch2 自身可能带有 RTTI/异常元数据；这属于测试框架开销，不是 ABIX runtime
-  代码。
-- **AMC 不同。** AMC 是 LLVM/Clang/fmt/toml++ 工具链，默认保留 C++ 异常和
-  RTTI；它的 `try/catch` 错误处理与 LLVM 集成不属于无异常 runtime 契约。
-- `ABIX::runtime` 是 header-only，不会向消费者强制传播编译选项。无异常/无
-  RTTI 契约由 ABIX 自身的构建目标保证；宿主应用可以自行选择策略。
+- ABIX 自身的 runtime 测试和 DLL 插件默认使用 `-fno-exceptions -fno-rtti` 编译（`ABIX_RUNTIME_NO_EXCEPTIONS=ON`、`ABIX_RUNTIME_NO_RTTI=ON`；MSVC 为 `/EHs-c- /GR-`）。
+- ABIX 头文件不使用 `throw` / `catch`、`dynamic_cast` 或 `typeid`。失败通过 `CallError` / 状态值返回，日志只是可选的诊断 sink。
+- 因此 ABIX runtime 目标不携带 C++ 异常 landing pad 或 RTTI 元数据：控制流显式，runtime 路径上没有异常/RTTI 机制。测试可执行文件仍会链接 Catch2，Catch2 自身可能带有 RTTI/异常元数据；这属于测试框架开销，不是 ABIX runtime 代码。
+- **AMC 不同。** AMC 是 LLVM/Clang/fmt/toml++ 工具链，默认保留 C++ 异常和 RTTI；它的 `try/catch` 错误处理与 LLVM 集成不属于无异常 runtime 契约。
+- `ABIX::runtime` 是 header-only，不会向消费者强制传播编译选项。无异常/无 RTTI 契约由 ABIX 自身的构建目标保证；宿主应用可以自行选择策略。
 
 这就是 ABIX 的**无额外开销 / 显式控制流契约**：runtime 失败是普通返回值，而不是隐藏的栈展开路径。
 
-只有在调试或集成必须启用这些特性的工具链时，才将
-`ABIX_RUNTIME_NO_EXCEPTIONS=OFF` 或 `ABIX_RUNTIME_NO_RTTI=OFF`；这会主动削弱
-ABIX runtime 契约。
+只有在调试或集成必须启用这些特性的工具链时，才将 `ABIX_RUNTIME_NO_EXCEPTIONS=OFF` 或 `ABIX_RUNTIME_NO_RTTI=OFF`；这会主动削弱 ABIX runtime 契约。
 
 ### CMake 包
 
