@@ -2,6 +2,17 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
+## v0.3.2 — STD conformance and language adapter rules (unreleased)
+
+### Added
+
+- `docs/abix/std.md` and `std_zh.md`: explicit Rust/Zig adapter rules for `abix_optional`, `abix_result`, `abix_str`, `abix_span`, callbacks and `Owner<T>`.
+- `test/std_contract_test.cpp`: conformance checks for `abix_result` status round-tripping, the single-byte optional discriminant and owned-callback defaults.
+
+### Compatibility
+
+- Additive: no existing STD layout, `ErrorCode` layout or `ModuleLease` semantics changed.
+
 ## v0.3.1 — Cross-language lease C ABI (2026-11-08)
 
 ### Added

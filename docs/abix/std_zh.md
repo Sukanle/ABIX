@@ -156,6 +156,33 @@ runtime = owner::ref（C++）或语言 wrapper
 
 handle 携带身份、mode、destroy 与 module instance。保证 destroy 入口有效的模块 lease 是独立的 `abix_lease` C ABI，见 [`lease_zh.md`](lease_zh.md)。
 
+### 最终 API
+
+- 源码类型：`abix_std::Owner<T>`
+- 生成实例：`abix_owner_<Type>`
+- 运行时：C++ 用 `owner::ref`；Rust/Zig 用生成的 wrapper
+- `T` 只是标签，不新增字段
+- destroy 必须来自创建模块；release 前必须持有 `abix_lease`
+- 不新增裸 destroy 函数指针 ABI
+
+## 语言 adapter 规则
+
+ABIX 描述布局，不描述语言类型。AMC 用显式 adapter 做 lowering，绝不假设原生布局等价：
+
+| ABIX 类型             | Rust                         | Zig                    | 规则                                                                                      |
+| --------------------- | ---------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| `abix_optional<T>`    | `Option<T>`                  | `?T`                   | 布局不等价；显式 adapter/copy；`has_value` 是 `u8`，只允许 0/1                            |
+| `abix_result<T>`      | `Result<T, E>`               | error union / 自定义   | `status` 是 `int32_t`；`E` 通过 `[[error]]` 契约映射；不得把 `ErrorCode` 放进 `status`    |
+| `abix_str`            | `&str`                       | slice                  | 仅借用；先验证 encoding、长度单位与生命周期；不要假定 UTF-8                               |
+| `abix_span<T>`        | `&[T]`                       | slice                  | 仅借用；元素 `TypeID` 与长度单位必须匹配                                                  |
+| `abix_callback`       | function + context           | fn + context           | borrowed：调用方保持 context 存活并负责注销                                               |
+| `abix_callback_owned` | function + context + release | fn + context + release | producer 拥有 context；最后一次调用后恰好 release 一次；不得 unwind；release 后不得再调用 |
+| `Owner<T>`            | wrapper                      | wrapper                | `owner::handle` 的别名；destroy 来自创建模块；release 前持有 `abix_lease`                 |
+
+Rust `Option<T>` 与 `Result<T, E>` 使用 niche 优化，size、alignment 或 discriminant 范围可能不同；`transmute` 与 `#[repr(transparent)]` cast 都不是合法 adapter。Zig error union 是 tagged union，不是 `{ status, value }`；必须显式 lowering。
+
+`abix_result.status == 0` 表示成功；其他值由 `[[error]]` 契约决定含义。`ErrorCode` 是 16 字节的边界身份，不是 transport status。未知 status 必须原样传递，由接收方决定是否拒绝。
+
 ## 范围
 
 范围内：各语言共享的 ABI 类型与契约（span、string view、owned handle、result、callback）。范围外：重写完整 STL、定义通用对象模型、或运行时所有权系统（见 [`AGENTS.md`](../../.agents/AGENTS.md) §1.3）。
