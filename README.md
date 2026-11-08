@@ -454,13 +454,15 @@ cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.3 CONFIG REQUIRED COMPONENTS runtime)
+find_package(ABIX 0.4.0 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
 The package installs `SKL/ABIX`, MICS/HLMD and the CMake package. It does not require AMC, LLVM/Clang, fmt or static libraries. `ABIX::ABIX` is a convenience aggregate for the runtime.
+
+> **v0.4.0 layout boundary:** `abix_optional`, `abix_result` and `abix_str` use the explicit v0.4.0 layouts. A request below `0.4.0` is rejected; regenerating old `.abix` artifacts and generated bindings is required. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ABIX installs its bundled MICS package by default. Set `-DABIX_INSTALL_BUNDLED_MICS=OFF` when MICS is provided separately. The package config resolves only `MICS`. `ABIX_INSTALL` defaults to ON for a top-level build and OFF when ABIX is added as a subproject.
 

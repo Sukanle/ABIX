@@ -193,10 +193,14 @@ P2 types are not given a unified implementation: they are exposed through `Opaqu
 
 The P0 contracts (sequence view, string view, opaque handle, ownership, error boundary) and the P1 contracts (optional, result, callback, range) are each matched by **capability** — shape plus element `TypeID` — never by name:
 
-- `optional` = `{ discriminant: bool/u8; payload: T }`;
-- `result` = `{ status: int; payload: T }` (reuses the error-boundary idea);
+- `optional` = `{ uint32_t discriminant; uint32_t reserved; alignas(T) T value; }`; only `0` (None) and `1` (Some) are valid, a non-zero `reserved` fails closed, and `value` must not be read when the discriminant is `0`;
+- `result` = `{ int32_t status; uint32_t reserved; alignas(T) T value; }` (reuses the error-boundary idea); `status` is a transport status, not the 16-byte `ErrorCode`, a non-zero `reserved` fails closed, and the `[[error]]` contract selects the success value;
 - `callback` = `{ function entry; opaque context }`;
 - `range` = a non-contiguous container exposed through length + indexed-access accessors (no contiguous-memory assumption).
+
+The string view is `abix_str<CodeUnit> = { const CodeUnit *data; uint64_t len; uint32_t encoding; uint32_t reserved; }`; the trailing `reserved` makes the former implicit padding explicit and a non-zero value fails closed.
+
+A layout revision is not a compatible extension: an artifact or generated binding built against the v0.3.x optional/result/string layouts is invalid under v0.4.0 and must be regenerated. There is no `_v1`/`_v2` alias and no runtime fallback.
 
 A non-template contract type (for example a callback struct) is declared with `[[contract-type]]`; a container lowered through accessors uses `[[view]]` (contiguous) or `[[range]]` (iteration).
 
@@ -418,6 +422,18 @@ AMC 3.x MAY consume ABIX files produced by AMC 2.x when the required Format Vers
 
 Compat is defined by the reader's supported versions and capabilities; it MUST NOT be assumed to be bidirectional.
 
+### 14.2 ABIX-STD layout revision
+
+The ABIX-STD layout revision is part of the specification profile, not the `.abix` format version. v0.4.0 introduces an incompatible revision of `abix_optional`, `abix_result` and `abix_str`:
+
+| AMC         | ABIX       | ABIX-STD      | Action                                |
+| ----------- | ---------- | ------------- | ------------------------------------- |
+| `<= v0.3.2` | `0.3.x`    | v0.3.x layout | keep the old ref                      |
+| `v0.3.3`    | `0.3.x`    | v0.3.x layout | additive transition release           |
+| `>= v0.4.0` | `>= 0.4.0` | v0.4.0 layout | regenerate `.abix` and generated code |
+
+A v0.4.0 package MUST reject a `find_package(ABIX ...)` request below `0.4.0`; the package version compatibility rule is `SameMinorVersion`, so `0.4.x` requests succeed and `0.3.x` / `0.5.x` requests fail. Old artifacts and generated bindings are not accepted across the boundary, and a mixed pair is a layout error rather than a runtime fallback.
+
 ## 15. Extension Rules
 
 - New optional sections may be added after the last known section id; readers must skip unknown optional sections.
@@ -429,6 +445,7 @@ Compat is defined by the reader's supported versions and capabilities; it MUST N
 
 - Reserved fields must be written as zero and ignored on read.
 - A reader must not rely on reserved bits retaining a value across versions.
+- **ABIX-STD exception:** the v0.4.0 `reserved` words in `abix_optional`, `abix_result` and `abix_str` are validity sentinels, not forward-compatible reserved bits. A reader must reject a non-zero value instead of ignoring it.
 
 ## 17. Forward / Backward Compat
 

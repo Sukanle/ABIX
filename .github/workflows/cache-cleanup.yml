@@ -1,12 +1,13 @@
 name: Cache cleanup
 
 # GitHub Actions cache storage counts against the repository quota, and every
-# stale fmt/benchmark/MSYS2 cache from an old version keeps consuming it until
-# GitHub evicts it by LRU. Purge old caches on a schedule so CI storage (and the
-# minutes spent managing it) stays bounded.
+# stale dependency or toolchain cache from an old version keeps consuming it
+# until GitHub evicts it by LRU. Purge old caches on a schedule so CI storage
+# (and the minutes spent managing it) stays bounded.
 #
 # Only caches produced by the ci.yml "Cache ..." steps are touched: their keys
-# contain "abix-deps-". Anything else is left alone.
+# contain "abix-deps-", "abix-ccache-", "abix-rust-" or "abix-zig-". Anything
+# else is left alone.
 
 on:
   schedule:
@@ -53,7 +54,7 @@ jobs:
           import subprocess
           from datetime import datetime, timedelta, timezone
 
-          KEY_MARKER = "abix-deps-"
+          KEY_MARKERS = ("abix-deps-", "abix-ccache-", "abix-rust-", "abix-zig-")
           max_age = timedelta(days=int(os.environ["MAX_AGE_DAYS"]))
           dry_run = os.environ.get("DRY_RUN", "false").lower() in {"1", "true", "yes"}
           now = datetime.now(timezone.utc)
@@ -68,7 +69,7 @@ jobs:
           with open("caches.json", encoding="utf-8") as handle:
               caches = json.load(handle)
 
-          matching = [cache for cache in caches if KEY_MARKER in cache["key"]]
+          matching = [cache for cache in caches if any(marker in cache["key"] for marker in KEY_MARKERS)]
           stale = []
           for cache in matching:
               last_used = parse(cache.get("lastAccessedAt")) or parse(cache.get("createdAt"))

@@ -1,6 +1,7 @@
 #include "test_common.hpp"
 
 #include "SKL/ABIX/STD/Callback.h"
+#include "SKL/ABIX/STD/Layout.h"
 #include "SKL/ABIX/STD/Optional.h"
 #include "SKL/ABIX/STD/Owner.h"
 #include "SKL/ABIX/STD/Result.h"
@@ -9,23 +10,22 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <type_traits>
 
 namespace {
 
-constexpr std::size_t align_up(std::size_t value, std::size_t align) noexcept {
-    return (value + align - 1) / align * align;
-}
+using abix_std::detail::align_up;
 
 template<class T>
 constexpr std::size_t optional_offset() noexcept {
-    return align_up(sizeof(std::uint8_t), alignof(T));
+    return abix_std::detail::align_up(8, alignof(T));
 }
 
 template<class T>
 constexpr std::size_t optional_align() noexcept {
-    return alignof(T);
+    return abix_std::detail::max_align(4, alignof(T));
 }
 
 template<class T>
@@ -35,12 +35,12 @@ constexpr std::size_t optional_size() noexcept {
 
 template<class T>
 constexpr std::size_t result_offset() noexcept {
-    return align_up(sizeof(std::int32_t), alignof(T));
+    return abix_std::detail::align_up(8, alignof(T));
 }
 
 template<class T>
 constexpr std::size_t result_align() noexcept {
-    return sizeof(std::int32_t) > alignof(T) ? sizeof(std::int32_t) : alignof(T);
+    return abix_std::detail::max_align(4, alignof(T));
 }
 
 template<class T>
@@ -54,15 +54,43 @@ constexpr std::size_t string_encoding_offset() noexcept {
     return align_up(string_len_offset() + sizeof(std::uint64_t), alignof(std::uint32_t));
 }
 
+constexpr std::size_t string_reserved_offset() noexcept { return string_encoding_offset() + sizeof(std::uint32_t); }
+
 constexpr std::size_t string_align() noexcept {
-    constexpr std::size_t pointer = alignof(void *);
-    constexpr std::size_t wide = alignof(std::uint64_t);
-    return pointer > wide ? (pointer > 4 ? pointer : 4) : (wide > 4 ? wide : 4);
+    const std::size_t pointer = alignof(void *);
+    const std::size_t wide = alignof(std::uint64_t);
+    return abix_std::detail::max_align(abix_std::detail::max_align(pointer, wide), alignof(std::uint32_t));
 }
 
 constexpr std::size_t string_size() noexcept {
-    return align_up(string_encoding_offset() + sizeof(std::uint32_t), string_align());
+    return align_up(string_reserved_offset() + sizeof(std::uint32_t), string_align());
 }
+
+template<class T>
+constexpr bool optional_header_valid(const abix_std::abix_optional<T> &value) noexcept {
+    return value.reserved == 0 && value.discriminant <= 1;
+}
+
+template<class T>
+constexpr bool result_header_valid(const abix_std::abix_result<T> &value) noexcept {
+    return value.reserved == 0;
+}
+
+constexpr bool string_header_valid(const abix_str_utf8 &value) noexcept { return value.reserved == 0; }
+
+// The v0.3.x optional bytes: one-byte discriminant, then an int32 payload at
+// offset 4 (with implicit padding). Keeping the exact layout here makes the
+// old/new reader boundary executable rather than a comment.
+struct old_optional_i32 {
+    std::uint8_t has_value;
+    std::int32_t value;
+};
+
+// The v0.3.x result bytes: status then an int32 payload at offset 4.
+struct old_result_i32 {
+    std::int32_t status;
+    std::int32_t value;
+};
 
 }   // namespace
 
@@ -71,19 +99,29 @@ TEST_CASE("std_contract.optional_layout_audit", "[std][contract]") {
     using optional_i64 = abix_std::abix_optional<std::int64_t>;
     using optional_ptr = abix_std::abix_optional<void *>;
 
-    static_assert(offsetof(optional_i32, has_value) == 0);
+    static_assert(offsetof(optional_i32, discriminant) == 0);
+    static_assert(offsetof(optional_i32, reserved) == 4);
     static_assert(offsetof(optional_i32, value) == optional_offset<std::int32_t>());
     static_assert(sizeof(optional_i32) == optional_size<std::int32_t>());
     static_assert(alignof(optional_i32) == optional_align<std::int32_t>());
 
     static_assert(offsetof(optional_i64, value) == optional_offset<std::int64_t>());
     static_assert(sizeof(optional_i64) == optional_size<std::int64_t>());
+    static_assert(alignof(optional_i64) == optional_align<std::int64_t>());
 
     static_assert(offsetof(optional_ptr, value) == optional_offset<void *>());
     static_assert(sizeof(optional_ptr) == optional_size<void *>());
+    static_assert(alignof(optional_ptr) == optional_align<void *>());
 
-    CHECK(sizeof(optional_i32) == 8);
-    CHECK(offsetof(optional_i32, value) == 4);
+    CHECK(sizeof(optional_i32) == 12);
+    CHECK(offsetof(optional_i32, value) == 8);
+    CHECK(alignof(optional_i32) == 4);
+
+    // The formula is driven by the target ABI, not by a hard-coded width.
+    CHECK(offsetof(optional_i64, value) == align_up(8, alignof(std::int64_t)));
+    CHECK(sizeof(optional_i64) == optional_size<std::int64_t>());
+    CHECK(offsetof(optional_ptr, value) == align_up(8, alignof(void *)));
+    CHECK(sizeof(optional_ptr) == optional_size<void *>());
 }
 
 TEST_CASE("std_contract.result_layout_audit", "[std][contract]") {
@@ -92,18 +130,27 @@ TEST_CASE("std_contract.result_layout_audit", "[std][contract]") {
     using result_ptr = abix_std::abix_result<void *>;
 
     static_assert(offsetof(result_i32, status) == 0);
+    static_assert(offsetof(result_i32, reserved) == 4);
     static_assert(offsetof(result_i32, value) == result_offset<std::int32_t>());
     static_assert(sizeof(result_i32) == result_size<std::int32_t>());
     static_assert(alignof(result_i32) == result_align<std::int32_t>());
 
     static_assert(offsetof(result_i64, value) == result_offset<std::int64_t>());
     static_assert(sizeof(result_i64) == result_size<std::int64_t>());
+    static_assert(alignof(result_i64) == result_align<std::int64_t>());
 
     static_assert(offsetof(result_ptr, value) == result_offset<void *>());
     static_assert(sizeof(result_ptr) == result_size<void *>());
+    static_assert(alignof(result_ptr) == result_align<void *>());
 
-    CHECK(sizeof(result_i32) == 8);
-    CHECK(offsetof(result_i32, value) == 4);
+    CHECK(sizeof(result_i32) == 12);
+    CHECK(offsetof(result_i32, value) == 8);
+    CHECK(alignof(result_i32) == 4);
+
+    CHECK(offsetof(result_i64, value) == align_up(8, alignof(std::int64_t)));
+    CHECK(sizeof(result_i64) == result_size<std::int64_t>());
+    CHECK(offsetof(result_ptr, value) == align_up(8, alignof(void *)));
+    CHECK(sizeof(result_ptr) == result_size<void *>());
 }
 
 TEST_CASE("std_contract.string_and_span_layout_audit", "[std][contract]") {
@@ -113,13 +160,16 @@ TEST_CASE("std_contract.string_and_span_layout_audit", "[std][contract]") {
     static_assert(offsetof(string_utf8, data) == 0);
     static_assert(offsetof(string_utf8, len) == string_len_offset());
     static_assert(offsetof(string_utf8, encoding) == string_encoding_offset());
+    static_assert(offsetof(string_utf8, reserved) == string_reserved_offset());
     static_assert(sizeof(string_utf8) == string_size());
+    static_assert(alignof(string_utf8) == string_align());
 
     static_assert(offsetof(span_i32, data) == 0);
     static_assert(offsetof(span_i32, len) == string_len_offset());
     static_assert(sizeof(span_i32) == align_up(string_len_offset() + sizeof(std::uint64_t), string_align()));
 
     CHECK(sizeof(string_utf8) == string_size());
+    CHECK(offsetof(string_utf8, reserved) == string_encoding_offset() + 4);
     CHECK(sizeof(span_i32) == 16);
 }
 
@@ -166,40 +216,103 @@ TEST_CASE("std_contract.result_status_roundtrip", "[std][contract]") {
         std::numeric_limits<std::int32_t>::max(),
     };
     for (std::int32_t status : statuses) {
-        const result_i32 value{status, 7};
+        const result_i32 value{status, 0, 7};
         CHECK(value.status == status);
+        CHECK(value.reserved == 0);
         CHECK(value.value == 7);
+        CHECK(result_header_valid(value));
     }
 
     // An unknown status is carried through; the [[error]] contract decides its meaning.
-    const result_i32 unknown{123'456'789, -42};
+    const result_i32 unknown{123'456'789, 0, -42};
     CHECK(unknown.status == 123'456'789);
     CHECK(unknown.value == -42);
+    CHECK(result_header_valid(unknown));
 }
 
 TEST_CASE("std_contract.optional_discriminant_contract", "[std][contract]") {
     using optional_i32 = abix_std::abix_optional<std::int32_t>;
-    using discriminant = decltype(optional_i32::has_value);
+    using discriminant = decltype(optional_i32::discriminant);
 
-    static_assert(
-        std::is_same<discriminant, std::uint8_t>::value, "abix_optional discriminant must stay a single byte");
-    static_assert(sizeof(optional_i32{}.has_value) == 1);
+    static_assert(std::is_same<discriminant, std::uint32_t>::value, "abix_optional discriminant must stay 32 bits");
+    static_assert(sizeof(optional_i32{}.discriminant) == 4);
 
-    const optional_i32 absent{0, 0};
-    const optional_i32 present{1, 42};
-    CHECK(absent.has_value == 0);
-    CHECK(present.has_value == 1);
+    const optional_i32 absent{0, 0, 0};
+    const optional_i32 present{1, 0, 42};
+    CHECK(absent.discriminant == 0);
+    CHECK(present.discriminant == 1);
     CHECK(present.value == 42);
+    CHECK(optional_header_valid(absent));
+    CHECK(optional_header_valid(present));
 }
 
-TEST_CASE("std_contract.optional_invalid_discriminant_is_not_normalized", "[std][contract]") {
+TEST_CASE("std_contract.optional_invalid_header_is_rejected", "[std][contract]") {
     using optional_i32 = abix_std::abix_optional<std::int32_t>;
 
-    // The ABI stores the byte as-is. A consumer must reject anything other than
-    // 0 or 1; the runtime does not silently normalize an invalid discriminant.
-    const optional_i32 invalid{2, 7};
-    CHECK(invalid.has_value == 2);
-    CHECK(invalid.value == 7);
+    // A consumer rejects every discriminant other than 0 or 1. The ABI stores
+    // the value as-is; the runtime does not silently normalize it.
+    const optional_i32 invalid_discriminant{2, 0, 7};
+    CHECK(invalid_discriminant.discriminant == 2);
+    CHECK_FALSE(optional_header_valid(invalid_discriminant));
+
+    // A non-zero reserved word is a layout error, not an ignorable field.
+    const optional_i32 invalid_reserved{1, 1, 7};
+    CHECK(invalid_reserved.reserved == 1);
+    CHECK_FALSE(optional_header_valid(invalid_reserved));
+
+    // None must never expose the payload: the bytes may be anything.
+    const optional_i32 none_with_garbage{0, 0, 99};
+    CHECK(optional_header_valid(none_with_garbage));
+    CHECK(none_with_garbage.discriminant == 0);
+}
+
+TEST_CASE("std_contract.result_invalid_reserved_is_rejected", "[std][contract]") {
+    using result_i32 = abix_std::abix_result<std::int32_t>;
+
+    const result_i32 invalid_reserved{0, 1, 7};
+    CHECK(invalid_reserved.reserved == 1);
+    CHECK_FALSE(result_header_valid(invalid_reserved));
+
+    const result_i32 unknown_status{99, 0, 7};
+    CHECK(result_header_valid(unknown_status));
+}
+
+TEST_CASE("std_contract.string_reserved_is_rejected", "[std][contract]") {
+    const char text[] = "hi";
+    const abix_str_utf8 valid{text, 2, static_cast<std::uint32_t>(abix_std::Encoding::utf8), 0};
+    CHECK(string_header_valid(valid));
+
+    const abix_str_utf8 invalid{text, 2, static_cast<std::uint32_t>(abix_std::Encoding::utf8), 1};
+    CHECK_FALSE(string_header_valid(invalid));
+}
+
+TEST_CASE("std_contract.v0_3_optional_bytes_are_not_a_v0_4_value", "[std][contract]") {
+    static_assert(sizeof(old_optional_i32) == 8);
+
+    const old_optional_i32 old{1, 42};
+    abix_std::abix_optional<std::int32_t> current{};
+    std::memcpy(&current, &old, sizeof(old));
+
+    // The old payload sits in the new reserved word, so a conforming reader
+    // fails closed instead of reading a partially overlapped value.
+    CHECK(current.reserved == 42);
+    CHECK_FALSE(optional_header_valid(current));
+}
+
+TEST_CASE("std_contract.v0_3_result_bytes_are_not_a_v0_4_value", "[std][contract]") {
+    static_assert(sizeof(old_result_i32) == 8);
+
+    const old_result_i32 old{7, 42};
+    abix_std::abix_result<std::int32_t> current{};
+    std::memcpy(&current, &old, sizeof(old));
+
+    CHECK(current.status == 7);
+    CHECK(current.reserved == 42);
+    CHECK_FALSE(result_header_valid(current));
+
+    // The old record is also 8 bytes while the v0.4 record is 12: a reader
+    // must not read the payload from a short v0.3 record at all.
+    CHECK(sizeof(old_result_i32) < sizeof(current));
 }
 
 TEST_CASE("std_contract.callback_owned_incomplete_entry_is_kept_for_validation", "[std][contract]") {

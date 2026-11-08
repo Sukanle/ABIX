@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(AbiCrossDllTests VERSION 0.3.4 LANGUAGES C CXX)
+project(AbiCrossDllTests VERSION 0.4.0 LANGUAGES C CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(ABIX_IS_TOP_LEVEL ON)
@@ -389,10 +389,13 @@ if(ABIX_INSTALL)
         INSTALL_DESTINATION ${ABIX_CMAKE_INSTALL_DIR}
         PATH_VARS CMAKE_INSTALL_INCLUDEDIR)
 
+    # v0.4.0 is a breaking STD layout boundary: a request for < 0.4.0 must fail
+    # even though the major version is unchanged. SameMinorVersion accepts
+    # 0.4.x requests and rejects both 0.3.x and 0.5.x.
     write_basic_package_version_file(
         ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
         VERSION ${PROJECT_VERSION}
-        COMPATIBILITY SameMajorVersion)
+        COMPATIBILITY SameMinorVersion)
 
     install(
         FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake

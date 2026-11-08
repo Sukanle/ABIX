@@ -454,13 +454,15 @@ cmake --install build/runtime --prefix /opt/abix-runtime
 ```
 
 ```cmake
-find_package(ABIX 0.3 CONFIG REQUIRED COMPONENTS runtime)
+find_package(ABIX 0.4.0 CONFIG REQUIRED COMPONENTS runtime)
 
 add_executable(app main.cpp)
 target_link_libraries(app PRIVATE ABIX::runtime)
 ```
 
 包会安装 `SKL/ABIX`、MICS/HLMD 和 CMake 包，不需要 AMC、LLVM/Clang、fmt 或静态库。`ABIX::ABIX` 是 runtime 的便利聚合目标。
+
+> **v0.4.0 布局边界：** `abix_optional`、`abix_result` 与 `abix_str` 使用显式 v0.4.0 布局。低于 `0.4.0` 的请求会被拒绝；旧的 `.abix` 产物与生成绑定必须重新生成。见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ABIX 默认会随包安装自带的 MICS；如果使用外部 MICS，配置时加 `-DABIX_INSTALL_BUNDLED_MICS=OFF`。包配置只解析 `MICS`。`ABIX_INSTALL` 在顶层构建时默认 ON，作为子项目时默认 OFF。
 

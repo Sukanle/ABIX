@@ -2,6 +2,36 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
+## v0.4.0 — Breaking ABIX-STD layouts and advanced cross-language contracts (2026-11-09)
+
+### Breaking
+
+- Replaced `abix_optional<T>` with the explicit `{ uint32_t discriminant; uint32_t reserved; alignas(T) T value; }` layout. Only `0` and `1` are valid discriminants; a non-zero `reserved` fails closed; `value` is not read for None.
+- Replaced `abix_result<T>` with the explicit `{ int32_t status; uint32_t reserved; alignas(T) T value; }` layout. `status` is a transport status, not the 16-byte `ErrorCode`.
+- Replaced `abix_str<CodeUnit>` with `{ const CodeUnit *data; uint64_t len; uint32_t encoding; uint32_t reserved; }`; the former implicit trailing padding is now an explicit validity sentinel.
+- Removed the v0.3.x layouts without a compatibility layer or `_v1`/`_v2` aliases. Old `.abix` artifacts and generated bindings must be regenerated with AMC v0.4.0+.
+- The package version is now `0.4.0` with `SameMinorVersion` compatibility: `find_package(ABIX 0.4.0)` succeeds, while `0.3.x` and `0.5.x` requests fail.
+
+### Added
+
+- `test/conformance/`: one native library consumed by C, C++, Rust and Zig consumers with explicit `#[repr(C)]` / `extern struct` adapters, including 32-bit/64-bit C/C++ layout checks, invalid-discriminant and non-zero-`reserved` rejection.
+- `test/std_contract_test.cpp`: explicit v0.4.0 layout assertions for `int32_t`, `int64_t` and pointer instances, plus v0.3.x optional/result byte-layout negative cases.
+- Advanced-contract decisions recorded in the local `memory/` notes: A4-0 gap audit, A4-1 Variant/Range/MapView decision, A4-2 Interface/trait-object mapping, A4-3 tagged union, A4-4 lifetime boundary, A4-5 compatibility and A4-6 conformance.
+- `ABIXConfigVersion.cmake` negative tests in `test/cmake_runtime_package_test.py`.
+
+### Changed
+
+- `docs/abix/std.md` / `std_zh.md` now document the v0.4.0 explicit layouts, the layout matrix and the conformance fixture.
+- `ABI-SPEC.md` §9.1 records the explicit ABIX-STD layouts, §14.2 records the STD layout revision and lockstep matrix, and §16 documents the ABIX-STD validity-sentinel exception to ordinary reserved fields.
+- The migration and advanced-contract notes moved out of the published `docs/` tree into the local `memory/` working notes until the 1.0.0 documentation freeze; [`docs/abix/std.md`](docs/abix/std.md) keeps the normative layout summary.
+
+### Compatibility
+
+- Breaking for ABIX-STD consumers, generated bindings and `.abix` artifacts. Regenerate all artifacts with AMC v0.4.0+.
+- No `.abix` format version change and no change to `TypeID`, `LayoutHash` or `ABIHash` rules.
+- `abix_span`, `abix_callback` and `abix_callback_owned` keep their v0.3.x layouts.
+- `Model::Target` / `BinaryImage::Target` are unchanged; AMC `TargetFacts` remains the layout authority.
+
 ## v0.3.4 — v0.4 lockstep documentation fix (2026-11-08)
 
 ### Fixed
@@ -17,7 +47,7 @@ All notable changes to ABIX are recorded here. Older releases are available in t
 
 ### Added
 
-- `docs/abix/v0.4-migration.md` and `v0.4-migration_zh.md`: the breaking STD layout changes, the AMC/ABIX lockstep matrix and the regeneration checklist.
+- `v0.4-migration.md` and `v0.4-migration_zh.md` (since moved to `memory/`): the breaking STD layout changes, the AMC/ABIX lockstep matrix and the regeneration checklist.
 - Deprecation notes in `docs/abix/std.md` and `std_zh.md` for `abix_optional`, `abix_result` and `abix_str`.
 
 ### Compatibility

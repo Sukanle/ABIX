@@ -118,3 +118,31 @@ foreach(
         COMMENT "Stage plugin ${plugin} for test_all")
 endforeach()
 catch_discover_tests(test_all WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# --- ABIX-STD v0.4.0 cross-language conformance ---
+# One native library is consumed by C, C++, Rust and Zig. Rust/Zig are
+# optional: the fixture reports a skip when the host lacks the compiler.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    set(_abix_std_conformance_command
+        ${Python3_EXECUTABLE} ${TEST_PROJ_DIR}/conformance/run_std_conformance.py --root ${SKL_ABIX_PROJ_DIR} --cxx
+        ${CMAKE_CXX_COMPILER})
+    if(CMAKE_C_COMPILER)
+        list(APPEND _abix_std_conformance_command --cc ${CMAKE_C_COMPILER})
+    endif()
+    find_program(ABIX_CONFORMANCE_RUSTC_EXECUTABLE rustc)
+    if(ABIX_CONFORMANCE_RUSTC_EXECUTABLE)
+        list(APPEND _abix_std_conformance_command --rustc ${ABIX_CONFORMANCE_RUSTC_EXECUTABLE})
+    endif()
+    find_program(ABIX_CONFORMANCE_ZIG_EXECUTABLE zig)
+    if(ABIX_CONFORMANCE_ZIG_EXECUTABLE)
+        list(APPEND _abix_std_conformance_command --zig ${ABIX_CONFORMANCE_ZIG_EXECUTABLE})
+    endif()
+    add_test(NAME abix-std-conformance COMMAND ${_abix_std_conformance_command})
+    set_tests_properties(abix-std-conformance PROPERTIES TIMEOUT 240)
+    if(SKL_ABIX_KEEP_TEST_ARTIFACTS)
+        set_tests_properties(abix-std-conformance PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")
+    endif()
+else()
+    message(STATUS "Python 3 not found; skipping the ABIX-STD conformance fixture")
+endif()
