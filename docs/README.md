@@ -73,6 +73,7 @@ Core ABI model, format, and API documentation.
 | [interface.md](abix/interface.md)           | [interface_zh.md](abix/interface_zh.md)           | the Interface layer: contracts, proxies, discovery, Owner ABI |
 | [lease.md](abix/lease.md)                   | [lease_zh.md](abix/lease_zh.md)                   | the cross-language lease C ABI and Host-owned registry        |
 | [std.md](abix/std.md)                       | [std_zh.md](abix/std_zh.md)                       | ABIX-STD cross-language ABI primitives                        |
+| [safety.md](abix/safety.md)                 | [safety_zh.md](abix/safety_zh.md)                 | S1/S2 safety metadata decision and checked/enforced boundary  |
 | [metadata_modes.md](abix/metadata_modes.md) | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo        |
 
 ## Languages

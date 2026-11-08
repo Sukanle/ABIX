@@ -165,6 +165,33 @@ runtime = owner::ref (C++) or a language wrapper
 
 The handle carries identity, mode, destroy and module instance. The module lease that keeps the destroy entry valid is the separate `abix_lease` C ABI described in [`lease.md`](lease.md).
 
+### Final API
+
+- source type: `abix_std::Owner<T>`
+- generated instance: `abix_owner_<Type>`
+- runtime: `owner::ref` in C++; generated wrappers in Rust/Zig
+- `T` is a label and adds no field
+- destroy must come from the creating module; hold an `abix_lease` until release
+- no bare destroy function pointer ABI
+
+## Language adapter rules
+
+ABIX describes layouts, not language types. AMC lowers native types with an explicit adapter; native layouts are never assumed to be equivalent:
+
+| ABIX type             | Rust                         | Zig                    | Rule                                                                                                   |
+| --------------------- | ---------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| `abix_optional<T>`    | `Option<T>`                  | `?T`                   | not layout-equivalent; copy through an adapter; `has_value` is `u8` and must be 0 or 1                 |
+| `abix_result<T>`      | `Result<T, E>`               | error union / custom   | `status` is `int32_t`; map `E` through the `[[error]]` contract; never store `ErrorCode` in `status`   |
+| `abix_str`            | `&str`                       | slice                  | borrowed only; verify encoding, length unit and lifetime; do not assume UTF-8                          |
+| `abix_span<T>`        | `&[T]`                       | slice                  | borrowed only; element `TypeID` and length unit must match                                             |
+| `abix_callback`       | function + context           | fn + context           | borrowed: the caller keeps the context alive and unregisters it                                        |
+| `abix_callback_owned` | function + context + release | fn + context + release | producer owns the context; release exactly once after the last call; no unwind; no calls after release |
+| `Owner<T>`            | wrapper                      | wrapper                | alias of `owner::handle`; destroy from the creating module; hold an `abix_lease` until release         |
+
+Rust `Option<T>` and `Result<T, E>` use niche optimization and may have a different size, alignment or discriminant range; `transmute` and `#[repr(transparent)]` casts are not valid adapters. A Zig error union is a tagged union, not `{ status, value }`; lower it explicitly.
+
+`abix_result.status == 0` means success. Any other value is an error selected by the `[[error]]` contract; `ErrorCode` is a 16-byte boundary identity, not the transport status. An unknown status must be carried through unchanged so the receiver can decide whether to reject it.
+
 ## Scope
 
 In scope: the ABI types and contracts languages share (span, string view, owned handle, result, callback). Out of scope: re-implementing a full STL, defining a universal object model, or a runtime ownership system (see [`AGENTS.md`](../../.agents/AGENTS.md) §1.3).
