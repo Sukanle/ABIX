@@ -2,6 +2,17 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
+## v0.3.4 — v0.4 lockstep documentation fix (2026-11-08)
+
+### Fixed
+
+- Correct the v0.4 migration lockstep matrix: AMC v0.3.3 remains on ABIX 0.3.x; AMC v0.4.0+ is the breaking lockstep release.
+- Update the regeneration checklist to AMC v0.4.0+.
+
+### Compatibility
+
+- Documentation-only patch. No header, layout, package-version or runtime behavior change.
+
 ## v0.3.3 — v0.3.x surface freeze and v0.4.0 migration (2026-11-08)
 
 ### Added
