@@ -2,7 +2,7 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
-## v0.3.2 — STD conformance and language adapter rules (unreleased)
+## v0.3.2 — STD conformance and language adapter rules (2026-11-08)
 
 ### Added
 
