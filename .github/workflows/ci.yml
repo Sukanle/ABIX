@@ -25,6 +25,9 @@ concurrency:
 env:
   CTEST_OUTPUT_ON_FAILURE: "1"
   ZIG_VERSION: "0.17.0"
+  RUST_VERSION: "stable"
+  # Bump when ccache/toolchain build inputs change.
+  PINNED_CACHE_VERSION: "1"
   LLVM_VERSION: "22"
   FMT_VERSION: "11.2.0"
   BENCHMARK_VERSION: "1.10.0"
@@ -39,6 +42,11 @@ jobs:
     if: ${{ inputs.platforms == 'all' || inputs.platforms == 'linux' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: "true"
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 2G
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,7 +62,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build pkg-config binutils python3 \
+            cmake ninja-build pkg-config binutils python3 ccache \
             libtomlplusplus-dev catch2 liblua5.4-dev
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
           . /etc/os-release
@@ -63,6 +71,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             clang-${LLVM_VERSION} llvm-${LLVM_VERSION} llvm-${LLVM_VERSION}-dev \
             libclang-${LLVM_VERSION}-dev libclang-cpp${LLVM_VERSION}-dev libclang-common-${LLVM_VERSION}-dev
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-ccache-llvm-${{ env.LLVM_VERSION }}-v${{ env.PINNED_CACHE_VERSION }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-abix-ccache-llvm-${{ env.LLVM_VERSION }}-v${{ env.PINNED_CACHE_VERSION }}-
 
       - name: Cache pinned fmt
         id: cache-fmt
@@ -104,27 +120,52 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/benchmark"
           cmake --build benchmark-build --target install --parallel 2
 
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/bin
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-rust-${{ env.RUST_VERSION }}-v${{ env.PINNED_CACHE_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-abix-rust-${{ env.RUST_VERSION }}-
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Zig toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/zig
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-zig-${{ env.ZIG_VERSION }}-v${{ env.PINNED_CACHE_VERSION }}
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+          use-cache: true
+          use-tool-cache: true
+          cache-key: v${{ env.PINNED_CACHE_VERSION }}
 
       - name: Generate hotcache DLL source
         run: python3 tools/gen_hotcache_dll.py
 
       - name: Configure
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
         run: |
           LLVM_PREFIX="/usr/lib/llvm-${LLVM_VERSION}"
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_PREFIX_PATH="$LLVM_PREFIX;$RUNNER_TEMP/fmt;$RUNNER_TEMP/benchmark" \
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=ON
 
       - name: Build
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
         run: cmake --build build/Release --parallel 2
 
       - name: Verify required build outputs
@@ -246,6 +287,11 @@ jobs:
     if: ${{ inputs.platforms == 'all' || inputs.platforms == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: "true"
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 2G
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -270,9 +316,11 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          cache: true
           install: >-
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-clang=${{ env.WINDOWS_LLVM_VERSION }}
+            mingw-w64-ucrt-x86_64-ccache
             mingw-w64-ucrt-x86_64-clang-tools-extra=${{ env.WINDOWS_LLVM_VERSION }}
             mingw-w64-ucrt-x86_64-llvm=${{ env.WINDOWS_LLVM_VERSION }}
             mingw-w64-ucrt-x86_64-fmt=${{ env.WINDOWS_FMT_VERSION }}
@@ -286,10 +334,27 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-python
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-ccache-ucrt64-v${{ env.PINNED_CACHE_VERSION }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-abix-ccache-ucrt64-v${{ env.PINNED_CACHE_VERSION }}-
+
+      - name: Cache Zig toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/zig
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-zig-${{ env.ZIG_VERSION }}-v${{ env.PINNED_CACHE_VERSION }}
+
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+          use-cache: true
+          use-tool-cache: true
+          cache-key: v${{ env.PINNED_CACHE_VERSION }}
 
       - name: Generate hotcache DLL source
         shell: msys2 {0}
@@ -297,15 +362,21 @@ jobs:
 
       - name: Configure
         shell: msys2 {0}
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
         run: |
           export CMAKE_PREFIX_PATH="$(cygpath -m "$MINGW_PREFIX")"
           cmake -S . -B build/Release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_TESTING=ON \
             -DBUILD_BENCHMARKS=ON
 
       - name: Build
         shell: msys2 {0}
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
         run: cmake --build build/Release --parallel 2
 
       - name: Build cross-toolchain DLL variants
