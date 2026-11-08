@@ -86,12 +86,32 @@ returns = "borrowed"
 
 P1 增加四个契约，均按能力匹配（形状 + 元素 `TypeID`）：
 
-| 契约       | 布局 / 能力                                   |
-| ---------- | --------------------------------------------- |
-| `optional` | `{ discriminant: bool/u8; payload: T }`       |
-| `result`   | `{ status: int; payload: T }`（复用错误边界） |
-| `callback` | `{ 函数入口; opaque context }`                |
-| `range`    | 非连续容器，经长度 + 索引访问 accessor 暴露   |
+| 契约       | 布局 / 能力                                                              |
+| ---------- | ------------------------------------------------------------------------ |
+| `optional` | `{ uint32 discriminant; uint32 reserved; alignas(T) T value; }`          |
+| `result`   | `{ int32 status; uint32 reserved; alignas(T) T value; }`（复用错误边界） |
+| `callback` | `{ 函数入口; opaque context }`                                           |
+| `range`    | 非连续容器，经长度 + 索引访问 accessor 暴露                              |
+
+v0.4.0 的 optional 与 result 布局是显式的：
+
+```cpp
+template<class T>
+struct abix_optional {
+    uint32_t discriminant;   // 0 = None, 1 = Some
+    uint32_t reserved;       // 必须为 0
+    alignas(T) T value;      // 仅当 discriminant == 1 时有效
+};
+
+template<class T>
+struct abix_result {
+    int32_t status;          // transport status，不是 ErrorCode
+    uint32_t reserved;       // 必须为 0
+    alignas(T) T value;      // status 等于契约 success 值时有效
+};
+```
+
+消费者必须拒绝除 `0` / `1` 之外的 discriminant，拒绝非零 `reserved`，并且在 optional 的 discriminant 为 `0` 时不得读取 `value`。这两个类型中的 `reserved` 是有效性哨兵，不是向前兼容的保留位。
 
 `abix_callback` 是 borrowed 形式：调用方保持 context 存活并负责注销。`abix_callback_owned` 是 additive 的 owned 形式：
 
@@ -109,7 +129,7 @@ typedef struct abix_callback_owned {
 
 producer 拥有 context，并在最后一次调用后恰好执行一次 `release`。owned callback 的 `release` 必填、不得 unwind，且不得由消费者直接调用。消费者不得在 release 后继续调用 callback。
 
-> **v0.4.0 提示：** 本文中的 `abix_optional`、`abix_result` 与 `abix_str` 布局是 v0.3.x 布局。v0.4.0 会直接替换它们，不提供兼容层；见 [`v0.4-migration_zh.md`](v0.4-migration_zh.md)。
+> **v0.4.0：** 本文中的 `abix_optional`、`abix_result` 与 `abix_str` 布局是显式的 v0.4.0 布局。它们直接替换 v0.3.x 布局，不提供兼容层，因此旧的 `.abix` 产物与生成绑定必须重新生成。
 
 实例化与契约匹配是两件事：`abix_span<int32_t>` 实例化成功，并不等于它满足 ABIX-STD 的 `SequenceView<i32>` 契约；AMC 需证明兼容，或生成薄适配器。声明契约后，AMC 会对具体类型做 lowering：
 
@@ -133,7 +153,7 @@ pub fn abix_view_rev_i32_to_abix_span_i32(value: abix_view_rev_i32) -> abix_span
 
 ## 第二个原语：string view
 
-`abix_str_utf8` 是 `{ const char *data; uint64_t len; uint32_t encoding; }`，对 `string-view` 契约做 lowering：
+`abix_str_utf8` 是 `{ const char *data; uint64_t len; uint32_t encoding; uint32_t reserved; }`，对 `string-view` 契约做 lowering：
 
 ```toml
 [[instantiate]]
@@ -171,19 +191,35 @@ handle 携带身份、mode、destroy 与 module instance。保证 destroy 入口
 
 ABIX 描述布局，不描述语言类型。AMC 用显式 adapter 做 lowering，绝不假设原生布局等价：
 
-| ABIX 类型             | Rust                         | Zig                    | 规则                                                                                      |
-| --------------------- | ---------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
-| `abix_optional<T>`    | `Option<T>`                  | `?T`                   | 布局不等价；显式 adapter/copy；`has_value` 是 `u8`，只允许 0/1                            |
-| `abix_result<T>`      | `Result<T, E>`               | error union / 自定义   | `status` 是 `int32_t`；`E` 通过 `[[error]]` 契约映射；不得把 `ErrorCode` 放进 `status`    |
-| `abix_str`            | `&str`                       | slice                  | 仅借用；先验证 encoding、长度单位与生命周期；不要假定 UTF-8                               |
-| `abix_span<T>`        | `&[T]`                       | slice                  | 仅借用；元素 `TypeID` 与长度单位必须匹配                                                  |
-| `abix_callback`       | function + context           | fn + context           | borrowed：调用方保持 context 存活并负责注销                                               |
-| `abix_callback_owned` | function + context + release | fn + context + release | producer 拥有 context；最后一次调用后恰好 release 一次；不得 unwind；release 后不得再调用 |
-| `Owner<T>`            | wrapper                      | wrapper                | `owner::handle` 的别名；destroy 来自创建模块；release 前持有 `abix_lease`                 |
+| ABIX 类型             | Rust                         | Zig                    | 规则                                                                                                                          |
+| --------------------- | ---------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `abix_optional<T>`    | `Option<T>`                  | `?T`                   | 布局不等价；显式 `#[repr(C)]` / `extern struct`；`discriminant` 是 `u32` 且只允许 0/1；`reserved` 必须为 0；先检查 `reserved` |
+| `abix_result<T>`      | `Result<T, E>`               | error union / 自定义   | `status` 是 `int32_t`；`reserved` 必须为 0；`E` 通过 `[[error]]` 契约映射；不得把 `ErrorCode` 放进 `status`                   |
+| `abix_str`            | `&str`                       | slice                  | 仅借用；先验证 encoding、长度单位与生命周期；`reserved` 必须为 0；不要假定 UTF-8                                              |
+| `abix_span<T>`        | `&[T]`                       | slice                  | 仅借用；元素 `TypeID` 与长度单位必须匹配                                                                                      |
+| `abix_callback`       | function + context           | fn + context           | borrowed：调用方保持 context 存活并负责注销                                                                                   |
+| `abix_callback_owned` | function + context + release | fn + context + release | producer 拥有 context；最后一次调用后恰好 release 一次；不得 unwind；release 后不得再调用                                     |
+| `Owner<T>`            | wrapper                      | wrapper                | `owner::handle` 的别名；destroy 来自创建模块；release 前持有 `abix_lease`                                                     |
 
 Rust `Option<T>` 与 `Result<T, E>` 使用 niche 优化，size、alignment 或 discriminant 范围可能不同；`transmute` 与 `#[repr(transparent)]` cast 都不是合法 adapter。Zig error union 是 tagged union，不是 `{ status, value }`；必须显式 lowering。
 
 `abix_result.status == 0` 表示成功；其他值由 `[[error]]` 契约决定含义。`ErrorCode` 是 16 字节的边界身份，不是 transport status。未知 status 必须原样传递，由接收方决定是否拒绝。
+
+## 布局矩阵与 conformance
+
+v0.4.0 首批实例的具体值：
+
+| 实例                                  | 大小 | 对齐 | payload 偏移                                    |
+| ------------------------------------- | ---- | ---- | ----------------------------------------------- |
+| `abix_optional<int32_t>`              | 12   | 4    | 8                                               |
+| `abix_optional<int64_t>`              | 16   | 8    | 8                                               |
+| `abix_optional<void *>`（64 位）      | 16   | 8    | 8                                               |
+| `abix_result<int32_t>`                | 12   | 4    | 8                                               |
+| `abix_result<int64_t>`                | 16   | 8    | 8                                               |
+| `abix_str<char>`（64 位）             | 24   | 8    | `data=0`、`len=8`、`encoding=16`、`reserved=20` |
+| `abix_str<char>`（32 位，u64 对齐 4） | 20   | 4    | `data=0`、`len=4`、`encoding=12`、`reserved=16` |
+
+指针、64 位与 over-aligned 实例按目标的 `alignof(T)` 计算；表格是检查，不替代公式。`test/conformance/run_std_conformance.py` 构建一个 native library，并用 C、C++、Rust、Zig 四个消费者读取它；宿主支持 `-m32` 时还会跑 32 位 C/C++ 矩阵。`test/std_contract_test.cpp` 固定 C++ 断言与 v0.3.x → v0.4.0 的负向用例。
 
 ## 范围
 

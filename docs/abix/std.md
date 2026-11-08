@@ -54,12 +54,32 @@ AMC generates a thin adapter (`DemoBuffer_view(value) -> abix_span_i32`) that ca
 
 P1 adds four contracts, each matched by capability (shape + element `TypeID`):
 
-| Contract   | Layout / capability                                   |
-| ---------- | ----------------------------------------------------- |
-| `optional` | `{ discriminant: bool/u8; payload: T }`               |
-| `result`   | `{ status: int; payload: T }` (reuses error boundary) |
-| `callback` | `{ function entry; opaque context }`                  |
-| `range`    | non-contiguous container via length + indexed access  |
+| Contract   | Layout / capability                                                       |
+| ---------- | ------------------------------------------------------------------------- |
+| `optional` | `{ uint32 discriminant; uint32 reserved; alignas(T) T value; }`           |
+| `result`   | `{ int32 status; uint32 reserved; alignas(T) T value; }` (error boundary) |
+| `callback` | `{ function entry; opaque context }`                                      |
+| `range`    | non-contiguous container via length + indexed access                      |
+
+The v0.4.0 optional and result layouts are explicit:
+
+```cpp
+template<class T>
+struct abix_optional {
+    uint32_t discriminant;   // 0 = None, 1 = Some
+    uint32_t reserved;       // must be 0
+    alignas(T) T value;      // valid only when discriminant == 1
+};
+
+template<class T>
+struct abix_result {
+    int32_t status;          // transport status, not ErrorCode
+    uint32_t reserved;       // must be 0
+    alignas(T) T value;      // valid when status is the contract success value
+};
+```
+
+A consumer rejects a discriminant other than `0` or `1`, and rejects a non-zero `reserved` word; it must not read `value` when the optional discriminant is `0`. `reserved` is a validity sentinel in these two types, not a forward-compatible reserved bit.
 
 `abix_callback` is the borrowed form: the caller keeps the context alive and unregisters it. `abix_callback_owned` is the additive owned form:
 
@@ -77,7 +97,7 @@ typedef struct abix_callback_owned {
 
 The producer owns the context and invokes `release` exactly once after the last call. `release` is required for an owned callback, must not unwind, and must not be called by the consumer directly. The consumer must not call the callback after release.
 
-> **v0.4.0 note:** the `abix_optional`, `abix_result` and `abix_str` layouts in this document are the v0.3.x layouts. v0.4.0 replaces them without a compatibility layer; see [`v0.4-migration.md`](v0.4-migration.md).
+> **v0.4.0:** the `abix_optional`, `abix_result` and `abix_str` layouts in this document are the explicit v0.4.0 layouts. They replace the v0.3.x layouts without a compatibility layer, so old `.abix` artifacts and generated bindings must be regenerated.
 
 ## First primitive: borrowed span
 
@@ -142,7 +162,7 @@ Generic parameters are a frontend concern; see [`LANGUAGE-PLUGIN.md`](../../.age
 
 ## Second primitive: string view
 
-`abix_str_utf8` is `{ const char *data; uint64_t len; uint32_t encoding; }`, lowered against the `string-view` contract:
+`abix_str_utf8` is `{ const char *data; uint64_t len; uint32_t encoding; uint32_t reserved; }`, lowered against the `string-view` contract:
 
 ```toml
 [[instantiate]]
@@ -180,19 +200,35 @@ The handle carries identity, mode, destroy and module instance. The module lease
 
 ABIX describes layouts, not language types. AMC lowers native types with an explicit adapter; native layouts are never assumed to be equivalent:
 
-| ABIX type             | Rust                         | Zig                    | Rule                                                                                                   |
-| --------------------- | ---------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
-| `abix_optional<T>`    | `Option<T>`                  | `?T`                   | not layout-equivalent; copy through an adapter; `has_value` is `u8` and must be 0 or 1                 |
-| `abix_result<T>`      | `Result<T, E>`               | error union / custom   | `status` is `int32_t`; map `E` through the `[[error]]` contract; never store `ErrorCode` in `status`   |
-| `abix_str`            | `&str`                       | slice                  | borrowed only; verify encoding, length unit and lifetime; do not assume UTF-8                          |
-| `abix_span<T>`        | `&[T]`                       | slice                  | borrowed only; element `TypeID` and length unit must match                                             |
-| `abix_callback`       | function + context           | fn + context           | borrowed: the caller keeps the context alive and unregisters it                                        |
-| `abix_callback_owned` | function + context + release | fn + context + release | producer owns the context; release exactly once after the last call; no unwind; no calls after release |
-| `Owner<T>`            | wrapper                      | wrapper                | alias of `owner::handle`; destroy from the creating module; hold an `abix_lease` until release         |
+| ABIX type             | Rust                         | Zig                    | Rule                                                                                                                                                   |
+| --------------------- | ---------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `abix_optional<T>`    | `Option<T>`                  | `?T`                   | not layout-equivalent; explicit `#[repr(C)]` / `extern struct`; `discriminant` is `u32` and must be 0/1; `reserved` must be 0; decode `reserved` first |
+| `abix_result<T>`      | `Result<T, E>`               | error union / custom   | `status` is `int32_t`; `reserved` must be 0; map `E` through the `[[error]]` contract; never store `ErrorCode` in `status`                             |
+| `abix_str`            | `&str`                       | slice                  | borrowed only; verify encoding, length unit and lifetime; `reserved` must be 0; do not assume UTF-8                                                    |
+| `abix_span<T>`        | `&[T]`                       | slice                  | borrowed only; element `TypeID` and length unit must match                                                                                             |
+| `abix_callback`       | function + context           | fn + context           | borrowed: the caller keeps the context alive and unregisters it                                                                                        |
+| `abix_callback_owned` | function + context + release | fn + context + release | producer owns the context; release exactly once after the last call; no unwind; no calls after release                                                 |
+| `Owner<T>`            | wrapper                      | wrapper                | alias of `owner::handle`; destroy from the creating module; hold an `abix_lease` until release                                                         |
 
 Rust `Option<T>` and `Result<T, E>` use niche optimization and may have a different size, alignment or discriminant range; `transmute` and `#[repr(transparent)]` casts are not valid adapters. A Zig error union is a tagged union, not `{ status, value }`; lower it explicitly.
 
 `abix_result.status == 0` means success. Any other value is an error selected by the `[[error]]` contract; `ErrorCode` is a 16-byte boundary identity, not the transport status. An unknown status must be carried through unchanged so the receiver can decide whether to reject it.
+
+## Layout matrix and conformance
+
+The v0.4.0 concrete values for the first supported instances are:
+
+| Instance                               | Size | Align | Payload offset                                  |
+| -------------------------------------- | ---- | ----- | ----------------------------------------------- |
+| `abix_optional<int32_t>`               | 12   | 4     | 8                                               |
+| `abix_optional<int64_t>`               | 16   | 8     | 8                                               |
+| `abix_optional<void *>` (64-bit)       | 16   | 8     | 8                                               |
+| `abix_result<int32_t>`                 | 12   | 4     | 8                                               |
+| `abix_result<int64_t>`                 | 16   | 8     | 8                                               |
+| `abix_str<char>` (64-bit)              | 24   | 8     | `data=0`, `len=8`, `encoding=16`, `reserved=20` |
+| `abix_str<char>` (32-bit, u64 align 4) | 20   | 4     | `data=0`, `len=4`, `encoding=12`, `reserved=16` |
+
+The pointer, 64-bit and over-aligned instances are computed from the target's `alignof(T)`; the table is a check, not a substitute for the formula. `test/conformance/run_std_conformance.py` builds one native library and consumes it from C, C++, Rust and Zig; it also runs the C/C++ matrix at 32-bit where the host supports `-m32`. `test/std_contract_test.cpp` pins the C++ assertions and the v0.3.x-to-v0.4.0 negative cases.
 
 ## Scope
 

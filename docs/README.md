@@ -75,7 +75,8 @@ Core ABI model, format, and API documentation.
 | [std.md](abix/std.md)                       | [std_zh.md](abix/std_zh.md)                       | ABIX-STD cross-language ABI primitives                        |
 | [safety.md](abix/safety.md)                 | [safety_zh.md](abix/safety_zh.md)                 | S1/S2 safety metadata decision and checked/enforced boundary  |
 | [metadata_modes.md](abix/metadata_modes.md) | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo        |
-| [v0.4-migration.md](abix/v0.4-migration.md) | [v0.4-migration_zh.md](abix/v0.4-migration_zh.md) | v0.3.x to v0.4.0 layout changes and the AMC/ABIX lockstep     |
+
+The v0.4.0 STD layout break is summarized in [`std.md`](abix/std.md).
 
 ## Languages
 
