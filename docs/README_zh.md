@@ -75,6 +75,7 @@ graph TD
 | [std_zh.md](abix/std_zh.md)                       | [std.md](abix/std.md)                       | ABIX-STD 跨语言 ABI 原语                           |
 | [safety_zh.md](abix/safety_zh.md)                 | [safety.md](abix/safety.md)                 | S1/S2 safety metadata 决策与 checked/enforced 边界 |
 | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo   |
+| [v0.4-migration_zh.md](abix/v0.4-migration_zh.md) | [v0.4-migration.md](abix/v0.4-migration.md) | v0.3.x → v0.4.0 布局变化与 AMC/ABIX 锁步           |
 
 ## 语言
 
