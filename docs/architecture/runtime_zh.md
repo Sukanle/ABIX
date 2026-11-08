@@ -35,9 +35,9 @@ graph LR
 
 `runtime::Registry` 持有所有已加载模块的 ABI 事实，并在加载期校验：
 
-* canonical `TypeDesc` / `TypeLayout` 是唯一 ABI 事实；
-* 同一 module version 内共享 TypeID 必须携带相同 `LayoutHash`（兼容重复去重，冲突拒绝）；更新的 version 可以携带不同 layout，作为独立 entry 共存；
-* 查找基于 `TypeID`（`find_by_id` 取最新版本、`find_type(id, version)` 精确版本、`type_of<T>()`）；名字查找仅为诊断用途，紧凑构建下返回 `nullptr`。
+- canonical `TypeDesc` / `TypeLayout` 是唯一 ABI 事实；
+- 同一 module version 内共享 TypeID 必须携带相同 `LayoutHash`（兼容重复去重，冲突拒绝）；更新的 version 可以携带不同 layout，作为独立 entry 共存；
+- 查找基于 `TypeID`（`find_by_id` 取最新版本、`find_type(id, version)` 精确版本、`type_of<T>()`）；名字查找仅为诊断用途，紧凑构建下返回 `nullptr`。
 
 ## Metadata 三种模式
 
@@ -47,8 +47,8 @@ graph TD
     B -->|materialize| C["Runtime Descriptor（pointer-rich，热路径）"]
 ```
 
-* 工具链把 Region 写入生成头文件的 `.abix.metadata` 段；离线工具无需加载程序即可扫描。
-* `MaterializedModule` 可把 Region 重新投影为 pointer-rich 的 `ModuleDescriptor`，使注册表完全由 metadata image 驱动，无需编译期 descriptor 数组。
+- 工具链把 Region 写入生成头文件的 `.abix.metadata` 段；离线工具无需加载程序即可扫描。
+- `MaterializedModule` 可把 Region 重新投影为 pointer-rich 的 `ModuleDescriptor`，使注册表完全由 metadata image 驱动，无需编译期 descriptor 数组。
 
 设计细节见 [`metadata_modes_zh.md`](../abix/metadata_modes_zh.md)。
 

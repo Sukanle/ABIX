@@ -17,7 +17,9 @@ function(abi_add_bench)
     target_include_directories(${BENCH_NAME} PRIVATE ${BENCH_INC_DIR})
     target_link_libraries(${BENCH_NAME} PRIVATE benchmark::benchmark_main fmt::fmt MICS::MICS)
     set_target_properties(${BENCH_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
+    if(
+        CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND
+        (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                      "RelWithDebInfo"))
         add_custom_command(
             TARGET ${BENCH_NAME}

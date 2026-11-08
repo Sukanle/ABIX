@@ -71,6 +71,7 @@ Core ABI model, format, and API documentation.
 | [abix.md](abix/abix.md)                     | [abix_zh.md](abix/abix_zh.md)                     | the canonical `.abix` artifact format                         |
 | [api.md](abix/api.md)                       | [api_zh.md](abix/api_zh.md)                       | full C++ API reference                                        |
 | [interface.md](abix/interface.md)           | [interface_zh.md](abix/interface_zh.md)           | the Interface layer: contracts, proxies, discovery, Owner ABI |
+| [lease.md](abix/lease.md)                   | [lease_zh.md](abix/lease_zh.md)                   | the cross-language lease C ABI and Host-owned registry        |
 | [std.md](abix/std.md)                       | [std_zh.md](abix/std_zh.md)                       | ABIX-STD cross-language ABI primitives                        |
 | [metadata_modes.md](abix/metadata_modes.md) | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | three metadata modes: Debug / Release / RelWithDebInfo        |
 
@@ -95,12 +96,12 @@ The AMC toolchain is a separate repository; its documentation lives there.
 
 How ABIX and AMC work internally.
 
-| Document                                            | 中文                                                      | Description                                                |
-| --------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
-| [architecture.md](architecture/architecture.md)     | [architecture_zh.md](architecture/architecture_zh.md)     | system overview, design map, invariants                    |
-| [runtime.md](architecture/runtime.md)               | [runtime_zh.md](architecture/runtime_zh.md)               | runtime responsibilities, registry, execution model        |
-| [compatibility.md](architecture/compatibility.md)   | [compatibility_zh.md](architecture/compatibility_zh.md)   | TypeID / LayoutHash / BuildID / MetadataID                 |
-| [binary-image.md](architecture/binary-image.md)     | [binary-image_zh.md](architecture/binary-image_zh.md)     | the BinaryImage capability layer over ELF / Mach-O / PE    |
+| Document                                          | 中文                                                    | Description                                             |
+| ------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
+| [architecture.md](architecture/architecture.md)   | [architecture_zh.md](architecture/architecture_zh.md)   | system overview, design map, invariants                 |
+| [runtime.md](architecture/runtime.md)             | [runtime_zh.md](architecture/runtime_zh.md)             | runtime responsibilities, registry, execution model     |
+| [compatibility.md](architecture/compatibility.md) | [compatibility_zh.md](architecture/compatibility_zh.md) | TypeID / LayoutHash / BuildID / MetadataID              |
+| [binary-image.md](architecture/binary-image.md)   | [binary-image_zh.md](architecture/binary-image_zh.md)   | the BinaryImage capability layer over ELF / Mach-O / PE |
 
 Binary metadata inspection guides live in the AMC repository: see [ELF/Mach-O inspection](https://github.com/Sukanle/AMC/blob/main/docs/architecture/elf-inspection.md) and [PE inspection](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection.md).
 

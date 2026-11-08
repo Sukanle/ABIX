@@ -1,0 +1,106 @@
+# Converted from legacy cmake-format configuration.
+# Review this file before committing it; unsupported options are listed below.
+#
+# Conversion notes:
+# - cmake-format.json: unsupported legacy option [_help_encode]
+# - cmake-format.json: unsupported legacy option [_help_format]
+# - cmake-format.json: unsupported legacy option [_help_lint]
+# - cmake-format.json: unsupported legacy option [_help_markup]
+# - cmake-format.json: unsupported legacy option [_help_misc]
+# - cmake-format.json: unsupported legacy option [_help_parse]
+# - cmake-format.json: unsupported legacy option [encode]
+# - cmake-format.json: unsupported legacy option [format]._help_always_wrap
+# - cmake-format.json: unsupported legacy option [format]._help_autosort
+# - cmake-format.json: unsupported legacy option [format]._help_command_case
+# - cmake-format.json: unsupported legacy option [format]._help_dangle_align
+# - cmake-format.json: unsupported legacy option [format]._help_dangle_parens
+# - cmake-format.json: unsupported legacy option [format]._help_disable
+# - cmake-format.json: unsupported legacy option [format]._help_enable_sort
+# - cmake-format.json: unsupported legacy option [format]._help_fractional_tab_policy
+# - cmake-format.json: unsupported legacy option [format]._help_keyword_case
+# - cmake-format.json: unsupported legacy option [format]._help_layout_passes
+# - cmake-format.json: unsupported legacy option [format]._help_line_ending
+# - cmake-format.json: unsupported legacy option [format]._help_line_width
+# - cmake-format.json: unsupported legacy option [format]._help_max_lines_hwrap
+# - cmake-format.json: unsupported legacy option [format]._help_max_pargs_hwrap
+# - cmake-format.json: unsupported legacy option [format]._help_max_prefix_chars
+# - cmake-format.json: unsupported legacy option [format]._help_max_rows_cmdline
+# - cmake-format.json: unsupported legacy option [format]._help_max_subgroups_hwrap
+# - cmake-format.json: unsupported legacy option [format]._help_min_prefix_chars
+# - cmake-format.json: unsupported legacy option [format]._help_require_valid_layout
+# - cmake-format.json: unsupported legacy option [format]._help_separate_ctrl_name_with_space
+# - cmake-format.json: unsupported legacy option [format]._help_separate_fn_name_with_space
+# - cmake-format.json: unsupported legacy option [format]._help_tab_size
+# - cmake-format.json: unsupported legacy option [format]._help_use_tabchars
+# - cmake-format.json: command_case = "canonical" was mapped to "lower"; review command casing
+# - cmake-format.json: unsupported legacy option [format].layout_passes
+# - cmake-format.json: unsupported legacy option [lint]
+# - cmake-format.json: unsupported legacy option [markup]._help_bullet_char
+# - cmake-format.json: unsupported legacy option [markup]._help_canonicalize_hashrulers
+# - cmake-format.json: unsupported legacy option [markup]._help_enable_markup
+# - cmake-format.json: unsupported legacy option [markup]._help_enum_char
+# - cmake-format.json: unsupported legacy option [markup]._help_explicit_trailing_pattern
+# - cmake-format.json: unsupported legacy option [markup]._help_fence_pattern
+# - cmake-format.json: unsupported legacy option [markup]._help_first_comment_is_literal
+# - cmake-format.json: unsupported legacy option [markup]._help_hashruler_min_length
+# - cmake-format.json: unsupported legacy option [markup]._help_literal_comment_pattern
+# - cmake-format.json: unsupported legacy option [markup]._help_ruler_pattern
+# - cmake-format.json: unsupported legacy option [markup].explicit_trailing_pattern
+# - cmake-format.json: unsupported legacy option [misc]._help_per_command
+# - cmake-format.json: unsupported legacy option [parse]._help_additional_commands
+# - cmake-format.json: unsupported legacy option [parse]._help_override_spec
+# - cmake-format.json: unsupported legacy option [parse]._help_proptags
+# - cmake-format.json: unsupported legacy option [parse]._help_vartags
+# - cmake-format.json: unsupported legacy option [parse].proptags
+# - cmake-format.json: unsupported legacy option [parse].vartags
+
+format:
+  disable: false
+  line_ending: unix
+  line_width: 120
+  tab_size: 4
+  use_tabs: false
+  fractional_tab_policy: use-space
+  max_hanging_wrap_lines: 2
+  max_hanging_wrap_positional_args: 6
+  max_hanging_wrap_groups: 2
+  max_rows_cmdline: 2
+  always_wrap: []
+  require_valid_layout: false
+  dangle_parens: false
+  dangle_align: prefix
+  min_prefix_length: 4
+  max_prefix_length: 10
+  separate_ctrl_name_with_space: false
+  separate_fn_name_with_space: false
+  command_case: lower
+  keyword_case: unchanged
+  enable_sort: true
+  autosort: false
+markup:
+  enable_markup: false
+  first_comment_is_literal: false
+  bullet_char: "*"
+  enum_char: '.'
+  fence_pattern: ^\s*([`~]{3}[`~]*)(.*)$
+  ruler_pattern: ^\s*[^\w\s]{3}.*[^\w\s]{3}$
+  hashruler_min_length: 10
+  canonicalize_hashrulers: true
+commands:
+  foo:
+    kwargs:
+      DEPENDS:
+        nargs: "*"
+        sortable: false
+        no_autosort: false
+      HEADERS:
+        nargs: "*"
+        sortable: false
+        no_autosort: false
+      SOURCES:
+        nargs: "*"
+        sortable: false
+        no_autosort: false
+    flags:
+    - BAR
+    - BAZ

@@ -9,7 +9,9 @@ function(abi_add_test name)
     if(NOT (ARGC GREATER 1 AND ARGV1 STREQUAL "NO_RUNTIME_FLAGS"))
         abix_apply_runtime_contract(${name})
     endif()
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
+    if(
+        CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND
+        (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                      "RelWithDebInfo"))
         add_custom_command(
             TARGET ${name}
@@ -34,7 +36,8 @@ abi_add_test(error_flow_test)
 # Optional EPCD compatibility test. ABIX never depends on EPCD at runtime; this
 # target only checks that the shared error identity stays binarily compatible.
 find_path(
-    SKL_ABIX_EPCD_INCLUDE_DIR NAMES SKL/EPCD/Core/ErrorCode.h
+    SKL_ABIX_EPCD_INCLUDE_DIR
+    NAMES SKL/EPCD/Core/ErrorCode.h
     HINTS ENV EPCD_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/../EPCD/include")
 if(SKL_ABIX_EPCD_INCLUDE_DIR)
     abi_add_test(epcd_compat_test)
@@ -74,6 +77,8 @@ abi_add_test(bootstrap_test)
 abi_add_test(metadata_registry_test)
 abi_add_test(interface_dispatch_test)
 abi_add_test(interface_module_test)
+abi_add_test(lease_abi_test)
+abi_add_test(std_contract_test)
 abi_add_test(owner_abi_test)
 abi_add_test(interface_dll_test)
 abi_add_test(owner_dll_test)

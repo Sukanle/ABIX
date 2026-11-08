@@ -145,7 +145,7 @@ graph TD
     A --> D[ABI Ground Truth]
     A --> E[Deterministic Verification]
     A --> F[Agent Orchestration]
-    
+
     B --> B1[fewer context tokens]
     C --> C1[limit the reasoning space]
     D --> D1[prevent the model from guessing real state]
@@ -155,13 +155,13 @@ graph TD
 
 TROI is only the first layer.
 
-| Layer | Solves | Survives LLM evolution? |
-|-------|--------|------------------------|
-| TROI | efficiency | weakens as context grows |
-| Semantic Constraint | reasoning precision | **strengthens** — more data means tighter constraints needed |
-| ABI Ground Truth | factual accuracy | **permanent** — real binary state never changes |
-| Deterministic Verification | correctness guarantee | **permanent** — "system proves" beats "model guesses" |
-| Agent Orchestration | closed-loop operation | **permanent** — someone must take action |
+| Layer                      | Solves                | Survives LLM evolution?                                      |
+| -------------------------- | --------------------- | ------------------------------------------------------------ |
+| TROI                       | efficiency            | weakens as context grows                                     |
+| Semantic Constraint        | reasoning precision   | **strengthens** — more data means tighter constraints needed |
+| ABI Ground Truth           | factual accuracy      | **permanent** — real binary state never changes              |
+| Deterministic Verification | correctness guarantee | **permanent** — "system proves" beats "model guesses"        |
+| Agent Orchestration        | closed-loop operation | **permanent** — someone must take action                     |
 
 ## The Triangle: LLM / Agent / ABIX
 
@@ -343,4 +343,4 @@ Or more precisely:
 
 ---
 
-*This document captures the theoretical foundation for ABIX × AI. For the MCP tool interface, see [MCP.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md). For the token-efficiency metric, see [troi.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md). For the Agent architecture, see **AGENT.md** (planned).*
+_This document captures the theoretical foundation for ABIX × AI. For the MCP tool interface, see [MCP.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/MCP.md). For the token-efficiency metric, see [troi.md](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md). For the Agent architecture, see **AGENT.md** (planned)._

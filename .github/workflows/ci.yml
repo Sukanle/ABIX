@@ -1,29 +1,19 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - devel
-      - devel-alpha
-      - devel-beta
-      - devel-linux
-      - devel-macos
-      - devel-windows
-      - main
-      - "v0.*"
-    tags:
-      - "v*"
-  pull_request:
-    branches:
-      - devel
-      - devel-alpha
-      - devel-beta
-      - devel-linux
-      - devel-macos
-      - devel-windows
-      - main
-      - "v0.*"
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to run"
+        required: true
+        default: "windows"
+        type: choice
+        options:
+          - windows
+          - linux
+          - all
+
+run-name: "Cross-Platform CI (${{ inputs.platforms }}) on ${{ github.ref_name }}"
 
 permissions:
   contents: read
@@ -39,13 +29,14 @@ env:
   FMT_VERSION: "11.2.0"
   BENCHMARK_VERSION: "1.10.0"
   # MSYS2 is rolling; keep this pin aligned with the current ucrt64 repo.
-  WINDOWS_LLVM_VERSION: "23.1.4-2"
+  WINDOWS_LLVM_VERSION: "23.1.5-1"
   WINDOWS_FMT_VERSION: "12.2.0-1"
   WINDOWS_BENCHMARK_VERSION: "1.10.0-1"
 
 jobs:
   linux:
     name: Linux (Ubuntu 24.04)
+    if: ${{ inputs.platforms == 'all' || inputs.platforms == 'linux' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -73,7 +64,26 @@ jobs:
             clang-${LLVM_VERSION} llvm-${LLVM_VERSION} llvm-${LLVM_VERSION}-dev \
             libclang-${LLVM_VERSION}-dev libclang-cpp${LLVM_VERSION}-dev libclang-common-${LLVM_VERSION}-dev
 
+      - name: Cache pinned fmt
+        id: cache-fmt
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/fmt
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-deps-fmt-${{ env.FMT_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-abix-deps-fmt-
+
+      - name: Cache pinned Google Benchmark
+        id: cache-benchmark
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/benchmark
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-deps-benchmark-${{ env.BENCHMARK_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-abix-deps-benchmark-
+
       - name: Build pinned fmt
+        if: steps.cache-fmt.outputs.cache-hit != 'true'
         run: |
           curl -fsSL -o fmt.tar.gz "https://github.com/fmtlib/fmt/archive/refs/tags/${FMT_VERSION}.tar.gz"
           tar xzf fmt.tar.gz
@@ -84,6 +94,7 @@ jobs:
           cmake --build fmt-build --target install --parallel 2
 
       - name: Build pinned Google Benchmark
+        if: steps.cache-benchmark.outputs.cache-hit != 'true'
         run: |
           curl -fsSL -o benchmark.tar.gz "https://github.com/google/benchmark/archive/refs/tags/v${BENCHMARK_VERSION}.tar.gz"
           tar xzf benchmark.tar.gz
@@ -140,92 +151,99 @@ jobs:
             build/Release/**/*.log
           if-no-files-found: ignore
 
-  macos:
-    name: macOS (Apple Silicon)
-    runs-on: macos-latest
-    timeout-minutes: 60
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Fetch submodules over HTTPS
-        run: |
-          git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git submodule update --init --recursive
-
-      - name: Install dependencies
-        run: |
-          brew install "llvm@${LLVM_VERSION}" cmake pkgconf tomlplusplus catch2 lua@5.4
-
-      - name: Build pinned fmt
-        run: |
-          curl -fsSL -o fmt.tar.gz "https://github.com/fmtlib/fmt/archive/refs/tags/${FMT_VERSION}.tar.gz"
-          tar xzf fmt.tar.gz
-          cmake -S "fmt-${FMT_VERSION}" -B fmt-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DFMT_TEST=OFF -DFMT_DOC=OFF \
-            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/fmt"
-          cmake --build fmt-build --target install --parallel 2
-
-      - name: Build pinned Google Benchmark
-        run: |
-          curl -fsSL -o benchmark.tar.gz "https://github.com/google/benchmark/archive/refs/tags/v${BENCHMARK_VERSION}.tar.gz"
-          tar xzf benchmark.tar.gz
-          cmake -S "benchmark-${BENCHMARK_VERSION}" -B benchmark-build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBENCHMARK_ENABLE_TESTING=OFF -DBENCHMARK_ENABLE_GTEST_TESTS=OFF \
-            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/benchmark"
-          cmake --build benchmark-build --target install --parallel 2
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-
-      - name: Generate hotcache DLL source
-        run: python3 tools/gen_hotcache_dll.py
-
-      - name: Configure
-        run: |
-          export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          PREFIXES="$(brew --prefix "llvm@${LLVM_VERSION}");$RUNNER_TEMP/fmt;$RUNNER_TEMP/benchmark;$(brew --prefix tomlplusplus);$(brew --prefix catch2);$(brew --prefix lua@5.4)"
-          cmake -S . -B build/Release -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$PREFIXES" \
-            -DBUILD_TESTING=ON \
-            -DBUILD_BENCHMARKS=ON
-
-      - name: Build
-        run: cmake --build build/Release --parallel 2
-
-      - name: Verify required build outputs
-        run: |
-          test -x build/Release/bin/test_all
-          ctest --test-dir build/Release -N | grep -q abix-cmake-runtime-package-test
-
-      - name: Test
-        run: |
-          export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          ctest --test-dir build/Release --output-on-failure --timeout 120
-
-      - name: Upload test logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-test-logs
-          path: |
-            build/Release/Testing/Temporary/LastTest.log
-            build/Release/Testing/Temporary/LastTestsFailed.log
-            build/Release/**/*.log
-          if-no-files-found: ignore
-
+  # GitHub-hosted macOS builds are disabled for now to keep CI cache and
+  # runner usage bounded. Uncomment the block below to re-enable them.
+  #
+  # macOS 托管构建暂时停用，避免持续占用 CI 缓存和 runner 时间。
+  # 需要恢复时，取消下面整段注释即可。
+  #
+  #   macos:
+  #     name: macOS (Apple Silicon)
+  #     runs-on: macos-latest
+  #     timeout-minutes: 60
+  #     steps:
+  #       - name: Checkout
+  #         uses: actions/checkout@v4
+  #         with:
+  #           submodules: false
+  #
+  #       - name: Fetch submodules over HTTPS
+  #         run: |
+  #           git config --global url."https://github.com/".insteadOf "git@github.com:"
+  #           git submodule update --init --recursive
+  #
+  #       - name: Install dependencies
+  #         run: |
+  #           brew install "llvm@${LLVM_VERSION}" cmake pkgconf tomlplusplus catch2 lua@5.4
+  #
+  #       - name: Build pinned fmt
+  #         run: |
+  #           curl -fsSL -o fmt.tar.gz "https://github.com/fmtlib/fmt/archive/refs/tags/${FMT_VERSION}.tar.gz"
+  #           tar xzf fmt.tar.gz
+  #           cmake -S "fmt-${FMT_VERSION}" -B fmt-build -G Ninja \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DFMT_TEST=OFF -DFMT_DOC=OFF \
+  #             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/fmt"
+  #           cmake --build fmt-build --target install --parallel 2
+  #
+  #       - name: Build pinned Google Benchmark
+  #         run: |
+  #           curl -fsSL -o benchmark.tar.gz "https://github.com/google/benchmark/archive/refs/tags/v${BENCHMARK_VERSION}.tar.gz"
+  #           tar xzf benchmark.tar.gz
+  #           cmake -S "benchmark-${BENCHMARK_VERSION}" -B benchmark-build -G Ninja \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DBENCHMARK_ENABLE_TESTING=OFF -DBENCHMARK_ENABLE_GTEST_TESTS=OFF \
+  #             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/benchmark"
+  #           cmake --build benchmark-build --target install --parallel 2
+  #
+  #       - name: Setup Rust
+  #         uses: dtolnay/rust-toolchain@stable
+  #
+  #       - name: Setup Zig
+  #         uses: mlugg/setup-zig@v2
+  #         with:
+  #           version: ${{ env.ZIG_VERSION }}
+  #
+  #       - name: Generate hotcache DLL source
+  #         run: python3 tools/gen_hotcache_dll.py
+  #
+  #       - name: Configure
+  #         run: |
+  #           export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  #           PREFIXES="$(brew --prefix "llvm@${LLVM_VERSION}");$RUNNER_TEMP/fmt;$RUNNER_TEMP/benchmark;$(brew --prefix tomlplusplus);$(brew --prefix catch2);$(brew --prefix lua@5.4)"
+  #           cmake -S . -B build/Release -G Ninja \
+  #             -DCMAKE_BUILD_TYPE=Release \
+  #             -DCMAKE_PREFIX_PATH="$PREFIXES" \
+  #             -DBUILD_TESTING=ON \
+  #             -DBUILD_BENCHMARKS=ON
+  #
+  #       - name: Build
+  #         run: cmake --build build/Release --parallel 2
+  #
+  #       - name: Verify required build outputs
+  #         run: |
+  #           test -x build/Release/bin/test_all
+  #           ctest --test-dir build/Release -N | grep -q abix-cmake-runtime-package-test
+  #
+  #       - name: Test
+  #         run: |
+  #           export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  #           ctest --test-dir build/Release --output-on-failure --timeout 120
+  #
+  #       - name: Upload test logs
+  #         if: failure()
+  #         uses: actions/upload-artifact@v4
+  #         with:
+  #           name: macos-test-logs
+  #           path: |
+  #             build/Release/Testing/Temporary/LastTest.log
+  #             build/Release/Testing/Temporary/LastTestsFailed.log
+  #             build/Release/**/*.log
+  #           if-no-files-found: ignore
+  #
   windows:
     name: Windows (MSYS2 UCRT64)
+    if: ${{ inputs.platforms == 'all' || inputs.platforms == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -238,6 +256,14 @@ jobs:
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git submodule update --init --recursive
+
+      - name: Cache MSYS2 packages
+        uses: actions/cache@v4
+        with:
+          path: C:\msys64\var\cache\pacman\pkg
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-deps-msys2-${{ env.WINDOWS_LLVM_VERSION }}-${{ env.WINDOWS_FMT_VERSION }}-${{ env.WINDOWS_BENCHMARK_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-abix-deps-msys2-
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -325,12 +351,18 @@ jobs:
     if: always()
     needs:
       - linux
-      - macos
       - windows
     runs-on: ubuntu-latest
     steps:
-      - name: Require every platform job
+      - name: Require every selected platform job
         run: |
-          test "${{ needs.linux.result }}" = "success"
-          test "${{ needs.macos.result }}" = "success"
-          test "${{ needs.windows.result }}" = "success"
+          echo "linux=${{ needs.linux.result }} windows=${{ needs.windows.result }}"
+          for result in "${{ needs.linux.result }}" "${{ needs.windows.result }}"; do
+            case "$result" in
+              failure|cancelled) exit 1 ;;
+            esac
+          done
+          if [ "${{ needs.linux.result }}" = "skipped" ] && [ "${{ needs.windows.result }}" = "skipped" ]; then
+            echo "no platform was selected" >&2
+            exit 1
+          fi

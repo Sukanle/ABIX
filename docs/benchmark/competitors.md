@@ -15,11 +15,11 @@
 - [1. How to read this](#1-how-to-read-this)
 - [2. The cost classes ABIX is measured against](#2-the-cost-classes-abix-is-measured-against)
 - [3. Head to head](#3-head-to-head)
-    - [3.1 COM](#31-com)
-    - [3.2 Qt](#32-qt)
-    - [3.3 Unity](#33-unity)
-    - [3.4 Unreal Engine](#34-unreal-engine)
-    - [3.5 Adjacent options](#35-adjacent-options)
+  - [3.1 COM](#31-com)
+  - [3.2 Qt](#32-qt)
+  - [3.3 Unity](#33-unity)
+  - [3.4 Unreal Engine](#34-unreal-engine)
+  - [3.5 Adjacent options](#35-adjacent-options)
 - [4. Where the performance gap actually is](#4-where-the-performance-gap-actually-is)
 - [5. Scenario matrix](#5-scenario-matrix)
 - [6. Where ABIX is not the answer](#6-where-abix-is-not-the-answer)
@@ -31,10 +31,10 @@
 
 Two kinds of statement appear below, and they are not interchangeable:
 
-| Kind              | Meaning                                                                                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Measured**      | A number produced by this repository's benchmark suite on this machine; see [`benchmark.md`](benchmark.md) §5, and the per-family rerun in `memory/windows-benchmark.md` §8. Reproduce with `python tools/run_bench.py`. |
-| **Architectural** | A statement about what a framework _does_ (indirection, marshalling, reflection, GC, lifetime bookkeeping), **not measured here**. No framework below was installed or benchmarked in this repository.                   |
+| Kind              | Meaning                                                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Measured**      | A number produced by this repository's benchmark suite on this machine; see [`benchmark.md`](benchmark.md) §5. Reproduce with `python tools/run_bench.py`.                                             |
+| **Architectural** | A statement about what a framework _does_ (indirection, marshalling, reflection, GC, lifetime bookkeeping), **not measured here**. No framework below was installed or benchmarked in this repository. |
 
 So: ABIX's cost is a measurement; the competitors' costs are mechanism descriptions with an order-of-magnitude judgement, and the comparison is made in **cost classes**, not by subtracting unlike numbers.
 
@@ -180,7 +180,6 @@ Stated plainly, because a comparison that only lists wins is useless:
 ## 7. References
 
 - [`benchmark.md`](benchmark.md) — the ABIX numbers quoted above, with method and environment.
-- `memory/windows-benchmark.md` §8/§10 — per-family rerun (one process per family, `repetitions=5`) and the two benchmark corrections.
 - [`docs/development/competitors.md`](../development/competitors.md) — the tooling landscape (libabigail, ABI Compliance Checker, Conan, vcpkg, Wasm CM, bindgen/SWIG, gRPC, CMake/Bazel) and ABIX's positioning against it.
 - [`docs/abix/api.md`](../abix/api.md) — the actual contract: `Domain`, `Deadline`, `Function::operator()`, `Object` and `ReclaimOutcome`.
 - `tools/run_bench.py` — reproduce any row in §2 with `python tools/run_bench.py <family> --no-extra --repetitions 5`.

@@ -91,11 +91,11 @@ bool parse_binary_image(const uint8_t *data, size_t size, BinaryImage &image, st
 
 ## 各格式 adapter
 
-| Adapter | 读取 | 导出符号来源 |
-|---------|-------|--------------|
-| `SKL/ABIX/Binary/ELF.h` | ELF64 小端 | `.dynsym`（GLOBAL/WEAK 且已定义） |
-| `SKL/ABIX/Binary/MachO.h` | 32/64 位小端 Mach-O | `LC_SYMTAB`（外部、`N_SECT`） |
-| `SKL/ABIX/Binary/PE.h` | PE32 / PE32+ | `IMAGE_EXPORT_DIRECTORY` |
+| Adapter                   | 读取                | 导出符号来源                      |
+| ------------------------- | ------------------- | --------------------------------- |
+| `SKL/ABIX/Binary/ELF.h`   | ELF64 小端          | `.dynsym`（GLOBAL/WEAK 且已定义） |
+| `SKL/ABIX/Binary/MachO.h` | 32/64 位小端 Mach-O | `LC_SYMTAB`（外部、`N_SECT`）     |
+| `SKL/ABIX/Binary/PE.h`    | PE32 / PE32+        | `IMAGE_EXPORT_DIRECTORY`          |
 
 每个 adapter 暴露一个廉价的 `is_*` magic 检查和一个填充 `ParseResult` 的 `detail::parse_*`。PE 另需把 RVA 解析为文件偏移（用于导出名/函数数组），并计算 `address = image_base + RVA`。
 

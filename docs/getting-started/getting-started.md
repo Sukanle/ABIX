@@ -47,8 +47,7 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 ```
 
-ABIX builds the header-only runtime and its tests. AMC is a separate repository;
-its artifacts land in the AMC build's `bin/` directory:
+ABIX builds the header-only runtime and its tests. AMC is a separate repository; its artifacts land in the AMC build's `bin/` directory:
 
 | Tool               | Purpose                                                                                         |
 | ------------------ | ----------------------------------------------------------------------------------------------- |
@@ -67,8 +66,7 @@ ctest --test-dir build/Release --output-on-failure
 
 ## 3. Describe an ABI
 
-AMC is a separate repository: <https://github.com/Sukanle/AMC>. Build and install
-it there; the commands below assume `amc` is on `PATH`.
+AMC is a separate repository: <https://github.com/Sukanle/AMC>. Build and install it there; the commands below assume `amc` is on `PATH`.
 
 ABI extraction is driven by an `.abic.toml` configuration. A minimal example:
 

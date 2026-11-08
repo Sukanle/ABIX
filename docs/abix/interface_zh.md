@@ -304,16 +304,16 @@ int main() {
 
 **调用延迟**（x86-64，GCC 16.2.1，`-O3 -DNDEBUG`，Google Benchmark，约 2 秒，CPU scaling 开启；关注趋势而非绝对纳秒）：
 
-| 机制                                   | ns/次 | 相对真实原生虚调用 |
-| -------------------------------------- | ----: | -----------------: |
-| 原生直接调用                           |  0.19 |              0.25x |
-| 原生虚调用（真实间接）                 |  0.75 |               1.0x |
-| 原生虚调用（编译器去虚化）             |  0.27 |              0.36x |
-| ABIX 直接 adapter                      |  0.19 |              0.25x |
-| ABIX `InterfaceRef` 缓存入口           |  0.75 |               1.0x |
-| ABIX `UniqueInterfaceProxy`            |  0.75 |               1.0x |
-| ABIX `SharedInterfaceProxy`            |  0.75 |               1.0x |
-| ngcpp/proxy `pro::proxy`               |  0.75 |               1.0x |
+| 机制                         | ns/次 | 相对真实原生虚调用 |
+| ---------------------------- | ----: | -----------------: |
+| 原生直接调用                 |  0.19 |              0.25x |
+| 原生虚调用（真实间接）       |  0.75 |               1.0x |
+| 原生虚调用（编译器去虚化）   |  0.27 |              0.36x |
+| ABIX 直接 adapter            |  0.19 |              0.25x |
+| ABIX `InterfaceRef` 缓存入口 |  0.75 |               1.0x |
+| ABIX `UniqueInterfaceProxy`  |  0.75 |               1.0x |
+| ABIX `SharedInterfaceProxy`  |  0.75 |               1.0x |
+| ngcpp/proxy `pro::proxy`     |  0.75 |               1.0x |
 
 在这个微基准里，非侵入式 proxy 与真实 vtable 分派基本同速。ABIX 的 unique/shared 布局与 ngcpp/proxy 都收敛在相同成本；主导因素是间接调用，shared 模式多出的一次表加载没有单独显现。剩下的差距来自**直接/去虚化**调用：编译器能证明动态类型时可以完全消除分派。SKL/ABIX/proxy 无法做到这一点，因为实现是运行期选择（或在编译期被擦除）。这是不接管对象模型（注册、类型擦除、跨 DLL/跨语言契约）的代价，而不是每次调用都查 registry。
 
@@ -825,8 +825,8 @@ registry.unregister_module(control.id);   // 现在可以卸载
 
 以下符号由 `SKL/ABIX/ABIX.h` 引入；除 Owner ABI（`skl::abix::owner`）外，其余都在命名空间 `skl::abix::poly`。要单独引入整层，`#include "SKL/ABIX/Interface/Interface.h"`。
 
-| 头文件                            | 内容                                                                                                      |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 头文件                                | 内容                                                                                                      |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `SKL/ABIX/Interface/Contract.h`       | 接口身份、`InterfaceMethod` / `InterfaceImplementation`、`InterfaceStatus`、`interface_entry`             |
 | `SKL/ABIX/Interface/Registry.h`       | `InterfaceRegistry` —— 绑定期实现的注册与解析                                                             |
 | `SKL/ABIX/Interface/Ref.h`            | `InterfaceRef` —— 一次解析、按槽位缓存的原生调用句柄                                                      |
@@ -844,8 +844,8 @@ registry.unregister_module(control.id);   // 现在可以卸载
 | -------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `InterfaceId`                                            | `Hash128`              | 接口身份：对接口名、版本与有序方法签名计算的内容哈希。不是类名，也不是 vtable 地址；可用 `interface_id(...)` 自动生成                                                      |
 | `InterfaceMethodHash`                                    | `model::SignatureHash` | 单个方法的 ABI 签名哈希                                                                                                                                                    |
-| `interface_id(name, version, signatures)`                | `InterfaceId`          | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `mics::util::array` 或变参 `InterfaceMethodHash` 列表      |
-| `InterfaceMethodKey`                                     | `{signature, slot}`    | 与槽位配对的签名，供 `interface_id` 的 `mics::util::array` 重载排序后计算身份                                                                                             |
+| `interface_id(name, version, signatures)`                | `InterfaceId`          | 编译期从规范名、版本与按槽位有序的签名算出接口身份；复刻 `AMC::interface_identity`，两端无需手抄常量。参数可用 `mics::util::array` 或变参 `InterfaceMethodHash` 列表       |
+| `InterfaceMethodKey`                                     | `{signature, slot}`    | 与槽位配对的签名，供 `interface_id` 的 `mics::util::array` 重载排序后计算身份                                                                                              |
 | `method_signature(name, return_type, parameters, count)` | `InterfaceMethodHash`  | 编译期从方法名与返回/参数 TypeID 算出方法签名；复刻 `AMC::signature_hash`（`[[interface]]` 路径，参数名不参与哈希）。TypeID 可由 `model::canonical_type_id`（`ABI.h`）得到 |
 | `interface_entry<Fn>(fn)`                                | `uintptr_t`            | 把函数指针拷入不透明的 `entry` 槽位；生成代码与调用方共用同一拼写                                                                                                          |
 | `to_string(status)`                                      | `const char*`          | `InterfaceStatus` 的可读名                                                                                                                                                 |
@@ -1049,12 +1049,12 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 
 一个接口代理是「对象句柄 + 已解析的适配器」的轻量封装，读起来像 `Shape*`，但不是基类——具体类型不被修改，也不使用编译器 vtable。`UniqueInterfaceProxy<Traits>` 承担绑定/状态/取入口的公共部分，每个接口只补自己的方法；`Traits` 描述接口差异：
 
-| `Traits` 成员 | 说明                                                                                                 |
-| ------------- | ---------------------------------------------------------------------------------------------------- |
-| `id`          | `InterfaceId`，接口身份（由 AMC 计算）                                                               |
-| `version`     | 接口版本                                                                                             |
+| `Traits` 成员 | 说明                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| `id`          | `InterfaceId`，接口身份（由 AMC 计算）                                                              |
+| `version`     | 接口版本                                                                                            |
 | `signatures`  | 按 slot 排列的期望签名 `mics::util::array`；其大小同时是 proxy 的槽位容量。零哈希表示该 slot 不校验 |
-| `slots`       | 类型化零基槽位表：`Traits::slots.<method>` 就是代理 `call(...)` 使用的 slot 值                       |
+| `slots`       | 类型化零基槽位表：`Traits::slots.<method>` 就是代理 `call(...)` 使用的 slot 值                      |
 
 `UniqueInterfaceProxy<Traits>`：
 
@@ -1074,10 +1074,10 @@ proxy 只保存紧凑的 `InterfaceSlotCache`：对象句柄、最高绑定槽�
 
 ABIX 提供两种 proxy 存储：
 
-| 形式 | 每对象大小 | 额外存储 | 适用 |
-|------|-----------:|----------|------|
-| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N` | 无 | 一个/少量对象；每对象独立方法表；不需要共享表生命周期 |
-| `SharedInterfaceProxy<Traits>` | `24` | 每实现一张 `InterfaceSlotTable`：`8 * N + 8` | 同一实现的大量对象；表构建一次后只读共享 |
+| 形式                           |   每对象大小 | 额外存储                                     | 适用                                                  |
+| ------------------------------ | -----------: | -------------------------------------------- | ----------------------------------------------------- |
+| `UniqueInterfaceProxy<Traits>` | `24 + 8 * N` | 无                                           | 一个/少量对象；每对象独立方法表；不需要共享表生命周期 |
+| `SharedInterfaceProxy<Traits>` |         `24` | 每实现一张 `InterfaceSlotTable`：`8 * N + 8` | 同一实现的大量对象；表构建一次后只读共享              |
 
 **性能不是选择依据。** 在上面的延迟基准里两者都约为 0.75 ns；shared 多出的一次表加载被间接调用成本掩盖。真正需要比较的是 adapter 表的归属、绑定灵活性和总内存。
 
@@ -1430,8 +1430,7 @@ int main() {
 - `Traits` 结构
 - 继承 `UniqueInterfaceProxy<Traits>` 的代理类，以及每个方法的类型化转发入口
 
-生成出来的 `Traits::id` / `signatures` / `slots` 仍然通过普通的
-`InterfaceRegistry`（或 `ModuleRegistry` + `bind_methods`）注册和绑定，和手写 `Traits` 走完全相同的路径。宏只负责“少写声明代码”，不负责运行时注册。
+生成出来的 `Traits::id` / `signatures` / `slots` 仍然通过普通的 `InterfaceRegistry`（或 `ModuleRegistry` + `bind_methods`）注册和绑定，和手写 `Traits` 走完全相同的路径。宏只负责“少写声明代码”，不负责运行时注册。
 
 > 宏只能看到方法名、C++ 返回类型、返回类型的 TypeID 和参数 TypeID，看不到 C++ 参数类型。因此它适合简单的值参数契约；复杂签名、重载、引用/记录参数和 `void` 返回仍应由 `amc generate -l cpp` 或手写代理生成。
 
@@ -1683,11 +1682,7 @@ SKL_ABIX_INTERFACE_MEMBER_TABLE(Shape, BOX_METHODS);
 registry.add(SKL_ABIX_INTERFACE_IMPLEMENTATION(Shape, box_id, 0));
 ```
 
-`SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` 把列表展开为具名的
-`interface##Methods`（此处为 `ShapeMethods`），类型是
-`mics::util::array<InterfaceMethod, N>`。`SKL_ABIX_INTERFACE_IMPLEMENTATION`
-组合 `interface##Traits`、该表和具体类型的 `TypeId` 表达式，因此示例实际读取的是
-`ShapeTraits::id`、`box_id`、`ShapeMethods` 和 `ShapeTraits::version`。
+`SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)` 把列表展开为具名的 `interface##Methods`（此处为 `ShapeMethods`），类型是 `mics::util::array<InterfaceMethod, N>`。`SKL_ABIX_INTERFACE_IMPLEMENTATION` 组合 `interface##Traits`、该表和具体类型的 `TypeId` 表达式，因此示例实际读取的是 `ShapeTraits::id`、`box_id`、`ShapeMethods` 和 `ShapeTraits::version`。
 
 生成的适配器函数形状是：
 
@@ -1705,17 +1700,17 @@ int32_t invoke(const void *self, int32_t width, int32_t height);
   SKL_ABIX_INTERFACE_MEMBER_ENTRY(ShapeTraits, area, &StaticBox::area)
   ```
 
-  如果静态函数本身首参就是对象句柄，请直接使用 `interface_entry(&StaticBox::area)`。
+如果静态函数本身首参就是对象句柄，请直接使用 `interface_entry(&StaticBox::area)`。
 
 - 非 `const` 成员函数会从 `const void*` 句柄内部 `const_cast` 回 `T*`；`const` 成员函数保持 `const T*`。
 - 适配器固定使用 `const void*` 首参，正好匹配 `SKL_ABIX_INTERFACE_DECLARE` 生成的 proxy。若手写 proxy 的首参是 `void*`，请手写 wrapper。
 - 不处理 `volatile`、引用限定成员（`&` / `&&`）以及重载。重载需要显式成员指针转换，并把整个表达式用括号包住：
 
-    ```cpp
-    SKL_ABIX_INTERFACE_MEMBER_ENTRY(
-        ShapeTraits, resize,
-        (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
-    ```
+  ```cpp
+  SKL_ABIX_INTERFACE_MEMBER_ENTRY(
+      ShapeTraits, resize,
+      (static_cast<int32_t (Box::*)(int32_t, int32_t)>(&Box::resize)))
+  ```
 
 - 它只生成 adapter entry，不生成 `Traits`、方法签名或 `id`。这些仍来自 `SKL_ABIX_INTERFACE_DECLARE` / AMC。
 - `slot_name` 是接口槽位字段名，可以和成员函数名不同；`member_pointer_expression` 决定实际调用的成员。
@@ -1871,13 +1866,13 @@ SKL_ABIX_INTERFACE_UNIQUE_DATA(Shape, SHAPE_METHODS);
 
 | 宏                                                          | 作用                                                                                                           |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | 生成 `method_signature(#fn, reg_ret_t, mics::util::array __VA_ARGS__),` 这一项                                |
+| `SKL_ABIX_INTERFACE_METHOD(fn, ret_t, reg_ret_t, ...)`      | 生成 `method_signature(#fn, reg_ret_t, mics::util::array __VA_ARGS__),` 这一项                                 |
 | `SKL_ABIX_INTERFACE_SLOT(fn, ...)`                          | 在 `Slots` 中生成 `uint32_t fn;`                                                                               |
 | `SKL_ABIX_INTERFACE_SLOTS(list)`                            | 生成 `Slots` 和 `slots = make_iota<Slots, signatures.size(), 0>()`                                             |
 | `SKL_ABIX_INTERFACE_FORWARD(fn, ret_t, ...)`                | 生成该方法的返回值形式和 `InterfaceStatus` 检查形式                                                            |
 | `SKL_ABIX_INTERFACE_MEMBER_ENTRY(Traits, slot, member)`     | 生成一条 `InterfaceMethod`，用 `member_adapter<member>::invoke` 适配现有成员函数                               |
-| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | 由一组 `MEMBER_ENTRY` 条目生成具名的 `interface##Methods`（`mics::util::array<InterfaceMethod, N>`）          |
-| `SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)` | 由 `interface##Traits`、`interface##Methods`、类型 ID 和 flags 生成 `InterfaceImplementation` 初始化器        |
+| `SKL_ABIX_INTERFACE_MEMBER_TABLE(interface, list)`          | 由一组 `MEMBER_ENTRY` 条目生成具名的 `interface##Methods`（`mics::util::array<InterfaceMethod, N>`）           |
+| `SKL_ABIX_INTERFACE_IMPLEMENTATION(interface, type, flags)` | 由 `interface##Traits`、`interface##Methods`、类型 ID 和 flags 生成 `InterfaceImplementation` 初始化器         |
 | `SKL_ABIX_INTERFACE_TRAITS(type, list, ver, ...)`           | 生成 `typeTraits`（含 `signatures`、`version`、`id`、`slots`）；`...` 作为类型属性放在 `typeTraits` 前         |
 | `SKL_ABIX_INTERFACE_UNIQUE_DATA(type, list, ...)`           | 生成继承 `UniqueInterfaceProxy<typeTraits>` 的 `type` 代理类；`...` 作为类型属性放在 `type` 前                 |
 | `SKL_ABIX_INTERFACE_SHARED_DATA(type, list, ...)`           | 生成继承 `SharedInterfaceProxy<typeTraits>` 的 `Shared##type` 代理类；`...` 作为类型属性放在 `Shared##type` 前 |

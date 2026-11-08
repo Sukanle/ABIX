@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(AbiCrossDllTests VERSION 0.3.0 LANGUAGES C CXX)
+project(AbiCrossDllTests VERSION 0.3.1 LANGUAGES C CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(ABIX_IS_TOP_LEVEL ON)
@@ -74,9 +74,10 @@ option(BUILD_TESTING "Build tests" ${_abix_default_tests})
 option(BUILD_BENCHMARKS "Build benchmarks" ${_abix_default_benchmarks})
 option(SKL_ABIX_DEVELOPMENT "Enable development-only benchmarks (internal diagnostics)" OFF)
 option(SKL_ABIX_RCU_ENABLE_STATS "Collect RCU advancement diagnostics (advance contention/timeout counters)" OFF)
-option(SKL_ABIX_BUILD_DLL_VARIANTS
-       "Build different DLL variants for different toolchains to simulate cross-compiler behavior"
-       ${_abix_default_dll_variants})
+option(
+    SKL_ABIX_BUILD_DLL_VARIANTS
+    "Build different DLL variants for different toolchains to simulate cross-compiler behavior"
+    ${_abix_default_dll_variants})
 option(ABIX_BUILD_RUNTIME_ONLY
        "Build and install only the header-only ABIX runtime; skip AMC, tests, benchmarks and DLLs" OFF)
 option(ABIX_INSTALL "Generate ABIX install rules" ${ABIX_IS_TOP_LEVEL})
@@ -84,8 +85,7 @@ option(ABIX_RUNTIME_NO_EXCEPTIONS "Build ABIX runtime targets without C++ except
 option(ABIX_RUNTIME_NO_RTTI "Build ABIX runtime targets without RTTI" ON)
 option(ABIX_ENABLE_QUILL_TEST "Build the optional Quill logging integration test" OFF)
 set(ABIX_QUILL_ROOT "" CACHE PATH "Quill source root for the optional logging integration test")
-option(ABIX_INSTALL_BUNDLED_MICS
-       "Install the bundled MICS package with ABIX" ${_abix_default_bundled_mics})
+option(ABIX_INSTALL_BUNDLED_MICS "Install the bundled MICS package with ABIX" ${_abix_default_bundled_mics})
 option(SKL_ABIX_KEEP_TEST_ARTIFACTS
        "Keep the test suites' temporary artifacts on disk for inspection (sets KEEP_ARTIFACTS=1)" OFF)
 
@@ -170,8 +170,7 @@ if(ABIX_IS_TOP_LEVEL)
         set(CMAKE_BUILD_TYPE Debug)
         set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
         if(NOT WIN32)
-            set(SANITIZER
-                "none"
+            set(SANITIZER "none"
                 CACHE STRING "Choose sanitizer to enable (Debug build, not supported on Windows): asan, tsan or none")
             set_property(CACHE SANITIZER PROPERTY STRINGS "none" "asan" "tsan")
             if(SANITIZER STREQUAL "asan")
@@ -241,8 +240,7 @@ endif()
 add_library(libabix-runtime INTERFACE)
 target_compile_features(libabix-runtime INTERFACE cxx_std_17)
 target_include_directories(
-    libabix-runtime INTERFACE $<BUILD_INTERFACE:${SKL_ABIX_INC_DIR}>
-                              $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    libabix-runtime INTERFACE $<BUILD_INTERFACE:${SKL_ABIX_INC_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(libabix-runtime INTERFACE MICS::MICS)
 set_target_properties(libabix-runtime PROPERTIES EXPORT_NAME runtime)
 add_library(ABIX::runtime ALIAS libabix-runtime)
@@ -260,18 +258,28 @@ function(abi_add_dll name)
     target_link_libraries(${name} PRIVATE MICS::MICS)
     set_target_properties(
         ${name}
-        PROPERTIES PREFIX ""
-                   OUTPUT_NAME ${name}
-                   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/${name}
-                   LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/${name}
-                   ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins/${name}
-                   CXX_VISIBILITY_PRESET hidden
-                   VISIBILITY_INLINES_HIDDEN ON)
+        PROPERTIES
+            PREFIX
+            ""
+            OUTPUT_NAME
+            ${name}
+            RUNTIME_OUTPUT_DIRECTORY
+            ${CMAKE_BINARY_DIR}/plugins/${name}
+            LIBRARY_OUTPUT_DIRECTORY
+            ${CMAKE_BINARY_DIR}/plugins/${name}
+            ARCHIVE_OUTPUT_DIRECTORY
+            ${CMAKE_BINARY_DIR}/plugins/${name}
+            CXX_VISIBILITY_PRESET
+            hidden
+            VISIBILITY_INLINES_HIDDEN
+            ON)
     abix_apply_runtime_contract(${name})
     if(NOT WIN32)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             target_link_options(${name} PRIVATE -Wl,--no-undefined)
-        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
+        elseif(
+            CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND
+            (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL
                                                                                              "RelWithDebInfo"))
             add_custom_command(
                 TARGET ${name}
@@ -307,10 +315,7 @@ if(BUILD_TESTING)
     # wrapper.
     set(SKL_ABIX_HOTCACHE_SOURCE ${SKL_ABIX_PROJ_DIR}/dlls/hotcache_dll.cpp)
     if(NOT EXISTS ${SKL_ABIX_HOTCACHE_SOURCE})
-        find_package(
-            Python3
-            COMPONENTS Interpreter
-            QUIET)
+        find_package(Python3 COMPONENTS Interpreter QUIET)
         if(NOT Python3_Interpreter_FOUND)
             message(FATAL_ERROR "dlls/hotcache_dll.cpp is missing and Python 3 is required to generate it")
         endif()
@@ -345,13 +350,14 @@ endif()
 if(CMAKE_EXPORT_COMPILE_COMMANDS)
     if(WIN32)
         add_custom_target(
-            abix-compile-commands ALL
+            abix-compile-commands
+            ALL
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_BINARY_DIR}/compile_commands.json
                     ${CMAKE_BINARY_DIR}/../compile_commands.json
             COMMENT "Refreshing compile_commands.json at the build root")
     else()
-        file(CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json
-             SYMBOLIC)
+        file(
+            CREATE_LINK ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_BINARY_DIR}/../compile_commands.json SYMBOLIC)
     endif()
 endif()
 
@@ -376,11 +382,7 @@ if(ABIX_INSTALL)
     # tree, so both generated and handwritten headers resolve with one include root.
     install(DIRECTORY ${SKL_ABIX_INC_DIR}/SKL/ABIX DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SKL)
 
-    install(
-        EXPORT ABIXTargets
-        FILE ABIXTargets.cmake
-        NAMESPACE ABIX::
-        DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+    install(EXPORT ABIXTargets FILE ABIXTargets.cmake NAMESPACE ABIX:: DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
 
     configure_package_config_file(
         ${SKL_ABIX_PROJ_DIR}/cmake/ABIXConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake
@@ -392,18 +394,20 @@ if(ABIX_INSTALL)
         VERSION ${PROJECT_VERSION}
         COMPATIBILITY SameMajorVersion)
 
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
-            DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
-    install(FILES ${SKL_ABIX_PROJ_DIR}/LICENSE ${SKL_ABIX_PROJ_DIR}/THIRD_PARTY_NOTICES.md
-            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/ABIX)
+    install(
+        FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
+        DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+    install(
+        FILES ${SKL_ABIX_PROJ_DIR}/LICENSE ${SKL_ABIX_PROJ_DIR}/THIRD_PARTY_NOTICES.md
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/ABIX)
 endif()
 
 find_program(ABIX_PYTHON_EXECUTABLE NAMES python3 python)
 if(BUILD_TESTING AND ABIX_PYTHON_EXECUTABLE)
     add_test(
         NAME abix-cmake-runtime-package-test
-        COMMAND ${ABIX_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/test/cmake_runtime_package_test.py
-                ${SKL_ABIX_PROJ_DIR} --cxx ${CMAKE_CXX_COMPILER})
+        COMMAND ${ABIX_PYTHON_EXECUTABLE} ${SKL_ABIX_PROJ_DIR}/test/cmake_runtime_package_test.py ${SKL_ABIX_PROJ_DIR}
+                --cxx ${CMAKE_CXX_COMPILER})
     set_tests_properties(abix-cmake-runtime-package-test PROPERTIES TIMEOUT 120)
     if(SKL_ABIX_KEEP_TEST_ARTIFACTS)
         set_tests_properties(abix-cmake-runtime-package-test PROPERTIES ENVIRONMENT "KEEP_ARTIFACTS=1")

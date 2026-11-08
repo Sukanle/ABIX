@@ -41,13 +41,13 @@
 
 ## Core Responsibilities
 
-| Responsibility | Description |
-|------|------|
-| Record ABI facts | Real state of types, layouts, fields, functions, symbols |
-| Record ABI IR | Intermediate representation of Map operations (language-agnostic) |
-| Record compatibility | LayoutHash / SignatureHash / Compat |
-| Support mmap | Binary format, zero deserialization, direct access |
-| Support projection | Can be projected by AMC to C++ / Rust / Zig and other target code |
+| Responsibility       | Description                                                       |
+| -------------------- | ----------------------------------------------------------------- |
+| Record ABI facts     | Real state of types, layouts, fields, functions, symbols          |
+| Record ABI IR        | Intermediate representation of Map operations (language-agnostic) |
+| Record compatibility | LayoutHash / SignatureHash / Compat                               |
+| Support mmap         | Binary format, zero deserialization, direct access                |
+| Support projection   | Can be projected by AMC to C++ / Rust / Zig and other target code |
 
 ## Format: Binary
 
@@ -55,15 +55,15 @@
 
 ### Design Principles
 
-| Principle | Description |
-|------|------|
-| Fixed-width | `u8` / `u16` / `u32` / `u64` / `i8` / `i16` / ..., never uses `sizeof(long)` / `sizeof(void*)` |
-| No raw pointers | Uses `TypeId` / `Offset` / `Index` for references, not pointers |
-| Offset-based | All tables are accessed via offsets/indices |
-| Little endian | Uniform byte order |
-| Compact | Optimized for cache locality / compactness / sequential access / random access |
-| mmap-friendly | Can directly `mmap("foo.abix")` then access Header → Section → Record |
-| No redundancy | Does not store information deducible from other tables |
+| Principle       | Description                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| Fixed-width     | `u8` / `u16` / `u32` / `u64` / `i8` / `i16` / ..., never uses `sizeof(long)` / `sizeof(void*)` |
+| No raw pointers | Uses `TypeId` / `Offset` / `Index` for references, not pointers                                |
+| Offset-based    | All tables are accessed via offsets/indices                                                    |
+| Little endian   | Uniform byte order                                                                             |
+| Compact         | Optimized for cache locality / compactness / sequential access / random access                 |
+| mmap-friendly   | Can directly `mmap("foo.abix")` then access Header → Section → Record                          |
+| No redundancy   | Does not store information deducible from other tables                                         |
 
 ### "No deserialization" ≠ "Zero runtime cost"
 
@@ -94,15 +94,15 @@ graph TD
 
 Changes from the initial design:
 
-| Removed/Changed | Reason |
-|-----------|------|
-| `Target` section | Merged into `ABI Identity`, unified responsibility as "compilation environment of this artifact" |
-| `Hash Table` | Current AMC v4 required section, stores HashDescriptor and canonical hash records |
-| `Compat Table` `source/target_layout_hash` | Derived from source/target TypeId → Type Table → Layout Table |
-| Type Table `field_begin` / `field_count` | Obtained from `layout_index` via Layout Table |
-| Symbol Table `target_hash` | Changed to `(target_kind, target_index)` typed index |
-| Parameter Table `position` | Derived from array order |
-| Field Table `size` | Default derived from Layout corresponding to field TypeId (only retained for special cases like arrays/opaque) |
+| Removed/Changed                            | Reason                                                                                                         |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `Target` section                           | Merged into `ABI Identity`, unified responsibility as "compilation environment of this artifact"               |
+| `Hash Table`                               | Current AMC v4 required section, stores HashDescriptor and canonical hash records                              |
+| `Compat Table` `source/target_layout_hash` | Derived from source/target TypeId → Type Table → Layout Table                                                  |
+| Type Table `field_begin` / `field_count`   | Obtained from `layout_index` via Layout Table                                                                  |
+| Symbol Table `target_hash`                 | Changed to `(target_kind, target_index)` typed index                                                           |
+| Parameter Table `position`                 | Derived from array order                                                                                       |
+| Field Table `size`                         | Default derived from Layout corresponding to field TypeId (only retained for special cases like arrays/opaque) |
 
 ## Section Details
 
@@ -336,18 +336,18 @@ The current AMC v2 Map record is 60 bytes. Compat reports can be stored across t
 
 `.abix` stores **Map IR** (language-agnostic opcodes), not C++ code:
 
-| Opcode | Name | source_idx | target_idx | auxiliary | Description |
-|--------|------|:----------:|:----------:|:---------:|------|
-| 0x00 | `COPY_FIELD` | ✓ | ✓ | — | Copy field by offset |
-| 0x01 | `CONVERT_INT` | ✓ | ✓ | ✓ | Integer type conversion, aux = target type TypeId |
-| 0x02 | `CONVERT_FLOAT` | ✓ | ✓ | ✓ | Float type conversion, aux = target type TypeId |
-| 0x03 | `DEFAULT_FIELD` | — | ✓ | ✓ | Fill with default value, aux = default value encoding |
-| 0x04 | `RENAME_FIELD` | ✓ | ✓ | — | Field rename |
-| 0x05 | `PTR_REINTERPRET` | ✓ | ✓ | ✓ | Pointer reinterpretation, aux = target TypeId |
-| 0x06 | `CALL_CONVERTER` | ✓ | ✓ | ✓ | Call converter, aux = converter function SignatureHash |
-| 0x07 | `SKIP_FIELD` | ✓ | — | — | Skip field (source has it, target doesn't) |
-| 0x08 | `ADD_DEFAULT` | — | ✓ | ✓ | Add default field, aux = default value encoding |
-| 0x09 | `NESTED_MAP` | ✓ | ✓ | ✓ | Recursive mapping, aux = nested Map Table index |
+| Opcode | Name              | source_idx | target_idx | auxiliary | Description                                            |
+| ------ | ----------------- | :--------: | :--------: | :-------: | ------------------------------------------------------ |
+| 0x00   | `COPY_FIELD`      |     ✓      |     ✓      |     —     | Copy field by offset                                   |
+| 0x01   | `CONVERT_INT`     |     ✓      |     ✓      |     ✓     | Integer type conversion, aux = target type TypeId      |
+| 0x02   | `CONVERT_FLOAT`   |     ✓      |     ✓      |     ✓     | Float type conversion, aux = target type TypeId        |
+| 0x03   | `DEFAULT_FIELD`   |     —      |     ✓      |     ✓     | Fill with default value, aux = default value encoding  |
+| 0x04   | `RENAME_FIELD`    |     ✓      |     ✓      |     —     | Field rename                                           |
+| 0x05   | `PTR_REINTERPRET` |     ✓      |     ✓      |     ✓     | Pointer reinterpretation, aux = target TypeId          |
+| 0x06   | `CALL_CONVERTER`  |     ✓      |     ✓      |     ✓     | Call converter, aux = converter function SignatureHash |
+| 0x07   | `SKIP_FIELD`      |     ✓      |     —      |     —     | Skip field (source has it, target doesn't)             |
+| 0x08   | `ADD_DEFAULT`     |     —      |     ✓      |     ✓     | Add default field, aux = default value encoding        |
+| 0x09   | `NESTED_MAP`      |     ✓      |     ✓      |     ✓     | Recursive mapping, aux = nested Map Table index        |
 
 **Opcode-specific payload**: Different opcodes actually require different fields. Invalid fields are set to `UINT32_MAX` (sentinel), rather than wasting space storing useless data.
 
@@ -398,12 +398,12 @@ Reserved area for future extension. Section Directory `section_id = 255` points 
 
 This is a principle of `.abix` design:
 
-| Concept | Question Answered | Example |
-|------|-----------|------|
-| **Type** | What type is this? | `Foo` |
-| **Layout** | What does it look like at the ABI level? | `size=32, align=8, field[a@0, b@8, c@24]` |
-| **Function** | What is the logical function signature? | `Foo* foo_create(i32, u64)` |
-| **Symbol** | Which linker symbol does it correspond to? | `_Z11foo_createim` |
+| Concept      | Question Answered                          | Example                                   |
+| ------------ | ------------------------------------------ | ----------------------------------------- |
+| **Type**     | What type is this?                         | `Foo`                                     |
+| **Layout**   | What does it look like at the ABI level?   | `size=32, align=8, field[a@0, b@8, c@24]` |
+| **Function** | What is the logical function signature?    | `Foo* foo_create(i32, u64)`               |
+| **Symbol**   | Which linker symbol does it correspond to? | `_Z11foo_createim`                        |
 
 **Type ≠ Layout**: The same Type can have different Layouts on different platforms.
 
@@ -424,12 +424,12 @@ struct Hash128 {
 
 `.abix` canonical metadata uses Hash128; existing ABIX DLL tables and MICS runtime interfaces continue to use 64-bit hashes to maintain existing binary compatibility:
 
-| Hash Type | Width | Description |
-|----------|------|------|
-| `TypeId` | Hash128 | Canonical type identity in `.abix` |
-| `LayoutHash` | Hash128 | Full layout description |
+| Hash Type       | Width   | Description                                                                            |
+| --------------- | ------- | -------------------------------------------------------------------------------------- |
+| `TypeId`        | Hash128 | Canonical type identity in `.abix`                                                     |
+| `LayoutHash`    | Hash128 | Full layout description                                                                |
 | `SignatureHash` | Hash128 | Canonical function signature in `.abix`; existing DLL function tables still use Hash64 |
-| `ABIHash` | Hash128 | Entire ABI artifact |
+| `ABIHash`       | Hash128 | Entire ABI artifact                                                                    |
 
 The `type_hash` / `sig_t` in existing runtime interfaces remain `uint64_t`. The first-generation `.abix` uses Hash128 for TypeId, LayoutHash, SignatureHash and ABIHash; the algorithm can be replaced with XXH3 / BLAKE3 / SHA-256 truncated, **without changing the `.abix` model**. The hash algorithm is identified by the `hash_algorithm` field in the Header.
 
@@ -564,9 +564,9 @@ Applicable scenarios: dynamic libraries, plugins, dynamic ABI, unknown types, ru
 
 Supports two loading modes:
 
-| Mode | Description |
-|------|------|
-| **Lazy mmap View** | Lazy loading, on-demand page faults |
+| Mode                       | Description                                       |
+| -------------------------- | ------------------------------------------------- |
+| **Lazy mmap View**         | Lazy loading, on-demand page faults               |
 | **Eager Runtime Registry** | One-time full load into Registry, fully available |
 
 ### Mode B: Static (Compile-time)
@@ -623,13 +623,13 @@ graph TD
     A[".abic<br/>Intent/Policy"] -->|"AMC"| B[".abix<br/>ABI Artifact<br/>+ ABI IR"]
 ```
 
-| Property | `.abic` | `.abix` |
-|------|---------|---------|
-| Positioning | Configuration/Intent | Facts/Artifact |
-| Format | TOML (human-readable) | Binary (machine-readable) |
-| Consumer | AMC (build-time) | Runtime / AMC / Compiler |
-| Runtime dependency | None | Yes (in Runtime mode) |
-| Source of Truth | No | **Yes** |
+| Property           | `.abic`               | `.abix`                   |
+| ------------------ | --------------------- | ------------------------- |
+| Positioning        | Configuration/Intent  | Facts/Artifact            |
+| Format             | TOML (human-readable) | Binary (machine-readable) |
+| Consumer           | AMC (build-time)      | Runtime / AMC / Compiler  |
+| Runtime dependency | None                  | Yes (in Runtime mode)     |
+| Source of Truth    | No                    | **Yes**                   |
 
 ## Projection System
 
@@ -653,25 +653,25 @@ graph TD
 
 ## Differences from Traditional Approaches
 
-| Approach | Essence | ABIX Difference |
-|------|------|------------|
-| Reflection | Runtime type introspection | ABIX includes compatibility/mapping IR, not just type information |
-| Serialization | Data encode/decode | ABIX focuses on ABI layout compatibility, not data format |
-| RPC | Remote procedure call | ABIX focuses on local cross-DLL boundaries, not networking |
-| IDL | Interface description language | ABIX extracts from actual compiled artifacts, not hand-written interfaces |
-| Protobuf/FlatBuffers | Data schema | ABIX describes memory layout ABI, not serialization schema |
+| Approach             | Essence                        | ABIX Difference                                                           |
+| -------------------- | ------------------------------ | ------------------------------------------------------------------------- |
+| Reflection           | Runtime type introspection     | ABIX includes compatibility/mapping IR, not just type information         |
+| Serialization        | Data encode/decode             | ABIX focuses on ABI layout compatibility, not data format                 |
+| RPC                  | Remote procedure call          | ABIX focuses on local cross-DLL boundaries, not networking                |
+| IDL                  | Interface description language | ABIX extracts from actual compiled artifacts, not hand-written interfaces |
+| Protobuf/FlatBuffers | Data schema                    | ABIX describes memory layout ABI, not serialization schema                |
 
 ABIX is an ABI intermediate layer positioned between source code/compiler and ABI Runtime.
 
 ## Core Concepts
 
-| Keyword | Description |
-|--------|------|
-| **Canonical** | ABI information from different compilers/languages/platforms is first normalized |
-| **Declarative** | `.abix` describes "what it is", not "how to write C++ code" |
-| **Dynamic** | Runtime can load dynamically; both sides' ABI don't need to be fully fixed at compile time |
-| **Static** | Known ABIs can be lowered by AMC to constexpr / MapPrivate / inline |
-| **Self-hosting** | ABIX itself uses ABIX: `abix.abix` → ABIX Runtime → reads its own ABI |
+| Keyword          | Description                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| **Canonical**    | ABI information from different compilers/languages/platforms is first normalized           |
+| **Declarative**  | `.abix` describes "what it is", not "how to write C++ code"                                |
+| **Dynamic**      | Runtime can load dynamically; both sides' ABI don't need to be fully fixed at compile time |
+| **Static**       | Known ABIs can be lowered by AMC to constexpr / MapPrivate / inline                        |
+| **Self-hosting** | ABIX itself uses ABIX: `abix.abix` → ABIX Runtime → reads its own ABI                      |
 
 ## Complete File Relationship
 

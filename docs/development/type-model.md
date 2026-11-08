@@ -42,7 +42,7 @@ language abstract type: C `long`, Rust `i32`, Zig `i32`
 machine ABI fact:       signed / unsigned, width, alignment, float format
 ```
 
-ABIX core stores the **machine ABI fact**. The other two describe *where the fact came from*, not what it is at the binary boundary.
+ABIX core stores the **machine ABI fact**. The other two describe _where the fact came from_, not what it is at the binary boundary.
 
 The reason this matters is that the same ABI fact has many spellings, and the same spelling can have different ABI facts:
 
@@ -68,9 +68,9 @@ graph TD
     ABX --> RB["Windows x64: integer{32}"]
 ```
 
-* Identity must be target-independent (a `c.long`-style abstract type).
-* The `.abix` file must carry "unresolved" types and a resolution step.
-* Consumers must resolve the target before they know the concrete width.
+- Identity must be target-independent (a `c.long`-style abstract type).
+- The `.abix` file must carry "unresolved" types and a resolution step.
+- Consumers must resolve the target before they know the concrete width.
 
 ### Model B — one artifact per target
 
@@ -79,9 +79,9 @@ graph TD
     AMC["amc (cross-compile to target T)"] --> ART[".abix for T: integer{64} or integer{32}, already resolved"]
 ```
 
-* Identity is the concrete ABI fact for that target.
-* No resolution step; the width is already exact.
-* The target lives in the module identity (see §10), not inside the type.
+- Identity is the concrete ABI fact for that target.
+- No resolution step; the width is already exact.
+- The target lives in the module identity (see §10), not inside the type.
 
 **Model B is the current ABIX design.** `AbiModule` records `arch` / `os` / `target_abi` / `compiler` / `calling_convention`, and a primitive already carries its measured width and format.
 
@@ -91,12 +91,12 @@ ABIX adopts **Model B**: `amc` generates a precise `.abix` per target, by cross-
 
 Rationale:
 
-* **Precision over convenience.** A Clang-based frontend already knows the target's data model (LP64 / LLP64 / ILP32), `char` signedness, and the `long double` format at compile time. Generating per target records those as measured facts instead of deferring them to a resolver.
-* **A single artifact stays single-semantics.** One `.abix` describes exactly one ABI. It can be memory-mapped, compared field-by-field and verified with exact offsets, with no conditional compatibility.
-* **The differences are handled at generation time.** Complexity lives in the toolchain (which already understands targets), not in every consumer.
-* **It matches how interop tools work.** `bindgen`, `cbindgen` and Zig's `translate-c` all produce bindings for one target at a time; cross-platform support means running them once per target.
+- **Precision over convenience.** A Clang-based frontend already knows the target's data model (LP64 / LLP64 / ILP32), `char` signedness, and the `long double` format at compile time. Generating per target records those as measured facts instead of deferring them to a resolver.
+- **A single artifact stays single-semantics.** One `.abix` describes exactly one ABI. It can be memory-mapped, compared field-by-field and verified with exact offsets, with no conditional compatibility.
+- **The differences are handled at generation time.** Complexity lives in the toolchain (which already understands targets), not in every consumer.
+- **It matches how interop tools work.** `bindgen`, `cbindgen` and Zig's `translate-c` all produce bindings for one target at a time; cross-platform support means running them once per target.
 
-This is also the honest reading of the external review: *"If you are happy to make your users regenerate them for each platform, then bit widths are mostly ok for FFI."* ABIX is, by design, happy to regenerate per platform.
+This is also the honest reading of the external review: _"If you are happy to make your users regenerate them for each platform, then bit widths are mostly ok for FFI."_ ABIX is, by design, happy to regenerate per platform.
 
 ### Why not a portable artifact
 
@@ -114,9 +114,9 @@ graph TD
     BE --> OUT["projected target-language source"]
 ```
 
-* The **frontend** owns the interpretation of source-language types. It maps `C long` onto the ABI fact for the chosen target.
-* The **IR** owns only ABI facts and their identities.
-* The **backend** owns how a fact is expressed in the target language — for example, that a C-ABI `double` projects to Rust `core::ffi::c_double` rather than `f64`.
+- The **frontend** owns the interpretation of source-language types. It maps `C long` onto the ABI fact for the chosen target.
+- The **IR** owns only ABI facts and their identities.
+- The **backend** owns how a fact is expressed in the target language — for example, that a C-ABI `double` projects to Rust `core::ffi::c_double` rather than `f64`.
 
 The source-language type never becomes an ABIX core type. It becomes, at most, provenance.
 
@@ -124,18 +124,18 @@ The source-language type never becomes an ABIX core type. It becomes, at most, p
 
 A primitive `TypeID` is the hash of an **ABI descriptor**, not of the source spelling. The descriptor is:
 
-| Field | Meaning |
-|-------|---------|
-| kind | `void` / `bool` / a character kind / `sint` / `uint` / `floating` |
-| width | storage size in bytes, as measured by the target |
-| signedness | for integers; for the implementation-defined `char` / `wchar_t` |
-| float format | IEEE binary16/32/64/128, x87 80-bit, PowerPC double-double, … |
+| Field        | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| kind         | `void` / `bool` / a character kind / `sint` / `uint` / `floating` |
+| width        | storage size in bytes, as measured by the target                  |
+| signedness   | for integers; for the implementation-defined `char` / `wchar_t`   |
+| float format | IEEE binary16/32/64/128, x87 80-bit, PowerPC double-double, …     |
 
 Consequences:
 
-* `int` / `int32_t`, `long` / `long long` (LP64), and a 64-bit C `double` / a Rust `f64` on the same target share one `TypeID`.
-* `char`, `signed char`, `unsigned char`, `char8_t`, `char16_t`, `char32_t`, `wchar_t` are distinct kinds; plain `char` and `wchar_t` carry their target-defined signedness.
-* `long double` is identified by **format**, not spelling: on a target where `double` is 32-bit it collapses with `float`; x87 80-bit and IEEE binary128 stay distinct even though both occupy 16 bytes.
+- `int` / `int32_t`, `long` / `long long` (LP64), and a 64-bit C `double` / a Rust `f64` on the same target share one `TypeID`.
+- `char`, `signed char`, `unsigned char`, `char8_t`, `char16_t`, `char32_t`, `wchar_t` are distinct kinds; plain `char` and `wchar_t` carry their target-defined signedness.
+- `long double` is identified by **format**, not spelling: on a target where `double` is 32-bit it collapses with `float`; x87 80-bit and IEEE binary128 stay distinct even though both occupy 16 bytes.
 
 The implementation is `PrimitiveAbiKind` and `FloatFormat` in `src/SKL/AMC/Core/amc_core.h`, packed into `Type::primitive_abi` and serialized in the `.abix` type table.
 
@@ -151,10 +151,10 @@ ABIX Type #42
 
 Rules:
 
-* Provenance **never participates in identity**. It is excluded from `TypeID`, `LayoutHash` and `ABIHash`, exactly like the debug `sources` section ([`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §11).
-* A consumer that only cares about the ABI reads the core descriptor.
-* A language backend that wants to reproduce a C alias reads the provenance and emits `c_int` / `c_long` / `c_double` instead of `i32` / `i64` / `f64`.
-* When provenance is absent, projection falls back to the ABI-equivalent fixed-width type, which is still ABI-correct.
+- Provenance **never participates in identity**. It is excluded from `TypeID`, `LayoutHash` and `ABIHash`, exactly like the debug `sources` section ([`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §11).
+- A consumer that only cares about the ABI reads the core descriptor.
+- A language backend that wants to reproduce a C alias reads the provenance and emits `c_int` / `c_long` / `c_double` instead of `i32` / `i64` / `f64`.
+- When provenance is absent, projection falls back to the ABI-equivalent fixed-width type, which is still ABI-correct.
 
 This keeps the "cross-platform needs abstract types" requirement satisfiable without admitting those abstract types into the core: the abstraction lives in provenance and in the backend's projection rules.
 
@@ -201,8 +201,8 @@ All three collapse to one `TypeID` because their ABI is identical.
 
 ## What the core model must not become
 
-* Not a C type system: no `c.int` / `c.long` / `c.long_double` core primitives.
-* Not a language union: no `rust.i32` / `zig.i32` core primitives.
-* Not a per-language mapping table: source-language types live in frontends and in optional provenance, never in the identity basis.
+- Not a C type system: no `c.int` / `c.long` / `c.long_double` core primitives.
+- Not a language union: no `rust.i32` / `zig.i32` core primitives.
+- Not a per-language mapping table: source-language types live in frontends and in optional provenance, never in the identity basis.
 
 The core model answers one question only: **what is this type at the machine and calling-convention level?** Source-language naming is a projection concern.

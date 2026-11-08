@@ -15,13 +15,13 @@ The trade-off is that the contract becomes manual: you write the adapter tables 
 
 ## What works with ABIX alone
 
-| Capability                               | Header                                                                           | AMC required?                                                                   |
-| ---------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Interface identity and method signatures | `SKL/ABIX/Interface/Contract.h`                                                      | No — `interface_id`, `method_signature` and `canonical_type_id` are `constexpr` |
-| Hand-written `Traits` and proxies        | `SKL/ABIX/Interface/Proxy.h`                                                         | No — `UniqueInterfaceProxy<Traits>` is header-only                              |
-| In-process register / resolve / call     | `Registry.h`, `Ref.h`, `Proxy.h`                                                 | No                                                                              |
-| Dynamic-library discovery and leases     | `Module.h`, `ModuleRegistry.h`, `Discovery.h`, `Lease.h`                         | No — write the `ModuleManifest` by hand and use `SKL_ABIX_DEFINE_MODULE_QUERY`  |
-| Owner ABI                                | `Owner.h`                                                                        | No                                                                              |
+| Capability                               | Header                                                                                   | AMC required?                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Interface identity and method signatures | `SKL/ABIX/Interface/Contract.h`                                                          | No — `interface_id`, `method_signature` and `canonical_type_id` are `constexpr` |
+| Hand-written `Traits` and proxies        | `SKL/ABIX/Interface/Proxy.h`                                                             | No — `UniqueInterfaceProxy<Traits>` is header-only                              |
+| In-process register / resolve / call     | `Registry.h`, `Ref.h`, `Proxy.h`                                                         | No                                                                              |
+| Dynamic-library discovery and leases     | `Module.h`, `ModuleRegistry.h`, `Discovery.h`, `Lease.h`                                 | No — write the `ModuleManifest` by hand and use `SKL_ABIX_DEFINE_MODULE_QUERY`  |
+| Owner ABI                                | `Owner.h`                                                                                | No                                                                              |
 | Runtime table / descriptors              | `SKL/ABIX/Runtime/Registry.h`, `SKL/ABIX/Metadata/Descriptor.h`, `SKL_ABIX_DEFINE_TABLE` | No — the structures are public and can be written by hand                       |
 | ABIX's own type/layout digests           | `SKL/ABIX/Model/ABI.h`, `SKL/ABIX/Model/Compat.h`                                        | No — `canonical_type_id`, `canonical_layout_hash`, `abi_signature_hash`         |
 

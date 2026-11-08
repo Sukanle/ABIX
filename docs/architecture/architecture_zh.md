@@ -33,10 +33,10 @@ graph TD
     RT --> NB["原生二进制"]
 ```
 
-* **ABIX IR** — 语言无关的 ABI 模型：类型、字段、函数、参数、符号、hash、兼容性与映射。
-* **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../abix/abix_zh.md)。
-* **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) 与 [AMC 仓库](https://github.com/Sukanle/AMC)。
-* **ABIX Runtime** — 消费 ABI：注册、绑定、分派、适配，见 [`runtime_zh.md`](runtime_zh.md)。
+- **ABIX IR** — 语言无关的 ABI 模型：类型、字段、函数、参数、符号、hash、兼容性与映射。
+- **`.abix`** — 序列化的规范化 artifact，见 [`abix_zh.md`](../abix/abix_zh.md)。
+- **AMC** — 从语言 AST 提取 ABI，投影/比较模块并生成原生代码，见 [`amc_zh.md`](https://github.com/Sukanle/AMC/blob/main/docs/amc/amc_zh.md) 与 [AMC 仓库](https://github.com/Sukanle/AMC)。
+- **ABIX Runtime** — 消费 ABI：注册、绑定、分派、适配，见 [`runtime_zh.md`](runtime_zh.md)。
 
 ## 运行时交互
 
@@ -66,24 +66,24 @@ sequenceDiagram
 
 ABIX 拥有 header-only runtime；AMC 仓库拥有 artifact 库，并在其工具之间共享唯一的 parser：
 
-| 库 | 所有者 | 职责 |
-|----|--------|------|
-| `libabix-runtime` | ABIX | header-only 注册/绑定层 |
-| `libabix-format` | AMC | `.abix` v4 读写、hash、canonical 形式、ELF reader |
-| `libabix-abi` | AMC | `TypeID`/`LayoutHash` 比较、兼容性 diff |
-| `libabix-metadata` | AMC | Metadata Region 序列化/解析/materialize、context、query |
-| `libabix-tools` | AMC | Lua 契约生成、symbol store |
+| 库                 | 所有者 | 职责                                                    |
+| ------------------ | ------ | ------------------------------------------------------- |
+| `libabix-runtime`  | ABIX   | header-only 注册/绑定层                                 |
+| `libabix-format`   | AMC    | `.abix` v4 读写、hash、canonical 形式、ELF reader       |
+| `libabix-abi`      | AMC    | `TypeID`/`LayoutHash` 比较、兼容性 diff                 |
+| `libabix-metadata` | AMC    | Metadata Region 序列化/解析/materialize、context、query |
+| `libabix-tools`    | AMC    | Lua 契约生成、symbol store                              |
 
 ## 身份
 
 ABIX 区分四种经常被混用的身份：
 
-| ID | 含义 | 用途 |
-|----|------|------|
-| **TypeID** | 类型语义身份 | 是不是同一个类型 |
-| **LayoutHash** | 布局身份 | 内存布局是否兼容 |
-| **BuildID** | 二进制构建身份 | 定位对应 artifact |
-| **MetadataID** | Metadata 内容身份 | 去重 / 完整性 |
+| ID             | 含义              | 用途              |
+| -------------- | ----------------- | ----------------- |
+| **TypeID**     | 类型语义身份      | 是不是同一个类型  |
+| **LayoutHash** | 布局身份          | 内存布局是否兼容  |
+| **BuildID**    | 二进制构建身份    | 定位对应 artifact |
+| **MetadataID** | Metadata 内容身份 | 去重 / 完整性     |
 
 查找链条：`Binary → BuildID → .abix → MetadataID → TypeID → LayoutHash`。见 [`compatibility_zh.md`](compatibility_zh.md)。
 

@@ -15,11 +15,11 @@
 - [1. 如何阅读本文](#1-如何阅读本文)
 - [2. ABIX 被测量到的成本层级](#2-abix-被测量到的成本层级)
 - [3. 逐项对比](#3-逐项对比)
-    - [3.1 COM](#31-com)
-    - [3.2 Qt](#32-qt)
-    - [3.3 Unity](#33-unity)
-    - [3.4 Unreal Engine](#34-unreal-engine)
-    - [3.5 相邻选项](#35-相邻选项)
+  - [3.1 COM](#31-com)
+  - [3.2 Qt](#32-qt)
+  - [3.3 Unity](#33-unity)
+  - [3.4 Unreal Engine](#34-unreal-engine)
+  - [3.5 相邻选项](#35-相邻选项)
 - [4. 性能差距究竟在哪里](#4-性能差距究竟在哪里)
 - [5. 场景矩阵](#5-场景矩阵)
 - [6. ABIX 不适用的地方](#6-abix-不适用的地方)
@@ -31,10 +31,10 @@
 
 下文有两类陈述，二者不可互换：
 
-| 类型       | 含义                                                                                                                                                              |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **实测**   | 由本仓库基准套件在本机产生；见 [`benchmark_zh.md`](benchmark_zh.md) §5，以及 `memory/windows-benchmark.md` §8 的按家族重跑。用 `python tools/run_bench.py` 复现。 |
-| **架构性** | 描述该框架**做了什么**(间接调用、封送、反射、GC、生命周期记账)，**并非在本机实测**。下面没有任何一个框架被安装或基准测试。                                        |
+| 类型       | 含义                                                                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **实测**   | 由本仓库基准套件在本机产生；见 [`benchmark_zh.md`](benchmark_zh.md) §5。用 `python tools/run_bench.py` 复现。              |
+| **架构性** | 描述该框架**做了什么**(间接调用、封送、反射、GC、生命周期记账)，**并非在本机实测**。下面没有任何一个框架被安装或基准测试。 |
 
 即：ABIX 的代价是测量值；竞品的代价是机制描述 + 量级判断。比较按**成本层级**进行，而不是拿不可比的数字相减。
 
@@ -182,7 +182,6 @@
 ## 7. 参考
 
 - [`benchmark_zh.md`](benchmark_zh.md) —— 上文引用的 ABIX 数字、方法与环境。
-- `memory/windows-benchmark.md` §8/§10 —— 按家族重跑(每家族一个进程、`repetitions=5`)与两处基准修正。
 - [`docs/development/competitors_zh.md`](../development/competitors_zh.md) —— 工具链视角的竞品 (libabigail、ABI Compliance Checker、Conan、vcpkg、Wasm CM、bindgen/SWIG、gRPC、CMake/Bazel) 与 ABIX 的定位。
 - [`docs/abix/api_zh.md`](../abix/api_zh.md) —— 真实契约：`Domain`、`Deadline`、`Function::operator()`、`Object`、`ReclaimOutcome`。
 - `tools/run_bench.py` —— 复现 §2 任一行为：`python tools/run_bench.py <family> --no-extra --repetitions 5`。

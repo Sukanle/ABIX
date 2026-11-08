@@ -10,11 +10,11 @@ See [`ABI-SPEC.md`](../../.agents/ABI-SPEC.md) §9.1 for the normative rules.
 
 ## Three data-passing semantics
 
-| Semantics | Meaning | Who releases |
-| --------- | ------- | ------------ |
-| `borrow`  | non-owning view, valid only while the producer keeps the data alive | nobody — the receiver must not release |
-| `owned`   | receiver takes ownership | the receiver, through the producer's declared release entry point |
-| `copy`    | independent data from an explicit copy | the receiver owns the copy |
+| Semantics | Meaning                                                             | Who releases                                                      |
+| --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `borrow`  | non-owning view, valid only while the producer keeps the data alive | nobody — the receiver must not release                            |
+| `owned`   | receiver takes ownership                                            | the receiver, through the producer's declared release entry point |
+| `copy`    | independent data from an explicit copy                              | the receiver owns the copy                                        |
 
 These are **contracts, not layouts**: they never change `TypeID` / `LayoutHash` / `ABIHash`. They are carried by the ownership contract (`[[owned]]` / `[[contract]]`) and are readable at run time from the metadata-region extension directory.
 
@@ -22,19 +22,19 @@ These are **contracts, not layouts**: they never change `TypeID` / `LayoutHash` 
 
 Contracts are matched by what a type can **prove**, never by a name table such as `vector ↔ Vec ↔ ArrayList`:
 
-| Contract          | Capability                       | Typical use                         |
-| ----------------- | -------------------------------- | ----------------------------------- |
-| `SequenceView<T>` | contiguous read/write view       | arrays, slices, vector borrowing    |
-| `StringView`      | text bytes + length + encoding   | string args, parsing                |
-| `Owner<T>`        | ownership + release protocol     | cross-DLL objects, resource handles |
-| `Optional<T>`     | value may be absent              | optional args, query results        |
-| `Result<T, E>`    | success or failure               | cross-language errors               |
-| `Range<T>`        | iterable range                   | non-contiguous containers           |
-| `MapView<K, V>`   | keyed lookup                     | associative containers              |
-| `Opaque<T>`       | hidden representation            | special / custom containers         |
+| Contract          | Capability                     | Typical use                         |
+| ----------------- | ------------------------------ | ----------------------------------- |
+| `SequenceView<T>` | contiguous read/write view     | arrays, slices, vector borrowing    |
+| `StringView`      | text bytes + length + encoding | string args, parsing                |
+| `Owner<T>`        | ownership + release protocol   | cross-DLL objects, resource handles |
+| `Optional<T>`     | value may be absent            | optional args, query results        |
+| `Result<T, E>`    | success or failure             | cross-language errors               |
+| `Range<T>`        | iterable range                 | non-contiguous containers           |
+| `MapView<K, V>`   | keyed lookup                   | associative containers              |
+| `Opaque<T>`       | hidden representation          | special / custom containers         |
 
-| Priority | Contracts                                                           |
-| -------- | ------------------------------------------------------------------- |
+| Priority | Contracts                                                            |
+| -------- | -------------------------------------------------------------------- |
 | P0       | sequence view, string view, opaque handle, ownership, error boundary |
 | P1       | optional, result, callback, generic range                            |
 | P2       | map, set, deque, complex graphs, language-specific containers        |
@@ -54,12 +54,28 @@ AMC generates a thin adapter (`DemoBuffer_view(value) -> abix_span_i32`) that ca
 
 P1 adds four contracts, each matched by capability (shape + element `TypeID`):
 
-| Contract   | Layout / capability                                  |
-| ---------- | ---------------------------------------------------- |
-| `optional` | `{ discriminant: bool/u8; payload: T }`              |
+| Contract   | Layout / capability                                   |
+| ---------- | ----------------------------------------------------- |
+| `optional` | `{ discriminant: bool/u8; payload: T }`               |
 | `result`   | `{ status: int; payload: T }` (reuses error boundary) |
-| `callback` | `{ function entry; opaque context }`                 |
-| `range`    | non-contiguous container via length + indexed access |
+| `callback` | `{ function entry; opaque context }`                  |
+| `range`    | non-contiguous container via length + indexed access  |
+
+`abix_callback` is the borrowed form: the caller keeps the context alive and unregisters it. `abix_callback_owned` is the additive owned form:
+
+```c
+typedef void (*abix_callback_release_fn)(void *context);
+
+typedef struct abix_callback_owned {
+    abix_callback_fn invoke;
+    void *context;
+    abix_callback_release_fn release;
+    uint32_t flags;       // zero in v1
+    uint32_t reserved;    // must be zero
+} abix_callback_owned;
+```
+
+The producer owns the context and invokes `release` exactly once after the last call. `release` is required for an owned callback, must not unwind, and must not be called by the consumer directly. The consumer must not call the callback after release.
 
 ## First primitive: borrowed span
 
@@ -136,6 +152,18 @@ element = "char"
 ```
 
 The code unit is matched by the data pointer's pointee `TypeID`; the encoding is a runtime value (the build checks the field's presence and type). It is read-only and borrowed by default. `std::string_view`, Rust `&str` and Zig slices are not treated as inherently equivalent — encoding, length unit, layout and borrowing are verified first.
+
+## Owner projection
+
+`abix_std::Owner<T>` is a source-level projection of the existing `owner::handle`, not a new ABI type. The template parameter is a label for generated bindings; the layout is exactly `owner::handle`:
+
+```text
+Owner<T> = owner::handle
+instances = abix_owner_<Type>   // generated names
+runtime = owner::ref (C++) or a language wrapper
+```
+
+The handle carries identity, mode, destroy and module instance. The module lease that keeps the destroy entry valid is the separate `abix_lease` C ABI described in [`lease.md`](lease.md).
 
 ## Scope
 

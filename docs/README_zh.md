@@ -71,6 +71,7 @@ graph TD
 | [abix_zh.md](abix/abix_zh.md)                     | [abix.md](abix/abix.md)                     | 规范的 `.abix` 产物格式                          |
 | [api_zh.md](abix/api_zh.md)                       | [api.md](abix/api.md)                       | 完整的 C++ API 参考                              |
 | [interface_zh.md](abix/interface_zh.md)           | [interface.md](abix/interface.md)           | Interface 层：契约、代理、发现与 Owner ABI       |
+| [lease_zh.md](abix/lease_zh.md)                   | [lease.md](abix/lease.md)                   | 跨语言 Lease C ABI 与 Host-owned registry        |
 | [std_zh.md](abix/std_zh.md)                       | [std.md](abix/std.md)                       | ABIX-STD 跨语言 ABI 原语                         |
 | [metadata_modes_zh.md](abix/metadata_modes_zh.md) | [metadata_modes.md](abix/metadata_modes.md) | 三种元数据模式：Debug / Release / RelWithDebInfo |
 
@@ -95,12 +96,12 @@ AMC 工具链是独立仓库，其文档也位于该仓库。
 
 ABIX 和 AMC 内部工作原理。
 
-| 文档                                                      | English                                             | 描述                                         |
-| --------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
-| [architecture_zh.md](architecture/architecture_zh.md)     | [architecture.md](architecture/architecture.md)     | 系统概览、设计地图、不变量                   |
-| [runtime_zh.md](architecture/runtime_zh.md)               | [runtime.md](architecture/runtime.md)               | 运行时职责、注册表、执行模型                 |
-| [compatibility_zh.md](architecture/compatibility_zh.md)   | [compatibility.md](architecture/compatibility.md)   | TypeID / LayoutHash / BuildID / MetadataID   |
-| [binary-image_zh.md](architecture/binary-image_zh.md)     | [binary-image.md](architecture/binary-image.md)     | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
+| 文档                                                    | English                                           | 描述                                         |
+| ------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------- |
+| [architecture_zh.md](architecture/architecture_zh.md)   | [architecture.md](architecture/architecture.md)   | 系统概览、设计地图、不变量                   |
+| [runtime_zh.md](architecture/runtime_zh.md)             | [runtime.md](architecture/runtime.md)             | 运行时职责、注册表、执行模型                 |
+| [compatibility_zh.md](architecture/compatibility_zh.md) | [compatibility.md](architecture/compatibility.md) | TypeID / LayoutHash / BuildID / MetadataID   |
+| [binary-image_zh.md](architecture/binary-image_zh.md)   | [binary-image.md](architecture/binary-image.md)   | 覆盖 ELF / Mach-O / PE 的 BinaryImage 能力层 |
 
 二进制元数据检查指南位于 AMC 仓库：见 [ELF/Mach-O 检查](https://github.com/Sukanle/AMC/blob/main/docs/architecture/elf-inspection_zh.md) 与 [PE 检查](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection_zh.md)。
 

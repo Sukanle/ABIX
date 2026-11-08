@@ -51,9 +51,7 @@ def check_headers() -> None:
     """Fail early when the source tree no longer matches the expected layout."""
     missing = [str(path) for path in REQUIRED_HEADERS if not path.is_file()]
     if missing:
-        raise SystemExit(
-            "Required headers are missing:\n  " + "\n  ".join(missing)
-        )
+        raise SystemExit("Required headers are missing:\n  " + "\n  ".join(missing))
 
 
 def find_compiler(name: str) -> str | None:
@@ -119,9 +117,7 @@ def build_one(compiler: str, tag: str, build_type: str) -> None:
         raise SystemExit(f"[{tag}] Compilation failed")
     print(f"    Generated: {out}")
 
-    if sys.platform == "darwin" and (
-        build_type == "Debug" or build_type == "RelWithDebInfo"
-    ):
+    if sys.platform == "darwin" and (build_type == "Debug" or build_type == "RelWithDebInfo"):
         subprocess.run(["dsymutil", str(out), "-o", str(dSYM)])
         print(f"    Generated .dSYM: {dSYM}")
 
@@ -138,12 +134,7 @@ def find_visual_studio(explicit_path: str | None) -> str:
     if explicit_path:
         return explicit_path
     program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-    vswhere = (
-        Path(program_files_x86)
-        / "Microsoft Visual Studio"
-        / "Installer"
-        / "vswhere.exe"
-    )
+    vswhere = Path(program_files_x86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
     if not vswhere.is_file():
         raise FileNotFoundError(f"vswhere.exe not found: {vswhere}")
     result = subprocess.run(
@@ -201,11 +192,7 @@ def msvc_environment(vs_path: str) -> dict[str, str]:
 
 def strip_env_entries(value: str, pattern: re.Pattern[str]) -> str:
     """Return `value` with the PATH-separated entries matching `pattern` removed."""
-    return os.pathsep.join(
-        entry
-        for entry in value.split(os.pathsep)
-        if entry and not pattern.search(entry)
-    )
+    return os.pathsep.join(entry for entry in value.split(os.pathsep) if entry and not pattern.search(entry))
 
 
 def which_in_path(path_value: str, name: str) -> str | None:
@@ -220,9 +207,7 @@ def which_in_path(path_value: str, name: str) -> str | None:
 
 def run_msvc(cmd: list[str], env: dict[str, str]) -> None:
     print(f"  \033[90m{' '.join(cmd)}\033[0m")
-    result = subprocess.run(
-        cmd, env=env, capture_output=True, text=True, errors="replace"
-    )
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True, errors="replace")
     for line in (result.stdout or "").splitlines():
         print(f"    {line}")
     for line in (result.stderr or "").splitlines():
@@ -287,9 +272,7 @@ def build_msvc_variants(vs_path: str | None, build_type: str) -> None:
     for key in ("INCLUDE", "LIB"):
         if key in environment:
             environment[key] = strip_env_entries(environment[key], MSVC_STRIP)
-    environment["PATH"] = strip_env_entries(
-        environment.get("PATH", ""), MSVC_PATH_STRIP
-    )
+    environment["PATH"] = strip_env_entries(environment.get("PATH", ""), MSVC_PATH_STRIP)
 
     cl = which_in_path(environment["PATH"], "cl.exe")
     if not cl:
@@ -299,21 +282,14 @@ def build_msvc_variants(vs_path: str | None, build_type: str) -> None:
 
     for dll_name, src_name, link_libs in MSVC_VARIANTS:
         try:
-            build_msvc_variant(
-                cl, environment, dll_name, src_name, link_libs, build_type
-            )
+            build_msvc_variant(cl, environment, dll_name, src_name, link_libs, build_type)
         except RuntimeError as exc:
-            print(
-                f"  [Warning] {dll_name} build failed ({exc}); "
-                "cross-CRT tests will be skipped"
-            )
+            print(f"  [Warning] {dll_name} build failed ({exc}); cross-CRT tests will be skipped")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build variants of the tool.")
-    parser.add_argument(
-        "--build-type", default="Release", help="Build type (Release or Debug)"
-    )
+    parser.add_argument("--build-type", default="Release", help="Build type (Release or Debug)")
     if sys.platform == "win32":
         parser.add_argument(
             "--with-msvc",

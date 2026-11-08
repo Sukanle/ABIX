@@ -1,11 +1,6 @@
 # 测试 ABIX 与 AMC
 
-> **仓库拆分：** ABIX 根工程只测试 header-only runtime。下面的 AMC 层由独立 AMC
-> 仓库（<https://github.com/Sukanle/AMC>）拥有并运行；此处保留为工具链契约参考。
-> 文中的 AMC 相对路径均相对于该 checkout。仅存在于
-> monorepo 的 `amc-integration-test` 与 `amc-cmdly-interop-test` 已退役；
-> standalone 套件覆盖 core/e2e/package/feature/provider/interop/expose/
-> cancellation/CMake 集成。
+> **仓库拆分：** ABIX 根工程只测试 header-only runtime。下面的 AMC 层由独立 AMC 仓库（<https://github.com/Sukanle/AMC>）拥有并运行；此处保留为工具链契约参考。文中的 AMC 相对路径均相对于该 checkout。仅存在于 monorepo 的 `amc-integration-test` 与 `amc-cmdly-interop-test` 已退役； standalone 套件覆盖 core/e2e/package/feature/provider/interop/expose/ cancellation/CMake 集成。
 
 <p align="center">
   中文 · <a href="testing.md">English</a>
@@ -22,17 +17,17 @@
 - [构建与运行](#构建与运行)
 - [预期结果](#预期结果)
 - [测试分层](#测试分层)
-    - [A. 运行时与单元（Catch2，`test/`）](#a-运行时与单元catch2test)
-    - [B. AMC 单元（`amc-core-test`）](#b-amc-单元amc-core-test)
-    - [C. AMC 端到端（`amc-e2e-test`）](#c-amc-端到端amc-e2e-test)
-    - [D. AMC CLI 集成（`amc-integration-test`）](#d-amc-cli-集成amc-integration-test)
-    - [E. AMC 功能集（`amc-feature-test`）](#e-amc-功能集amc-feature-test)
-    - [F. Rust/Zig interop（`amc-interop-test`）](#f-rustzig-interopamc-interop-test)
-    - [G. Rust provider 一致性（`amc-rust-test`）](#g-rust-provider-一致性amc-rust-test)
-    - [H. cmdly interop（`amc-cmdly-interop-test`）](#h-cmdly-interopamc-cmdly-interop-test)
-    - [I. expose interop（`amc-expose-interop-test`）](#i-expose-interopamc-expose-interop-test)
-    - [J. CMake 集成（`amc-cmake-integration-test`）](#j-cmake-集成amc-cmake-integration-test)
-    - [K. 独立跨语言示例（`amc-example-test`）](#k-独立跨语言示例amc-example-test)
+  - [A. 运行时与单元（Catch2，`test/`）](#a-运行时与单元catch2test)
+  - [B. AMC 单元（`amc-core-test`）](#b-amc-单元amc-core-test)
+  - [C. AMC 端到端（`amc-e2e-test`）](#c-amc-端到端amc-e2e-test)
+  - [D. AMC CLI 集成（`amc-integration-test`）](#d-amc-cli-集成amc-integration-test)
+  - [E. AMC 功能集（`amc-feature-test`）](#e-amc-功能集amc-feature-test)
+  - [F. Rust/Zig interop（`amc-interop-test`）](#f-rustzig-interopamc-interop-test)
+  - [G. Rust provider 一致性（`amc-rust-test`）](#g-rust-provider-一致性amc-rust-test)
+  - [H. cmdly interop（`amc-cmdly-interop-test`）](#h-cmdly-interopamc-cmdly-interop-test)
+  - [I. expose interop（`amc-expose-interop-test`）](#i-expose-interopamc-expose-interop-test)
+  - [J. CMake 集成（`amc-cmake-integration-test`）](#j-cmake-集成amc-cmake-integration-test)
+  - [K. 独立跨语言示例（`amc-example-test`）](#k-独立跨语言示例amc-example-test)
 - [手动功能走查与生成文件](#手动功能走查与生成文件)
 - [原生绑定（Rust）走查](#原生绑定rust走查)
 - [保留临时产物](#保留临时产物)
@@ -96,33 +91,32 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 ### A. 运行时与单元（Catch2，`test/`）
 
 - **功能** —— 纯头文件的 ABI 运行时，对真实动态库进行验证：
-    - ABIX runtime 目标默认使用 `-fno-exceptions -fno-rtti` 编译
-      （`ABIX_RUNTIME_NO_EXCEPTIONS`、`ABIX_RUNTIME_NO_RTTI`；AMC 保留两者）；
-    - 经 name+sig 表加载/解析/调用 DLL；
-    - 热重载 RCU 卸载/超时/zombie 生命周期、日志；
-    - 日志策略：`logging_single_thread_test` 使用 `ABIX_LOG_THREAD_SAFE=0` 验证固定 sink 策略；
-    - 可选后端集成：配置 `-DABIX_ENABLE_QUILL_TEST=ON -DABIX_QUILL_ROOT=/path/to/quill` 可构建 `logging_quill_test`，从多线程把 ABIX 诊断转发到 Quill file sink；默认构建不依赖 Quill；
-    - 边界/调用约定；
-    - 跨编译器与跨 CRT 变体；
-    - MICS 集成；
-    - 非侵入式 **Interface** 层；
-    - `atomic`，以及 `BinaryImage` 能力层（ELF/Mach-O/PE 的 region 与导出解析）。
+  - ABIX runtime 目标默认使用 `-fno-exceptions -fno-rtti` 编译（`ABIX_RUNTIME_NO_EXCEPTIONS`、`ABIX_RUNTIME_NO_RTTI`；AMC 保留两者）；
+  - 经 name+sig 表加载/解析/调用 DLL；
+  - 热重载 RCU 卸载/超时/zombie 生命周期、日志；
+  - 日志策略：`logging_single_thread_test` 使用 `ABIX_LOG_THREAD_SAFE=0` 验证固定 sink 策略；
+  - 可选后端集成：配置 `-DABIX_ENABLE_QUILL_TEST=ON -DABIX_QUILL_ROOT=/path/to/quill` 可构建 `logging_quill_test`，从多线程把 ABIX 诊断转发到 Quill file sink；默认构建不依赖 Quill；
+  - 边界/调用约定；
+  - 跨编译器与跨 CRT 变体；
+  - MICS 集成；
+  - 非侵入式 **Interface** 层；
+  - `atomic`，以及 `BinaryImage` 能力层（ELF/Mach-O/PE 的 region 与导出解析）。
 - **目的** —— 证明运行时保持原生执行（无通用分派器）、生命周期规则成立（租约/owner 句柄使模块保持映射），且布局/哈希/分派不会静默回归。
 - **预期现象** —— 每个套件输出 `All tests passed (N assertions in M test cases)`。
-    - 重点套件：
-        - `interface_dll_test` 含租约固定用例（“a lease keeps the module mapped across unload”）；
-        - `interface_module_test` 含多线程注册/注销与租约/卸载竞争用例。
+  - 重点套件：
+    - `interface_dll_test` 含租约固定用例（“a lease keeps the module mapped across unload”）；
+    - `interface_module_test` 含多线程注册/注销与租约/卸载竞争用例。
 
 ### B. AMC 单元（`amc-core-test`）
 
 - **功能** —— 直接测 AMC 核心库：
-    - 类型/符号哈希、布局；
-    - `validate`、`.abix` 读写往返；
-    - Metadata Region；
-    - 实例化缓存；
-    - 字符串/JSON 辅助；
-    - 二进制读取器（ELF/Mach-O/PE 节区与 CodeView build id）；
-    - 真实世界兼容性矩阵（字段插入/删除、字段类型变化、调用约定变化、ownership 不匹配）。
+  - 类型/符号哈希、布局；
+  - `validate`、`.abix` 读写往返；
+  - Metadata Region；
+  - 实例化缓存；
+  - 字符串/JSON 辅助；
+  - 二进制读取器（ELF/Mach-O/PE 节区与 CodeView build id）；
+  - 真实世界兼容性矩阵（字段插入/删除、字段类型变化、调用约定变化、ownership 不匹配）。
 - **目的** —— 让格式/校验核心独立于 CLI 与任何宿主工具链而保持正确。
 - **预期现象** —— `amc-core-test: all checks passed`。
 
@@ -135,17 +129,17 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 ### D. AMC CLI 集成（`amc-integration-test`）
 
 - **功能** —— 端到端驱动真实 CLI：
-    - `frontend`、`validate`、`inspect`、`generate`（cpp/lua）；
-    - 生成头文件的编译检查；
-    - `build`、`dump`、`diff`、`compatibility`；
-    - 自描述 bootstrap；
-    - provider IPC 握手与能力发现；
-    - `context`、`verify`（一致 + 漂移）；
-    - 统一 JSON 错误信封；
-    - metadata region（发射/校验/篡改）；
-    - `query`、符号服务器；
-    - region → module；
-    - adapter / ABI-check / shim 流程。
+  - `frontend`、`validate`、`inspect`、`generate`（cpp/lua）；
+  - 生成头文件的编译检查；
+  - `build`、`dump`、`diff`、`compatibility`；
+  - 自描述 bootstrap；
+  - provider IPC 握手与能力发现；
+  - `context`、`verify`（一致 + 漂移）；
+  - 统一 JSON 错误信封；
+  - metadata region（发射/校验/篡改）；
+  - `query`、符号服务器；
+  - region → module；
+  - adapter / ABI-check / shim 流程。
 - **目的** —— CLI 契约是用户与 CI 依赖的东西；这是最接近“构建服务器实际运行”的测试。
 - **预期现象** —— `=== Results: N passed, 0 failed ===`（当前 106）。需要 ELF/Mach-O 专属工具的步骤（`readelf`、LLDB、`dlopen` shim）在 Windows 上打印 `[INFO] ... skipping` 而不计失败。
 
@@ -153,13 +147,13 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S . \
 
 跨平台测试（`tests/cli/feature_test.py`），直接断言 AMC 的五大能力：
 
-| 方面         | 检查                                                                                                                                                                                                 |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 方面         | 检查                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 前后端分离   | `--list-languages`/`--describe-language` 由 `providers.toml` 驱动（cpp/lua/rust/zig）；`AMC_PROVIDERS_FILE` 覆盖；`amc-cpp`/`amc-rust` 的 `--ipc` **READY + CAPABILITIES** 与 `abix.plugin/1` envelope |
-| 代码解析     | `amc build` 解析 **C++**（`amc-cpp`）与 **Rust**（`amc-rust`，内置前端，无需 `rustc`）→ `.abix`                                                                                                      |
-| 生成 IR      | `validate`、`inspect`、`query --layout`、`context --format json`                                                                                                                                     |
-| 原生语言绑定 | 同一 `.abix` → `generate -l cpp\|zig\|rust\|lua`；并**编译** C++ 与 **Rust** 绑定                                                                                                                    |
-| 复用 IR      | 同一 `.abix` 驱动全部四个后端                                                                                                                                                                        |
+| 代码解析     | `amc build` 解析 **C++**（`amc-cpp`）与 **Rust**（`amc-rust`，内置前端，无需 `rustc`）→ `.abix`                                                                                                        |
+| 生成 IR      | `validate`、`inspect`、`query --layout`、`context --format json`                                                                                                                                       |
+| 原生语言绑定 | 同一 `.abix` → `generate -l cpp\|zig\|rust\|lua`；并**编译** C++ 与 **Rust** 绑定                                                                                                                      |
+| 复用 IR      | 同一 `.abix` 驱动全部四个后端                                                                                                                                                                          |
 
 - **目的** —— 用一次快速、轻工具链的断言覆盖 AMC 的价值主张：一份 IR、多种语言、干净的前后端分离。
 - **预期现象** —— `AMC feature set: 26 passed, 0 failed, 0 skipped`（无 `rustc` 时 Rust 编译检查会 `[SKIP]`，此时 `skipped` 可能为 1）。
@@ -318,10 +312,10 @@ python tools/build_variants.py --with-msvc   # 单独补建跨编译器/MSVC 变
 
 ### 测试与验证
 
-| 脚本                    | 功能                                                                                                                                                                                                                                | 目的                                                                                                                            | 预期现象                                                                                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `run_test.py`           | 运行 `build/<type>/bin/test_all`，即 ABIX Catch2 套件。AMC 的 metadata、bootstrap、MCP 与 interop 套件位于 AMC 仓库，并注册在它的 CTest 中 | ABIX 侧测试结论；需要逐用例报告时用 `ctest`                                                                                                                                 | `test_all` 全绿；二进制缺失时提示 `Build first: python tools/run_build.py`                                                                                   |
-| `run_bench.py` | 让每个基准**家族各占一个进程**运行并汇总（mean/stddev）。`--list` 列出将要运行的内容：它通过 `--benchmark_list_tests` 自动发现 `bench_all` 里的全部家族，且所有 Google Benchmark 套件都已并入 `bench_all`，默认不再单独运行可执行文件；可传显式过滤串缩小范围；跑前读取 `cpu0` 的 cpufreq governor，不是 `performance` 时打印切换命令；`--pin`（默认 `auto`）把每个子进程限制在最高频的核上，`--pin off` 关闭、`--pin 0-7` 指定列表                                                                                                                                                                                    | EBR/RCU 家族共享进程级 `rcu::Domain`，同一家族在别人跑完后测会慢数倍（`BM_EBR_SyncPhase/1T` 从约 6 ns 到约 1 us）；隔离后跨家族/跨机器才可比 | 逐个家族打印 `N benchmarks -> <json>`，末尾输出 `| family | benchmark | threads | mean ns | sd |` 表；产物为每家族一个 JSON |
+| 脚本           | 功能                                                                                                                                                                                                                                                                                                                                                                                                                                | 目的                                                                                                                                         | 预期现象                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------ | --------- | ------- | ------- | --- | --------------------------- |
+| `run_test.py`  | 运行 `build/<type>/bin/test_all`，即 ABIX Catch2 套件。AMC 的 metadata、bootstrap、MCP 与 interop 套件位于 AMC 仓库，并注册在它的 CTest 中                                                                                                                                                                                                                                                                                          | ABIX 侧测试结论；需要逐用例报告时用 `ctest`                                                                                                  | `test_all` 全绿；二进制缺失时提示 `Build first: python tools/run_build.py` |
+| `run_bench.py` | 让每个基准**家族各占一个进程**运行并汇总（mean/stddev）。`--list` 列出将要运行的内容：它通过 `--benchmark_list_tests` 自动发现 `bench_all` 里的全部家族，且所有 Google Benchmark 套件都已并入 `bench_all`，默认不再单独运行可执行文件；可传显式过滤串缩小范围；跑前读取 `cpu0` 的 cpufreq governor，不是 `performance` 时打印切换命令；`--pin`（默认 `auto`）把每个子进程限制在最高频的核上，`--pin off` 关闭、`--pin 0-7` 指定列表 | EBR/RCU 家族共享进程级 `rcu::Domain`，同一家族在别人跑完后测会慢数倍（`BM_EBR_SyncPhase/1T` 从约 6 ns 到约 1 us）；隔离后跨家族/跨机器才可比 | 逐个家族打印 `N benchmarks -> <json>`，末尾输出 `                          | family | benchmark | threads | mean ns | sd  | ` 表；产物为每家族一个 JSON |
 
 ```bash
 python tools/run_test.py                                   # ABIX Catch2 套件

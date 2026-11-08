@@ -44,8 +44,7 @@ cmake -B build/Release -DCMAKE_BUILD_TYPE=Release -G Ninja -S .
 cmake --build build/Release --parallel
 ```
 
-ABIX 构建 header-only runtime 及其测试。AMC 是独立仓库；其产物位于 AMC
-构建目录的 `bin/`：
+ABIX 构建 header-only runtime 及其测试。AMC 是独立仓库；其产物位于 AMC 构建目录的 `bin/`：
 
 | 工具               | 用途                                                                            |
 | ------------------ | ------------------------------------------------------------------------------- |
@@ -64,8 +63,7 @@ ctest --test-dir build/Release --output-on-failure
 
 ## 3. 描述一个 ABI
 
-AMC 是独立仓库：<https://github.com/Sukanle/AMC>。请在 AMC 仓库中构建并安装；
-下面的命令假定 `amc` 已在 `PATH` 中。
+AMC 是独立仓库：<https://github.com/Sukanle/AMC>。请在 AMC 仓库中构建并安装；下面的命令假定 `amc` 已在 `PATH` 中。
 
 ABI 提取由 `.abic.toml` 驱动：
 

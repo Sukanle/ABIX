@@ -47,11 +47,11 @@ ABIX Metadata 最初面对的问题是：Runtime Descriptor 为了保存完整�
 
 ABIX Metadata 体系涉及四种不同职责的 ID：
 
-| ID | 含义 | 用途 |
-|----|------|------|
-| **TypeID** | 类型语义身份 | 判断"是不是同一个类型" |
-| **LayoutHash** | ABI 布局身份 | 判断内存布局是否兼容 |
-| **BuildID** | 二进制构建身份 | 找到对应 `.abix` |
+| ID             | 含义              | 用途                          |
+| -------------- | ----------------- | ----------------------------- |
+| **TypeID**     | 类型语义身份      | 判断"是不是同一个类型"        |
+| **LayoutHash** | ABI 布局身份      | 判断内存布局是否兼容          |
+| **BuildID**    | 二进制构建身份    | 找到对应 `.abix`              |
 | **MetadataID** | Metadata 内容身份 | 完整 Metadata 去重/完整性校验 |
 
 查找链条：
@@ -112,13 +112,14 @@ sequenceDiagram
 
 ## 三档 Metadata 模式
 
-| 档位 | TypeDescriptor | 字符串位置 | `.abix` 文件 | 典型场景 |
-|------|---------------|-----------|-------------|---------|
-| **Debug** | 可含 `name` 指针 | 内嵌 `.abix.names` section | 可选生成 | 开发 / 单步调试 |
-| **RelWithDebInfo** | 无 `name` | 独立 `.abix` 归档 | 必须归档 | 灰度 / 崩溃分析 |
-| **Release** | 无 `name` | 无 | 建议归档 | 线上发布 |
+| 档位               | TypeDescriptor   | 字符串位置                 | `.abix` 文件 | 典型场景        |
+| ------------------ | ---------------- | -------------------------- | ------------ | --------------- |
+| **Debug**          | 可含 `name` 指针 | 内嵌 `.abix.names` section | 可选生成     | 开发 / 单步调试 |
+| **RelWithDebInfo** | 无 `name`        | 独立 `.abix` 归档          | 必须归档     | 灰度 / 崩溃分析 |
+| **Release**        | 无 `name`        | 无                         | 建议归档     | 线上发布        |
 
 关键性质：
+
 - **RelWithDebInfo 和 Release 的二进制完全一致**，区别仅在 `.abix` 文件是否归档
 - **同一份二进制**，strip `.abix.names` 前是含诊断信息，strip 后是纯 release
 - **编译一次，两种形态**，可做 differential testing
@@ -171,15 +172,16 @@ struct TypeDescriptor {           // 56 B
 
 ### Descriptor 压缩结果
 
-| 结构体 | Debug 大小 | Release 大小 | 节省 |
-|--------|-----------|-------------|------|
-| `TypeDescriptor` | 72 B | 56 B | **22%** |
-| `FieldDescriptor` | 32 B | 24 B | **25%** |
-| `FunctionDescriptor` | 56 B | 48 B | **14%** |
-| `ParameterDescriptor` | 32 B | 24 B | **25%** |
-| `SymbolDescriptor` | 24 B | 8 B | **67%** |
+| 结构体                | Debug 大小 | Release 大小 | 节省    |
+| --------------------- | ---------- | ------------ | ------- |
+| `TypeDescriptor`      | 72 B       | 56 B         | **22%** |
+| `FieldDescriptor`     | 32 B       | 24 B         | **25%** |
+| `FunctionDescriptor`  | 56 B       | 48 B         | **14%** |
+| `ParameterDescriptor` | 32 B       | 24 B         | **25%** |
+| `SymbolDescriptor`    | 24 B       | 8 B          | **67%** |
 
 500 类型估算：
+
 - 旧方案：≈ 500 × 128 B ≈ **64 KB**
 - Release TypeDescriptor：≈ 500 × 56 B ≈ **28 KB**（节省 56%）
 
@@ -205,6 +207,7 @@ Executable / Shared Library
 ```
 
 具体平台实现：
+
 - **ELF**：`.abix.manifest` / `.abix.desc` / `.abix.hash` / `.abix.names`
 - **Mach-O**：`__DATA,__abix_manifest` / `__DATA,__abix_desc` 等
 - **PE**：`.abix`（私有头 + Metadata Region）/ `.abix.n`（names，可剥离）。详见 AMC 仓库的 [pe-inspection_zh.md](https://github.com/Sukanle/AMC/blob/main/docs/architecture/pe-inspection_zh.md)。
@@ -338,6 +341,7 @@ String table 格式，不是 `const char*[]`：
 ```
 
 Descriptor 中保存 `uint32_t name_offset`。这样：
+
 - 没有 `const char*` 指针 → 没有 relocation
 - strip `.abix.names` 后 descriptor 语义仍然干净（不留 dangling pointer）
 - 可以 mmap 直接访问
@@ -391,11 +395,11 @@ Dynamic ABI Bind
 
 ### 三种候选方案
 
-| 方案 | 描述 | 优缺点 |
-|------|------|--------|
-| **A. 整体 `.abix.desc`** | 所有 Descriptor 在一个 section，`__start`/`__stop` 遍历 | 简单、Runtime 快、但单个 Type 不容易 linker GC |
-| **B. 每 Type 一个 section** | `.abix.type.1234`、`.abix.type.5678` | 可细粒度 GC，但 Runtime enumeration 复杂 |
-| **C. 全局 Index** | Index → Type A/B/C，Index 引用了所有 Type | Index 拉回所有 Type，GC 无效 |
+| 方案                        | 描述                                                    | 优缺点                                         |
+| --------------------------- | ------------------------------------------------------- | ---------------------------------------------- |
+| **A. 整体 `.abix.desc`**    | 所有 Descriptor 在一个 section，`__start`/`__stop` 遍历 | 简单、Runtime 快、但单个 Type 不容易 linker GC |
+| **B. 每 Type 一个 section** | `.abix.type.1234`、`.abix.type.5678`                    | 可细粒度 GC，但 Runtime enumeration 复杂       |
+| **C. 全局 Index**           | Index → Type A/B/C，Index 引用了所有 Type               | Index 拉回所有 Type，GC 无效                   |
 
 ### 推荐方案：A + AMC 显式裁剪
 
@@ -420,10 +424,10 @@ Linker 不知道 TypeDescriptor 是否属于 ABI public surface——AMC 知道�
 
 ## `.abix` 与 `.abix.meta` 的职责划分
 
-| 文件 | 职责 | 谁消费 |
-|------|------|--------|
-| `.abix` | 机器可解析的形式 Metadata Artifact：Header + desc + hash + names | Runtime Registry、`amc dump`、debugger |
-| `.abix.meta` | CI / Symbol Server / Build 元信息：compiler、target、git_commit、timestamp | 构建系统、符号服务器、human |
+| 文件         | 职责                                                                       | 谁消费                                 |
+| ------------ | -------------------------------------------------------------------------- | -------------------------------------- |
+| `.abix`      | 机器可解析的形式 Metadata Artifact：Header + desc + hash + names           | Runtime Registry、`amc dump`、debugger |
+| `.abix.meta` | CI / Symbol Server / Build 元信息：compiler、target、git_commit、timestamp | 构建系统、符号服务器、human            |
 
 **`.abix.meta` 不应该是解析 `.abix` 所必需的文件。** 否则 Metadata 就不再自描述。
 
@@ -518,7 +522,7 @@ ABIX Metadata 的设计原则如下：
 
 **⑤ Serialized Metadata 必须 pointer-free** `offset + size` 优于绝对指针。无 relocation、ASLR 友好、PIE 友好、mmap 友好。
 
-**⑥ Runtime 可以为速度重新 materialize** ```serialized (offset) → one-time init → pointer-rich → hot path``` 兼顾文件稳定性、加载效率、Runtime 性能三者。
+**⑥ Runtime 可以为速度重新 materialize** `serialized (offset) → one-time init → pointer-rich → hot path` 兼顾文件稳定性、加载效率、Runtime 性能三者。
 
 **⑦ AMC 负责 Metadata 裁剪** ABI export policy 在 AMC，不在 linker。linker 只负责放置和保留。
 
@@ -591,16 +595,16 @@ Hash 校验能防错配，但前提是**校验真的执行了**。加载期必�
 
 ## 附录：与 DWARF 的对比
 
-| 维度 | DWARF | ABIX Metadata |
-|------|-------|---------------|
-| 定位 | 调试信息格式 | ABI 元数据格式 |
-| 可剥离 | 是（`strip` 移除 debug section） | 是（`strip` 移除 `.abix.names`） |
-| 运行时依赖 | 不依赖 | 依赖 desc section |
-| 名字校验 | DW_AT_name 是字符串，无内建校验 | name_offset → .abix.names，但 TypeID 是强校验 |
-| 版本配对 | build ID 可选 | BuildID 是 head 字段 |
-| 跨语言 | 只为 C/C++/Fortran | 语言无关 |
-| mmap 友好 | 部分（需解析 CU/TU） | 是（offset-based，Header 直接定位） |
-| 内容寻址 | 不支持 | MetadataID 天然支持 |
+| 维度       | DWARF                            | ABIX Metadata                                 |
+| ---------- | -------------------------------- | --------------------------------------------- |
+| 定位       | 调试信息格式                     | ABI 元数据格式                                |
+| 可剥离     | 是（`strip` 移除 debug section） | 是（`strip` 移除 `.abix.names`）              |
+| 运行时依赖 | 不依赖                           | 依赖 desc section                             |
+| 名字校验   | DW_AT_name 是字符串，无内建校验  | name_offset → .abix.names，但 TypeID 是强校验 |
+| 版本配对   | build ID 可选                    | BuildID 是 head 字段                          |
+| 跨语言     | 只为 C/C++/Fortran               | 语言无关                                      |
+| mmap 友好  | 部分（需解析 CU/TU）             | 是（offset-based，Header 直接定位）           |
+| 内容寻址   | 不支持                           | MetadataID 天然支持                           |
 
 ## ABIX 工具链集成：LLDB 与 clangd
 
@@ -653,23 +657,25 @@ Runtime└── 自己解析 .abix
 
 建议分层：
 
-| 库 | 职责 |
-|----|------|
-| `libabix-format` | Header、Record、Offset、Endian、Version、Hash |
-| `libabix-metadata` | Type、Field、Function、Parameter、Module |
-| `libabix-abi` | TypeID、LayoutHash、ABI comparison、compatibility、diff |
-| `libabix-runtime` | Registry、RCU、binding、dispatch、Map |
+| 库                 | 职责                                                    |
+| ------------------ | ------------------------------------------------------- |
+| `libabix-format`   | Header、Record、Offset、Endian、Version、Hash           |
+| `libabix-metadata` | Type、Field、Function、Parameter、Module                |
+| `libabix-abi`      | TypeID、LayoutHash、ABI comparison、compatibility、diff |
+| `libabix-runtime`  | Registry、RCU、binding、dispatch、Map                   |
 
 ### LLDB 插件
 
 #### 核心定位：运行时对象 → ABIX Type
 
 LLDB 本身已经知道：
+
 ```
 process → module → symbol → address
 ```
 
 ABIX 再提供：
+
 ```
 address / symbol → FunctionID / TypeID → ABIX Metadata → Type / Layout / Field
 ```
@@ -753,6 +759,7 @@ Field: Foo::bar
 ```
 
 这比传统 `ptype Foo` 更适合 ABIX：
+
 - LLDB 传统类型系统关注："这个类型是什么？"
 - ABIX 关注："这个类型能不能安全地作为另一个 ABI 类型使用？"
 
@@ -798,17 +805,17 @@ ABIX Runtime 的 Layout Metadata 与 LLDB 的内存可视化共享同一份数�
 源码级调试                 ABI 级调试
 ```
 
-| 能力 | DWARF | ABIX |
-|------|-------|------|
-| 源码行 | ✓ | — |
-| 局部变量 | ✓ | — |
-| inline | ✓ | — |
-| 模板实例化 | ✓ | — |
-| TypeID | — | ✓ |
-| LayoutHash | — | ✓ |
-| ABI compatibility | — | ✓ |
-| cross-module types | — | ✓ |
-| dynamic binding | — | ✓ |
+| 能力               | DWARF | ABIX |
+| ------------------ | ----- | ---- |
+| 源码行             | ✓     | —    |
+| 局部变量           | ✓     | —    |
+| inline             | ✓     | —    |
+| 模板实例化         | ✓     | —    |
+| TypeID             | —     | ✓    |
+| LayoutHash         | —     | ✓    |
+| ABI compatibility  | —     | ✓    |
+| cross-module types | —     | ✓    |
+| dynamic binding    | —     | ✓    |
 
 两者互补，不冲突。
 

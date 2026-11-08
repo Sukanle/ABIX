@@ -1,0 +1,90 @@
+name: Cache cleanup
+
+# GitHub Actions cache storage counts against the repository quota, and every
+# stale fmt/benchmark/MSYS2 cache from an old version keeps consuming it until
+# GitHub evicts it by LRU. Purge old caches on a schedule so CI storage (and the
+# minutes spent managing it) stays bounded.
+#
+# Only caches produced by the ci.yml "Cache ..." steps are touched: their keys
+# contain "abix-deps-". Anything else is left alone.
+
+on:
+  schedule:
+    # Daily at 03:17 UTC (11:17 Asia/Shanghai).
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: "Delete caches that have not been used for this many days"
+        required: false
+        default: "14"
+      dry_run:
+        description: "Report what would be deleted without deleting it"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: abix-cache-cleanup
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Purge stale Actions caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MAX_AGE_DAYS: ${{ inputs.max_age_days || '14' }}
+      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+    steps:
+      - name: Delete stale dependency caches
+        run: |
+          set -euo pipefail
+          gh cache list --repo "$GITHUB_REPOSITORY" --limit 1000 \
+            --json id,key,createdAt,lastAccessedAt > caches.json
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from datetime import datetime, timedelta, timezone
+
+          KEY_MARKER = "abix-deps-"
+          max_age = timedelta(days=int(os.environ["MAX_AGE_DAYS"]))
+          dry_run = os.environ.get("DRY_RUN", "false").lower() in {"1", "true", "yes"}
+          now = datetime.now(timezone.utc)
+
+
+          def parse(value):
+              if not value:
+                  return None
+              return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+          with open("caches.json", encoding="utf-8") as handle:
+              caches = json.load(handle)
+
+          matching = [cache for cache in caches if KEY_MARKER in cache["key"]]
+          stale = []
+          for cache in matching:
+              last_used = parse(cache.get("lastAccessedAt")) or parse(cache.get("createdAt"))
+              if last_used is None or now - last_used <= max_age:
+                  continue
+              stale.append(cache)
+
+          for cache in stale:
+              last_used = cache.get("lastAccessedAt") or cache.get("createdAt")
+              action = "would delete" if dry_run else "deleting"
+              print(f"{action} {cache['id']} ({cache['key']}, last used {last_used})")
+              if not dry_run:
+                  subprocess.run(
+                      ["gh", "cache", "delete", str(cache["id"]), "--repo", os.environ["GITHUB_REPOSITORY"]],
+                      check=False,
+                  )
+
+          print(f"cache cleanup: {len(stale)} stale ABIX caches, {len(matching) - len(stale)} kept")
+          PY

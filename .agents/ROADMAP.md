@@ -1,14 +1,10 @@
 # Roadmap
 
-> **Roadmap items are not implementation requirements unless explicitly marked
-> as current work.** Do not implement a future item just because it appears
-> here. See [`AGENTS.md`](AGENTS.md) §13 (scope discipline).
+> **Roadmap items are not implementation requirements unless explicitly marked as current work.** Do not implement a future item just because it appears here. See [`AGENTS.md`](AGENTS.md) §13 (scope discipline).
 
 ## Foundation — ABIX 0.1.0 (released, self-hosting and toolchain)
 
-**Platform support:** Linux and macOS are supported today. Windows is **not
-available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency
-tests are still being validated.
+**Platform support:** Linux and macOS are supported today. Windows is **not available yet** — the PE/CRT paths, cross-DLL behaviour and platform-consistency tests are still being validated.
 
 Established and maintained:
 
@@ -31,32 +27,18 @@ Established and maintained:
 
 ## Current — ABIX 0.2.0 (Cross-language, released)
 
-The current stage is **cross-language support**: ABIX IR becomes the common ABI
-representation that other language frontends feed into and project out of.
+The current stage is **cross-language support**: ABIX IR becomes the common ABI representation that other language frontends feed into and project out of.
 
 ### Main line — language plugins and cross-language bindings
 
-- language plugin API and producer/consumer protocol
-  ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md));
+- language plugin API and producer/consumer protocol ([`LANGUAGE-PLUGIN.md`](LANGUAGE-PLUGIN.md));
 - a second language prototype beyond C++ — **Rust**, then **Zig**;
-- cross-language type projection (for example C ABI scalars projected to
-  Rust `core::ffi::c_*` aliases) built on the ABI-normalised primitive
-  identity;
+- cross-language type projection (for example C ABI scalars projected to Rust `core::ffi::c_*` aliases) built on the ABI-normalised primitive identity;
 - cross-language bindings and a C++ ↔ Rust interoperability demo.
 
-Delivered so far: an initial `amc-rust` provider (`frontend` + `backend`,
-JSON-lines IPC) — a source-level `#[repr(C)]` / `extern "C"` extractor and a
-Rust `repr(C)` projection built on the ABI-normalised primitive identity
-(`core::ffi::c_*`). A C++ fixture and an ABI-equal Rust fixture already produce
-the same `TypeID` / `LayoutHash` and report `compatible=true`.
+Delivered so far: an initial `amc-rust` provider (`frontend` + `backend`, JSON-lines IPC) — a source-level `#[repr(C)]` / `extern "C"` extractor and a Rust `repr(C)` projection built on the ABI-normalised primitive identity (`core::ffi::c_*`). A C++ fixture and an ABI-equal Rust fixture already produce the same `TypeID` / `LayoutHash` and report `compatible=true`.
 
-Also delivered: a minimal `amc-zig` **backend-only** provider that consumes the
-same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]`
-typed pointers / `comptime` layout assertions). It validates that ABIX IR is
-reusable: the same artifact drives both the Rust and the Zig projection, and
-`tests/interop/` builds one native library and runs both consumers against
-it. The C++ → ABIX → Rust closed loop (with ownership, error-boundary and target
-contracts in an optional metadata-region extension directory) is complete.
+Also delivered: a minimal `amc-zig` **backend-only** provider that consumes the same `.abix` and projects it to Zig (`extern struct` / `extern fn` / `[*c]` typed pointers / `comptime` layout assertions). It validates that ABIX IR is reusable: the same artifact drives both the Rust and the Zig projection, and `tests/interop/` builds one native library and runs both consumers against it. The C++ → ABIX → Rust closed loop (with ownership, error-boundary and target contracts in an optional metadata-region extension directory) is complete.
 
 ### P0 — stabilize and validate
 
@@ -69,49 +51,30 @@ contracts in an optional metadata-region extension directory) is complete.
 
 ## Patch — ABIX 0.2.1 (Maintenance)
 
-Maintenance release: fix existing behavior and add tests/documentation; no
-public ABI or error-protocol change.
+Maintenance release: fix existing behavior and add tests/documentation; no public ABI or error-protocol change.
 
 - `last_error()` is thread-local; its per-thread / per-DSO scope is documented;
-- existing error-status enums have explicit numeric values and stable
-  `to_string()` spellings;
-- added thread-isolation, cross-language error-propagation and `[[error]]`
-  negative tests;
+- existing error-status enums have explicit numeric values and stable `to_string()` spellings;
+- added thread-isolation, cross-language error-propagation and `[[error]]` negative tests;
 - Zig error-set/error-union projection remains a documented limitation.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Patch — ABIX 0.2.2 (Built-in type IDs)
 
-Additive release: predefined canonical `TypeId` constants for primitive ABI
-descriptors, including integer widths, pointer-sized `isize`/`usize`, IEEE and
-extended floating formats, target `long double`, and character kinds. Existing
-identities and the `.abix` wire format are unchanged.
+Additive release: predefined canonical `TypeId` constants for primitive ABI descriptors, including integer widths, pointer-sized `isize`/`usize`, IEEE and extended floating formats, target `long double`, and character kinds. Existing identities and the `.abix` wire format are unchanged.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Patch — ABIX 0.2.3 (Runtime-only package and diagnostics)
 
-Packaging release: `ABIX::runtime`, public headers, license and CMake package
-metadata are installed without AMC, LLVM/Clang or fmt. `ABIX_BUILD_RUNTIME_ONLY`
-provides a subproject/runtime-only build mode; `ABIXConfig.cmake` resolves fmt
-only for the optional library components. Subproject defaults no longer enable
-tests, benchmarks, AMC, DLL variants or bundled MICS installation, and
-`MICS_INSTALL` is not forced. The runtime package consumer test covers
-`ABIX::runtime` with fmt disabled. Logging gains an explicit `LogState`,
-ABIX-atomic sink/threshold registration, runtime filtering, a length-aware
-`LogRecord` callback and documented callback / cross-DLL ownership rules.
-`ABIX_LOG_THREAD_SAFE` selects thread-safe configuration (default) or the
-single-threaded/fixed-sink policy.
+Packaging release: `ABIX::runtime`, public headers, license and CMake package metadata are installed without AMC, LLVM/Clang or fmt. `ABIX_BUILD_RUNTIME_ONLY` provides a subproject/runtime-only build mode; `ABIXConfig.cmake` resolves fmt only for the optional library components. Subproject defaults no longer enable tests, benchmarks, AMC, DLL variants or bundled MICS installation, and `MICS_INSTALL` is not forced. The runtime package consumer test covers `ABIX::runtime` with fmt disabled. Logging gains an explicit `LogState`, ABIX-atomic sink/threshold registration, runtime filtering, a length-aware `LogRecord` callback and documented callback / cross-DLL ownership rules. `ABIX_LOG_THREAD_SAFE` selects thread-safe configuration (default) or the single-threaded/fixed-sink policy.
 
 See [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Patch — ABIX 0.2.4 (No-exception/no-RTTI runtime build)
 
-ABIX runtime tests and DLL plugins are compiled with `-fno-exceptions -fno-rtti`
-by default through `ABIX_RUNTIME_NO_EXCEPTIONS` and `ABIX_RUNTIME_NO_RTTI`.
-AMC keeps C++ exceptions and RTTI for LLVM/Clang/fmt/toml++ and its `try/catch`
-paths. See [`CHANGELOG.md`](../CHANGELOG.md).
+ABIX runtime tests and DLL plugins are compiled with `-fno-exceptions -fno-rtti` by default through `ABIX_RUNTIME_NO_EXCEPTIONS` and `ABIX_RUNTIME_NO_RTTI`. AMC keeps C++ exceptions and RTTI for LLVM/Clang/fmt/toml++ and its `try/catch` paths. See [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Post-0.2.0 — toolchain and ecosystem follow-ups
 
@@ -119,71 +82,47 @@ These are follow-up goals after the 0.2.0 cross-language milestone. They are not
 
 ### P0 — AMC repository split (in progress)
 
-- ABIX root is runtime-only; AMC builds from `CMakeLists.txt` against an
-  installed ABIX runtime package.
+- ABIX root is runtime-only; AMC builds from `CMakeLists.txt` against an installed ABIX runtime package.
 - AMC owns `libabix-format/abi/metadata/tools` and exports them as `AMC::*`.
 - AMC has standalone core/e2e/package/feature/provider/interop/CMake tests.
-- Remaining: move the last monorepo-only assets, extract the AMC Git history,
-  and add AMC-owned cross-platform CI.
+- Remaining: move the last monorepo-only assets, extract the AMC Git history, and add AMC-owned cross-platform CI.
 
 ### P1 — broaden the toolchain
 
 - build-system / package-manager integration;
-- deeper debugger integration (for example LLDB go-to-definition via Source
-  Origin) — LLDB C++ plugin delivered, Python helper delivered.
+- deeper debugger integration (for example LLDB go-to-definition via Source Origin) — LLDB C++ plugin delivered, Python helper delivered.
 
 ### P1 feat — AMC Interface Devirtualization (v0.3.0)
 
-ABIX Interface keeps its explicit versioned contract and runtime dispatch as the
-correctness baseline. This feature is a compile-time AMC optimization: use the
-Clang AST and ABIX metadata to prove the adapter/target reachable from a call
-site, then emit a direct adapter or native call when safe and fall back to the
-existing dispatch otherwise. It is not a new runtime mechanism and it does not
-change `.abix` contract semantics.
+ABIX Interface keeps its explicit versioned contract and runtime dispatch as the correctness baseline. This feature is a compile-time AMC optimization: use the Clang AST and ABIX metadata to prove the adapter/target reachable from a call site, then emit a direct adapter or native call when safe and fall back to the existing dispatch otherwise. It is not a new runtime mechanism and it does not change `.abix` contract semantics.
 
 Plan and analysis: [`memory/amc-interface.md`](../memory/amc-interface.md).
 
-- **P0** — reproducible baseline (direct / true vtable / ABIX unique+shared /
-  `pro::proxy`) and static `KnownTarget` direct-adapter calls.
-- **P1** — one target-determinism analysis for unique and shared proxies,
-  cross-function tracking and conservative alias fallback.
-- **P2** — guarded speculative devirtualization that preserves rebinding,
-  module unload, lifetime and concurrency semantics.
-- **P3** — whole-program / LTO target sets, with closed and extensible provider
-  sets kept distinct.
+- **P0** — reproducible baseline (direct / true vtable / ABIX unique+shared / `pro::proxy`) and static `KnownTarget` direct-adapter calls.
+- **P1** — one target-determinism analysis for unique and shared proxies, cross-function tracking and conservative alias fallback.
+- **P2** — guarded speculative devirtualization that preserves rebinding, module unload, lifetime and concurrency semantics.
+- **P3** — whole-program / LTO target sets, with closed and extensible provider sets kept distinct.
 
-Acceptance: a `KnownTarget` call site has no ABIX slot indirect dispatch and
-unchanged behavior; unknown/rebindable sites keep the dynamic path; diagnostics
-explain why a site was not optimized. See the plan for the full constraints and
-benchmark matrix.
+Acceptance: a `KnownTarget` call site has no ABIX slot indirect dispatch and unchanged behavior; unknown/rebindable sites keep the dynamic path; diagnostics explain why a site was not optimized. See the plan for the full constraints and benchmark matrix.
 
 ### P2 — ecosystem
 
 - package ecosystem;
 - broader debugger / editor integration;
-- **under discussion**: the AI-agent integration surface (advanced MCP tools,
-  workflows, token-cost studies) — decide whether these are premature; the
-  existing low-level `amc-mcp` queries remain supported.
+- **under discussion**: the AI-agent integration surface (advanced MCP tools, workflows, token-cost studies) — decide whether these are premature; the existing low-level `amc-mcp` queries remain supported.
 
 ## AI-native ABI toolchain
 
-ABIX is also developed as an AI-native ABI toolchain: an explicit ABI model is
-exactly the durable, machine-readable interface AI coding agents need. See
-[`docs/development/roadmap.md`](../docs/development/roadmap.md) for the detailed plan.
+ABIX is also developed as an AI-native ABI toolchain: an explicit ABI model is exactly the durable, machine-readable interface AI coding agents need. See [`docs/development/roadmap.md`](../docs/development/roadmap.md) for the detailed plan.
 
-Delivered so far: `amc context --format llm`, unified `abix.error/1` JSON
-errors, `amc verify`, the Metadata Region, `amc query`, the `amc-mcp` server,
-multi-module ABI knowledge base, field-width assertion, and ELF binary
-inspection via `amc metadata --from-elf`.
+Delivered so far: `amc context --format llm`, unified `abix.error/1` JSON errors, `amc verify`, the Metadata Region, `amc query`, the `amc-mcp` server, multi-module ABI knowledge base, field-width assertion, and ELF binary inspection via `amc metadata --from-elf`.
 
 ## Research / experimental
 
 - runtime materialization of the metadata image;
 - ABI adaptation / shimming — adapter generation delivered, runtime dispatch pending;
-- dynamic-language boundary layers with differential semantic verification
-  (`Aue/`).
+- dynamic-language boundary layers with differential semantic verification (`Aue/`).
 
 ## Explicitly out of scope
 
-ABIX is not a VM, an RPC framework, a universal object model, a debug-info
-format or a C-ABI wrapper. See [What ABIX Is Not](../README.md#what-abix-is-not).
+ABIX is not a VM, an RPC framework, a universal object model, a debug-info format or a C-ABI wrapper. See [What ABIX Is Not](../README.md#what-abix-is-not).

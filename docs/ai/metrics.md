@@ -60,17 +60,17 @@ ABIX metrics follow three rules:
 
 All ABIX benchmarks must report:
 
-| Field | Description |
-|-------|-------------|
-| Hardware | CPU model, core count, RAM, storage type |
-| OS / Kernel | Distribution and kernel version |
-| Compiler | Toolchain and version (e.g. Clang 22.0) |
-| ABIX version | Git commit or release tag |
-| Project / Dataset | Source of the test artifacts |
-| Task definition | Exact steps performed |
-| Sample size | Number of runs per measurement |
-| Statistical method | Mean, median, P95, standard deviation |
-| Date | When the measurement was taken |
+| Field              | Description                              |
+| ------------------ | ---------------------------------------- |
+| Hardware           | CPU model, core count, RAM, storage type |
+| OS / Kernel        | Distribution and kernel version          |
+| Compiler           | Toolchain and version (e.g. Clang 22.0)  |
+| ABIX version       | Git commit or release tag                |
+| Project / Dataset  | Source of the test artifacts             |
+| Task definition    | Exact steps performed                    |
+| Sample size        | Number of runs per measurement           |
+| Statistical method | Mean, median, P95, standard deviation    |
+| Date               | When the measurement was taken           |
 
 **Do not report only mean.** Report at minimum median and P95. Example:
 
@@ -98,37 +98,37 @@ Not all metrics are available at the same project maturity.
 
 ### Tier 1: Measurable now (ABIX 0.1.0+)
 
-| Metric | Category |
-|--------|----------|
-| TROI | AI |
-| Token Reduction Ratio | AI |
-| ABI Coverage | ABI |
-| Breaking Change Detection Rate | ABI |
-| Unsafe Acceptance Rate | ABI |
-| Inspection Speedup | Toolchain |
-| Metadata Overhead | Toolchain |
-| ABI Detection Latency | ABI |
+| Metric                         | Category  |
+| ------------------------------ | --------- |
+| TROI                           | AI        |
+| Token Reduction Ratio          | AI        |
+| ABI Coverage                   | ABI       |
+| Breaking Change Detection Rate | ABI       |
+| Unsafe Acceptance Rate         | ABI       |
+| Inspection Speedup             | Toolchain |
+| Metadata Overhead              | Toolchain |
+| ABI Detection Latency          | ABI       |
 
 ### Tier 2: Measurable after real-world adoption
 
-| Metric | Category |
-|--------|----------|
+| Metric                       | Category  |
+| ---------------------------- | --------- |
 | Integration Effort Reduction | Toolchain |
-| Migration Automation Rate | Toolchain |
-| Binary Reuse Rate | Toolchain |
-| ABI Escape Rate | ABI |
-| Impact Recall / Precision | ABI |
-| Verified Task Success Rate | Agent |
-| Human Intervention Rate | Agent |
+| Migration Automation Rate    | Toolchain |
+| Binary Reuse Rate            | Toolchain |
+| ABI Escape Rate              | ABI       |
+| Impact Recall / Precision    | ABI       |
+| Verified Task Success Rate   | Agent     |
+| Human Intervention Rate      | Agent     |
 
 ### Tier 3: Measurable during enterprise PoC
 
-| Metric | Category |
-|--------|----------|
+| Metric                | Category |
+| --------------------- | -------- |
 | Annual Cost Avoidance | Business |
-| ROI | Business |
-| Payback Period | Business |
-| ABI Risk Reduction | Business |
+| ROI                   | Business |
+| Payback Period        | Business |
+| ABI Risk Reduction    | Business |
 
 Tier 3 metrics must be computed by the adopting organization using their own historical data. ABIX provides the formulas and measurement methodology, not the absolute numbers.
 
@@ -150,10 +150,10 @@ $$
 \text{TRR} = 1 - \frac{T_{\text{ABIX}}}{T_{\text{baseline}}}
 $$
 
-| Symbol | Meaning |
-|--------|---------|
+| Symbol                | Meaning                      |
+| --------------------- | ---------------------------- |
 | $T_{\text{baseline}}$ | Tokens consumed without ABIX |
-| $T_{\text{ABIX}}$ | Tokens consumed with ABIX |
+| $T_{\text{ABIX}}$     | Tokens consumed with ABIX    |
 
 **Example:**
 
@@ -177,10 +177,10 @@ $$
 C_{\text{ABI}} = \frac{N_{\text{covered}}}{N_{\text{public}}} \times 100\%
 $$
 
-| Symbol | Meaning |
-|--------|---------|
-| $N_{\text{public}}$ | Exported ABI entities (types, functions, variables) |
-| $N_{\text{covered}}$ | Entities with valid ABIX metadata |
+| Symbol               | Meaning                                             |
+| -------------------- | --------------------------------------------------- |
+| $N_{\text{public}}$  | Exported ABI entities (types, functions, variables) |
+| $N_{\text{covered}}$ | Entities with valid ABIX metadata                   |
 
 **Example:**
 
@@ -200,10 +200,10 @@ $$
 \text{BDR} = \frac{N_{\text{detected}}}{N_{\text{actual breaking}}}
 $$
 
-| Symbol | Meaning |
-|--------|---------|
-| $N_{\text{actual breaking}}$ | Known breaking changes in the test set |
-| $N_{\text{detected}}$ | Breaking changes correctly flagged by ABIX |
+| Symbol                       | Meaning                                    |
+| ---------------------------- | ------------------------------------------ |
+| $N_{\text{actual breaking}}$ | Known breaking changes in the test set     |
+| $N_{\text{detected}}$        | Breaking changes correctly flagged by ABIX |
 
 **Example:**
 
@@ -223,9 +223,9 @@ $$
 \text{UAR} = \frac{N_{\text{incompatible accepted}}}{N_{\text{actual incompatible}}} \times 100\%
 $$
 
-| Symbol | Meaning |
-|--------|---------|
-| $N_{\text{actual incompatible}}$ | Known incompatible changes |
+| Symbol                             | Meaning                                    |
+| ---------------------------------- | ------------------------------------------ |
+| $N_{\text{actual incompatible}}$   | Known incompatible changes                 |
 | $N_{\text{incompatible accepted}}$ | Incompatible changes ABIX failed to reject |
 
 **Target:** $\text{UAR} \rightarrow 0$
@@ -248,10 +248,10 @@ $$
 \text{AER} = \frac{N_{\text{post-release}}}{N_{\text{all incidents}}} \times 100\%
 $$
 
-| Symbol | Meaning |
-|--------|---------|
+| Symbol                     | Meaning                                 |
+| -------------------------- | --------------------------------------- |
 | $N_{\text{all incidents}}$ | Total ABI issues discovered (any stage) |
-| $N_{\text{post-release}}$ | ABI issues found in production |
+| $N_{\text{post-release}}$  | ABI issues found in production          |
 
 **Example:**
 
@@ -357,10 +357,10 @@ $$
 \text{IER} = 1 - \frac{H_{\text{ABIX}}}{H_{\text{baseline}}}
 $$
 
-| Symbol | Meaning |
-|--------|---------|
+| Symbol                | Meaning            |
+| --------------------- | ------------------ |
 | $H_{\text{baseline}}$ | Hours without ABIX |
-| $H_{\text{ABIX}}$ | Hours with ABIX |
+| $H_{\text{ABIX}}$     | Hours with ABIX    |
 
 **Example:**
 
@@ -496,12 +496,12 @@ $$
 B_{\text{annual}} = B_{\text{labor}} + B_{\text{build}} + B_{\text{incident}} + B_{\text{infra}}
 $$
 
-| Component | Formula |
-|-----------|---------|
-| Labor savings | $\Delta H \times C_{\text{hour}}$ |
-| Build savings | $\Delta T_{\text{build}} \times C_{\text{compute/time}}$ |
-| Incident avoidance | $N_{\text{avoided}} \times C_{\text{incident}}$ |
-| Infrastructure savings | CI, artifact storage, registry, dev machines |
+| Component              | Formula                                                  |
+| ---------------------- | -------------------------------------------------------- |
+| Labor savings          | $\Delta H \times C_{\text{hour}}$                        |
+| Build savings          | $\Delta T_{\text{build}} \times C_{\text{compute/time}}$ |
+| Incident avoidance     | $N_{\text{avoided}} \times C_{\text{incident}}$          |
+| Infrastructure savings | CI, artifact storage, registry, dev machines             |
 
 ### ROI
 
@@ -587,9 +587,9 @@ All numbers come from reproducible benchmarks on explicitly documented hardware 
 
 ## Relation to Other Documents
 
-| Document | Scope |
-|----------|-------|
-| [`metrics.md`](metrics.md) | **This document.** Definitions, formulas, methodology. |
-| [`benchmark.md`](../benchmark/benchmark.md) | Actual measurements on specific hardware. |
-| [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md) | Deep dive into TROI / token-efficiency for AI workflows. |
-| [`metadata_modes.md`](../abix/metadata_modes.md) | Per-type overhead details (Debug / Release / RelWithDebInfo). |
+| Document                                                              | Scope                                                         |
+| --------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [`metrics.md`](metrics.md)                                            | **This document.** Definitions, formulas, methodology.        |
+| [`benchmark.md`](../benchmark/benchmark.md)                           | Actual measurements on specific hardware.                     |
+| [`troi.md`](https://github.com/Sukanle/AMC/blob/main/docs/ai/troi.md) | Deep dive into TROI / token-efficiency for AI workflows.      |
+| [`metadata_modes.md`](../abix/metadata_modes.md)                      | Per-type overhead details (Debug / Release / RelWithDebInfo). |

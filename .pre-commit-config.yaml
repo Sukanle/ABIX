@@ -1,0 +1,47 @@
+# Format staged files before every commit.
+#
+# Install the hook once per checkout:
+#   pre-commit install
+#
+# Run every hook against the whole repository:
+#   pre-commit run --all-files
+#
+# The hooks are local because the tools are already part of the development
+# environment; `language: system` keeps them on the same versions used by hand.
+
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  - repo: local
+    hooks:
+      # 1. Markdown. Join hard-wrapped prose first, then hand the result to
+      #    prettier so the two steps never disagree about line breaks.
+      - id: reflow-markdown
+        name: reflow markdown prose
+        entry: python3 scripts/reflow_markdown.py --write
+        language: system
+        files: \.md$
+        require_serial: true
+
+      - id: prettier-markdown
+        name: prettier markdown
+        entry: npx --yes prettier --write
+        language: system
+        files: \.md$
+        require_serial: true
+
+      # 2. CMake list files.
+      - id: cmakefmt
+        name: cmakefmt
+        entry: cmakefmt --in-place
+        language: system
+        files: (^|/)CMakeLists\.txt$|\.cmake$
+        require_serial: true
+
+      # 3. C and C++ sources.
+      - id: clang-format
+        name: clang-format
+        entry: clang-format -i
+        language: system
+        types_or: [c, c++]
+        require_serial: true

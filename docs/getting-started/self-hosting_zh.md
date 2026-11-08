@@ -71,9 +71,9 @@ Stage 0 是初始的手工构建 loader；Stage 1 是工具链自身构建出的
 
 ABIX 用自己的配置描述自身 core IR 并校验结果：
 
-* `SKL/ABIX/self.abic.toml` — ABIX 运行时的公开类型
-* `self.abic.toml` — AMC core IR
-* `src/self_types.cpp`、`self_types.cpp` — 被描述的输入
+- `SKL/ABIX/self.abic.toml` — ABIX 运行时的公开类型
+- `self.abic.toml` — AMC core IR
+- `src/self_types.cpp`、`self_types.cpp` — 被描述的输入
 
 集成测试会构建这些 artifact、校验、生成原生投影，并编译一个使用 `runtime::Registry::type_of<T>()` 的消费者，证明 bootstrap 闭环完好。
 
