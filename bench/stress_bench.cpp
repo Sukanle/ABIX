@@ -2,7 +2,6 @@
 #include <atomic>
 #include <chrono>
 
-#define NOMINMAX
 #include <algorithm>
 #include <string.h>
 #include <thread>

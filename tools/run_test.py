@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Run the ABIX Catch2 test suite.
+"""Run the ABIX CTest suite.
 
-AMC toolchain tests (ELF/PE metadata, metadata bootstrap, MCP compatibility and
-cross-language interop) live in the AMC repository:
-<https://github.com/Sukanle/AMC>. In particular, AMC registers its suites in
-CTest, so run `ctest --test-dir <amc-build>` there.
+`ctest` covers every registered test: the unity `test_all` cases, the standalone
+suites (lease, STD contract, owner, interface, metadata, ...) and the CMake
+package test. AMC suites live in the AMC repository.
 
 Usage:
     python tools/run_test.py
     python tools/run_test.py --build-dir build/Debug
+    python tools/run_test.py --catch2        # quick test_all smoke only
 """
 
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -26,15 +27,38 @@ def exe_name(base: str) -> str:
     return f"{base}.exe" if sys.platform == "win32" else base
 
 
+def run_ctest(build_dir: Path) -> int:
+    """Run the full CTest suite registered for `build_dir`."""
+    ctest = shutil.which("ctest")
+    if ctest is None:
+        print(
+            "\033[31mError: ctest not found; install CMake and put it on PATH\033[0m",
+            file=sys.stderr,
+        )
+        return 1
+
+    test_file = build_dir / "CTestTestfile.cmake"
+    if not test_file.exists():
+        print(f"\033[31mError: CTest file not found: {test_file}\033[0m", file=sys.stderr)
+        print("Build first: python tools/run_build.py")
+        return 1
+
+    print("\n" + "=" * 60, flush=True)
+    print("ABIX CTest Suite", flush=True)
+    print("=" * 60, flush=True)
+    result = subprocess.run([ctest, "--test-dir", str(build_dir), "--output-on-failure"])
+    return result.returncode
+
+
 def run_catch2_tests(build_dir: Path) -> int:
-    """Run the Catch2 test_all executable."""
-    print("\n" + "=" * 60)
-    print("Catch2 C++ Test Suite")
-    print("=" * 60)
+    """Run only the unity `test_all` executable (quick smoke)."""
+    print("\n" + "=" * 60, flush=True)
+    print("Catch2 test_all (quick smoke)", flush=True)
+    print("=" * 60, flush=True)
 
     test_exe = build_dir / "bin" / exe_name("test_all")
     if not test_exe.exists():
-        print(f"\033[31mError: test executable not found: {test_exe}\033[0m")
+        print(f"\033[31mError: test executable not found: {test_exe}\033[0m", file=sys.stderr)
         print("Build first: python tools/run_build.py")
         return 1
 
@@ -43,7 +67,7 @@ def run_catch2_tests(build_dir: Path) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the ABIX Catch2 test suite")
+    parser = argparse.ArgumentParser(description="Run the ABIX CTest suite")
     parser.add_argument(
         "--build-dir",
         default="build/Release",
@@ -52,7 +76,7 @@ def main() -> int:
     parser.add_argument(
         "--catch2",
         action="store_true",
-        help="Accepted for compatibility; the Catch2 suite is the only ABIX suite",
+        help="Run only the test_all unity executable (quick smoke, not the full CTest suite)",
     )
     args = parser.parse_args()
 
@@ -60,7 +84,9 @@ def main() -> int:
     if not build_dir.is_absolute():
         build_dir = PROJECT_ROOT / build_dir
 
-    return run_catch2_tests(build_dir)
+    if args.catch2:
+        return run_catch2_tests(build_dir)
+    return run_ctest(build_dir)
 
 
 if __name__ == "__main__":
