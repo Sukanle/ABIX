@@ -2,7 +2,7 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
-## v0.3.3 — v0.3.x surface freeze and v0.4.0 migration (unreleased)
+## v0.3.3 — v0.3.x surface freeze and v0.4.0 migration (2026-11-08)
 
 ### Added
 
