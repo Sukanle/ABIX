@@ -31,10 +31,6 @@ env:
   LLVM_VERSION: "22"
   FMT_VERSION: "11.2.0"
   BENCHMARK_VERSION: "1.10.0"
-  # MSYS2 is rolling; keep this pin aligned with the current ucrt64 repo.
-  WINDOWS_LLVM_VERSION: "23.1.5-1"
-  WINDOWS_FMT_VERSION: "12.2.1-1"
-  WINDOWS_BENCHMARK_VERSION: "1.10.0-1"
 
 jobs:
   linux:
@@ -307,7 +303,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\msys64\var\cache\pacman\pkg
-          key: ${{ runner.os }}-${{ runner.arch }}-abix-deps-msys2-${{ env.WINDOWS_LLVM_VERSION }}-${{ env.WINDOWS_FMT_VERSION }}-${{ env.WINDOWS_BENCHMARK_VERSION }}
+          key: ${{ runner.os }}-${{ runner.arch }}-abix-deps-msys2-latest-v${{ env.PINNED_CACHE_VERSION }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-abix-deps-msys2-
 
@@ -319,14 +315,14 @@ jobs:
           cache: true
           install: >-
             mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-clang=${{ env.WINDOWS_LLVM_VERSION }}
+            mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-ccache
-            mingw-w64-ucrt-x86_64-clang-tools-extra=${{ env.WINDOWS_LLVM_VERSION }}
-            mingw-w64-ucrt-x86_64-llvm=${{ env.WINDOWS_LLVM_VERSION }}
-            mingw-w64-ucrt-x86_64-fmt=${{ env.WINDOWS_FMT_VERSION }}
+            mingw-w64-ucrt-x86_64-clang-tools-extra
+            mingw-w64-ucrt-x86_64-llvm
+            mingw-w64-ucrt-x86_64-fmt
             mingw-w64-ucrt-x86_64-tomlplusplus
             mingw-w64-ucrt-x86_64-catch
-            mingw-w64-ucrt-x86_64-benchmark=${{ env.WINDOWS_BENCHMARK_VERSION }}
+            mingw-w64-ucrt-x86_64-benchmark
             mingw-w64-ucrt-x86_64-lua54
             mingw-w64-ucrt-x86_64-rust
             mingw-w64-ucrt-x86_64-cmake
