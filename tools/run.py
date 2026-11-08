@@ -6,7 +6,7 @@ Orchestrates the full pipeline: build → test → bench.
 Usage:
     python tools/run.py                        # build + test + bench
     python tools/run.py --build-only           # build only
-    python tools/run.py --test-only            # test only (skip build)
+    python tools/run.py --test-only            # full CTest suite (skip build)
     python tools/run.py --bench-only           # bench only (skip build)
     python tools/run.py --build-test           # build + test (skip bench)
     python tools/run.py --build-bench          # build + bench (skip test)
@@ -18,7 +18,7 @@ Usage:
 
 All build/test/bench options are forwarded to the respective scripts:
   - run_build.py:  --clean, --build-type, --generator, --with-dev, --cmake-var, ...
-  - run_test.py:   --build-dir (the ABIX Catch2 suite)
+  - run_test.py:   --build-dir (the ABIX CTest suite)
   - run_bench.py:  --bench-raw, --bench-pin, --bench-repetitions, ...
 """
 
@@ -51,13 +51,13 @@ def main() -> int:
         epilog="""\
 Pipeline stages:
   build     Configure, build, generate hotcache_dll, build DLL variants
-  test      ABIX Catch2 tests (AMC suites live in the AMC repository)
+  test      ABIX CTest suite (AMC suites live in the AMC repository)
   bench     Google Benchmark (one process per family)
 
 Examples:
   python tools/run.py                        # full pipeline
   python tools/run.py --build-only           # build only
-  python tools/run.py --test-only            # test only
+  python tools/run.py --test-only            # full CTest
   python tools/run.py --bench-only           # bench only
   python tools/run.py --build-test           # build + test
   python tools/run.py --clean --build-type Debug
@@ -71,7 +71,7 @@ Examples:
         "--build-only", action="store_true", help="Build only, skip test and bench"
     )
     pipeline.add_argument(
-        "--test-only", action="store_true", help="Test only, skip build and bench"
+        "--test-only", action="store_true", help="Test only (full CTest), skip build and bench"
     )
     pipeline.add_argument(
         "--bench-only", action="store_true", help="Bench only, skip build and test"

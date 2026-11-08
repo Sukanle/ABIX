@@ -2,6 +2,17 @@
 
 All notable changes to ABIX are recorded here. Older releases are available in the GitHub release history.
 
+## v0.3.3 — v0.3.x surface freeze and v0.4.0 migration (2026-11-08)
+
+### Added
+
+- `docs/abix/v0.4-migration.md` and `v0.4-migration_zh.md`: the breaking STD layout changes, the AMC/ABIX lockstep matrix and the regeneration checklist.
+- Deprecation notes in `docs/abix/std.md` and `std_zh.md` for `abix_optional`, `abix_result` and `abix_str`.
+
+### Compatibility
+
+- No layout change in v0.3.3. This is the last additive 0.3.x release before the v0.4.0 breaking update.
+
 ## v0.3.2 — STD conformance and language adapter rules (2026-11-08)
 
 ### Added

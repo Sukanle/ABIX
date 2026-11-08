@@ -109,6 +109,8 @@ typedef struct abix_callback_owned {
 
 producer 拥有 context，并在最后一次调用后恰好执行一次 `release`。owned callback 的 `release` 必填、不得 unwind，且不得由消费者直接调用。消费者不得在 release 后继续调用 callback。
 
+> **v0.4.0 提示：** 本文中的 `abix_optional`、`abix_result` 与 `abix_str` 布局是 v0.3.x 布局。v0.4.0 会直接替换它们，不提供兼容层；见 [`v0.4-migration_zh.md`](v0.4-migration_zh.md)。
+
 实例化与契约匹配是两件事：`abix_span<int32_t>` 实例化成功，并不等于它满足 ABIX-STD 的 `SequenceView<i32>` 契约；AMC 需证明兼容，或生成薄适配器。声明契约后，AMC 会对具体类型做 lowering：
 
 ```toml

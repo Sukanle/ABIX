@@ -77,6 +77,8 @@ typedef struct abix_callback_owned {
 
 The producer owns the context and invokes `release` exactly once after the last call. `release` is required for an owned callback, must not unwind, and must not be called by the consumer directly. The consumer must not call the callback after release.
 
+> **v0.4.0 note:** the `abix_optional`, `abix_result` and `abix_str` layouts in this document are the v0.3.x layouts. v0.4.0 replaces them without a compatibility layer; see [`v0.4-migration.md`](v0.4-migration.md).
+
 ## First primitive: borrowed span
 
 The ABIX-STD span is written as a source-level template:
