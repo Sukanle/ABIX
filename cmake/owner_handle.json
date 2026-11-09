@@ -1,0 +1,20 @@
+{
+  "abi": "abix.owner/1",
+  "source": "SKL/ABIX/Interface/OwnerABI.h",
+  "pointer_width": 64,
+  "size": 32,
+  "align": 8,
+  "fields": [
+    { "name": "object", "offset": 0, "size": 8, "type": "void *" },
+    { "name": "mode", "offset": 8, "size": 4, "type": "uint32_t" },
+    { "name": "flags", "offset": 12, "size": 4, "type": "uint32_t" },
+    { "name": "destroy", "offset": 16, "size": 8, "type": "abix_owner_destroy_fn" },
+    { "name": "module_instance", "offset": 24, "size": 8, "type": "uint64_t" }
+  ],
+  "modes": {
+    "borrowed": 0,
+    "owned": 1,
+    "copied": 2
+  },
+  "note": "Canonical 64-bit layout. The C header is authoritative; 32-bit targets derive size/alignment/offsets from the target ABI."
+}

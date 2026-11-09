@@ -387,7 +387,7 @@ if(ABIX_INSTALL)
     configure_package_config_file(
         ${SKL_ABIX_PROJ_DIR}/cmake/ABIXConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake
         INSTALL_DESTINATION ${ABIX_CMAKE_INSTALL_DIR}
-        PATH_VARS CMAKE_INSTALL_INCLUDEDIR)
+        PATH_VARS CMAKE_INSTALL_INCLUDEDIR CMAKE_INSTALL_DATAROOTDIR)
 
     # v0.4.0 is a breaking STD layout boundary: a request for < 0.4.0 must fail
     # even though the major version is unchanged. SameMinorVersion accepts
@@ -400,6 +400,7 @@ if(ABIX_INSTALL)
     install(
         FILES ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfig.cmake ${CMAKE_CURRENT_BINARY_DIR}/ABIXConfigVersion.cmake
         DESTINATION ${ABIX_CMAKE_INSTALL_DIR})
+    install(FILES ${SKL_ABIX_PROJ_DIR}/cmake/owner_handle.json DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ABIX)
     install(
         FILES ${SKL_ABIX_PROJ_DIR}/LICENSE ${SKL_ABIX_PROJ_DIR}/THIRD_PARTY_NOTICES.md
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/ABIX)

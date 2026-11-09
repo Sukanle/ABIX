@@ -45,6 +45,25 @@ const AbixCallbackOwned = extern struct {
     reserved: u32,
 };
 
+const AbixOwnerDestroyFn = *const fn (?*anyopaque) callconv(.c) void;
+const AbixOwnerHandle = extern struct {
+    object: ?*anyopaque,
+    mode: u32,
+    flags: u32,
+    destroy: ?AbixOwnerDestroyFn,
+    module_instance: u64,
+};
+
+const AbixOwnedStr = extern struct {
+    view: AbixStrUtf8,
+    owner: AbixOwnerHandle,
+};
+
+const AbixOwnedSpanI32 = extern struct {
+    view: AbixSpanI32,
+    owner: AbixOwnerHandle,
+};
+
 fn alignUp(value: usize, alignment: usize) usize {
     return (value + alignment - 1) / alignment * alignment;
 }
@@ -83,6 +102,22 @@ comptime {
     if (@sizeOf(AbixSpanI32) != 2 * pointer_size) @compileError("span size");
     if (@sizeOf(AbixCallback) != 2 * pointer_size) @compileError("callback size");
     if (@sizeOf(AbixCallbackOwned) != 3 * pointer_size + 8) @compileError("owned callback size");
+
+    if (@offsetOf(AbixOwnerHandle, "object") != 0) @compileError("owner object");
+    if (@offsetOf(AbixOwnerHandle, "mode") != pointer_size) @compileError("owner mode");
+    if (@offsetOf(AbixOwnerHandle, "flags") != pointer_size + 4) @compileError("owner flags");
+    if (pointer_size == 8) {
+        if (@offsetOf(AbixOwnerHandle, "destroy") != 16) @compileError("owner destroy");
+        if (@offsetOf(AbixOwnerHandle, "module_instance") != 24) @compileError("owner module");
+        if (@sizeOf(AbixOwnerHandle) != 32) @compileError("owner size");
+        if (@alignOf(AbixOwnerHandle) != 8) @compileError("owner alignment");
+    }
+    if (@offsetOf(AbixOwnedStr, "view") != 0) @compileError("owned string view");
+    if (@offsetOf(AbixOwnedStr, "owner") != @sizeOf(AbixStrUtf8)) @compileError("owned string owner");
+    if (@sizeOf(AbixOwnedStr) != @sizeOf(AbixStrUtf8) + @sizeOf(AbixOwnerHandle)) @compileError("owned string size");
+    if (@offsetOf(AbixOwnedSpanI32, "view") != 0) @compileError("owned span view");
+    if (@offsetOf(AbixOwnedSpanI32, "owner") != @sizeOf(AbixSpanI32)) @compileError("owned span owner");
+    if (@sizeOf(AbixOwnedSpanI32) != @sizeOf(AbixSpanI32) + @sizeOf(AbixOwnerHandle)) @compileError("owned span size");
 }
 
 extern fn conformance_optional(present: i32) AbixOptionalI32;
@@ -96,6 +131,9 @@ extern fn conformance_string_valid(value: AbixStrUtf8) i32;
 extern fn conformance_string_len(value: AbixStrUtf8) i64;
 extern fn conformance_numbers() AbixSpanI32;
 extern fn conformance_sum(values: AbixSpanI32) i64;
+extern fn conformance_owned_greeting() AbixOwnedStr;
+extern fn conformance_owned_numbers() AbixOwnedSpanI32;
+extern fn conformance_owned_live_count() i32;
 
 pub fn main() void {
     var value: i32 = 0;
@@ -130,6 +168,29 @@ pub fn main() void {
     if (conformance_string_len(invalid_string) != -1) @panic("invalid string len");
 
     if (conformance_sum(conformance_numbers()) != 6) @panic("span sum");
+
+    const owned_text = conformance_owned_greeting();
+    if (owned_text.view.data == null) @panic("owned text data");
+    if (owned_text.view.len != 5) @panic("owned text len");
+    if (owned_text.view.reserved != 0) @panic("owned text reserved");
+    if (@intFromPtr(owned_text.owner.object) != @intFromPtr(owned_text.view.data)) @panic("owned text owner");
+    if (owned_text.owner.mode != 1) @panic("owned text mode");
+    if (owned_text.owner.destroy == null) @panic("owned text destroy");
+    if (conformance_owned_live_count() != 1) @panic("owned text live");
+    owned_text.owner.destroy.?(owned_text.owner.object);
+    if (conformance_owned_live_count() != 0) @panic("owned text release");
+
+    const owned_numbers = conformance_owned_numbers();
+    if (owned_numbers.view.data == null) @panic("owned numbers data");
+    if (owned_numbers.view.len != 3) @panic("owned numbers len");
+    if (owned_numbers.view.data[0] != 4 or owned_numbers.view.data[1] != 5 or owned_numbers.view.data[2] != 6)
+        @panic("owned numbers values");
+    if (@intFromPtr(owned_numbers.owner.object) != @intFromPtr(owned_numbers.view.data)) @panic("owned numbers owner");
+    if (owned_numbers.owner.mode != 1) @panic("owned numbers mode");
+    if (owned_numbers.owner.destroy == null) @panic("owned numbers destroy");
+    if (conformance_owned_live_count() != 1) @panic("owned numbers live");
+    owned_numbers.owner.destroy.?(owned_numbers.owner.object);
+    if (conformance_owned_live_count() != 0) @panic("owned numbers release");
 
     std.debug.print("zig std conformance ok\n", .{});
 }
