@@ -27,6 +27,7 @@ All notable changes to ABIX are recorded here. Older releases are available in t
 - `docs/abix/std.md` / `std_zh.md` now document the v0.4.0 explicit layouts, the owner handle, owned views, the layout matrix and the conformance fixture.
 - `ABI-SPEC.md` §9.1 records the explicit ABIX-STD layouts, the canonical owner handle and owned views, §14.2 records the STD layout revision and lockstep matrix, and §16 documents the ABIX-STD validity-sentinel exception to ordinary reserved fields.
 - The migration and advanced-contract notes moved out of the published `docs/` tree into the local `memory/` working notes until the 1.0.0 documentation freeze; [`docs/abix/std.md`](docs/abix/std.md) keeps the normative layout summary.
+- Bumped the MICS submodule to include the consteval fallback and qualified `enum_traits` fixes required by the v0.4.0 headers.
 
 ### Compatibility
 
