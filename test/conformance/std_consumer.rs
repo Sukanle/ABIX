@@ -55,6 +55,32 @@ struct AbixCallbackOwned {
     reserved: u32,
 }
 
+type AbixOwnerDestroyFn = Option<unsafe extern "C" fn(*mut core::ffi::c_void)>;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AbixOwnerHandle {
+    object: *mut core::ffi::c_void,
+    mode: u32,
+    flags: u32,
+    destroy: AbixOwnerDestroyFn,
+    module_instance: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AbixOwnedStr {
+    view: AbixStrUtf8,
+    owner: AbixOwnerHandle,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AbixOwnedSpanI32 {
+    view: AbixSpanI32,
+    owner: AbixOwnerHandle,
+}
+
 const fn align_up(value: usize, align: usize) -> usize {
     if align == 0 {
         value
@@ -101,6 +127,27 @@ const _: () = assert!(core::mem::size_of::<AbixSpanI32>() == 2 * POINTER_SIZE);
 const _: () = assert!(core::mem::size_of::<AbixCallback>() == 2 * POINTER_SIZE);
 const _: () = assert!(core::mem::size_of::<AbixCallbackOwned>() == 3 * POINTER_SIZE + 8);
 
+const _: () = assert!(core::mem::offset_of!(AbixOwnerHandle, object) == 0);
+const _: () = assert!(core::mem::offset_of!(AbixOwnerHandle, mode) == POINTER_SIZE);
+const _: () = assert!(core::mem::offset_of!(AbixOwnerHandle, flags) == POINTER_SIZE + 4);
+const _: () = assert!(POINTER_SIZE != 8 || core::mem::offset_of!(AbixOwnerHandle, destroy) == 16);
+const _: () = assert!(POINTER_SIZE != 8 || core::mem::offset_of!(AbixOwnerHandle, module_instance) == 24);
+const _: () = assert!(POINTER_SIZE != 8 || core::mem::size_of::<AbixOwnerHandle>() == 32);
+const _: () = assert!(POINTER_SIZE != 8 || core::mem::align_of::<AbixOwnerHandle>() == 8);
+
+const _: () = assert!(core::mem::offset_of!(AbixOwnedStr, view) == 0);
+const _: () = assert!(core::mem::offset_of!(AbixOwnedStr, owner) == core::mem::size_of::<AbixStrUtf8>());
+const _: () = assert!(
+    core::mem::size_of::<AbixOwnedStr>()
+        == core::mem::size_of::<AbixStrUtf8>() + core::mem::size_of::<AbixOwnerHandle>()
+);
+const _: () = assert!(core::mem::offset_of!(AbixOwnedSpanI32, view) == 0);
+const _: () = assert!(core::mem::offset_of!(AbixOwnedSpanI32, owner) == core::mem::size_of::<AbixSpanI32>());
+const _: () = assert!(
+    core::mem::size_of::<AbixOwnedSpanI32>()
+        == core::mem::size_of::<AbixSpanI32>() + core::mem::size_of::<AbixOwnerHandle>()
+);
+
 #[link(name = "conformance_std")]
 extern "C" {
     fn conformance_optional(present: i32) -> AbixOptionalI32;
@@ -114,6 +161,9 @@ extern "C" {
     fn conformance_string_len(value: AbixStrUtf8) -> i64;
     fn conformance_numbers() -> AbixSpanI32;
     fn conformance_sum(values: AbixSpanI32) -> i64;
+    fn conformance_owned_greeting() -> AbixOwnedStr;
+    fn conformance_owned_numbers() -> AbixOwnedSpanI32;
+    fn conformance_owned_live_count() -> i32;
 }
 
 fn main() {
@@ -163,6 +213,30 @@ fn main() {
         assert_eq!(conformance_string_len(invalid_string), -1);
 
         assert_eq!(conformance_sum(conformance_numbers()), 6);
+
+        let owned_text = conformance_owned_greeting();
+        assert!(!owned_text.view.data.is_null());
+        assert_eq!(owned_text.view.len, 5);
+        assert_eq!(owned_text.view.reserved, 0);
+        assert_eq!(owned_text.owner.object, owned_text.view.data as *mut core::ffi::c_void);
+        assert_eq!(owned_text.owner.mode, 1);
+        assert!(owned_text.owner.destroy.is_some());
+        assert_eq!(conformance_owned_live_count(), 1);
+        (owned_text.owner.destroy.unwrap())(owned_text.owner.object);
+        assert_eq!(conformance_owned_live_count(), 0);
+
+        let owned_numbers = conformance_owned_numbers();
+        assert!(!owned_numbers.view.data.is_null());
+        assert_eq!(owned_numbers.view.len, 3);
+        assert_eq!(owned_numbers.view.data.read(), 4);
+        assert_eq!(owned_numbers.view.data.add(1).read(), 5);
+        assert_eq!(owned_numbers.view.data.add(2).read(), 6);
+        assert_eq!(owned_numbers.owner.object, owned_numbers.view.data as *mut core::ffi::c_void);
+        assert_eq!(owned_numbers.owner.mode, 1);
+        assert!(owned_numbers.owner.destroy.is_some());
+        assert_eq!(conformance_owned_live_count(), 1);
+        (owned_numbers.owner.destroy.unwrap())(owned_numbers.owner.object);
+        assert_eq!(conformance_owned_live_count(), 0);
     }
 
     println!("rust std conformance ok");

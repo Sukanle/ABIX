@@ -1016,16 +1016,17 @@ loading ──activate──▶ active ──begin_unload──▶ draining ─�
 
 命名空间 `skl::abix::owner`。Interface ABI 说明「怎么调用对象」，Owner ABI 说明「谁拥有、谁释放、释放代码在哪」。
 
-| 符号                                                      | 类型              | 说明                                                              |
-| --------------------------------------------------------- | ----------------- | ----------------------------------------------------------------- |
-| `abix_owner_abi_version`                                  | `uint32_t`        | Owner ABI 版本                                                    |
-| `mode`                                                    | enum              | `borrowed` / `owned` / `copied`；`to_string` 给出名字             |
-| `destroy_fn`                                              | `void (*)(void*)` | 创建方的销毁入口，固定 C ABI                                      |
-| `handle`                                                  | struct（32 字节） | POD 句柄：`object`、`mode`、`flags`、`destroy`、`module_instance` |
-| `valid(handle)`                                           | `bool`            | `object != nullptr`                                               |
-| `make_borrowed(object)`                                   | `handle`          | 非拥有引用                                                        |
-| `make_owned(object, destroy, module_instance = invalid)`  | `handle`          | 独占所有权，经 `destroy` 释放                                     |
-| `make_copied(object, destroy, module_instance = invalid)` | `handle`          | 独立副本，经 `destroy` 释放                                       |
+| 符号                                                      | 类型                       | 说明                                                              |
+| --------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------- |
+| `abix_owner_abi_version`                                  | `uint32_t`                 | Owner ABI 版本                                                    |
+| `mode`                                                    | enum                       | `borrowed` / `owned` / `copied`；`to_string` 给出名字             |
+| `destroy_fn`                                              | `void (*)(void*)`          | 创建方的销毁入口，固定 C ABI                                      |
+| `abix_owner_handle`                                       | C struct（64 位 32 字节）  | C 可见的规范 owner handle                                         |
+| `handle`                                                  | `abix_owner_handle` 的别名 | POD 句柄：`object`、`mode`、`flags`、`destroy`、`module_instance` |
+| `valid(handle)`                                           | `bool`                     | `object != nullptr`                                               |
+| `make_borrowed(object)`                                   | `handle`                   | 非拥有引用                                                        |
+| `make_owned(object, destroy, module_instance = invalid)`  | `handle`                   | 独占所有权，经 `destroy` 释放                                     |
+| `make_copied(object, destroy, module_instance = invalid)` | `handle`                   | 独立副本，经 `destroy` 释放                                       |
 
 `handle` 字段：`object`（对消费者不透明）、`mode`、`flags`、`destroy`（owned 必填、copied 可选）、`module_instance`（诊断用：哪次加载创建了它）。
 

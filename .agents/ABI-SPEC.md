@@ -200,6 +200,29 @@ The P0 contracts (sequence view, string view, opaque handle, ownership, error bo
 
 The string view is `abix_str<CodeUnit> = { const CodeUnit *data; uint64_t len; uint32_t encoding; uint32_t reserved; }`; the trailing `reserved` makes the former implicit padding explicit and a non-zero value fails closed.
 
+The canonical owner handle is a C-visible POD:
+
+```c
+typedef struct abix_owner_handle {
+    void *object;
+    uint32_t mode;                // borrowed = 0, owned = 1, copied = 2
+    uint32_t flags;               // must be 0 in v1
+    abix_owner_destroy_fn destroy;
+    uint64_t module_instance;
+} abix_owner_handle;
+```
+
+On a 64-bit target it is 32 bytes with 8-byte alignment (`object=0`, `mode=8`, `flags=12`, `destroy=16`, `module_instance=24`). A 32-bit target derives size, alignment and offsets from the target ABI; the C header is authoritative and AMC parses it rather than hard-coding the 64-bit constants.
+
+An owned view is a borrowed view plus an owner:
+
+```text
+abix_owned_str       = { abix_str view; abix_owner_handle owner; }
+abix_owned_span<T>   = { abix_span<T> view; abix_owner_handle owner; }
+```
+
+`view` remains the existing borrowed layout and can be passed to any `abix_str` / `abix_span<T>` parameter without a copy. The consumer releases the backing allocation exactly once through `owner.destroy(owner.object)`. The borrowed view types are not extended with an owner field.
+
 A layout revision is not a compatible extension: an artifact or generated binding built against the v0.3.x optional/result/string layouts is invalid under v0.4.0 and must be regenerated. There is no `_v1`/`_v2` alias and no runtime fallback.
 
 A non-template contract type (for example a callback struct) is declared with `[[contract-type]]`; a container lowered through accessors uses `[[view]]` (contiguous) or `[[range]]` (iteration).

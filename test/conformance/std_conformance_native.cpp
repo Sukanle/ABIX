@@ -19,7 +19,10 @@
 // v0.4.0 explicit layout itself instead of reusing a language-native optional,
 // result or string type.
 
+#include "SKL/ABIX/Interface/OwnerABI.h"
 #include "SKL/ABIX/STD/Optional.h"
+#include "SKL/ABIX/STD/OwnedSpan.h"
+#include "SKL/ABIX/STD/OwnedString.h"
 #include "SKL/ABIX/STD/Result.h"
 #include "SKL/ABIX/STD/Span.h"
 #include "SKL/ABIX/STD/String.h"
@@ -36,6 +39,17 @@ namespace {
 
 const int32_t kNumbers[] = {1, 2, 3};
 char kGreeting[] = "hello";
+int32_t g_owned_live = 0;
+
+void destroy_owned_chars(void *object) noexcept {
+    delete[] static_cast<char *>(object);
+    --g_owned_live;
+}
+
+void destroy_owned_i32(void *object) noexcept {
+    delete[] static_cast<int32_t *>(object);
+    --g_owned_live;
+}
 
 bool optional_header_valid(const abix_optional_i32 &value) noexcept {
     return value.reserved == 0 && (value.discriminant == 0 || value.discriminant == 1);
@@ -116,4 +130,24 @@ CONFORMANCE_API int64_t conformance_sum(abix_span_i32 values) {
     }
     return sum;
 }
+
+CONFORMANCE_API abix_owned_str conformance_owned_greeting() {
+    char *text = new char[6]{'o', 'w', 'n', 'e', 'd', '\0'};
+    ++g_owned_live;
+    return {
+        {text, 5, static_cast<uint32_t>(abix_std::Encoding::utf8), 0},
+        {text, ABIX_OWNER_OWNED, 0, &destroy_owned_chars, 0},
+    };
+}
+
+CONFORMANCE_API abix_owned_span_i32 conformance_owned_numbers() {
+    int32_t *values = new int32_t[3]{4, 5, 6};
+    ++g_owned_live;
+    return {
+        {values, 3},
+        {values, ABIX_OWNER_OWNED, 0, &destroy_owned_i32, 0},
+    };
+}
+
+CONFORMANCE_API int32_t conformance_owned_live_count() { return g_owned_live; }
 }

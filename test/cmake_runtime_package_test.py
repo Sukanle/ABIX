@@ -102,6 +102,9 @@ def main() -> int:
                 "cmake_minimum_required(VERSION 3.20)\n"
                 "project(abix_runtime_consumer LANGUAGES CXX)\n"
                 "find_package(ABIX 0.4.0 CONFIG REQUIRED)\n"
+                'if(NOT EXISTS "${ABIX_OWNER_HANDLE_JSON}")\n'
+                '  message(FATAL_ERROR "missing ABIX owner handle metadata: ${ABIX_OWNER_HANDLE_JSON}")\n'
+                "endif()\n"
                 "add_executable(consumer main.cpp)\n"
                 "target_link_libraries(consumer PRIVATE ABIX::runtime)\n"
             )

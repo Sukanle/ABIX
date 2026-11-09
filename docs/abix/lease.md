@@ -192,7 +192,7 @@ Acquire Lease
 
 - Acquire must happen before the object is handed to the consumer; there must be no create/acquire window.
 - If creation fails, release the lease immediately.
-- `owner::handle` remains the module/ownership identity used for diagnosis and mapping.
+- `owner::handle` remains the module/ownership identity used for diagnosis and mapping; its canonical C spelling is `abix_owner_handle`.
 - `owner::ref` (C++) holds the same semantic lease internally.
 - Rust/Zig wrappers hold `object + destroy + lease` and release in `Drop` / `deinit()`.
 - `destroy` must have a no-unwind contract.

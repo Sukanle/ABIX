@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "SKL/ABIX/Interface/OwnerABI.h"
+
 #if defined(_WIN32)
 #  define CONFORMANCE_IMPORT __declspec(dllimport)
 #else
@@ -41,6 +43,19 @@ typedef struct {
     uint64_t len;
 } conformance_span_i32;
 
+typedef abix_owner_destroy_fn conformance_owner_destroy_fn;
+typedef abix_owner_handle conformance_owner_handle;
+
+typedef struct {
+    conformance_str_utf8 view;
+    conformance_owner_handle owner;
+} conformance_owned_str;
+
+typedef struct {
+    conformance_span_i32 view;
+    conformance_owner_handle owner;
+} conformance_owned_span_i32;
+
 typedef int32_t (*conformance_callback_fn)(void *context);
 typedef struct {
     conformance_callback_fn invoke;
@@ -62,6 +77,13 @@ typedef struct {
 #define STR_ALIGN MAX(MAX(sizeof(void *), _Alignof(uint64_t)), _Alignof(uint32_t))
 #define STR_SIZE ALIGN_UP(STR_RESERVED_OFFSET + sizeof(uint32_t), STR_ALIGN)
 
+#define OWNER_MODE_OFFSET sizeof(void *)
+#define OWNER_FLAGS_OFFSET (OWNER_MODE_OFFSET + sizeof(uint32_t))
+#define OWNER_DESTROY_OFFSET ALIGN_UP(OWNER_FLAGS_OFFSET + sizeof(uint32_t), _Alignof(conformance_owner_destroy_fn))
+#define OWNER_MODULE_OFFSET ALIGN_UP(OWNER_DESTROY_OFFSET + sizeof(void *), _Alignof(uint64_t))
+#define OWNER_ALIGN MAX(MAX(_Alignof(void *), _Alignof(uint64_t)), _Alignof(uint32_t))
+#define OWNER_SIZE ALIGN_UP(OWNER_MODULE_OFFSET + sizeof(uint64_t), OWNER_ALIGN)
+
 _Static_assert(sizeof(conformance_optional_i32) == 12, "C optional_i32 layout");
 _Static_assert(offsetof(conformance_optional_i32, discriminant) == 0, "C optional_i32 layout");
 _Static_assert(offsetof(conformance_optional_i32, reserved) == 4, "C optional_i32 layout");
@@ -80,6 +102,23 @@ _Static_assert(sizeof(conformance_str_utf8) == STR_SIZE, "C string layout");
 _Static_assert(sizeof(conformance_callback) == 2 * sizeof(void *), "C callback layout");
 _Static_assert(sizeof(conformance_callback_owned) == 3 * sizeof(void *) + 8, "C owned callback layout");
 
+_Static_assert(offsetof(conformance_owner_handle, object) == 0, "C owner handle layout");
+_Static_assert(offsetof(conformance_owner_handle, mode) == OWNER_MODE_OFFSET, "C owner handle layout");
+_Static_assert(offsetof(conformance_owner_handle, flags) == OWNER_FLAGS_OFFSET, "C owner handle layout");
+_Static_assert(offsetof(conformance_owner_handle, destroy) == OWNER_DESTROY_OFFSET, "C owner handle layout");
+_Static_assert(offsetof(conformance_owner_handle, module_instance) == OWNER_MODULE_OFFSET, "C owner handle layout");
+_Static_assert(sizeof(conformance_owner_handle) == OWNER_SIZE, "C owner handle layout");
+
+_Static_assert(offsetof(conformance_owned_str, view) == 0, "C owned string layout");
+_Static_assert(offsetof(conformance_owned_str, owner) == sizeof(conformance_str_utf8), "C owned string layout");
+_Static_assert(sizeof(conformance_owned_str) == sizeof(conformance_str_utf8) + sizeof(conformance_owner_handle),
+    "C owned string layout");
+
+_Static_assert(offsetof(conformance_owned_span_i32, view) == 0, "C owned span layout");
+_Static_assert(offsetof(conformance_owned_span_i32, owner) == sizeof(conformance_span_i32), "C owned span layout");
+_Static_assert(sizeof(conformance_owned_span_i32) == sizeof(conformance_span_i32) + sizeof(conformance_owner_handle),
+    "C owned span layout");
+
 CONFORMANCE_IMPORT conformance_optional_i32 conformance_optional(int32_t present);
 CONFORMANCE_IMPORT int32_t conformance_optional_valid(conformance_optional_i32 value);
 CONFORMANCE_IMPORT int32_t conformance_optional_read(conformance_optional_i32 value, int32_t *out);
@@ -91,6 +130,9 @@ CONFORMANCE_IMPORT int32_t conformance_string_valid(conformance_str_utf8 value);
 CONFORMANCE_IMPORT int64_t conformance_string_len(conformance_str_utf8 value);
 CONFORMANCE_IMPORT conformance_span_i32 conformance_numbers(void);
 CONFORMANCE_IMPORT int64_t conformance_sum(conformance_span_i32 values);
+CONFORMANCE_IMPORT conformance_owned_str conformance_owned_greeting(void);
+CONFORMANCE_IMPORT conformance_owned_span_i32 conformance_owned_numbers(void);
+CONFORMANCE_IMPORT int32_t conformance_owned_live_count(void);
 
 int main(void) {
     conformance_optional_i32 some = conformance_optional(1);
@@ -133,6 +175,40 @@ int main(void) {
 
     if (conformance_sum(conformance_numbers()) != 6) {
         return 9;
+    }
+
+    conformance_owned_str owned_text = conformance_owned_greeting();
+    if (owned_text.view.data == NULL || owned_text.view.len != 5 || owned_text.view.reserved != 0) {
+        return 10;
+    }
+    if (owned_text.owner.object != owned_text.view.data
+        || owned_text.owner.mode != 1
+        || owned_text.owner.destroy == NULL
+        || conformance_owned_live_count() != 1) {
+        return 11;
+    }
+    owned_text.owner.destroy(owned_text.owner.object);
+    if (conformance_owned_live_count() != 0) {
+        return 12;
+    }
+
+    conformance_owned_span_i32 owned_numbers = conformance_owned_numbers();
+    if (owned_numbers.view.data == NULL
+        || owned_numbers.view.len != 3
+        || owned_numbers.view.data[0] != 4
+        || owned_numbers.view.data[1] != 5
+        || owned_numbers.view.data[2] != 6) {
+        return 13;
+    }
+    if (owned_numbers.owner.object != owned_numbers.view.data
+        || owned_numbers.owner.mode != 1
+        || owned_numbers.owner.destroy == NULL
+        || conformance_owned_live_count() != 1) {
+        return 14;
+    }
+    owned_numbers.owner.destroy(owned_numbers.owner.object);
+    if (conformance_owned_live_count() != 0) {
+        return 15;
     }
 
     printf("c std conformance ok\n");

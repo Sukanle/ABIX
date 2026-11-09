@@ -168,20 +168,54 @@ code unit 按数据指针 pointee 的 `TypeID` 匹配；encoding 是**运行期�
 
 ## Owner 投影
 
-`abix_std::Owner<T>` 是现有 `owner::handle` 的源码级投影，不是新的 ABI 类型。模板参数只是生成绑定的标签；布局与 `owner::handle` 完全一致：
+规范 owner handle 是 C 可见的 `abix_owner_handle`；`abix_std::Owner<T>` 与 `skl::abix::owner::handle` 是同一类型的源码拼写，不是独立布局。模板参数只是生成绑定的标签：
+
+```c
+typedef void (*abix_owner_destroy_fn)(void *object);
+
+typedef struct abix_owner_handle {
+    void *object;
+    uint32_t mode;                // borrowed = 0, owned = 1, copied = 2
+    uint32_t flags;               // v1 必须为 0
+    abix_owner_destroy_fn destroy;
+    uint64_t module_instance;
+} abix_owner_handle;
+```
+
+64 位目标上 handle 为 32 字节、8 字节对齐（`object=0`、`mode=8`、`flags=12`、`destroy=16`、`module_instance=24`）。32 位目标的大小与偏移由目标 ABI 决定；`SKL/ABIX/Interface/OwnerABI.h` 是权威，AMC 解析它而不是硬编码 64 位值。安装包通过 `ABIX_OWNER_HANDLE_JSON`（`share/ABIX/owner_handle.json`）暴露规范布局。
 
 ```text
-Owner<T> = owner::handle
+Owner<T> = abix_owner_handle
 instances = abix_owner_<Type>   // 生成名称
 runtime = owner::ref（C++）或语言 wrapper
 ```
 
 handle 携带身份、mode、destroy 与 module instance。保证 destroy 入口有效的模块 lease 是独立的 `abix_lease` C ABI，见 [`lease_zh.md`](lease_zh.md)。
 
+### Owned view
+
+owned view 是 borrowed view 加 owner；不改变 borrowed view 的布局：
+
+```text
+abix_owned_str       = { abix_str view; abix_owner_handle owner; }
+abix_owned_span<T>   = { abix_span<T> view; abix_owner_handle owner; }
+
+abix_owned_str_utf8
+abix_owned_span_i32
+abix_owned_span_<ContainerElement>
+```
+
+- `view` 可以直接传给任何 `abix_str` / `abix_span<T>` 参数，不需要复制。
+- 消费者通过 `owner.destroy(owner.object)` 恰好释放一次底层分配。
+- producer 让 `owner.object` 与 `view.data` 指向同一分配；`mode` 为 `owned` (1)，`flags` 为 0，`module_instance` 在 lease 集成前为 0。
+- Rust/C++/Zig 可提供 RAII wrapper，但 ABI 本身是显式的 `view + owner` 对。
+
 ### 最终 API
 
 - 源码类型：`abix_std::Owner<T>`
+- 规范 C 类型：`abix_owner_handle`
 - 生成实例：`abix_owner_<Type>`
+- owned 实例：`abix_owned_str_utf8`、`abix_owned_span_i32`、`abix_owned_span_<Type>`
 - 运行时：C++ 用 `owner::ref`；Rust/Zig 用生成的 wrapper
 - `T` 只是标签，不新增字段
 - destroy 必须来自创建模块；release 前必须持有 `abix_lease`
@@ -199,7 +233,9 @@ ABIX 描述布局，不描述语言类型。AMC 用显式 adapter 做 lowering�
 | `abix_span<T>`        | `&[T]`                       | slice                  | 仅借用；元素 `TypeID` 与长度单位必须匹配                                                                                      |
 | `abix_callback`       | function + context           | fn + context           | borrowed：调用方保持 context 存活并负责注销                                                                                   |
 | `abix_callback_owned` | function + context + release | fn + context + release | producer 拥有 context；最后一次调用后恰好 release 一次；不得 unwind；release 后不得再调用                                     |
-| `Owner<T>`            | wrapper                      | wrapper                | `owner::handle` 的别名；destroy 来自创建模块；release 前持有 `abix_lease`                                                     |
+| `Owner<T>`            | wrapper                      | wrapper                | `abix_owner_handle` 的别名；destroy 来自创建模块；release 前持有 `abix_lease`                                                 |
+| `abix_owned_str`      | view + owner wrapper         | view + owner wrapper   | `view` 可直接作为 `abix_str`；通过 `owner.destroy(owner.object)` 恰好释放一次                                                 |
+| `abix_owned_span<T>`  | view + owner wrapper         | view + owner wrapper   | `view` 可直接作为 `abix_span<T>`；通过 `owner.destroy(owner.object)` 恰好释放一次                                             |
 
 Rust `Option<T>` 与 `Result<T, E>` 使用 niche 优化，size、alignment 或 discriminant 范围可能不同；`transmute` 与 `#[repr(transparent)]` cast 都不是合法 adapter。Zig error union 是 tagged union，不是 `{ status, value }`；必须显式 lowering。
 
@@ -209,15 +245,18 @@ Rust `Option<T>` 与 `Result<T, E>` 使用 niche 优化，size、alignment 或 d
 
 v0.4.0 首批实例的具体值：
 
-| 实例                                  | 大小 | 对齐 | payload 偏移                                    |
-| ------------------------------------- | ---- | ---- | ----------------------------------------------- |
-| `abix_optional<int32_t>`              | 12   | 4    | 8                                               |
-| `abix_optional<int64_t>`              | 16   | 8    | 8                                               |
-| `abix_optional<void *>`（64 位）      | 16   | 8    | 8                                               |
-| `abix_result<int32_t>`                | 12   | 4    | 8                                               |
-| `abix_result<int64_t>`                | 16   | 8    | 8                                               |
-| `abix_str<char>`（64 位）             | 24   | 8    | `data=0`、`len=8`、`encoding=16`、`reserved=20` |
-| `abix_str<char>`（32 位，u64 对齐 4） | 20   | 4    | `data=0`、`len=4`、`encoding=12`、`reserved=16` |
+| 实例                                  | 大小 | 对齐 | payload 偏移                                                         |
+| ------------------------------------- | ---- | ---- | -------------------------------------------------------------------- |
+| `abix_optional<int32_t>`              | 12   | 4    | 8                                                                    |
+| `abix_optional<int64_t>`              | 16   | 8    | 8                                                                    |
+| `abix_optional<void *>`（64 位）      | 16   | 8    | 8                                                                    |
+| `abix_result<int32_t>`                | 12   | 4    | 8                                                                    |
+| `abix_result<int64_t>`                | 16   | 8    | 8                                                                    |
+| `abix_str<char>`（64 位）             | 24   | 8    | `data=0`、`len=8`、`encoding=16`、`reserved=20`                      |
+| `abix_str<char>`（32 位，u64 对齐 4） | 20   | 4    | `data=0`、`len=4`、`encoding=12`、`reserved=16`                      |
+| `abix_owner_handle`（64 位）          | 32   | 8    | `object=0`、`mode=8`、`flags=12`、`destroy=16`、`module_instance=24` |
+| `abix_owned_str`（64 位）             | 56   | 8    | `view=0`、`owner=24`                                                 |
+| `abix_owned_span_i32`（64 位）        | 48   | 8    | `view=0`、`owner=16`                                                 |
 
 指针、64 位与 over-aligned 实例按目标的 `alignof(T)` 计算；表格是检查，不替代公式。`test/conformance/run_std_conformance.py` 构建一个 native library，并用 C、C++、Rust、Zig 四个消费者读取它；宿主支持 `-m32` 时还会跑 32 位 C/C++ 矩阵。`test/std_contract_test.cpp` 固定 C++ 断言与 v0.3.x → v0.4.0 的负向用例。
 

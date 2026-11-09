@@ -3,6 +3,8 @@
 #include "SKL/ABIX/STD/Callback.h"
 #include "SKL/ABIX/STD/Layout.h"
 #include "SKL/ABIX/STD/Optional.h"
+#include "SKL/ABIX/STD/OwnedSpan.h"
+#include "SKL/ABIX/STD/OwnedString.h"
 #include "SKL/ABIX/STD/Owner.h"
 #include "SKL/ABIX/STD/Result.h"
 #include "SKL/ABIX/STD/Span.h"
@@ -198,12 +200,78 @@ TEST_CASE("std_contract.owner_projection_is_owner_handle", "[std][contract]") {
     using canonical = skl::abix::owner::handle;
 
     static_assert(std::is_same<projected, canonical>::value, "Owner<T> must not introduce a new ABI type");
+    static_assert(std::is_same<canonical, abix_owner_handle>::value, "owner::handle must be the C ABI type");
     static_assert(sizeof(projected) == sizeof(canonical), "Owner<T> must not change the layout");
     static_assert(alignof(projected) == alignof(canonical), "Owner<T> must not change the alignment");
 
     CHECK(sizeof(projected) == sizeof(canonical));
     CHECK(alignof(projected) == alignof(canonical));
 }
+
+TEST_CASE("std_contract.owner_handle_layout_audit", "[std][contract]") {
+    static_assert(offsetof(abix_owner_handle, object) == 0);
+    static_assert(offsetof(abix_owner_handle, mode) == sizeof(void *));
+    static_assert(offsetof(abix_owner_handle, flags) == sizeof(void *) + 4);
+    static_assert(offsetof(abix_owner_handle, destroy) >= sizeof(void *) + 8);
+    static_assert(offsetof(abix_owner_handle, module_instance) > offsetof(abix_owner_handle, destroy));
+    static_assert(sizeof(void *) != 8 || offsetof(abix_owner_handle, destroy) == 16);
+    static_assert(sizeof(void *) != 8 || offsetof(abix_owner_handle, module_instance) == 24);
+    static_assert(sizeof(void *) != 8 || sizeof(abix_owner_handle) == 32);
+    static_assert(sizeof(void *) != 8 || alignof(abix_owner_handle) == 8);
+
+    if (sizeof(void *) == 8) {
+        CHECK(sizeof(abix_owner_handle) == 32);
+    } else {
+        CHECK(sizeof(abix_owner_handle) == sizeof(void *) + 8 + sizeof(void *) + sizeof(uint64_t));
+    }
+
+    CHECK(offsetof(abix_owner_handle, object) == 0);
+    CHECK(offsetof(abix_owner_handle, mode) == sizeof(void *));
+    CHECK(offsetof(abix_owner_handle, flags) == sizeof(void *) + 4);
+    CHECK(abix_owner_handle{}.flags == 0);
+
+    int object = 0;
+    const auto borrowed = skl::abix::owner::make_borrowed(&object);
+    const auto owned = skl::abix::owner::make_owned(&object, [](void *) {});
+    const auto copied = skl::abix::owner::make_copied(&object, [](void *) {});
+    CHECK(borrowed.mode == ABIX_OWNER_BORROWED);
+    CHECK(owned.mode == ABIX_OWNER_OWNED);
+    CHECK(copied.mode == ABIX_OWNER_COPIED);
+    CHECK(borrowed.destroy == nullptr);
+    CHECK(owned.destroy != nullptr);
+    CHECK(copied.destroy != nullptr);
+    CHECK(skl::abix::owner::valid(owned));
+}
+
+TEST_CASE("std_contract.owned_view_layout_audit", "[std][contract]") {
+    using owned_str = abix_owned_str;
+    using owned_span = abix_std::abix_owned_span<std::int32_t>;
+
+    static_assert(offsetof(owned_str, view) == 0);
+    static_assert(offsetof(owned_str, owner) == sizeof(abix_str_utf8));
+    static_assert(sizeof(owned_str) == sizeof(abix_str_utf8) + sizeof(abix_owner_handle));
+    static_assert(std::is_same<abix_owned_str_utf8, abix_owned_str>::value);
+
+    static_assert(offsetof(owned_span, view) == 0);
+    static_assert(offsetof(owned_span, owner) == sizeof(abix_span_i32));
+    static_assert(sizeof(owned_span) == sizeof(abix_span_i32) + sizeof(abix_owner_handle));
+    static_assert(std::is_same<abix_owned_span_i32, owned_span>::value);
+
+    CHECK(sizeof(owned_str) == sizeof(abix_str_utf8) + sizeof(abix_owner_handle));
+    CHECK(sizeof(owned_span) == sizeof(abix_span_i32) + sizeof(abix_owner_handle));
+
+    // The view and the owner refer to the same allocation; the owner is the only
+    // release path.
+    char buffer[] = "owned";
+    owned_str value{
+        {buffer, 5, 0, 0},
+        {buffer, ABIX_OWNER_OWNED, 0, nullptr, 0}
+    };
+    CHECK(value.view.data == value.owner.object);
+    CHECK(value.view.len == 5);
+    CHECK(value.owner.mode == ABIX_OWNER_OWNED);
+}
+
 
 TEST_CASE("std_contract.result_status_roundtrip", "[std][contract]") {
     using result_i32 = abix_std::abix_result<std::int32_t>;

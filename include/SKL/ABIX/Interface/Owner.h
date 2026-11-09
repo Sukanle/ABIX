@@ -19,6 +19,7 @@
 #include <stdint.h>
 
 #include "SKL/ABIX/Interface/Lease.h"
+#include "SKL/ABIX/Interface/OwnerABI.h"
 
 // ABIX Interface layer — the owner ABI.
 //
@@ -44,13 +45,17 @@ using skl::abix::poly::ModuleControl;
 using skl::abix::poly::ModuleInstanceId;
 using skl::abix::poly::ModuleLease;
 
-constexpr uint32_t abix_owner_abi_version = 1;
+constexpr uint32_t abix_owner_abi_version = ABIX_OWNER_ABI_VERSION;
 
 enum class mode : uint32_t {
     borrowed = 0,   // non-owning reference; the borrower must not release it
     owned = 1,      // exclusive ownership transferred; released through destroy
     copied = 2,     // independent copy; released through its own destroy
 };
+
+static_assert(static_cast<uint32_t>(mode::borrowed) == ABIX_OWNER_BORROWED, "owner mode ABI changed");
+static_assert(static_cast<uint32_t>(mode::owned) == ABIX_OWNER_OWNED, "owner mode ABI changed");
+static_assert(static_cast<uint32_t>(mode::copied) == ABIX_OWNER_COPIED, "owner mode ABI changed");
 
 constexpr const char *to_string(mode value) noexcept {
     switch (value) {
@@ -63,19 +68,13 @@ constexpr const char *to_string(mode value) noexcept {
 
 // The creator's destruction entry, with a fixed C ABI. The creator owns both the
 // allocation and the deallocator; the consumer only calls this.
-using destroy_fn = void (*)(void *object);
+using destroy_fn = ::abix_owner_destroy_fn;
 
-// Opaque owner handle. POD and boundary-stable. `object` is opaque to the
-// consumer; `destroy` is the creator's release binding (required for owned,
-// optional for copied); `module_instance` is diagnostic (which load created it).
-struct handle {
-    void *object;               //  8
-    uint32_t mode;              //  4
-    uint32_t flags;             //  4
-    destroy_fn destroy;         //  8
-    uint64_t module_instance;   //  8
-};
-static_assert(sizeof(handle) == 32, "owner::handle wire layout changed");
+// The canonical owner handle is the C-visible `abix_owner_handle`. This alias
+// keeps the C++ spelling without introducing a second layout. `object` is opaque
+// to the consumer; `destroy` is the creator's release binding (required for
+// owned, optional for copied); `module_instance` is the creator's load identity.
+using handle = ::abix_owner_handle;
 
 inline bool valid(const handle &value) noexcept { return value.object != nullptr; }
 

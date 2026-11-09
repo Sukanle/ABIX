@@ -20,10 +20,11 @@
 
 // ABIX-STD owner projection.
 //
-// This is deliberately not a new ABI type: Owner<T> is a source-level alias for
-// the existing owner::handle. The template parameter is a source-level label
-// for generated bindings; it does not add a field or change the layout.
-// Concrete instances are named abix_owner_<Type> by the generator.
+// `abix_std::Owner<T>` is a source-level alias for the canonical C-visible
+// `abix_owner_handle` (also spelled `skl::abix::owner::handle` in C++). The
+// template parameter is a source-level label for generated bindings; it does not
+// add a field or change the layout. Concrete instances are named
+// `abix_owner_<Type>` by the generator.
 //
 // Cross-language leases are provided by Interface/LeaseABI.h: the owner handle
 // carries identity and destroy, while the lease keeps the module mapped until
