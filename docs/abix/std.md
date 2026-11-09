@@ -177,20 +177,54 @@ The code unit is matched by the data pointer's pointee `TypeID`; the encoding is
 
 ## Owner projection
 
-`abix_std::Owner<T>` is a source-level projection of the existing `owner::handle`, not a new ABI type. The template parameter is a label for generated bindings; the layout is exactly `owner::handle`:
+The canonical owner handle is the C-visible `abix_owner_handle`; `abix_std::Owner<T>` and `skl::abix::owner::handle` are source-level spellings of the same type, not separate layouts. The template parameter is a label for generated bindings:
+
+```c
+typedef void (*abix_owner_destroy_fn)(void *object);
+
+typedef struct abix_owner_handle {
+    void *object;
+    uint32_t mode;                // borrowed = 0, owned = 1, copied = 2
+    uint32_t flags;               // must be 0 in v1
+    abix_owner_destroy_fn destroy;
+    uint64_t module_instance;
+} abix_owner_handle;
+```
+
+On 64-bit targets the handle is 32 bytes with 8-byte alignment (`object=0`, `mode=8`, `flags=12`, `destroy=16`, `module_instance=24`). On 32-bit targets the size and offsets follow the target ABI; `SKL/ABIX/Interface/OwnerABI.h` is authoritative and AMC parses it instead of hard-coding the 64-bit values. The installed package exposes the canonical layout through `ABIX_OWNER_HANDLE_JSON` (`share/ABIX/owner_handle.json`).
 
 ```text
-Owner<T> = owner::handle
+Owner<T> = abix_owner_handle
 instances = abix_owner_<Type>   // generated names
 runtime = owner::ref (C++) or a language wrapper
 ```
 
 The handle carries identity, mode, destroy and module instance. The module lease that keeps the destroy entry valid is the separate `abix_lease` C ABI described in [`lease.md`](lease.md).
 
+### Owned views
+
+An owned view is a borrowed view plus an owner; it does not change the borrowed view layouts:
+
+```text
+abix_owned_str       = { abix_str view; abix_owner_handle owner; }
+abix_owned_span<T>   = { abix_span<T> view; abix_owner_handle owner; }
+
+abix_owned_str_utf8
+abix_owned_span_i32
+abix_owned_span_<ContainerElement>
+```
+
+- `view` can be passed to any `abix_str` / `abix_span<T>` parameter without a copy.
+- The consumer releases the backing allocation exactly once through `owner.destroy(owner.object)`.
+- The producer sets `owner.object` to the same allocation as `view.data`; `mode` is `owned` (1), `flags` is 0, and `module_instance` is 0 until the lease integration supplies it.
+- Rust/C++/Zig wrappers may provide RAII, but the ABI itself is the explicit `view + owner` pair.
+
 ### Final API
 
 - source type: `abix_std::Owner<T>`
+- canonical C type: `abix_owner_handle`
 - generated instance: `abix_owner_<Type>`
+- owned instances: `abix_owned_str_utf8`, `abix_owned_span_i32`, `abix_owned_span_<Type>`
 - runtime: `owner::ref` in C++; generated wrappers in Rust/Zig
 - `T` is a label and adds no field
 - destroy must come from the creating module; hold an `abix_lease` until release
@@ -208,7 +242,9 @@ ABIX describes layouts, not language types. AMC lowers native types with an expl
 | `abix_span<T>`        | `&[T]`                       | slice                  | borrowed only; element `TypeID` and length unit must match                                                                                             |
 | `abix_callback`       | function + context           | fn + context           | borrowed: the caller keeps the context alive and unregisters it                                                                                        |
 | `abix_callback_owned` | function + context + release | fn + context + release | producer owns the context; release exactly once after the last call; no unwind; no calls after release                                                 |
-| `Owner<T>`            | wrapper                      | wrapper                | alias of `owner::handle`; destroy from the creating module; hold an `abix_lease` until release                                                         |
+| `Owner<T>`            | wrapper                      | wrapper                | alias of `abix_owner_handle`; destroy from the creating module; hold an `abix_lease` until release                                                     |
+| `abix_owned_str`      | view + owner wrapper         | view + owner wrapper   | pass `view` as `abix_str`; release through `owner.destroy(owner.object)` exactly once                                                                  |
+| `abix_owned_span<T>`  | view + owner wrapper         | view + owner wrapper   | pass `view` as `abix_span<T>`; release through `owner.destroy(owner.object)` exactly once                                                              |
 
 Rust `Option<T>` and `Result<T, E>` use niche optimization and may have a different size, alignment or discriminant range; `transmute` and `#[repr(transparent)]` casts are not valid adapters. A Zig error union is a tagged union, not `{ status, value }`; lower it explicitly.
 
@@ -218,15 +254,18 @@ Rust `Option<T>` and `Result<T, E>` use niche optimization and may have a differ
 
 The v0.4.0 concrete values for the first supported instances are:
 
-| Instance                               | Size | Align | Payload offset                                  |
-| -------------------------------------- | ---- | ----- | ----------------------------------------------- |
-| `abix_optional<int32_t>`               | 12   | 4     | 8                                               |
-| `abix_optional<int64_t>`               | 16   | 8     | 8                                               |
-| `abix_optional<void *>` (64-bit)       | 16   | 8     | 8                                               |
-| `abix_result<int32_t>`                 | 12   | 4     | 8                                               |
-| `abix_result<int64_t>`                 | 16   | 8     | 8                                               |
-| `abix_str<char>` (64-bit)              | 24   | 8     | `data=0`, `len=8`, `encoding=16`, `reserved=20` |
-| `abix_str<char>` (32-bit, u64 align 4) | 20   | 4     | `data=0`, `len=4`, `encoding=12`, `reserved=16` |
+| Instance                               | Size | Align | Payload offset                                                       |
+| -------------------------------------- | ---- | ----- | -------------------------------------------------------------------- |
+| `abix_optional<int32_t>`               | 12   | 4     | 8                                                                    |
+| `abix_optional<int64_t>`               | 16   | 8     | 8                                                                    |
+| `abix_optional<void *>` (64-bit)       | 16   | 8     | 8                                                                    |
+| `abix_result<int32_t>`                 | 12   | 4     | 8                                                                    |
+| `abix_result<int64_t>`                 | 16   | 8     | 8                                                                    |
+| `abix_str<char>` (64-bit)              | 24   | 8     | `data=0`, `len=8`, `encoding=16`, `reserved=20`                      |
+| `abix_str<char>` (32-bit, u64 align 4) | 20   | 4     | `data=0`, `len=4`, `encoding=12`, `reserved=16`                      |
+| `abix_owner_handle` (64-bit)           | 32   | 8     | `object=0`, `mode=8`, `flags=12`, `destroy=16`, `module_instance=24` |
+| `abix_owned_str` (64-bit)              | 56   | 8     | `view=0`, `owner=24`                                                 |
+| `abix_owned_span_i32` (64-bit)         | 48   | 8     | `view=0`, `owner=16`                                                 |
 
 The pointer, 64-bit and over-aligned instances are computed from the target's `alignof(T)`; the table is a check, not a substitute for the formula. `test/conformance/run_std_conformance.py` builds one native library and consumes it from C, C++, Rust and Zig; it also runs the C/C++ matrix at 32-bit where the host supports `-m32`. `test/std_contract_test.cpp` pins the C++ assertions and the v0.3.x-to-v0.4.0 negative cases.
 

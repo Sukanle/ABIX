@@ -14,15 +14,18 @@ All notable changes to ABIX are recorded here. Older releases are available in t
 
 ### Added
 
-- `test/conformance/`: one native library consumed by C, C++, Rust and Zig consumers with explicit `#[repr(C)]` / `extern struct` adapters, including 32-bit/64-bit C/C++ layout checks, invalid-discriminant and non-zero-`reserved` rejection.
-- `test/std_contract_test.cpp`: explicit v0.4.0 layout assertions for `int32_t`, `int64_t` and pointer instances, plus v0.3.x optional/result byte-layout negative cases.
+- `SKL/ABIX/Interface/OwnerABI.h`: the C-visible canonical `abix_owner_handle` (`object`, `mode`, `flags`, `destroy`, `module_instance`) with 64-bit layout assertions; `skl::abix::owner::handle` is now its C++ alias.
+- `SKL/ABIX/STD/OwnedString.h` / `OwnedSpan.h`: `abix_owned_str` and `abix_owned_span<T>` as an existing borrowed view plus an owner, so the view stays zero-copy and the owner is the only release path.
+- `cmake/owner_handle.json` and the installed `ABIX_OWNER_HANDLE_JSON`: the canonical 64-bit owner-handle layout for AMC and language adapters.
+- `test/conformance/`: one native library consumed by C, C++, Rust and Zig consumers with explicit `#[repr(C)]` / `extern struct` adapters, including 32-bit/64-bit C/C++ layout checks, invalid-discriminant and non-zero-`reserved` rejection, and owned-string/owned-span release.
+- `test/std_contract_test.cpp`: explicit v0.4.0 layout assertions for `int32_t`, `int64_t` and pointer instances, the owner handle and owned views, plus v0.3.x optional/result byte-layout negative cases.
 - Advanced-contract decisions recorded in the local `memory/` notes: A4-0 gap audit, A4-1 Variant/Range/MapView decision, A4-2 Interface/trait-object mapping, A4-3 tagged union, A4-4 lifetime boundary, A4-5 compatibility and A4-6 conformance.
 - `ABIXConfigVersion.cmake` negative tests in `test/cmake_runtime_package_test.py`.
 
 ### Changed
 
-- `docs/abix/std.md` / `std_zh.md` now document the v0.4.0 explicit layouts, the layout matrix and the conformance fixture.
-- `ABI-SPEC.md` §9.1 records the explicit ABIX-STD layouts, §14.2 records the STD layout revision and lockstep matrix, and §16 documents the ABIX-STD validity-sentinel exception to ordinary reserved fields.
+- `docs/abix/std.md` / `std_zh.md` now document the v0.4.0 explicit layouts, the owner handle, owned views, the layout matrix and the conformance fixture.
+- `ABI-SPEC.md` §9.1 records the explicit ABIX-STD layouts, the canonical owner handle and owned views, §14.2 records the STD layout revision and lockstep matrix, and §16 documents the ABIX-STD validity-sentinel exception to ordinary reserved fields.
 - The migration and advanced-contract notes moved out of the published `docs/` tree into the local `memory/` working notes until the 1.0.0 documentation freeze; [`docs/abix/std.md`](docs/abix/std.md) keeps the normative layout summary.
 
 ### Compatibility
@@ -30,6 +33,7 @@ All notable changes to ABIX are recorded here. Older releases are available in t
 - Breaking for ABIX-STD consumers, generated bindings and `.abix` artifacts. Regenerate all artifacts with AMC v0.4.0+.
 - No `.abix` format version change and no change to `TypeID`, `LayoutHash` or `ABIHash` rules.
 - `abix_span`, `abix_callback` and `abix_callback_owned` keep their v0.3.x layouts.
+- The owner handle keeps its 32-byte 64-bit layout; only its canonical C spelling (`abix_owner_handle`) and the owned-view containers are new. `skl::abix::owner::handle` remains source-compatible and is now an alias of the C type.
 - `Model::Target` / `BinaryImage::Target` are unchanged; AMC `TargetFacts` remains the layout authority.
 
 ## v0.3.4 — v0.4 lockstep documentation fix (2026-11-08)

@@ -1025,16 +1025,17 @@ The platform export table is consulted for **that one symbol only**: no other ex
 
 Namespace `skl::abix::owner`. Interface ABI says how to call an object; the owner ABI says who owns it, who releases it, and where the releasing code lives.
 
-| Symbol                                                    | Type              | Description                                                         |
-| --------------------------------------------------------- | ----------------- | ------------------------------------------------------------------- |
-| `abix_owner_abi_version`                                  | `uint32_t`        | Owner ABI version                                                   |
-| `mode`                                                    | enum              | `borrowed` / `owned` / `copied`; `to_string` gives the name         |
-| `destroy_fn`                                              | `void (*)(void*)` | The creator's destroy entry, with a fixed C ABI                     |
-| `handle`                                                  | struct (32 bytes) | POD handle: `object`, `mode`, `flags`, `destroy`, `module_instance` |
-| `valid(handle)`                                           | `bool`            | `object != nullptr`                                                 |
-| `make_borrowed(object)`                                   | `handle`          | Non-owning reference                                                |
-| `make_owned(object, destroy, module_instance = invalid)`  | `handle`          | Exclusive ownership, released through `destroy`                     |
-| `make_copied(object, destroy, module_instance = invalid)` | `handle`          | Independent copy, released through `destroy`                        |
+| Symbol                                                    | Type                          | Description                                                         |
+| --------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------- |
+| `abix_owner_abi_version`                                  | `uint32_t`                    | Owner ABI version                                                   |
+| `mode`                                                    | enum                          | `borrowed` / `owned` / `copied`; `to_string` gives the name         |
+| `destroy_fn`                                              | `void (*)(void*)`             | The creator's destroy entry, with a fixed C ABI                     |
+| `abix_owner_handle`                                       | C struct (32 bytes on 64-bit) | Canonical C-visible owner handle                                    |
+| `handle`                                                  | alias of `abix_owner_handle`  | POD handle: `object`, `mode`, `flags`, `destroy`, `module_instance` |
+| `valid(handle)`                                           | `bool`                        | `object != nullptr`                                                 |
+| `make_borrowed(object)`                                   | `handle`                      | Non-owning reference                                                |
+| `make_owned(object, destroy, module_instance = invalid)`  | `handle`                      | Exclusive ownership, released through `destroy`                     |
+| `make_copied(object, destroy, module_instance = invalid)` | `handle`                      | Independent copy, released through `destroy`                        |
 
 `handle` fields: `object` (opaque to the consumer), `mode`, `flags`, `destroy` (required for owned, optional for copied), `module_instance` (diagnostic: which load created it).
 

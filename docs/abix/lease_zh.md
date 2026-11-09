@@ -192,7 +192,7 @@ Acquire Lease
 
 - acquire 必须早于对象交付；不能出现 create/acquire 窗口。
 - 创建失败时立即释放 lease。
-- `owner::handle` 仍是模块/所有权身份，用于诊断和关联。
+- `owner::handle` 仍是模块/所有权身份，用于诊断和关联；其规范 C 拼写是 `abix_owner_handle`。
 - `owner::ref`（C++）内部持有同语义 lease。
 - Rust/Zig wrapper 持有 `object + destroy + lease`，在 `Drop` / `deinit()` 中先 destroy 后 release。
 - `destroy` 必须有 no-unwind 契约。
