@@ -103,6 +103,8 @@ Unknown C status values are failures. A mapping helper must preserve the numeric
 
 The C ABI status values are stable. Adding a status requires a new `abi_version` or a documented additive value that older readers treat as failure.
 
+The installed package also exposes the v1 function-table layout as `ABIX_LEASE_API_JSON` (`share/ABIX/lease_api.json`). It records `abi_version`, `struct_size`, field offsets and the stable status values so AMC and other consumers can generate or check their lease declarations instead of duplicating the layout.
+
 ## Registry lifecycle
 
 ```text

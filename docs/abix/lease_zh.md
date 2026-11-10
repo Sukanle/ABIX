@@ -103,6 +103,8 @@ typedef struct abix_lease_api {
 
 C ABI 状态值稳定。新增状态需要新的 `abi_version`，或记录为旧 reader 必须按失败处理的增量值。
 
+安装包还通过 `ABIX_LEASE_API_JSON`（`share/ABIX/lease_api.json`）暴露 v1 function table 布局。它记录 `abi_version`、`struct_size`、字段 offset 和稳定状态值，使 AMC 等消费者可以生成或校验自己的 lease 声明，而不必重复维护布局。
+
 ## Registry 生命周期
 
 ```text

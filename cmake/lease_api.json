@@ -1,0 +1,31 @@
+{
+  "abi": "abix.lease/1",
+  "source": "SKL/ABIX/Interface/LeaseABI.h",
+  "pointer_width": 64,
+  "abi_version": 1,
+  "struct_size": 48,
+  "align": 8,
+  "types": {
+    "abix_lease_registry": { "type": "opaque" },
+    "abix_module_instance": { "size": 8, "type": "uint64_t" },
+    "abix_lease": { "size": 8, "type": "uint64_t" }
+  },
+  "fields": [
+    { "name": "abi_version", "offset": 0, "size": 4, "type": "uint32_t" },
+    { "name": "struct_size", "offset": 4, "size": 4, "type": "uint32_t" },
+    { "name": "host_context", "offset": 8, "size": 8, "type": "void *" },
+    { "name": "registry_create", "offset": 16, "size": 8, "type": "function pointer" },
+    { "name": "registry_destroy", "offset": 24, "size": 8, "type": "function pointer" },
+    { "name": "acquire", "offset": 32, "size": 8, "type": "function pointer" },
+    { "name": "release", "offset": 40, "size": 8, "type": "function pointer" }
+  ],
+  "status": {
+    "ABIX_SUCCESS": 0,
+    "ABIX_ERROR_INVALID": 1,
+    "ABIX_ERROR_NOT_FOUND": 2,
+    "ABIX_ERROR_STALE_HANDLE": 3,
+    "ABIX_ERROR_BUSY": 4,
+    "ABIX_ERROR_UNLOADING": 5
+  },
+  "note": "Canonical 64-bit layout. The C header is authoritative; AMC reads this metadata for generated lease declarations."
+}
